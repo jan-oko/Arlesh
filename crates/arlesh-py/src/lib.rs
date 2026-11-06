@@ -31,6 +31,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arlesh_core::database::session::SessionFactory;
+use arlesh_core::mcp::{events::ExpectationsQuery, ArleshMcp};
 use arlesh_core::undo::stacks::UndoStacks;
 use pyo3::prelude::*;
 
@@ -48,6 +49,16 @@ struct NativeDatabase {
     /// This open's Undo and Redo Stacks. The server keeps one write-open per client, so these
     /// are that client's — undo is per device.
     stacks: Arc<UndoStacks>,
+    /// What answers the MCP over this database, when it was opened for writing. Built once, so
+    /// the one idle connection its calls borrow is started once.
+    mcp: Option<ArleshMcp>,
+}
+
+impl NativeDatabase {
+    /// The MCP handler, or the refusal of a read-only database.
+    fn mcp(&self) -> PyResult<ArleshMcp> {
+        self.mcp.clone().ok_or_else(|| raise(mcp::read_only()))
+    }
 }
 
 #[pymethods]
@@ -78,6 +89,80 @@ impl NativeDatabase {
         let shared = shared::for_database(&self.path);
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             Ok(shared.changes.after(after).await)
+        })
+    }
+
+    /// What the long poll of `GET /events/expectations` answers, as JSON: `{revision, epoch,
+    /// changes}`, waiting up to `wait` seconds for a change past `after`.
+    #[pyo3(signature = (agentic, after, epoch, wait))]
+    fn expectations_poll<'py>(
+        &self,
+        py: Python<'py>,
+        agentic: bool,
+        after: Option<u64>,
+        epoch: Option<String>,
+        wait: Option<u64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let factory = self.factory.clone();
+        let streams = shared::for_database(&self.path).streams();
+        let query = ExpectationsQuery {
+            agentic,
+            after,
+            epoch,
+            wait,
+        };
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            arlesh_core::mcp::events::poll_answer(&factory, &streams, &query)
+                .await
+                .map_err(|error| raise(arlesh_core::error::WireError::from_error(error)))
+        })
+    }
+
+    /// Every tool as `tools/list` serves it, as a JSON array.
+    fn mcp_tools(&self) -> PyResult<String> {
+        serde_json::to_string(&self.mcp()?.tools()).map_err(|error| {
+            raise(errors::Failure::new(
+                arlesh_core::error::WireErrorKind::Internal,
+                error.to_string(),
+            ))
+        })
+    }
+
+    /// The instructions an agent is given on connecting: the guide to the tools, then its roots.
+    fn mcp_instructions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let mcp = self.mcp()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move { Ok(mcp.instructions().await) })
+    }
+
+    /// The answer to `initialize` for these `params` (JSON), as `{"result": ...}` or
+    /// `{"error": ...}`.
+    fn mcp_initialize<'py>(&self, py: Python<'py>, params: String) -> PyResult<Bound<'py, PyAny>> {
+        let mcp = self.mcp()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let params = parse(&params)?;
+            Ok(mcp.answer_initialize(params).await.to_string())
+        })
+    }
+
+    /// The answer to `tools/call` for the tool `name` and `arguments` (a JSON object), as
+    /// `{"result": ...}` or `{"error": ...}`; `protocol_version` is the client's own, from the
+    /// request, which decides whether the result names its `resultType`. Runs on this database's own connection, so a write
+    /// is journaled under its client.
+    #[pyo3(signature = (name, arguments, protocol_version))]
+    fn mcp_call<'py>(
+        &self,
+        py: Python<'py>,
+        name: String,
+        arguments: String,
+        protocol_version: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let mcp = self.mcp()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let arguments = parse(&arguments)?;
+            Ok(mcp
+                .answer_call(&name, arguments, protocol_version.as_deref())
+                .await
+                .to_string())
         })
     }
 
@@ -155,6 +240,16 @@ impl NativeDatabase {
     }
 }
 
+/// `text` as JSON.
+fn parse(text: &str) -> PyResult<serde_json::Value> {
+    serde_json::from_str(text).map_err(|error| {
+        raise(errors::Failure::new(
+            arlesh_core::error::WireErrorKind::InvalidRequest,
+            error.to_string(),
+        ))
+    })
+}
+
 /// Stops the endpoint in `serving`, if there is one.
 async fn stop(serving: &tokio::sync::Mutex<Option<mcp::Serving>>) {
     let running = serving.lock().await.take();
@@ -177,7 +272,9 @@ fn open(
         let factory = opening::open(&path, client.as_deref(), force)
             .await
             .map_err(raise)?;
+        let mcp = mcp::handler(&factory, &path);
         Ok(NativeDatabase {
+            mcp,
             factory,
             path: Arc::new(path),
             serving: Arc::new(tokio::sync::Mutex::new(None)),

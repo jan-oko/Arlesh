@@ -1,4 +1,4 @@
-//! Serving the MCP endpoint from the Python process.
+//! Serving the MCP from the Python process.
 //!
 //! The desktop app serves `/mcp` itself in local mode. In server mode the FastAPI server
 //! (`arlesh-server`) serves it instead: the bindings run the core's own router
@@ -19,7 +19,7 @@ use arlesh_core::{
     capacity::CAPACITY_FILE,
     database::session::SessionFactory,
     error::WireErrorKind,
-    mcp::{self, events::EventStreams},
+    mcp::{self, ArleshMcp},
 };
 use serde_json::json;
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
@@ -54,11 +54,7 @@ pub(crate) async fn serve(
     port: u16,
 ) -> Result<(u16, Serving), Failure> {
     if factory.is_read_only() {
-        return Err(Failure::new(
-            WireErrorKind::InvalidRequest,
-            "only a database opened for writing serves the MCP endpoint",
-        )
-        .with_details(json!({ "reason": "read_only" })));
+        return Err(read_only());
     }
     let address = loopback(host, port)?;
     let listener = TcpListener::bind(address).await.map_err(|error| {
@@ -78,11 +74,7 @@ pub(crate) async fn serve(
     let shared = crate::shared::for_database(database);
     // The router counts an agent's write into the file's change feed itself, and serves the event
     // streams beside `/mcp`: this host hears of every write, so the waits are not polled.
-    let streams = EventStreams {
-        feed: shared.changes.clone(),
-        poll: None,
-        ..EventStreams::default()
-    };
+    let streams = shared.streams();
     let app = mcp::router(
         factory,
         arlesh_core::board::silent(),
@@ -130,4 +122,29 @@ pub(crate) fn capacity_file(database: &Path) -> std::path::PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(CAPACITY_FILE)
+}
+
+/// The MCP handler of a database opened for writing, answering over the shared state of its file:
+/// the capacity lock, and the change feed an agent's write is counted into. `None` for a read-only
+/// database, whose agent could not journal a write.
+pub(crate) fn handler(factory: &SessionFactory, database: &Path) -> Option<ArleshMcp> {
+    if factory.is_read_only() {
+        return None;
+    }
+    let shared = crate::shared::for_database(database);
+    Some(mcp::handler(
+        factory.clone(),
+        arlesh_core::board::silent(),
+        shared.capacity.clone(),
+        &shared.streams(),
+    ))
+}
+
+/// The refusal of the MCP on a database that was not opened for writing.
+pub(crate) fn read_only() -> Failure {
+    Failure::new(
+        WireErrorKind::InvalidRequest,
+        "only a database opened for writing answers the MCP",
+    )
+    .with_details(json!({ "reason": "read_only" }))
 }

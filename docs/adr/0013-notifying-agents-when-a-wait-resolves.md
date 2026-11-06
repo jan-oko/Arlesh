@@ -24,16 +24,16 @@ and `claude --resume`, and an entry untouched for 30 days is dropped.
 **Which changes wake the agent.** The wait is released or answered; archived or deleted (the agent
 is told it is *gone*); reopened, by undo or by hand. Edits to a pending wait's title or note do not.
 
-**Streams, in both serving paths** (the app's Standalone server beside `/mcp`, and `arlesh-server`,
-which proxies the core's):
+**Routes, in both serving paths** (the app's Standalone server beside `/mcp`, and `arlesh-server`,
+which serves `/mcp` and the wait poll from FastAPI, the core answering):
 
 - `/events/changes`: today's "board changed, revision N" stream under a new name. It replaced
   `/events` outright; the apps switched in the same change and no alias is kept.
-- `/events/expectations[?agentic=true]`: a typed `wait-changed` event per change (wait id and short
-  id, Task id and short id, status, archived, deleted, revision). It keeps no history. With
-  `after=<revision>&wait=<seconds>` the same route is a **long poll** answering
-  `{revision, epoch, changes}` (a client with no usable cursor is told to `reset`); the mod uses
-  that. Whenever it has no cursor, or the server's epoch changed, the mod reads the watched waits
+- `/events/expectations[?agentic=true]`: a **long poll** answering `{revision, epoch, changes}`,
+  a typed change per wait (wait id and short id, Task id and short id, status, archived, deleted,
+  revision); a client with no usable cursor is told to `reset`. It keeps only a short log. It was
+  first also a Server-Sent Events stream of `wait-changed` events; nothing but its own tests used
+  that, and it was dropped on 2026-11-06 (Task `688`) when `arlesh-server` stopped proxying. Whenever it has no cursor, or the server's epoch changed, the mod reads the watched waits
   once (`arlesh_waits.get_many`) and delivers what changed while it was away, then polls on.
 
 **Delivery.** The message is a pointer only, labelled "Arlesh notification: wait W on Task T changed

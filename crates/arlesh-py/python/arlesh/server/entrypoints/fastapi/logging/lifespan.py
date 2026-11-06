@@ -16,8 +16,7 @@ def lifespan(
     board: Board, closers: Sequence[Callable[[], Awaitable[None]]] = ()
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Opens the ``board`` for writing as the server starts — refused while the desktop app holds
-    the database, unless forced — and, as it stops, runs ``closers`` and closes it (which stops
-    every MCP endpoint they serve)."""
+    the database, unless forced — and, as it stops, runs ``closers`` and closes it."""
 
     @asynccontextmanager
     async def run(app: FastAPI) -> AsyncIterator[None]:

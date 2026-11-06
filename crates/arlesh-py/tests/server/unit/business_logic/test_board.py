@@ -79,21 +79,6 @@ async def test_each_client_is_opened_once_and_kept(fake_opener: Any, fake_holds:
     assert fake_opener.calls == ["phone", "laptop"]
 
 
-async def test_a_clients_mcp_endpoint_is_served_on_loopback_from_its_own_write_open(
-    fake_opener: Any, fake_holds: Any
-) -> None:
-    board = Board(fake_opener, fake_holds)
-
-    url = await board.mcp_endpoint("phone")
-    again = await board.mcp_endpoint("phone")
-    laptop = await board.mcp_endpoint("laptop")
-
-    phone_db: Any = await board.writer("phone")
-    assert url == again == "http://127.0.0.1:5000/mcp"
-    assert laptop == "http://127.0.0.1:5001/mcp"
-    phone_db.serve_mcp.assert_awaited_once_with(host="127.0.0.1", port=0)
-
-
 async def test_close_closes_every_open_database(fake_opener: Any, fake_holds: Any) -> None:
     board = Board(fake_opener, fake_holds)
     await board.open()
