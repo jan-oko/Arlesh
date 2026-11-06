@@ -3634,6 +3634,11 @@ class NodeFacts(BaseModel):
     """
     The dependencies a Task is blocked by, in edge order.
     """
+    derived_in_progress: bool | None = None
+    """
+    Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    by hand: a Compound Task, or a parent raised to it.
+    """
     expired: bool | None = None
     """
     Whether a Commitment's Verdict Window ran out before anything was recorded.
