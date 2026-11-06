@@ -107,8 +107,15 @@ pub fn settle_in(
         return Ok(Settled {
             waits,
             outcomes: Vec::new(),
+            derived_in_progress: Vec::new(),
         });
     }
+    // What each Task held before anything was derived: a status that is In Progress now and was
+    // not then was read from the sub-items.
+    let held: HashMap<NodeId, Status> = tasks
+        .iter()
+        .map(|task| (task.id.clone(), task.status))
+        .collect();
     let governance = governance_of(ancestry, &*tasks, exit);
     let mut drawn_for = delegated_done(&*tasks);
     let mut outcomes = Vec::new();
@@ -132,7 +139,12 @@ pub fn settle_in(
         apply(&outcomes, &mut *tasks, &mut *lifecycles);
         let delegated = delegated_done(&*tasks);
         if delegated == drawn_for {
-            return Ok(Settled { waits, outcomes });
+            let derived_in_progress = derived_in_progress(&outcomes, &held, &*tasks);
+            return Ok(Settled {
+                waits,
+                outcomes,
+                derived_in_progress,
+            });
         }
         drawn_for = delegated;
         waits = derive_waits_in(waits_sources, now, &*tasks, expectations)?;
@@ -141,7 +153,41 @@ pub fn settle_in(
         rounds = MAX_ROUNDS,
         "compound tasks did not settle; serving the last round"
     );
-    Ok(Settled { waits, outcomes })
+    let derived_in_progress = derived_in_progress(&outcomes, &held, &*tasks);
+    Ok(Settled {
+        waits,
+        outcomes,
+        derived_in_progress,
+    })
+}
+
+/// The Tasks that read In Progress (Doing, for an Agentic one) **only because of their
+/// sub-items**: a Compound Task reading it — its status is always derived — and an ordinary parent
+/// raised to it from a stored status that was not In Progress.
+fn derived_in_progress(
+    outcomes: &[Outcome],
+    held: &HashMap<NodeId, Status>,
+    tasks: &[Task],
+) -> Vec<NodeId> {
+    let compound: HashSet<&NodeId> = tasks
+        .iter()
+        .filter(|task| task.compound)
+        .map(|task| &task.id)
+        .collect();
+    let mut ids: Vec<NodeId> = outcomes
+        .iter()
+        .filter(|outcome| {
+            let reads_in_progress = outcome.status == TaskStatus::InProgress
+                || outcome.agentic == Some(AgenticStatus::Doing);
+            let was_in_progress = held
+                .get(&outcome.id)
+                .is_some_and(|status| status.reading() == TaskStatus::InProgress);
+            reads_in_progress && (compound.contains(&outcome.id) || !was_in_progress)
+        })
+        .map(|outcome| outcome.id.clone())
+        .collect();
+    ids.sort();
+    ids
 }
 
 /// Each compound stored Task's [`Governance`].
@@ -542,8 +588,10 @@ pub struct Board<'rows> {
 pub struct Settled {
     /// The waits' rows.
     pub waits: WaitRows,
-    /// Each compound Task's outcome, in the last round.
+    /// Each derived Task's outcome, in the last round.
     pub outcomes: Vec<Outcome>,
+    /// The Tasks that read In Progress only from their sub-items, sorted.
+    pub derived_in_progress: Vec<NodeId>,
 }
 
 /// Whether each delegated compound Task reads as done — what decides whether its delegation

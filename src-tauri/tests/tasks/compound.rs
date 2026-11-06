@@ -734,3 +734,26 @@ async fn a_press_over_open_sub_items_is_refused_and_one_that_cannot_lower_is_too
     ));
     assert_eq!(stored_status(&pool, parent).await, "todo");
 }
+
+#[tokio::test]
+async fn the_load_names_the_tasks_that_read_in_progress_only_from_their_sub_items() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let derived = parent(&pool, project).await;
+    child(&pool, derived, TaskStatus::InProgress).await;
+    let by_hand = parent(&pool, project).await;
+    write_task(&pool, by_hand, status_request(TaskStatus::InProgress))
+        .await
+        .unwrap();
+    child(&pool, by_hand, TaskStatus::InProgress).await;
+    let composed = compound(&pool, project).await;
+    child(&pool, composed, TaskStatus::InProgress).await;
+    let paused = parent(&pool, project).await;
+    child(&pool, paused, TaskStatus::Done).await;
+
+    let load = board(&pool).await;
+    assert!(load.derived_in_progress.contains(&NodeId::Stored(derived)));
+    assert!(load.derived_in_progress.contains(&NodeId::Stored(composed)));
+    assert!(!load.derived_in_progress.contains(&NodeId::Stored(by_hand)));
+    assert!(!load.derived_in_progress.contains(&NodeId::Stored(paused)));
+}
