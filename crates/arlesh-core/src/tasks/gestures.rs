@@ -13,6 +13,7 @@ use crate::{
     error::WireError,
     nodes::{composite, id::NodeId, write},
     tasks::{
+        compound,
         model::{Commitment, Task, TaskAgentic, UpdateCommitmentRequest, UpdateTaskRequest},
         rules::gestures::{self, BacklogCleared, StatusRefusal, StatusStep, VerdictPress},
     },
@@ -52,7 +53,16 @@ pub async fn step_status(
     let before = write::task(db, id, now)
         .await
         .map_err(WireError::from_error)?;
-    let next = match gestures::status_after(step, before.status, before.compound) {
+    // What the sub-items say, read off the board. A Habit occurrence is not refused for open ones:
+    // its own guard asks first and names what closing it would leave behind.
+    let mut sub_items = compound::sub_items(db, id, now)
+        .await
+        .map_err(WireError::from_error)?
+        .unwrap_or_default();
+    if matches!(id, NodeId::Derived(_)) {
+        sub_items.open = 0;
+    }
+    let next = match gestures::status_after(step, before.status, before.compound, sub_items) {
         Ok(next) => next,
         Err(reason) => return Ok(StatusStepOutcome::Refused { reason }),
     };

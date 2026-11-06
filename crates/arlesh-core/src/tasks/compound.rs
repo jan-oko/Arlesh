@@ -11,18 +11,20 @@ use chrono::NaiveDateTime;
 use crate::{
     database::session::{Db, SessionMode, Transactional},
     error::AppError,
+    mindmap::model::MindmapLoad,
     nodes::{id::NodeId, waits::WaitData},
 };
 
 use super::{
+    error::TaskError,
     model::{TaskId, UpdateTaskRequest},
-    rules::{ancestry::AncestryIndex, compound::settle_in},
+    rules::{ancestry::AncestryIndex, compound::settle_in, gestures::SubItems},
     scope_rules,
 };
 
 pub use super::rules::compound::{
-    apply, blocked, commitment_reading, derive, expectation_reading, goal_reading, progress,
-    task_reading, Board, Governance, Outcome, Rows, Settled,
+    apply, blocked, commitment_reading, derive, expectation_reading, goal_reading, parent_reading,
+    progress, subtree_of, task_reading, Board, Governance, Outcome, Rows, Settled,
 };
 
 pub mod instants;
@@ -73,4 +75,59 @@ pub async fn keep_derived_status(
         .find(|task| task.id == *id && task.compound)
         .map(|task| task.status.stored());
     Ok(())
+}
+
+/// The [`SubItems`] of the Task `id` on a loaded board.
+fn read_sub_items(load: &MindmapLoad, id: &NodeId) -> SubItems {
+    subtree_of(
+        &Rows {
+            tasks: &load.tasks,
+            checks: &[],
+            goals: &load.goals,
+            commitments: &load.commitments,
+            expectations: &load.expectations,
+            waits: &[],
+            lifecycles: &load.lifecycles,
+            wait_lifecycles: &[],
+            settled: &std::collections::HashSet::new(),
+            instants: &std::collections::HashMap::new(),
+        },
+        id,
+    )
+}
+
+/// What the sub-items of the Task `id` say about it, read off the board as a load serves it: the
+/// floor they make it read at, and how many counted items are not Done. `None` when the board does
+/// not hold the Task.
+#[tracing::instrument(skip(db))]
+pub async fn sub_items(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Option<SubItems>, AppError> {
+    let load = crate::mindmap::load(db, now).await?;
+    let held = load.tasks.iter().any(|task| task.id == *id);
+    Ok(held.then(|| read_sub_items(&load, id)))
+}
+
+/// Refuses setting the Task `id` Done while a counted sub-item is not ([`TaskError::OpenSubItems`]).
+/// A Task that already reads Done is left as it is: nothing changes retroactively, so a parent
+/// already Done with an open child stays Done, and writing Done again to it is no change.
+#[tracing::instrument(skip(db))]
+pub async fn require_closed(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<(), AppError> {
+    let load = crate::mindmap::load(db, now).await?;
+    let Some(task) = load.tasks.iter().find(|task| task.id == *id) else {
+        return Ok(());
+    };
+    if task.status.is_done() {
+        return Ok(());
+    }
+    match read_sub_items(&load, id).open {
+        0 => Ok(()),
+        open => Err(TaskError::OpenSubItems { open }.into()),
+    }
 }

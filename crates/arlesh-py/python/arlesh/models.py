@@ -1547,6 +1547,16 @@ class StatusRefusal(StrEnum):
     `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     only Doing work can be handed back.
     """
+    open_sub_items = "open_sub_items"
+    """
+    The press would set the Task Done while a counted sub-item is not: a Task cannot be
+    finished over open work. Complete or archive what is left.
+    """
+    below_sub_items = "below_sub_items"
+    """
+    The press would lower the Task below what its sub-items make it read: it reads at least
+    Started, or In Progress, from them, so the lower status would change nothing.
+    """
 
 
 class StatusStep(StrEnum):

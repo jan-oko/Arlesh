@@ -469,6 +469,16 @@ async fn write_task(
         )
         .await?;
     }
+    // A stored Task is finished once what it holds is: Done is refused while a counted sub-item is
+    // not. A Habit occurrence keeps its own guard, which asks first and names what it would close
+    // over (`composite::update_task_confirmed`): closing an iteration over a leftover is its design.
+    let closing = request
+        .status
+        .as_ref()
+        .is_some_and(crate::tasks::model::Status::is_done);
+    if closing && matches!(id, NodeId::Stored(_)) {
+        crate::tasks::compound::require_closed(db, id, now).await?;
+    }
     let derived = match id {
         NodeId::Stored(id) => {
             crate::tasks::compound::keep_derived_status(
