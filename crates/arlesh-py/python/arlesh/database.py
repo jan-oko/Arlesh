@@ -204,6 +204,13 @@ class Database(ABC):
         """
 
     @abstractmethod
+    async def board_json(
+        self, *, now: datetime | None = None, at_capacity: bool | None = None
+    ) -> str:
+        """:meth:`board` as the core's JSON text, an absent value left out, for a caller that
+        sends it on as it is (``GET /board``) rather than reading it into models."""
+
+    @abstractmethod
     async def get_task(self, id: int) -> TaskWithBlockers:
         """One stored Task, with what blocks it."""
 
@@ -847,19 +854,27 @@ class Arlesh(Database):
         except _native.NativeError as error:
             raise from_native(error) from None
 
-    async def _call(self, answer: TypeAdapter[T], op: str, **arguments: Any) -> T:
-        """Runs the operation ``op`` and reads its answer as ``answer`` describes."""
+    async def _call_raw(self, op: str, **arguments: Any) -> str:
+        """Runs the operation ``op`` and answers its result as the core's JSON text."""
         request = {"op": op, **{name: _wire(value) for name, value in arguments.items()}}
         try:
-            raw = await self._native.call(to_json(request).decode())
+            return await self._native.call(to_json(request).decode())
         except _native.NativeError as error:
             raise from_native(error) from None
-        return answer.validate_json(raw)
+
+    async def _call(self, answer: TypeAdapter[T], op: str, **arguments: Any) -> T:
+        """Runs the operation ``op`` and reads its answer as ``answer`` describes."""
+        return answer.validate_json(await self._call_raw(op, **arguments))
 
     async def board(
         self, *, now: datetime | None = None, at_capacity: bool | None = None
     ) -> MindmapLoad:
         return await self._call(_BOARD, "board", now=now, at_capacity=at_capacity)
+
+    async def board_json(
+        self, *, now: datetime | None = None, at_capacity: bool | None = None
+    ) -> str:
+        return await self._call_raw("board", now=now, at_capacity=at_capacity)
 
     async def get_task(self, id: int) -> TaskWithBlockers:
         return await self._call(_TASK_WITH_BLOCKERS, "get_task", id=id)

@@ -870,6 +870,23 @@ fn json(value: impl Serialize) -> Result<Value, WireError> {
     serde_json::to_value(value).map_err(|error| WireError::internal(error.to_string()))
 }
 
+/// `value` with every object member that is `null` left out, so an absent value is absent on the
+/// wire as it is in the models that read it (a `null` for a `bool` or a `Vec` is a failure to the
+/// core, where a missing field is its default). Array items stay, so positions hold.
+fn without_nulls(value: Value) -> Value {
+    match value {
+        Value::Object(members) => Value::Object(
+            members
+                .into_iter()
+                .filter(|(_, member)| !member.is_null())
+                .map(|(name, member)| (name, without_nulls(member)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
+        other => other,
+    }
+}
+
 /// Runs `operation` in one transaction, committing it when it succeeds, and answers its result.
 async fn transaction<T: Serialize>(
     factory: &SessionFactory,
@@ -916,6 +933,7 @@ async fn dispatch(
                 mindmap::board(db, at, capacity).await.wired()
             })
             .await
+            .map(without_nulls)
         }
         Request::GetTask { id } => {
             transaction(factory, async |db| {
