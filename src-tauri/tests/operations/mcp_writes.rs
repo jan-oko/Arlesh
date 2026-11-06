@@ -1212,27 +1212,27 @@ mod agent_waits {
         );
     }
 
-    /// Reads from `stream` until `needle` has arrived, or fails the test after ten seconds.
-    async fn read_until(stream: &mut tokio::net::TcpStream, needle: &str) -> String {
-        use tokio::io::AsyncReadExt;
-        let mut heard = String::new();
-        let mut buffer = [0u8; 4096];
-        tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            while !heard.contains(needle) {
-                let read = stream.read(&mut buffer).await.expect("read the stream");
-                assert_ne!(read, 0, "the stream ended before {needle:?}: {heard}");
-                heard.push_str(&String::from_utf8_lossy(&buffer[..read]));
-            }
-        })
+    /// One `GET` answered whole: the connection is asked to close, so the body ends it.
+    async fn get(address: std::net::SocketAddr, target: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        let request =
+            format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut answer = String::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            stream.read_to_string(&mut answer),
+        )
         .await
-        .unwrap_or_else(|_| panic!("did not hear {needle:?} in: {heard}"));
-        heard
+        .expect("the answer arrives")
+        .unwrap();
+        answer
     }
 
     #[tokio::test]
-    async fn the_wait_stream_tells_of_a_release_made_outside_the_endpoint() {
+    async fn the_wait_poll_tells_of_a_release_made_outside_the_endpoint() {
         use arlesh_lib::mcp::events::{self, ChangeFeed, EventStreams};
-        use tokio::io::AsyncWriteExt;
         let (pool, _app, _mcp, id) = raised(true).await;
         // The app polls: its windows write without announcing to the endpoint.
         let routes = events::routes(
@@ -1246,21 +1246,30 @@ mod agent_waits {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, routes).await });
-        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
-        stream
-            .write_all(b"GET /events/expectations?agentic=true HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
-            .await
-            .unwrap();
-        read_until(&mut stream, ": connected").await;
+        let baseline = get(address, "/events/expectations?agentic=true&wait=0").await;
+        let field = |name: &str| {
+            let after = baseline.split_once(&format!("\"{name}\":")).unwrap().1;
+            after
+                .split([',', '}'])
+                .next()
+                .unwrap()
+                .trim_matches('"')
+                .to_owned()
+        };
+        let (revision, epoch) = (field("revision"), field("epoch"));
 
         sqlx::query("UPDATE expectations SET status = 'released' WHERE id = ?")
             .bind(id)
             .execute(&pool)
             .await
             .unwrap();
-        let heard = read_until(&mut stream, "\"change\":\"released\"").await;
+        let heard = get(
+            address,
+            &format!("/events/expectations?agentic=true&after={revision}&epoch={epoch}&wait=5"),
+        )
+        .await;
 
-        assert!(heard.contains("event: wait-changed"), "{heard}");
+        assert!(heard.contains("\"change\":\"released\""), "{heard}");
         assert!(heard.contains("\"deleted\":false"), "{heard}");
     }
 

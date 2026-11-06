@@ -8,7 +8,7 @@ takes no hold.
 
 The bindings fix a write-open's client when it opens, and the undo journal stamps every entry with
 it, so each client the server admits gets its own write-open, kept until shutdown. Each client's
-MCP endpoint is served from its own write-open too, so an agent's writes carry its client.
+MCP calls run on its own write-open too, so an agent's writes carry its client.
 """
 
 from __future__ import annotations
@@ -38,15 +38,13 @@ SERVER_CLIENT = "arlesh-server"
 """The client the startup open writes as. It never writes: each write goes out as the client its
 token names."""
 
-LOOPBACK = "127.0.0.1"
-
 
 class BoardNotOpen(RuntimeError):
     """A request reached the board before startup opened it."""
 
 
 class Board:
-    """The open databases, and the MCP endpoint each client is served from."""
+    """The open databases: one to read through, one per client to write through."""
 
     def __init__(self, open_as: OpenAs, take_hold: TakeHold, *, force: bool = False) -> None:
         self._open_as = open_as
@@ -55,7 +53,6 @@ class Board:
         self._hold: arlesh.Hold | None = None
         self._reader: arlesh.Database | None = None
         self._writers: dict[str, arlesh.Database] = {}
-        self._mcp_ports: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._epoch = uuid.uuid4().hex
 
@@ -95,11 +92,10 @@ class Board:
             raise
 
     async def close(self) -> None:
-        """Closes every open database, which stops every MCP endpoint they serve."""
+        """Closes every open database."""
         for writer in self._writers.values():
             await writer.close()
         self._writers.clear()
-        self._mcp_ports.clear()
         if self._reader is not None:
             await self._reader.close()
             self._reader = None
@@ -116,18 +112,6 @@ class Board:
         """The database open for writing as ``client``, opened on the client's first write."""
         async with self._lock:
             return await self._writer(client)
-
-    async def mcp_endpoint(self, client: str) -> str:
-        """The URL of ``client``'s own MCP endpoint, served on a private loopback port from its
-        write-open on its first MCP request."""
-        async with self._lock:
-            port = self._mcp_ports.get(client)
-            if port is None:
-                writer = await self._writer(client)
-                port = await writer.serve_mcp(host=LOOPBACK, port=0)
-                self._mcp_ports[client] = port
-                logger.info("Serving the MCP endpoint", client=client, port=port)
-        return f"http://{LOOPBACK}:{port}/mcp"
 
     async def _writer(self, client: str) -> arlesh.Database:
         writer = self._writers.get(client)

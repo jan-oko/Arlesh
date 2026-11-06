@@ -39,13 +39,44 @@ the old listener is not cut off, but no new connection reaches it.
 tools and rules — can be served by a Python process through the bindings instead of the app:
 `await db.serve_mcp(host="127.0.0.1", port=0)` on a database opened for writing answers the port it
 bound, and `await db.stop_mcp()` (or closing the database) stops it. It is for the FastAPI server
-(`arlesh-server`), which proxies `/mcp` to it behind its own authentication, so it binds a loopback
-address only and refuses any other. An agent's writes there are journaled as source `mcp` from the
+(`arlesh-server`) in its first form, which proxied `/mcp` to it; the server no longer does (below,
+*Spoken by the Python server*), and the binding stays for its own tests and for any host that wants a
+listener. It binds a loopback address only and refuses any other. An agent's writes there are journaled as source `mcp` from the
 server's client rather than `desktop` (see [Undo](undo.md), *Clients, and a second writer*). The
 board-changed announcement is silent, since there are no windows to tell, and the agent capacity
 lock is the same `agent-capacity.json` the app keeps beside the database. In local mode the app
 serves its own endpoint as before; the app's hold on the database keeps the two from running over
 one file.
+
+**Spoken by the Python server** (2026-11-06, Task `688`). `arlesh-server` does not run an MCP
+listener per client and proxy to it (that hop timed out in production, and `httpx.ConnectTimeout`
+reached the client as a generic internal error). FastAPI speaks the protocol itself and the core
+answers it, through four bindings on a database opened for writing: `db.mcp_tools()` (the
+`tools/list` array), `await db.mcp_instructions()`, `await db.mcp_initialize(params)` and
+`await db.mcp_call(name, arguments)`. The last two answer `{"result": ...}` or
+`{"error": {"code", "message", "data"}}`, which Python puts in the request's JSON-RPC envelope; it
+reimplements no tool, parameter check, access rule or paging. The calls run on the client's own
+write-open, so write attribution, per-device undo, the shared capacity lock and the revision an
+agent's write bumps are those of the endpoint above. Settled while building:
+
+- **No connection needed.** `rmcp` builds a tool's request context only inside a running service,
+  and no tool reads it. `ArleshMcp::call` borrows the context of one idle service started on an
+  in-memory pipe with the handshake skipped (`mcp/detached.rs`) and dispatches through the same
+  `ToolRouter` the endpoint uses; so an unknown tool, bad parameters and a tool's result are
+  answered by the very code a connected client reaches. Nothing was split out from under the macros.
+- **Handshake.** The `initialize` answer is the endpoint's own: the same capabilities, server info
+  and instructions (the fixed guide, then the roots, read afresh per call), from the same
+  `negotiate_initialize`, so the protocol version is the client's when the SDK knows it and
+  otherwise the newest it does.
+- **Errors.** An unknown tool is a JSON-RPC error, code `-32602`, message `tool not found`. Bad
+  parameters (a missing field, a wrong type) and a tool's own failure are a **result** with
+  `isError: true` (the first as text, the second as the `WireError` in `structuredContent`). Both
+  are the Rust endpoint's answers, and `tests/test_mcp.py` replays the same calls against that
+  endpoint and compares. Python adds only the protocol's own errors: `-32700` (not JSON, HTTP 400),
+  `-32600`, `-32601` (unknown method), `-32602` (`tools/call` params of the wrong shape) and
+  `-32603` when the core refuses outright; never a bare 500.
+- **Methods.** `initialize`, `notifications/initialized` (accepted, `202`), `tools/list`,
+  `tools/call` and `ping`; a JSON array is a batch.
 
 **Connecting.** `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp` — the server is named `Arlesh` (renamed from `arlesh` on 2026-09-25, so Claude Code's tool prefix is `mcp__Arlesh__`); the tools keep their `arlesh_*` names.
 
@@ -574,32 +605,31 @@ its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.
 server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
 which an agent's session may or may not have.
 
-**Two event streams**, Server-Sent Events (and the wait stream's long-poll form, below), on the MCP endpoint's own origin (beside `/mcp` in
-Standalone; behind the client's bearer token in Client mode, by the same proxy), under the same
-rules: a loopback `Host` only, and any request carrying an `Origin` refused.
+**Two event routes**, on the MCP endpoint's own origin (beside `/mcp` in Standalone) or behind the
+client's bearer token on `arlesh-server`. In Standalone they share the endpoint's rules: a loopback
+`Host` only, and any request carrying an `Origin` refused. Only `/events/changes` is a
+Server-Sent Events stream; the wait route is a long poll (the Server-Sent Events form was dropped
+on 2026-11-06, Task `688`: only its own tests followed it, the mod long-polls).
 
 - `GET /events/changes`: `board-changed` with the board's revision after every committed write.
   Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*).
-- `GET /events/expectations[?agentic=true]`: `wait-changed` for each change to a wait the MCP can
-  see; `agentic=true` keeps only the agentic ones. The data is
-  `{"change", "wait_id", "short_id", "task_id", "task_short_id", "status", "archived", "question",
-  "deleted", "revision", "epoch"}`. `change` is `created`, `released`, `reopened`, `archived`,
-  `unarchived` or `deleted` (deleted, or no longer inside the roots: indistinguishable by design,
-  as `not_permitted` is). A status change comes before an archival change. **An edit to a pending
-  wait's title or note is no event.** The server keeps no history: the first read is made before
-  the response starts, so a change after the client has the response is always an event, and a
-  client that reconnects reads the waits it follows once (`get_many`) to catch up.
-- `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the same
-  changes as **one JSON answer**, for a client that cannot hold a stream open (the mod's
-  `$.http.fetch` resolves only once the body is read). It answers
-  `{"revision", "epoch", "changes": [<the wait-changed data above>]}` as soon as a change stamped
-  after `after` exists, else with no changes once `wait` seconds have passed (25 by default, 30 at
-  most; `wait=0` answers at once). The client polls again with the `revision` it got, one request at
-  a time. With `after` missing or 0, an `epoch` that is not this run's, or an `after` the server's
-  short log (the last 1000 changes) no longer reaches, it answers
-  `{"revision", "epoch", "changes": [], "reset": true}` at once: read the waits (`get_many`), then
-  poll from that `revision`. The server keeps the log lazily, per filter, and only once a poll asks;
-  the stream is unchanged. Same access rules as the stream.
+- `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the
+  changes to the waits the MCP can see, as **one JSON answer** (the mod's `$.http.fetch` resolves
+  only once the body is read); `agentic=true` keeps only the agentic ones. It answers
+  `{"revision", "epoch", "changes": [...]}` as soon as a change stamped after `after` exists, else
+  with no changes once `wait` seconds have passed (25 by default, 30 at most; `wait=0` answers at
+  once). Each change is `{"change", "wait_id", "short_id", "task_id", "task_short_id", "status",
+  "archived", "question", "deleted", "revision", "epoch"}`, where `change` is `created`,
+  `released`, `reopened`, `archived`, `unarchived` or `deleted` (deleted, or no longer inside the
+  roots: indistinguishable by design, as `not_permitted` is). A status change comes before an
+  archival change. **An edit to a pending wait's title or note is no change.** The client polls
+  again with the `revision` it got, one request at a time. With `after` missing or 0, an `epoch`
+  that is not this run's, or an `after` the server's short log (the last 1000 changes) no longer
+  reaches, it answers `{"revision", "epoch", "changes": [], "reset": true}` at once: read the waits
+  (`get_many`), then poll from that `revision`. The server keeps the log lazily, per filter, and
+  only once a poll asks. In `arlesh-server` the route is FastAPI's own (`ExpectationsRouter`,
+  behind the bearer token), and the core computes the answer through
+  `db.expectations_poll(agentic, after, epoch, wait)`.
 
 The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
 writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.

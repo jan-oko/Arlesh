@@ -206,7 +206,7 @@ and the server's `test_server_parity.py` fails when a listed route is not served
 
 ## Live sync
 
-(The agents' wait stream, `GET /events/expectations`, is proxied beside `/mcp` behind the same bearer token, as a stream and, with `after`/`wait`, as a long poll that answers JSON; see [MCP](mcp-server.md), *Being told a wait resolved*.)
+(The agents' wait stream, `GET /events/expectations`, is a long poll that answers JSON, served by the FastAPI server behind the same bearer token (it has no Server-Sent Events form); see [MCP](mcp-server.md), *Being told a wait resolved*.)
 
 The server streams changes over Server-Sent Events. `GET /events/changes` sends `board-changed` with a
 **revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the

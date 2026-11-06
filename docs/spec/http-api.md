@@ -124,7 +124,7 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | Path | What |
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
-| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the wait stream, and with `after`/`wait` a long poll answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
+| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the agents' long poll, answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
 | `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
@@ -237,27 +237,31 @@ names those Tasks, and the update goes ahead when sent again with `?descendant_p
 
 ## The MCP at `/mcp`
 
-The server serves Arlesh's MCP endpoint, with the core's own router, tools and rules (see
-[MCP Server](mcp-server.md)). The core router is served on a private loopback port through the
-bindings (`Database.serve_mcp`), and `/mcp` is a **streaming reverse proxy** to it:
+The server serves Arlesh's MCP endpoint, with the core's own tools and rules (see
+[MCP Server](mcp-server.md), *Spoken by the Python server*). FastAPI speaks the protocol and the
+core answers it: there is no second listener and no proxy.
 
-- **It sits behind the same token.** A request without a token is refused 401 before it reaches
-  the router, which has no authentication of its own.
-- **It passes `POST`, `GET` and `DELETE` through.** Responses stream back unbuffered, so
-  Server-Sent Events arrive as they are sent. `Accept`, `Content-Type`, `mcp-session-id`,
-  `mcp-protocol-version` and `Last-Event-ID` go upstream. `Content-Type`, `mcp-session-id`,
-  `mcp-protocol-version`, `Cache-Control` and `Content-Encoding` come back.
-- **It strips what the router refuses.** The router admits a loopback `Host` only and rejects any
-  request carrying an `Origin`. So the proxy sends a loopback `Host` and never forwards
-  `Authorization`, `Origin` or `Referer`.
-- **Each client gets its own endpoint.** It is served from that client's write-open on its first
-  MCP request. So an agent's writes are journaled as source `mcp` under the client its token
-  names, as every other route's are. Each endpoint stops when its database closes at shutdown.
+- **Stateless Streamable HTTP.** `POST /mcp` carries one JSON-RPC message (or a JSON array of them)
+  and is answered with plain JSON; a notification gets `202` with no body. `GET` and `DELETE` are
+  `405` (`Allow: POST`): the server has no stream to speak first on and no session to end, and it
+  issues and requires no `Mcp-Session-Id`. `Accept` may name `text/event-stream`; the answer is
+  still JSON.
+- **Methods:** `initialize`, `notifications/initialized`, `tools/list`, `tools/call` and `ping`.
+  Anything else is JSON-RPC `-32601`. A body that is not JSON is `-32700` with HTTP 400.
+- **It sits behind the same token.** A request without a token is refused 401 as every route is;
+  that is the only non-JSON-RPC answer. There is no `Host` or `Origin` rule of its own.
+- **Each client's calls run on its own write-open.** So an agent's writes are journaled as source
+  `mcp` under the client its token names, as every other route's are, and they bump the revision.
+- **Errors reach the client as JSON-RPC,** never a bare 500: a tool's failure is a result with
+  `isError: true`, an unknown tool `-32602`, and the core refusing outright `-32603`.
+- **`GET /events/expectations`** is the agents' long poll (see [MCP Server](mcp-server.md), *Being
+  told a wait resolved*), a route of its own beside `/events/changes` and behind the token. It has
+  no Server-Sent Events form.
 
 ## Code
 
 The server lives in the `arlesh` package as `arlesh.server`, installed by the optional extra
-`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, httpx, Typer). The extra also
+`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, Typer). The extra also
 installs the `arlesh-server` command. Its layout follows the user's Librarian project:
 `business_logic/`, `entrypoints/` (the ways in) and `ports/` (the ways out).
 
@@ -289,8 +293,9 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     - `logging/`: the request middleware, which stamps a transaction id, and the lifespan, which
       holds the startup guard.
     - `run.py`: starts uvicorn.
-  - `mcp/proxy.py`: `/mcp`, the streaming reverse proxy, mounted on the FastAPI app. Its way out
-    is an injected httpx client, so it needs no port of its own.
+  - `mcp/jsonrpc.py` (the protocol: which message is a request, the envelope, the protocol errors)
+    and `mcp/router.py` (`/mcp` and `/events/expectations`, mounted on the FastAPI app). Both reach
+    the core only through the `arlesh.Database` port's `mcp_*` and `expectations_poll` calls.
 - **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
   `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
