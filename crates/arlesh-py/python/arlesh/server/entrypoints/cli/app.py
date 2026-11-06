@@ -34,7 +34,7 @@ from arlesh.server.business_logic.board import Board, OpenAs, TakeHold
 from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.config import Config
 from arlesh.server.entrypoints.fastapi import run
-from arlesh.server.entrypoints.fastapi.app import ArleshServer
+from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
@@ -107,6 +107,11 @@ def serve(
             tokens=tokens,
             pairs=DatabasePairingStore(path),
             version=version("arlesh"),
+            backup=(
+                Backup(path, config.backup_token.get_secret_value())
+                if config.backup_token is not None and config.backup_token.get_secret_value()
+                else None
+            ),
         ),
         config.server,
     )

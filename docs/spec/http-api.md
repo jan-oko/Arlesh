@@ -44,6 +44,12 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   the only scheme for now (Postgres comes later, through portable SQL). `--db` and
   `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
 
+- **The backup endpoint.** `ARLESH_BACKUP_TOKEN` switches on `GET /backup`, an administrator's
+  route for pulling a consistent snapshot of the database (see *Backup*). Unset, the route does not
+  exist (404). Set it in the container's environment (a compose file's `environment:`, or the NAS
+  app's variables) beside `ARLESH_DATABASE_URL`; there is no deployment guide or compose example in
+  this repository yet, so this is where the variable is recorded.
+
 - **Address.** It listens on `127.0.0.1:4750` by default. `--host` opts in to a LAN or Tailscale
   address.
 - **TLS** is optional, through `--tls-cert` and `--tls-key`, which must be given together.
@@ -52,6 +58,27 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   serves plain HTTP on an address other than loopback.
 - **The database** is opened for writing at startup, and migrated if it is behind. A missing file
   is created. A schema newer than the build is refused.
+
+## Backup: `GET /backup`
+
+The production database lives on the server, so anything that needs a copy of it (the box tool
+seeding a branch from real data, an off-site backup) asks the server.
+
+- **Admin-only, by its own secret.** The route exists only when the server is started with
+  `ARLESH_BACKUP_TOKEN`; without it, 404. The request carries `Authorization: Bearer <that
+  token>`, compared in constant time; missing or wrong is 401 (`WWW-Authenticate: Bearer`). A
+  device's pairing token does **not** open it, and the backup token opens nothing else. It is
+  open without a device token and rate limited per address, like `/pair`. This is a deliberate
+  split: a copy of the database is every Task's content, more than any one device should be
+  able to take.
+- **How the snapshot is taken.** Python's `sqlite3` online backup API over a read-only connection
+  to the configured database file, in a worker thread, 256 pages at a time. It reads where the
+  Rust core would, never writes to the live database, and in WAL mode does not block the
+  server's writers for long. It was chosen over a Rust binding because the bindings expose no
+  backup and the server already owns the file path; over `VACUUM INTO` because that holds a read
+  transaction for the whole copy. The copy goes into a temporary file, is streamed as
+  `application/vnd.sqlite3` with `Content-Disposition: attachment; filename=arlesh-YYYY-MM-DD.db`,
+  and is deleted afterwards. The file is a plain, whole database (not WAL).
 
 ## Tokens and client identity
 
