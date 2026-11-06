@@ -38,7 +38,6 @@ from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
 PROGRAM = "arlesh-server"
@@ -97,7 +96,6 @@ def serve(
     # Reading the token table opens the database for writing, which would migrate it: only once
     # it is known that this server will be its writer. A held database is refused at startup.
     if config.database.force or _unheld(path):
-        tokens = prepare(path)
         if not tokens.issued():
             typer.echo(
                 f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
@@ -194,15 +192,6 @@ def holder(path: Path) -> TakeHold:
     return lambda: arlesh.hold(path)
 
 
-def prepare(path: Path) -> DatabaseTokenStore:
-    """The token store in the database at ``path``, with the tokens of an old ``<db>.tokens``
-    file carried over into it. Its first call migrates the database if it is behind."""
-    tokens = DatabaseTokenStore(path)
-    for client in tokens.carry_over(FileTokenStore.beside(path)):
-        typer.echo(f"{PROGRAM}: moved {client}'s token into the database", err=True)
-    return tokens
-
-
 def _unheld(path: Path) -> bool:
     """Whether nothing holds the database at ``path`` right now."""
     try:
@@ -213,7 +202,7 @@ def _unheld(path: Path) -> bool:
 
 
 def _tokens(db: Path | None) -> DatabaseTokenStore:
-    return prepare(_config(database={"path": db}).database.path)
+    return DatabaseTokenStore(_config(database={"path": db}).database.path)
 
 
 def _interactive() -> bool:
@@ -223,7 +212,7 @@ def _interactive() -> bool:
 
 def _pairing(db: Path | None) -> Pairing:
     path = _config(database={"path": db}).database.path
-    return Pairing(DatabasePairingStore(path), prepare(path))
+    return Pairing(DatabasePairingStore(path), DatabaseTokenStore(path))
 
 
 def _config(**sections: dict[str, Any]) -> Config:

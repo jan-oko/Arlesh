@@ -41,7 +41,7 @@ name: CI
 
 # Branch model: feature PRs target `dev`, and a release is a `dev` -> `master` merge, so the
 # required checks run on pull requests to both. Pushes are checked on master only: a push to
-# `dev` is a merged PR that already passed, and the master bot's follow-up commit there
+# `dev` is a merged PR that already passed, and the bot's follow-up commit there
 # (CHANGELOG.md, the baseline) is derived files, covered by the release PR's run.
 on:
   pull_request:

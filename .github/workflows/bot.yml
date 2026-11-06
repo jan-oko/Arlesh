@@ -1,7 +1,6 @@
-name: Master bot
+name: Bot
 
-# (The file keeps its name; the bot now works on `dev`. Master receives its output through the
-# release merge, dev -> master.)
+# (The bot works on `dev`. Master receives its output through the release merge, dev -> master.)
 #
 # Keeps two derived files on dev in step with what produces them, and commits the result:
 #
@@ -42,7 +41,7 @@ on:
 
 # Serialize rather than supersede: the run that waits is the run that sees every merge.
 concurrency:
-  group: master-bot
+  group: bot
   cancel-in-progress: false
 
 permissions:
@@ -113,7 +112,7 @@ jobs:
         if: steps.baseline.outputs.needed == 'true'
         with:
           workspaces: ". -> src-tauri/target"
-          shared-key: master-bot
+          shared-key: bot
 
       - name: Re-cut, assemble and push
         env:
