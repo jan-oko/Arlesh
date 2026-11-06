@@ -60,15 +60,10 @@ pub async fn step_status(
     let served = compound::serve(db, id, now)
         .await
         .map_err(WireError::from_error)?;
-    let (current, mut sub_items) = served.map_or_else(
+    let (current, sub_items) = served.map_or_else(
         || (before.status, SubItems::default()),
         |served| (served.status, served.sub_items),
     );
-    // A Habit occurrence is not refused for open sub-items: its own guard asks first and names
-    // what closing it would leave behind.
-    if matches!(id, NodeId::Derived(_)) {
-        sub_items.open = 0;
-    }
     let next = match gestures::status_after(step, current, before.compound, sub_items) {
         Ok(next) => next,
         Err(reason) => return Ok(StatusStepOutcome::Refused { reason }),
