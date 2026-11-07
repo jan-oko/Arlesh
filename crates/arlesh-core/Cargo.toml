@@ -25,5 +25,6 @@ getrandom = "0.3"
 schemars = { version = "1.2.2", features = ["chrono04"] }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 arlesh-rules = { path = "../arlesh-rules", features = ["test-support"] }
 tokio = { version = "1", features = ["rt", "macros", "io-util", "net"] }

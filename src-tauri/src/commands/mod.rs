@@ -4,6 +4,7 @@
 pub mod access;
 pub mod block_reasons;
 pub mod board;
+pub mod agents;
 pub mod capacity;
 pub mod client_mode;
 pub mod commitments;

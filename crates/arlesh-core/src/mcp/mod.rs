@@ -46,6 +46,7 @@ mod caller;
 mod capacity;
 mod delegation;
 mod detached;
+pub mod door;
 pub mod endpoint;
 pub mod events;
 mod flows;
