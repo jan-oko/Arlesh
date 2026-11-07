@@ -204,6 +204,7 @@ never drift between the two views. The strips and the Agentic pill are switched 
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo
 - `Ctrl+J` shows this view; `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F`, `Ctrl+F` are the
   [global bindings](tabs.md) as everywhere
+- `Alt+S` in the `Ctrl+O` search starts the highlighted row — see [*Mindmap View*](mindmap-view.md).
 
 **Moving in two dimensions.** The grid is read in rows; the last row may be short and is centred.
 
