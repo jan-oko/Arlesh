@@ -18,6 +18,7 @@ import { useUndo } from "@/hooks/use-undo";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useZenGrid } from "@/hooks/use-zen-grid";
 import { useKeyboardZenView } from "@/hooks/use-keyboard-zen-view";
@@ -110,6 +111,7 @@ export default function ZenView() {
   const { markBroken, cycleVerdict } = useCommitmentVerdict({ findNode: find, showToast });
   const { onUndo, onRedo } = useUndo({ reload, showToast });
   const searchableNodes = useSearchableNodes(tree);
+  const startFromSearch = useSearchStart(tree);
 
   // Renaming only: the Zen View creates nothing, so `createTaskUnder` is never called and the
   // "Escape discards a new task" half of this hook never has a new task to discard.
@@ -333,6 +335,7 @@ export default function ZenView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
+          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />
