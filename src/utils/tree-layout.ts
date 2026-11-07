@@ -313,10 +313,6 @@ export interface MindmapNode {
    * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
    * status glyph draws its outer ring dashed while it is on. */
   compound?: boolean;
-  /** Present on a Task that reads In Progress (Doing) only from its sub-items, not from a status
-   * held by hand (a Compound Task, or a parent raised to it). The Zen View hides its card while the
-   * item beneath it that is being worked on is drawn. */
-  derivedInProgress?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

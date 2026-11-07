@@ -499,15 +499,15 @@ async fn an_agent_claims_only_from_to_do() {
 async fn a_question_makes_it_review_and_expected_may_name_review() {
     let pool = helpers::test_pool().await;
     let (mcp, id) = claimed(&pool).await;
-    let asked = mcp
-        .waits(Parameters(params::WaitsOperation::Ask {
+    succeeded(
+        &mcp.waits(Parameters(params::WaitsOperation::Ask {
             task_id: id.into(),
             title: "Review PR #1?".into(),
             note: None,
         }))
         .await
-        .expect("the waits tool returned no result");
-    let question = succeeded(&asked)["id"].as_i64().expect("a stored wait");
+        .expect("the waits tool returned no result"),
+    );
 
     // The compare reads the board's status: Review, not the On Agent the row holds.
     let stale = run(
@@ -522,32 +522,11 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     assert_eq!(refused(&stale), "status_changed");
     assert_eq!(body(&stale)["details"]["current"], "review");
 
-    // The open question is a pending wait beneath the Task, and a Task is not set Done over one.
-    let open = run(
-        &mcp,
-        TasksOperation::SetStatus {
-            id: id.into(),
-            expected: AgenticStatusParam::Review,
-            status: AgenticStatusParam::Done,
-        },
-    )
-    .await;
-    assert_eq!(refused(&open), "invalid_request");
-
-    // Answered, it reads On Agent again, and then it can be finished.
-    succeeded(
-        &mcp.waits(Parameters(params::WaitsOperation::Release {
-            id: question.into(),
-            answer: Some("Merged".to_string()),
-        }))
-        .await
-        .expect("the waits tool returned no result"),
-    );
     let done = run(
         &mcp,
         TasksOperation::SetStatus {
             id: id.into(),
-            expected: AgenticStatusParam::OnAgent,
+            expected: AgenticStatusParam::Review,
             status: AgenticStatusParam::Done,
         },
     )

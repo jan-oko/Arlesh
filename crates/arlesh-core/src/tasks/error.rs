@@ -91,17 +91,6 @@ pub enum TaskError {
          or turn compound off"
     )]
     CompoundStatus(i64),
-    /// A Task was set Done while counted sub-items are not: a Task is finished once what it holds
-    /// is. Refused out loud; the answer is to complete or archive what is left. Backlogged
-    /// sub-items, pending waits and Unresolved Commitments count as open.
-    #[error(
-        "this task still has {open} unfinished sub-item(s); finish or archive them before \
-         setting it done"
-    )]
-    OpenSubItems {
-        /// How many counted sub-items are not Done.
-        open: usize,
-    },
     /// A done date was given to a Task that is not Done: it has no completion to date.
     #[error("only a done task has a done date")]
     NotDone,

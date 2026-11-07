@@ -161,7 +161,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
         <rect x="286" y="130" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
         <text x="298" y="150">Waits and check tasks</text>
         <rect x="286" y="168" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
-        <text x="298" y="188">Compound and parent status, Review</text>
+        <text x="298" y="188">Compound status, Review</text>
         <rect x="286" y="206" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
         <text x="298" y="226">Blocks: reasons, deps, capacity</text>
         <text x="298" y="262" fill="var(--muted)">in this order, every load</text>
@@ -305,8 +305,8 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts</dd></dl></article>
     <article class="card"><h3>Compound</h3>
-      <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand. Any other Task with sub-items reads at least Started or In Progress from them (its own status is raised, never lowered) and cannot be set Done while a counted item is open. A Compound Task that reads as Agentic shows On Agent or Review as its items say.</p>
-      <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them, and a parent should not say To Do over work under way or Done over work left.</dd>
+      <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand.</p>
+      <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them.</dd>
       <dt>Without</dt><dd>A parent says Done while a step is open, or To Do after everything finished.</dd>
       <dt>Lives</dt><dd class="where">tasks/compound.rs · flows/compound_readings.rs</dd></dl></article>
   </div>
@@ -543,7 +543,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["gstatus", "Goal / Project / Domain status", 0, 6, "in", "Frozen or Archived set by hand on a Goal or Project, or Archived on a Domain.", "resources.md#goals"],
     ["delegate", "Delegate", 0, 7, "in", "The Person a Task is handed to. Not archival: the Delegated pill decides where a delegated Task shows.", "resources.md#tasks"],
     ["status", "Status", 0, 8, "in", "Where the work stands, in the ordinary model (To Do, In Progress, Started, Done) or the Agentic one (To Do, On Agent, Doing, Done). Dashed arrows from here read a dependency target's status.", "resources.md#tasks"],
-    ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree. Any Task with items beneath it reads them.", "resources.md#tasks"],
+    ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree.", "resources.md#tasks"],
     ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
     ["question", "Agent question waits", 0, 11, "in", "Pending, live agentic waits raised as questions under a Task.", "mcp-server.md#agentic-waits"],
     ["lock", "Capacity lock", 0, 12, "in", "One app-wide switch meaning agents are at capacity, set from the app or the MCP.", "mcp-server.md#agent-capacity"],
@@ -564,7 +564,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["expired", "Expired", 1, 15, "dv", "A Commitment still Unresolved once its Verdict Window has run out. Only Archival moves; the verdict stays Unresolved.", "resources.md#commitments"],
 
     ["resolution", "Resolution", 2, 1.5, "dv", "How a passed window settled an item: Completed if it was done, Missed if unfinished under Archive. Nothing under Keep Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
-    ["compound", "Compound status", 2, 9, "dv", "Done when every counted sub-item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived sub-items are not counted, except those archived by finishing. A Task that is not Compound reads the same as a floor under its own status (never Done by itself); a Compound Task that reads as Agentic shows Doing, Review or On Agent by who holds its items.", "resources.md#tasks"],
+    ["compound", "Compound status", 2, 9, "dv", "Done when every counted sub-item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived sub-items are not counted, except those archived by finishing.", "resources.md#tasks"],
     ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question beneath it. Never stored; answering returns it to On Agent.", "resources.md#agentic-statuses"],
     ["capblock", "Capacity block", 2, 12.3, "dv", "While the lock is on, every Task that reads as Agentic and is not Done carries the derived reason Agents at capacity.", "mcp-server.md#agent-capacity"],
 

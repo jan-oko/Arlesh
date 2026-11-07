@@ -51,12 +51,6 @@ export function isReview(status: TaskStatus | undefined): boolean {
   return status?.kind === "agentic" && status.status === "review";
 }
 
-/** Whether `status` is In Progress, or Doing for an Agentic Task: the work being done now. */
-export function isInProgress(status: TaskStatus | undefined): boolean {
-  if (status === undefined) return false;
-  return status.kind === "agentic" ? status.status === "doing" : status.status === "in_progress";
-}
-
 /** Whether `status` is On Agent — an agent holds it and nothing is asked of the user. */
 export function isOnAgent(status: TaskStatus | undefined): boolean {
   return status?.kind === "agentic" && status.status === "on_agent";

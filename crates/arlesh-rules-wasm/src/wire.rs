@@ -17,7 +17,6 @@ export type TimeScopeWire = { start_id: ScopeKeyWire; end_id: ScopeKeyWire; dura
 export type TaskStatusWire =
   | { kind: "ordinary"; status: "todo" | "in_progress" | "started" | "done" }
   | { kind: "agentic"; status: "todo" | "on_agent" | "review" | "doing" | "done" };
-export type SubItemsWire = { floor: "todo" | "in_progress" | "started" | "done"; open: number };
 export type VerdictWire = "unresolved" | "kept" | "broken";
 export type NodeKindWire =
   | "aspect" | "project" | "domain" | "tag" | "goal" | "task" | "commitment" | "expectation"

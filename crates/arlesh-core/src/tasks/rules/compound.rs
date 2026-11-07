@@ -65,13 +65,11 @@ use crate::tasks::{
     expectations::EXPECTATION,
     lifecycle::{derive_item_state, effective_due, Archival, DerivedState, ItemLifecycle},
     model::{
-        AgenticStatus, Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal,
-        GoalStatus, OnScopeExit, Status, Task, TaskArchival, TaskStatus, TimeScope, Verdict,
+        Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus,
+        OnScopeExit, Status, Task, TaskArchival, TaskStatus, TimeScope, Verdict,
     },
     rules::{
         ancestry::{climb_in, AncestryIndex},
-        gestures::SubItems,
-        review::is_open_question,
         scope::{governance, OccurrenceExit},
     },
 };
@@ -103,19 +101,12 @@ pub fn settle_in(
         exit,
     } = board;
     let mut waits = derive_waits_in(waits_sources, now, &*tasks, expectations)?;
-    if tasks.is_empty() {
+    if !tasks.iter().any(|task| task.compound) {
         return Ok(Settled {
             waits,
             outcomes: Vec::new(),
-            derived_in_progress: Vec::new(),
         });
     }
-    // What each Task held before anything was derived: a status that is In Progress now and was
-    // not then was read from the sub-items.
-    let held: HashMap<NodeId, Status> = tasks
-        .iter()
-        .map(|task| (task.id.clone(), task.status))
-        .collect();
     let governance = governance_of(ancestry, &*tasks, exit);
     let mut drawn_for = delegated_done(&*tasks);
     let mut outcomes = Vec::new();
@@ -139,12 +130,7 @@ pub fn settle_in(
         apply(&outcomes, &mut *tasks, &mut *lifecycles);
         let delegated = delegated_done(&*tasks);
         if delegated == drawn_for {
-            let derived_in_progress = derived_in_progress(&outcomes, &held, &*tasks);
-            return Ok(Settled {
-                waits,
-                outcomes,
-                derived_in_progress,
-            });
+            return Ok(Settled { waits, outcomes });
         }
         drawn_for = delegated;
         waits = derive_waits_in(waits_sources, now, &*tasks, expectations)?;
@@ -153,41 +139,7 @@ pub fn settle_in(
         rounds = MAX_ROUNDS,
         "compound tasks did not settle; serving the last round"
     );
-    let derived_in_progress = derived_in_progress(&outcomes, &held, &*tasks);
-    Ok(Settled {
-        waits,
-        outcomes,
-        derived_in_progress,
-    })
-}
-
-/// The Tasks that read In Progress (Doing, for an Agentic one) **only because of their
-/// sub-items**: a Compound Task reading it — its status is always derived — and an ordinary parent
-/// raised to it from a stored status that was not In Progress.
-fn derived_in_progress(
-    outcomes: &[Outcome],
-    held: &HashMap<NodeId, Status>,
-    tasks: &[Task],
-) -> Vec<NodeId> {
-    let compound: HashSet<&NodeId> = tasks
-        .iter()
-        .filter(|task| task.compound)
-        .map(|task| &task.id)
-        .collect();
-    let mut ids: Vec<NodeId> = outcomes
-        .iter()
-        .filter(|outcome| {
-            let reads_in_progress = outcome.status == TaskStatus::InProgress
-                || outcome.agentic == Some(AgenticStatus::Doing);
-            let was_in_progress = held
-                .get(&outcome.id)
-                .is_some_and(|status| status.reading() == TaskStatus::InProgress);
-            reads_in_progress && (compound.contains(&outcome.id) || !was_in_progress)
-        })
-        .map(|outcome| outcome.id.clone())
-        .collect();
-    ids.sort();
-    ids
+    Ok(Settled { waits, outcomes })
 }
 
 /// Each compound stored Task's [`Governance`].
@@ -243,12 +195,6 @@ struct Tally {
     all_done: bool,
     in_progress: bool,
     begun: bool,
-    /// Counted items that are not Done: what stands between a parent and Done.
-    open: usize,
-    /// An item reads Started — begun, and not being worked on right now.
-    under_way: bool,
-    /// An item reads Review: an agent has a question open for the user.
-    asking: bool,
     /// The latest finish among the Done items counted, where known.
     latest: Option<NaiveDateTime>,
 }
@@ -260,9 +206,6 @@ impl Default for Tally {
             all_done: true,
             in_progress: false,
             begun: false,
-            open: 0,
-            under_way: false,
-            asking: false,
             latest: None,
         }
     }
@@ -270,21 +213,10 @@ impl Default for Tally {
 
 impl Tally {
     fn count(&mut self, state: TaskStatus) {
-        self.count_asking(state, false);
-    }
-
-    /// Counts an item reading `state`; `asking` says it is an Agentic one whose agent has a
-    /// question open (Review), which reads Started to everything but [`Self::agentic_status`].
-    fn count_asking(&mut self, state: TaskStatus, asking: bool) {
         self.counted = true;
         self.all_done &= state == TaskStatus::Done;
         self.in_progress |= state == TaskStatus::InProgress;
         self.begun |= matches!(state, TaskStatus::Started | TaskStatus::Done);
-        self.under_way |= state == TaskStatus::Started;
-        self.asking |= asking;
-        if state != TaskStatus::Done {
-            self.open += 1;
-        }
     }
 
     fn status(self) -> TaskStatus {
@@ -301,57 +233,6 @@ impl Tally {
             return TaskStatus::Started;
         }
         TaskStatus::Todo
-    }
-
-    /// What the count reads as to a Compound Task that reads as **Agentic**, in its own model
-    /// (the user, 2026-11-06: "if all children are todo/on-agent -> On agent. All children
-    /// todo/on review -> On review. Mixed -> On review"). Done when every item is Done; Doing when
-    /// any item is In Progress or Doing; otherwise Review when any item reads Review, On Agent when
-    /// any is under way, and To Do when none is.
-    ///
-    /// **Done items are ignored** where the user's rule names only To Do, On Agent and Review: a
-    /// Task with some finished steps and the rest To Do reads To Do, not On Agent, since finished
-    /// work does not say an agent holds the rest. One place to change should that be ruled
-    /// otherwise.
-    fn agentic_status(self) -> AgenticStatus {
-        if !self.counted {
-            return AgenticStatus::Todo;
-        }
-        if self.all_done {
-            return AgenticStatus::Done;
-        }
-        if self.in_progress {
-            return AgenticStatus::Doing;
-        }
-        if self.asking {
-            return AgenticStatus::Review;
-        }
-        if self.under_way {
-            return AgenticStatus::OnAgent;
-        }
-        AgenticStatus::Todo
-    }
-
-    /// What the subtree makes an ordinary parent read at least: In Progress when any item is,
-    /// Started when any is Started or Done, else To Do. Never Done — a parent's finish is its own.
-    fn floor(self) -> TaskStatus {
-        if self.in_progress {
-            TaskStatus::InProgress
-        } else if self.begun {
-            TaskStatus::Started
-        } else {
-            TaskStatus::Todo
-        }
-    }
-}
-
-/// What an ordinary Task with sub-items reads: its own stored status, raised to what its subtree
-/// makes it read at least. A Done Task stays Done — nothing changes retroactively.
-pub fn parent_reading(stored: TaskStatus, floor: TaskStatus) -> TaskStatus {
-    if stored == TaskStatus::Done || floor.rank() <= stored.rank() {
-        stored
-    } else {
-        floor
     }
 }
 
@@ -428,18 +309,13 @@ pub struct Rows<'rows> {
     pub instants: &'rows HashMap<NodeId, NaiveDateTime>,
 }
 
-/// One Task's derived status — a compound Task's, or an ordinary parent's — and, for a compound
-/// one, its lifecycle re-derived from it.
+/// One compound Task's derived status, and its lifecycle re-derived from it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
     /// The Task.
     pub id: NodeId,
-    /// Its derived status, in the ordinary model.
+    /// Its derived status.
     pub status: TaskStatus,
-    /// The same, in the Agentic model, for a compound Task — which is shown in the model it holds.
-    /// `None` for an ordinary parent: an Agentic Task's status says who holds it, so it is not
-    /// derived unless it is compound.
-    pub agentic: Option<AgenticStatus>,
     /// Its lifecycle as that status leaves it — `None` when no [`Governance`] was given for it,
     /// in which case its lifecycle is left as the load derived it.
     pub state: Option<DerivedState>,
@@ -448,8 +324,7 @@ pub struct Outcome {
     pub done_at: Option<NaiveDateTime>,
 }
 
-/// Derives every compound Task's status in `rows` at `now`, and what every other ordinary Task
-/// with sub-items reads at least: Started or In Progress, as its subtree says.
+/// Derives every compound Task's status in `rows` at `now`.
 pub fn derive(
     rows: &Rows<'_>,
     governance: &HashMap<NodeId, Governance>,
@@ -465,47 +340,26 @@ pub fn derive(
     };
     rows.tasks
         .iter()
-        .filter(|task| !rows.settled.contains(&task.id))
-        .filter_map(|task| {
-            if task.compound {
-                let resolved = evaluation.resolve(&task.id);
-                return Some(Outcome {
-                    id: task.id.clone(),
-                    status: resolved.status,
-                    agentic: Some(resolved.agentic),
-                    state: resolved.state,
-                    done_at: resolved.done_at,
-                });
-            }
-            let Status::Ordinary(stored) = task.status else {
-                return None;
-            };
-            let status = evaluation.parent(&task.id, stored)?;
-            Some(Outcome {
+        .filter(|task| task.compound && !rows.settled.contains(&task.id))
+        .map(|task| {
+            let resolved = evaluation.resolve(&task.id);
+            Outcome {
                 id: task.id.clone(),
-                status,
-                agentic: None,
-                state: None,
-                done_at: None,
-            })
+                status: resolved.status,
+                state: resolved.state,
+                done_at: resolved.done_at,
+            }
         })
         .collect()
 }
 
-/// Writes `outcomes` onto the board: each derived Task's `status`, and a compound Task's
-/// lifecycle.
+/// Writes `outcomes` onto the board: each compound Task's `status`, and its lifecycle.
 pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLifecycle]) {
     let by_id: HashMap<&NodeId, &Outcome> = outcomes.iter().map(|out| (&out.id, out)).collect();
-    for task in tasks.iter_mut() {
-        let Some(outcome) = by_id.get(&task.id) else {
-            continue;
-        };
-        // Put back into the model the Task itself holds. An Agentic Task with no Agentic reading
-        // is not derived.
-        match (task.status.is_agentic(), outcome.agentic) {
-            (false, _) => task.status = Status::Ordinary(outcome.status),
-            (true, Some(status)) => task.status = Status::Agentic(status),
-            (true, None) => {}
+    for task in tasks.iter_mut().filter(|task| task.compound) {
+        if let Some(outcome) = by_id.get(&task.id) {
+            // Put back into the model the compound Task itself holds.
+            task.status = Status::from_reading(outcome.status, task.status.is_agentic());
         }
     }
     for entry in lifecycles
@@ -520,46 +374,6 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
         entry.overdue = state.overdue;
         entry.archival = state.archival;
         entry.archival_conflict = state.archival_conflict;
-    }
-}
-
-/// The [`SubItems`] of the Task `id` in `rows`, which must be the board as a load served it.
-pub fn subtree_of(rows: &Rows<'_>, id: &NodeId) -> SubItems {
-    // Every compound Task is read as served: its status is already its derived one.
-    let served: HashSet<NodeId> = rows
-        .tasks
-        .iter()
-        .filter(|task| task.compound)
-        .map(|task| task.id.clone())
-        .collect();
-    let rows = Rows {
-        tasks: rows.tasks,
-        checks: rows.checks,
-        goals: rows.goals,
-        commitments: rows.commitments,
-        expectations: rows.expectations,
-        waits: rows.waits,
-        lifecycles: rows.lifecycles,
-        wait_lifecycles: rows.wait_lifecycles,
-        settled: &served,
-        instants: rows.instants,
-    };
-    let tree = Tree::of(&rows);
-    let governance = HashMap::new();
-    let mut evaluation = Evaluation {
-        tree: &tree,
-        governance: &governance,
-        now: NaiveDateTime::default(),
-        resolved: HashMap::new(),
-        visiting: HashSet::new(),
-    };
-    let top = (Kind::Task, id.clone());
-    let mut tally = Tally::default();
-    let mut walked = HashSet::from([top.clone()]);
-    evaluation.count_beneath(&top, id, &mut tally, &mut walked);
-    SubItems {
-        floor: tally.floor(),
-        open: tally.open,
     }
 }
 
@@ -588,10 +402,8 @@ pub struct Board<'rows> {
 pub struct Settled {
     /// The waits' rows.
     pub waits: WaitRows,
-    /// Each derived Task's outcome, in the last round.
+    /// Each compound Task's outcome, in the last round.
     pub outcomes: Vec<Outcome>,
-    /// The Tasks that read In Progress only from their sub-items, sorted.
-    pub derived_in_progress: Vec<NodeId>,
 }
 
 /// Whether each delegated compound Task reads as done — what decides whether its delegation
@@ -643,10 +455,6 @@ type Key = (Kind, NodeId);
 #[derive(Debug, Clone)]
 struct Item {
     reading: TaskStatus,
-    /// An Agentic Task whose agent has a question open: it reads Review, which counts as Started.
-    asking: bool,
-    /// A Task that reads as Agentic.
-    agentic: bool,
     archived: bool,
     compound: bool,
     /// The Task whose own status draws this wait, for a spawned or delegation wait.
@@ -674,16 +482,6 @@ impl Tree {
             .collect();
         let is_archived = |kind: Kind, id: &NodeId| archived.contains(&(kind.lifecycle_type(), id));
         let done_at = |id: &NodeId| rows.instants.get(id).copied();
-        // An On Agent Task with a question open beneath it will read Review, which the board
-        // derives only afterwards (`tasks::rules::review`); the user's rule for an Agentic Compound
-        // Task reads it as Review already.
-        let asking: HashSet<&NodeId> = rows
-            .expectations
-            .iter()
-            .chain(rows.waits)
-            .filter(|wait| is_open_question(wait))
-            .map(|wait| &wait.parent_id)
-            .collect();
         let mut tree = Self {
             items: HashMap::new(),
             children: HashMap::new(),
@@ -694,10 +492,6 @@ impl Tree {
                 (task.parent_type.as_str(), &task.parent_id),
                 Item {
                     reading: task_reading(task.status),
-                    asking: task.status == Status::Agentic(AgenticStatus::Review)
-                        || (task.status == Status::Agentic(AgenticStatus::OnAgent)
-                            && asking.contains(&task.id)),
-                    agentic: task.status.is_agentic(),
                     archived: is_archived(Kind::Task, &task.id),
                     compound: task.compound,
                     drawn_by: None,
@@ -712,8 +506,6 @@ impl Tree {
                 (goal.parent_type.as_str(), &goal.parent_id),
                 Item {
                     reading: goal_reading(&goal.status),
-                    asking: false,
-                    agentic: false,
                     archived: is_archived(Kind::Goal, &goal.id),
                     compound: false,
                     drawn_by: None,
@@ -728,8 +520,6 @@ impl Tree {
                 (commitment.parent_type.as_str(), &commitment.parent_id),
                 Item {
                     reading: commitment_reading(commitment.verdict),
-                    asking: false,
-                    agentic: false,
                     archived: is_archived(Kind::Commitment, &commitment.id),
                     compound: false,
                     drawn_by: None,
@@ -750,8 +540,6 @@ impl Tree {
                 (wait.parent_type.as_str(), &wait.parent_id),
                 Item {
                     reading: expectation_reading(wait.status),
-                    asking: false,
-                    agentic: false,
                     archived: wait.archival == ExpectationArchival::Archived
                         || is_archived(Kind::Expectation, &wait.id),
                     compound: false,
@@ -779,7 +567,6 @@ impl Tree {
 #[derive(Debug, Clone)]
 struct Resolved {
     status: TaskStatus,
-    agentic: AgenticStatus,
     state: Option<DerivedState>,
     archived: bool,
     done_at: Option<NaiveDateTime>,
@@ -811,7 +598,6 @@ impl Evaluation<'_> {
             tracing::warn!(task = %id, "a compound task's subtree loops back on itself");
             return Resolved {
                 status: TaskStatus::Todo,
-                agentic: AgenticStatus::Todo,
                 state: None,
                 archived: own_archived,
                 done_at: None,
@@ -822,7 +608,6 @@ impl Evaluation<'_> {
         let mut walked = HashSet::from([top.clone()]);
         self.count_beneath(&top, id, &mut tally, &mut walked);
         let status = tally.status();
-        let agentic = tally.agentic_status();
         let done = status == TaskStatus::Done;
         let state = self.governance.get(id).map(|governance| {
             derive_item_state(
@@ -836,7 +621,6 @@ impl Evaluation<'_> {
         });
         let resolved = Resolved {
             status,
-            agentic,
             state,
             archived: state.map_or(own_archived, |state| state.archival == Archival::Archived),
             done_at: tally.latest.filter(|_| done),
@@ -870,14 +654,14 @@ impl Evaluation<'_> {
             if item.drawn_by.as_ref() == Some(root) {
                 continue;
             }
-            let (reading, asking, archived) = self.reading(child, item);
+            let (reading, archived) = self.reading(child, item);
             // Archived by finishing — a Done Task whose window passed, an Achieved Goal, a
             // settled Commitment — is still finished, and counts as Done. Anything else archived
             // was put away, and is left out with everything beneath it.
             if archived && reading != TaskStatus::Done {
                 continue;
             }
-            tally.count_asking(reading, asking);
+            tally.count(reading);
             if reading == TaskStatus::Done {
                 tally.latest = tally.latest.max(self.done_at(child, item));
             }
@@ -885,37 +669,14 @@ impl Evaluation<'_> {
         }
     }
 
-    /// What `item` reads as, whether it is an Agentic Task reading Review, and whether it is
-    /// effectively Archived: a compound Task's derived status and re-derived lifecycle, anything
-    /// else as the load served it.
-    fn reading(&mut self, key: &Key, item: &Item) -> (TaskStatus, bool, bool) {
+    /// What `item` reads as, and whether it is effectively Archived: a compound Task's derived
+    /// status and re-derived lifecycle, anything else as the load served it.
+    fn reading(&mut self, key: &Key, item: &Item) -> (TaskStatus, bool) {
         if key.0 == Kind::Task && item.compound && !item.settled {
             let resolved = self.resolve(&key.1);
-            if item.agentic {
-                let reading = Status::Agentic(resolved.agentic).reading();
-                return (
-                    reading,
-                    resolved.agentic == AgenticStatus::Review,
-                    resolved.archived,
-                );
-            }
-            return (resolved.status, false, resolved.archived);
+            return (resolved.status, resolved.archived);
         }
-        (item.reading, item.asking, item.archived)
-    }
-
-    /// What the ordinary Task `id`, holding `stored`, reads from the sub-items beneath it: its own
-    /// status raised to Started or In Progress as they say — `None` when it has none to raise it
-    /// (nothing beneath it) or is Done, which stays as it is.
-    fn parent(&mut self, id: &NodeId, stored: TaskStatus) -> Option<TaskStatus> {
-        let top = (Kind::Task, id.clone());
-        if stored == TaskStatus::Done || !self.tree.children.contains_key(&top) {
-            return None;
-        }
-        let mut tally = Tally::default();
-        let mut walked = HashSet::from([top.clone()]);
-        self.count_beneath(&top, id, &mut tally, &mut walked);
-        Some(parent_reading(stored, tally.floor()))
+        (item.reading, item.archived)
     }
 
     /// When `item` was finished: a compound Task's own done time, anything else's as known.

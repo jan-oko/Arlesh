@@ -53,8 +53,7 @@ never stored.
 | **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/rules/blocks.rs::reads_agentic` |
 | **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/rules/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
 | **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
-| **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)*; Agentic (own) | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. A Compound Task that reads as Agentic shows Done, Doing (any In Progress or Doing), Review (any Review), On Agent (any under way) or To Do, ignoring Done items. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
-| **Parent status** | own status, Agentic (own), sub-items' statuses, verdicts and waits; Archived *(of another node)* | An ordinary Task that is not Compound and has sub-items reads its own status raised to what they say, by Compound's counting: In Progress if any is, else Started if any is Started or Done. Never Done by itself, never lowered, and a Done Task stays Done. An Agentic Task is not derived. | `rs:tasks/rules/compound.rs::parent_reading`, `rs:tasks/rules/compound.rs::derive` |
+| **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
 | **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
 | **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
@@ -181,14 +180,11 @@ How the presets read them:
   - else Started if anything is Started or Done;
   - else To Do.
   
-  It is never stored, and manual status writes are refused. Habit occurrences can be compound too, and their derived status gates their iteration's resolution. A Compound Task that reads as Agentic shows the same tally in its own model: Doing, Review, On Agent or To Do, ignoring Done items.
-  
-  Any other ordinary Task with sub-items reads the same counting as a **floor**: its own status raised to Started or In Progress, never lowered, never Done by itself. It cannot be set Done while a counted item (a Backlogged child, a pending wait, an Unresolved Commitment) is not Done; a Task already Done stays Done. An Agentic Task's status says who holds it, so it is not derived unless it is Compound.
-- **Why:** a Task that is the sum of its steps should never disagree with them, and a parent should not read To Do over work under way or Done over work left.
+  It is never stored, and manual status writes are refused. Habit occurrences can be compound too, and their derived status gates their iteration's resolution.
+- **Why:** a Task that is the sum of its steps should never disagree with them.
 - **Without:** a parent reads Done while a step is open.
 - **Lives:**
-  - `rs:tasks/compound.rs` (`settle`, the shared rule; `require_closed`, the Done refusal) and `rs:tasks/rules/compound.rs` (the counting, the parent floor).
-  - `rs:tasks/rules/gestures.rs::status_after` (the press refusals).
+  - `rs:tasks/compound.rs` (`settle`, the shared rule).
   - `rs:flows/compound_readings.rs` (the Habit pass, before classification).
   - Frontend: `ts:utils/compound.ts`.
 - **Spec:** [Resources § Compound](spec/resources.md), [Habits § Added children](spec/habits.md).

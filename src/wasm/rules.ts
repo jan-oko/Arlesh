@@ -26,7 +26,6 @@ export type {
   PlanRowInput,
   ScopeKeyWire,
   StatusPrediction,
-  SubItemsWire,
   TaskStatusWire,
   TimeScopeWire,
   TriageIds,

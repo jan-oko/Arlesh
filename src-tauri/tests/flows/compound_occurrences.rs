@@ -328,11 +328,9 @@ async fn an_occurrence_reads_its_items_wait_template() {
 async fn a_done_occurrence_spawns_its_wait_from_its_items_template() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (_, review, step) = habit(&app, asynchronous_with(wait("Waiting on the bank"))).await;
+    let (_, review, _) = habit(&app, asynchronous_with(wait("Waiting on the bank"))).await;
     served(&pool).await;
 
-    // A Task is not done over an open step, so the step goes first.
-    update(&pool, &of_item(step), done()).await.unwrap();
     update(&pool, &of_item(review), done()).await.unwrap();
 
     let load = served(&pool).await;
@@ -552,10 +550,7 @@ async fn a_compound_items_template_steps_hold_its_iteration_open_until_done() {
     let (flow, review, step) = habit(&app, compound()).await;
     served(&pool).await;
 
-    assert!(
-        update(&pool, &root(flow), done()).await.is_err(),
-        "the root is not done over the compound's open step"
-    );
+    update(&pool, &root(flow), done()).await.unwrap();
     let load = served(&pool).await;
     assert_eq!(
         iteration_of(&load, &root(flow)),
@@ -564,7 +559,6 @@ async fn a_compound_items_template_steps_hold_its_iteration_open_until_done() {
     );
 
     update(&pool, &of_item(step), done()).await.unwrap();
-    update(&pool, &root(flow), done()).await.unwrap();
     let load = served(&pool).await;
     assert_eq!(
         row(&load, &of_item(review)).status,
@@ -601,10 +595,7 @@ async fn a_step_hung_on_a_compound_by_hand_holds_its_iteration_open() {
     set_template(&app, review, compound()).await;
     served(&pool).await;
     let added = hang(&pool, &of_item(review), "File the receipts").await;
-    assert!(
-        update(&pool, &root(flow), done()).await.is_err(),
-        "the root is not done over the step added by hand"
-    );
+    update(&pool, &root(flow), done()).await.unwrap();
 
     let load = served(&pool).await;
     assert_eq!(
@@ -618,7 +609,6 @@ async fn a_step_hung_on_a_compound_by_hand_holds_its_iteration_open() {
     );
 
     update(&pool, &added, done()).await.unwrap();
-    update(&pool, &root(flow), done()).await.unwrap();
     let load = served(&pool).await;
     assert_eq!(
         row(&load, &of_item(review)).status,
@@ -634,6 +624,7 @@ async fn a_wait_under_a_compound_step_holds_its_iteration_open_until_released() 
     let (flow, review, step) = habit(&app, compound()).await;
     set_template(&app, step, asynchronous_with(wait("Waiting on the bank"))).await;
     served(&pool).await;
+    update(&pool, &root(flow), done()).await.unwrap();
     update(&pool, &of_item(step), done()).await.unwrap();
 
     let load = served(&pool).await;
@@ -664,7 +655,6 @@ async fn a_wait_under_a_compound_step_holds_its_iteration_open_until_released() 
     .unwrap();
     db.commit().await.unwrap();
 
-    update(&pool, &root(flow), done()).await.unwrap();
     let load = served(&pool).await;
     assert_eq!(
         row(&load, &of_item(review)).status,
@@ -685,17 +675,13 @@ async fn an_iteration_whose_root_is_compound_resolves_when_its_items_are_done() 
         row(&load, &root(flow)).compound,
         "the root reads Compound from its flow"
     );
-    assert!(
-        update(&pool, &of_item(review), done()).await.is_err(),
-        "the review is not done over its open step"
-    );
+    update(&pool, &of_item(review), done()).await.unwrap();
     assert_eq!(
         iteration_of(&served(&pool).await, &root(flow)),
         IterationStatus::Active
     );
 
     update(&pool, &of_item(step), done()).await.unwrap();
-    update(&pool, &of_item(review), done()).await.unwrap();
     let load = served(&pool).await;
     assert_eq!(
         row(&load, &root(flow)).status,
@@ -729,7 +715,7 @@ async fn an_iteration_root_can_be_made_compound_on_its_own() {
 async fn an_asynchronous_root_spawns_its_wait_from_its_flows_template() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow, review, step) = habit(&app, TemplateUpdate::default()).await;
+    let (flow, _, _) = habit(&app, TemplateUpdate::default()).await;
     set_root_template(
         &app,
         flow,
@@ -742,8 +728,6 @@ async fn an_asynchronous_root_spawns_its_wait_from_its_flows_template() {
         row(&load, &root(flow)).async_template,
         Some(wait("Waiting on the landlord"))
     );
-    update(&pool, &of_item(step), done()).await.unwrap();
-    update(&pool, &of_item(review), done()).await.unwrap();
     update(&pool, &root(flow), done()).await.unwrap();
 
     let load = served(&pool).await;
@@ -811,6 +795,7 @@ async fn an_agentic_compound_occurrence_resolves_its_iteration_through_agentic_d
     )
     .await;
     served(&pool).await;
+    update(&pool, &root(flow), done()).await.unwrap();
     update(
         &pool,
         &of_item(step),
@@ -821,7 +806,6 @@ async fn an_agentic_compound_occurrence_resolves_its_iteration_through_agentic_d
     )
     .await
     .unwrap();
-    update(&pool, &root(flow), done()).await.unwrap();
 
     let load = served(&pool).await;
     assert_eq!(
