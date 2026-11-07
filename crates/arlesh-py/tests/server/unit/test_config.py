@@ -82,6 +82,18 @@ def test_a_url_and_a_url_file_together_are_refused(
         Config()
 
 
+def test_the_fcm_credentials_file_is_optional_and_comes_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARLESH_DATABASE__PATH", "/data/arlesh.db")
+    monkeypatch.delenv("ARLESH_FCM_CREDENTIALS_FILE", raising=False)
+    assert Config().fcm_credentials_file is None
+
+    monkeypatch.setenv("ARLESH_FCM_CREDENTIALS_FILE", "/run/secrets/arlesh-fcm.json")
+
+    assert Config().fcm_credentials_file == Path("/run/secrets/arlesh-fcm.json")
+
+
 def test_the_backup_token_comes_from_its_variable_and_is_off_without_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -44,6 +44,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
 use crate::nodes::relations::RelationOperator;
+use crate::push::PushOperator;
 use crate::server_pairing::PairingPinOperator;
 use crate::server_tokens::ServerTokenOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
@@ -187,6 +188,11 @@ impl<M: SessionMode> Db<M> {
     /// `arlesh-server`'s bearer tokens, kept as digests.
     pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
         ServerTokenOperator::new(self.connection())
+    }
+
+    /// `arlesh-server`'s push-notification devices and what each was told.
+    pub fn push(&mut self) -> PushOperator<'_> {
+        PushOperator::new(self.connection())
     }
 
     /// `arlesh-server`'s pending device pairings.

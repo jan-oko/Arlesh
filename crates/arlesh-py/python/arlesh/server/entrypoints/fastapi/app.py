@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException
 
 from arlesh import ArleshError
 from arlesh.server.business_logic.board import Board
+from arlesh.server.business_logic.notifier import Notifier
 from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     handle_authentication_failure,
@@ -45,6 +46,7 @@ from arlesh.server.entrypoints.fastapi.routers.health import HealthRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.pair import PairRouter
+from arlesh.server.entrypoints.fastapi.routers.push import PushRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.undo import UndoRouter
@@ -52,6 +54,8 @@ from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
 from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
 from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
 from arlesh.server.ports.pairing.pairing_store import PairingStore
+from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.push.push_store import PushStore
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -73,6 +77,10 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **Every answer** carries `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the board's revision (the
   one `/events` sends) and the run of the server it counts in. Answers over 1 KB are gzipped when
   the client accepts it; `/events` never is.
+* **`PUT /devices/current/push`** registers the asking device's FCM token, so the server can
+  notify it (an agent's question, a Task Overdue, a task generated, the capacity lock set or
+  cleared); **`DELETE`** drops it, and revoking the device does. **`GET /push`** says whether the
+  server has FCM credentials. Without them nothing is sent.
 * **`GET /backup`** exists only when the server has `ARLESH_BACKUP_TOKEN`: a consistent SQLite
   snapshot, for the administrator, behind that secret (a device's token does not open it).
 * **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
@@ -100,6 +108,8 @@ class AppRouter(APIRouter):
         tokens: TokenStore,
         pairing: Pairing,
         version: str,
+        pushes: PushStore | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
         routed = (board, client_context)
@@ -122,7 +132,9 @@ class AppRouter(APIRouter):
         self.include_router(ScopesRouter(), prefix="/scopes")
         self.include_router(RulesRouter(), prefix="/rules")
         self.include_router(mcp_router, prefix="/mcp")
-        self.include_router(DevicesRouter(tokens, pairing, client_context))
+        self.include_router(DevicesRouter(tokens, pairing, client_context, pushes))
+        if notifier is not None:
+            self.include_router(PushRouter(notifier, client_context))
 
 
 class ArleshServer(FastAPI):
@@ -139,15 +151,21 @@ class ArleshServer(FastAPI):
         tokens: TokenStore,
         pairs: PairingStore,
         version: str,
+        pushes: PushStore | None = None,
+        sender: PushSender | None = None,
         backup: Backup | None = None,
     ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
         mcp_router = McpProxyRouter(board, client_context)
+        notifier = (
+            Notifier(board=board, store=pushes, sender=sender) if pushes is not None else None
+        )
+        self.notifier = notifier
         super().__init__(
             title="Arlesh",
             description=DESCRIPTION,
             version=version,
-            lifespan=lifespan(board, closers=[mcp_router.aclose]),
+            lifespan=lifespan(board, closers=[mcp_router.aclose], notifier=notifier),
         )
         pairing = Pairing(pairs, tokens)
         # The one route open without a token: how a device without one gets one.
@@ -164,6 +182,8 @@ class ArleshServer(FastAPI):
                 tokens=tokens,
                 pairing=pairing,
                 version=version,
+                pushes=pushes,
+                notifier=notifier,
             )
         )
         self.add_middleware(RequestLoggingMiddleware)

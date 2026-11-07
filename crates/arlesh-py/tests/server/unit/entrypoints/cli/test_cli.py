@@ -208,3 +208,25 @@ def test_pin_approve_of_an_unknown_pin_fails_plainly(tmp_path: Path) -> None:
 
     assert refused.exit_code == 1
     assert "no device is waiting" in refused.output
+
+
+def test_without_credentials_there_is_no_push_sender(tmp_path: Path) -> None:
+    from arlesh.server.config import Config
+    from arlesh.server.entrypoints.cli.app import _sender
+
+    assert _sender(Config(database={"path": tmp_path / "a.db"})) is None
+
+
+def test_credentials_that_cannot_be_used_stop_the_server_rather_than_read_as_off(
+    tmp_path: Path,
+) -> None:
+    import typer
+    from arlesh.server.config import Config
+    from arlesh.server.entrypoints.cli.app import _sender
+
+    bad = tmp_path / "fcm.json"
+    bad.write_text("{}")
+    config = Config(database={"path": tmp_path / "a.db"}, fcm_credentials_file=bad)
+
+    with pytest.raises(typer.BadParameter, match="ARLESH_FCM_CREDENTIALS_FILE"):
+        _sender(config)

@@ -20,6 +20,8 @@ import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { activeTabStores, useSystemBack } from "@/hooks/use-system-back";
 import QuitConfirm from "@/components/QuitConfirm/QuitConfirm";
+import { usePushRegistration } from "@/hooks/use-push-registration";
+import { useOpenNotifiedTask } from "@/hooks/use-open-notified-task";
 import { useSystemBars } from "@/hooks/use-system-bars";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useHasTouch } from "@/hooks/use-media-query";
@@ -54,6 +56,9 @@ export default function App() {
   useAgentCapacitySync();
   // Standalone or Client, and how the server is doing — for the top bar and the banner.
   useClientModeSync();
+  // The phone's push token, kept registered with the server; a tapped notification opens its Task.
+  usePushRegistration();
+  useOpenNotifiedTask();
   // Android's back button; a no-op elsewhere.
   useSystemBack(activeTabStores);
   const firstRun = useClientModeStore((s) => s.status?.first_run === true);

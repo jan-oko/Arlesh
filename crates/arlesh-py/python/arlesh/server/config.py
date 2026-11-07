@@ -44,6 +44,11 @@ class Config(BaseSettings):
     database_url_file: Path | None = None
     """A file holding the database URL: ``ARLESH_DATABASE_URL_FILE``."""
 
+    fcm_credentials_file: Path | None = None
+    """A Firebase service-account key to push notifications to phones with:
+    ``ARLESH_FCM_CREDENTIALS_FILE`` (in a container, a mounted secret). Without it the server runs
+    and sends no pushes."""
+
     backup_token: SecretStr | None = None
     """``ARLESH_BACKUP_TOKEN``: the administrator's secret for ``GET /backup``. Unset, there is no
     such route. Separate from the device tokens, which do not grant it."""
