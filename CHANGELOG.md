@@ -10,7 +10,10 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
-- **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.
+- **Phone notifications on Android.** The Android app (connected to a server with push set up) registers with Firebase Cloud Messaging and shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, or the agent capacity lock is set or cleared. Tapping one opens its Task. Each event is its own Android notification channel, so you switch each on or off, and set its sound, in Android's notification settings; Settings → Notifications asks for the permission and links there.
+
+- **Phone push notifications (server).** `arlesh-server` can notify a paired phone through Firebase Cloud Messaging when an agent asks a question, a Task becomes Overdue, a task is generated (a Habit occurrence, a wait's check), and when the agent capacity lock is set or cleared. Each event is its own notification channel, so Android's settings switch each on or off.
+  Point the server at a Firebase service-account key with `ARLESH_FCM_CREDENTIALS_FILE` (in a container, a mounted secret); without it the server runs as before and sends nothing. A device registers its push token with `PUT /devices/current/push`. What was sent is remembered per device, so a restart never sends the same notification twice, and revoking a device drops its registration.
 
 - **The server ships as a container image and as wheels.** Every release now publishes `ghcr.io/jan-oko/arlesh-server` (linux/amd64 and linux/arm64, running as a non-root user with its database on a `/data` volume) and Python wheels for linux x86_64 and aarch64, beside the desktop and Android builds. See Running the server in the Client mode spec for a `docker run` and a compose file.
 

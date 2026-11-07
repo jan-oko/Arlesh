@@ -18,7 +18,6 @@ import { takeOutTarget } from "@/utils/plan-take-out";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubscopeLabel } from "@/hooks/use-subscope-label";
-import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useUndo } from "@/hooks/use-undo";
@@ -96,7 +95,6 @@ export default function PlanView() {
   useSubtreeNav(tree);
   // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
   const searchableNodes = useSearchableNodes(tree);
-  const startFromSearch = useSearchStart(tree);
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   const scope = usePlanScope();
@@ -729,7 +727,6 @@ export default function PlanView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
-          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />

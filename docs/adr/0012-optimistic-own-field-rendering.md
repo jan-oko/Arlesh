@@ -16,8 +16,6 @@ proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settle
 16 record the user's rulings on the questions the design left open, decided with the user,
 2026-11-01. Decision 17 was added on 2026-11-02, at the user's request.
 
-To be superseded by [ADR 0017](0017-client-board-replica.md) when the Replica lands.
-
 ## Context
 
 Board state is a React `useState` inside `useMindmapData`

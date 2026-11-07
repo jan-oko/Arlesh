@@ -27,7 +27,6 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
 import { mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
 import { showsOverdueSection, showsReviewSection, withListSections } from "@/utils/list-sections";
-import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useKeyboardListView } from "./use-keyboard-list-view";
@@ -182,7 +181,6 @@ export default function ListView() {
   // Every node kind, exactly as the Mindmap's Ctrl+O searches them, and over the whole board
   // rather than the subtree you are standing in — the point of the chord is to get somewhere else.
   const searchableNodes = useSearchableNodes(tree);
-  const startFromSearch = useSearchStart(tree);
 
   // The focus exemption: the selected row stays in the list even once your own edit stops it matching
   // — cycling a task to Done under Plan no longer drops it out from under the cursor. It ends when the
@@ -609,7 +607,6 @@ export default function ListView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
-          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />
