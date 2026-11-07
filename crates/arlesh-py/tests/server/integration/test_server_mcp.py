@@ -1,5 +1,6 @@
 """``/mcp``: Arlesh's MCP endpoint through the server, behind the connect token: Streamable HTTP
-with sessions and plain JSON answers. A session is unattached until its agent attaches with a PIN."""
+with sessions and plain JSON answers. A session is unattached until its agent attaches with a
+PIN."""
 
 from __future__ import annotations
 
