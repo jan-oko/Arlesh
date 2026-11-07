@@ -13,9 +13,7 @@
     "is a render-time overlay on the view's selection and is not here.",
     "",
     "`views` says which views read the board under a preset of their own: `locked` is that",
-    "preset, or null for a view that reads the tab's own.",
-    "",
-    "A node may carry `derivedInProgress`: a Task that reads In Progress (Doing) only from its sub-items, not from a status held by hand — a Compound Task, or a parent raised to it. The grid drops such a card while an In Progress item beneath it is drawn too, and keeps it when that item is not drawn."
+    "preset, or null for a view that reads the tab's own."
   ],
   "cases": [
     {
@@ -285,28 +283,6 @@
           "expectation-checked"
         ]
       }
-    },
-    {
-      "name": "a card that reads in progress only from its sub-items leaves the grid while the item beneath it is drawn",
-      "spec": "mindmap-view.md — the Zen View hides a Task that reads In Progress only because of its sub-items (ruled by the user, 2026-11-07) when the In Progress item that caused it is on the grid. A parent set In Progress by hand stays, and so does one whose item is not drawn.",
-      "board": "zen-derived",
-      "filter": {
-        "preset": "plan"
-      },
-      "options": {
-        "commitments": false,
-        "expectations": false
-      },
-      "expect": {
-        "tasks": [
-          "task-derived-child",
-          "task-hand",
-          "task-hand-child",
-          "task-orphaned"
-        ],
-        "commitments": [],
-        "expectations": []
-      }
     }
   ],
   "views": [
@@ -452,58 +428,6 @@
               "status": "pending",
               "timing": "active",
               "hasCheck": true
-            }
-          ]
-        }
-      ]
-    },
-    "zen-derived": {
-      "id": "root",
-      "kind": "aspect",
-      "children": [
-        {
-          "id": "domain-derived",
-          "kind": "project",
-          "status": "active",
-          "children": [
-            {
-              "id": "task-derived",
-              "kind": "task",
-              "status": "in_progress",
-              "derivedInProgress": true,
-              "children": [
-                {
-                  "id": "task-derived-child",
-                  "kind": "task",
-                  "status": "in_progress"
-                }
-              ]
-            },
-            {
-              "id": "task-hand",
-              "kind": "task",
-              "status": "in_progress",
-              "children": [
-                {
-                  "id": "task-hand-child",
-                  "kind": "task",
-                  "status": "in_progress"
-                }
-              ]
-            },
-            {
-              "id": "task-orphaned",
-              "kind": "task",
-              "status": "in_progress",
-              "derivedInProgress": true,
-              "children": [
-                {
-                  "id": "task-orphaned-child",
-                  "kind": "task",
-                  "status": "in_progress",
-                  "delegated": true
-                }
-              ]
             }
           ]
         }

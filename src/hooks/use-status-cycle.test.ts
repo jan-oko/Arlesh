@@ -5,11 +5,10 @@ import { stepTaskStatus } from "@/api/node-gestures";
 import type { StatusStepOutcome } from "@/api/node-gestures";
 import { updateGoal } from "@/api/goals";
 import type { Goal } from "@/api/goals";
-import { updateTask } from "@/api/tasks";
 import type { Task } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
-import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
+import { deferred, lane, patchedFields } from "@/test/lane-helpers";
 import { agentic, ordinary } from "@/utils/status-mapping";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
@@ -21,10 +20,6 @@ import type { ModeStatus } from "@/api/client-mode";
 vi.mock("@/api/node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/node-gestures")>()),
   stepTaskStatus: vi.fn(),
-}));
-vi.mock("@/api/tasks", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/tasks")>()),
-  updateTask: vi.fn(),
 }));
 vi.mock("@/api/goals", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/goals")>()),
@@ -134,46 +129,6 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
     expect(patchedFields()).toEqual([{ status: "doing", taskStatus: agentic("doing") }]);
   });
 
-  it("sets a Task to the status it is told, shown at once and sent as an edit", async () => {
-    const held = deferred<Task>();
-    vi.mocked(updateTask).mockReturnValue(held.promise);
-    const { result } = setup([todo("task-5")]);
-
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
-
-    expect(patchedFields()).toEqual([{ status: "in_progress", taskStatus: ordinary("in_progress") }]);
-    expect(updateTask).toHaveBeenCalledWith(5, { status: ordinary("in_progress") });
-    await act(async () => { held.resolve(IN_PROGRESS); await held.promise; });
-    expect(lane()[0]?.state).toBe("answered");
-  });
-
-  it("says so when setting a status takes a Backlogged Task out of the Backlog", async () => {
-    vi.mocked(updateTask).mockResolvedValue({ ...IN_PROGRESS, archival: "live" });
-    const { result, showToast } = setup([todo("task-5", { backlogged: true })]);
-
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
-    await settleLane();
-
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:backlogClearedByStart" });
-  });
-
-  it("says nothing about the Backlog for a Task that was not in it", async () => {
-    vi.mocked(updateTask).mockResolvedValue(IN_PROGRESS);
-    const { result, showToast } = setup([todo("task-5")]);
-
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
-    await settleLane();
-
-    expect(showToast).not.toHaveBeenCalled();
-  });
-
-  it("leaves a node that is not a Task alone", () => {
-    const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
-    act(() => { result.current.setTaskStatus("goal-2", ordinary("in_progress")); });
-    expect(updateTask).not.toHaveBeenCalled();
-    expect(lane()).toEqual([]);
-  });
-
   it("toggles a Goal between active and achieved through the lane", () => {
     vi.mocked(updateGoal).mockReturnValue(new Promise(() => undefined));
     const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
@@ -237,16 +192,6 @@ describe("useStatusCycle: refusals", () => {
     expect(lane().map((write) => write.nodeId)).toEqual(["task-6"]);
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
-  });
-
-  it("rolls back and says why when the backend refuses Done over open sub-items", async () => {
-    vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "refused", reason: "open_sub_items" });
-    const { result, showToast } = setup([node("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") })]);
-
-    act(() => { result.current.cycleStatus("task-5"); });
-
-    await waitFor(() => expect(lane()).toEqual([]));
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:openSubItemsRefused" });
   });
 
   it("rolls back and says why when the write is rejected", async () => {

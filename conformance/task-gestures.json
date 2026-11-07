@@ -1,7 +1,7 @@
 {
   "about": [
     "What a press on a Task or a Commitment writes, as data: the status step, `Alt+Enter`, the Compound",
-    "refusal, the refusals a Task's sub-items make, and the verdict.",
+    "refusal and the verdict.",
     "",
     "Both evaluators replay it. `src-tauri/tests/operations/task_gestures_conformance.rs` runs every case",
     "through `tasks::rules::gestures`; `src/utils/task-gestures-conformance.test.ts` runs the same cases",
@@ -11,11 +11,8 @@
     "",
     "`next_status`: one step of click/`Enter` in the model a Task holds. `alt_step`: `Alt+Enter`; refused",
     "on Agentic work that is not Doing. `status_after`: a step on a Task that is or is not Compound; a",
-    "Compound Task has no status of its own to write, whatever the gesture. A case may carry `sub_items`,",
-    "what the Task's sub-items say (`floor`: the status they make it read at least; `open`: how many",
-    "counted ones are not Done), which defaults to none: Done is refused over open ones, and an ordinary",
-    "Task is refused a status below its floor. `verdict_after`: the cycle key and the Kept and Broken",
-    "controls, each of which clears the verdict it already reads.",
+    "Compound Task has no status of its own to write, whatever the gesture. `verdict_after`: the cycle key",
+    "and the Kept and Broken controls, each of which clears the verdict it already reads.",
     "",
     "A result is `written` with the status it leaves, or `refused` with why nothing is written."
   ],
@@ -688,162 +685,6 @@
         "status": "done"
       },
       "compound": true,
-      "result": {
-        "outcome": "refused",
-        "reason": "compound"
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "ordinary",
-        "status": "in_progress"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "in_progress",
-        "open": 2
-      },
-      "result": {
-        "outcome": "refused",
-        "reason": "open_sub_items"
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "ordinary",
-        "status": "in_progress"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "in_progress",
-        "open": 0
-      },
-      "result": {
-        "outcome": "written",
-        "status": {
-          "kind": "ordinary",
-          "status": "done"
-        }
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "agentic",
-        "status": "doing"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "todo",
-        "open": 1
-      },
-      "result": {
-        "outcome": "refused",
-        "reason": "open_sub_items"
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "ordinary",
-        "status": "done"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "started",
-        "open": 0
-      },
-      "result": {
-        "outcome": "refused",
-        "reason": "below_sub_items"
-      }
-    },
-    {
-      "step": "alt",
-      "current": {
-        "kind": "ordinary",
-        "status": "in_progress"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "in_progress",
-        "open": 1
-      },
-      "result": {
-        "outcome": "refused",
-        "reason": "below_sub_items"
-      }
-    },
-    {
-      "step": "alt",
-      "current": {
-        "kind": "ordinary",
-        "status": "done"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "started",
-        "open": 0
-      },
-      "result": {
-        "outcome": "written",
-        "status": {
-          "kind": "ordinary",
-          "status": "started"
-        }
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "ordinary",
-        "status": "started"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "started",
-        "open": 1
-      },
-      "result": {
-        "outcome": "written",
-        "status": {
-          "kind": "ordinary",
-          "status": "in_progress"
-        }
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "agentic",
-        "status": "done"
-      },
-      "compound": false,
-      "sub_items": {
-        "floor": "in_progress",
-        "open": 0
-      },
-      "result": {
-        "outcome": "written",
-        "status": {
-          "kind": "agentic",
-          "status": "todo"
-        }
-      }
-    },
-    {
-      "step": "advance",
-      "current": {
-        "kind": "ordinary",
-        "status": "in_progress"
-      },
-      "compound": true,
-      "sub_items": {
-        "floor": "in_progress",
-        "open": 1
-      },
       "result": {
         "outcome": "refused",
         "reason": "compound"

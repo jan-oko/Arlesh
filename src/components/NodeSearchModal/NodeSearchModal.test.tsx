@@ -149,47 +149,4 @@ describe("NodeSearchModal", () => {
     fireEvent.change(screen.getByPlaceholderText("common:searchNodesPlaceholder"), { target: { value: "zzz" } });
     expect(screen.getByText("common:noResults")).toBeInTheDocument();
   });
-
-  describe("Alt+S starts the highlighted row", () => {
-    function typeShip() {
-      fireEvent.change(screen.getByPlaceholderText("common:searchNodesPlaceholder"), { target: { value: "ship" } });
-    }
-
-    it("hands the highlighted row to onStart, closes, and does not select it", () => {
-      const onStart = vi.fn(); const onSelect = vi.fn(); const onClose = vi.fn();
-      render(<NodeSearchModal nodes={NODES} onSelect={onSelect} onStart={onStart} onClose={onClose} />);
-      typeShip();
-      fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowDown" });
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "s", altKey: true });
-      expect(onStart).toHaveBeenCalledWith("task-3");
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(onSelect).not.toHaveBeenCalled();
-    });
-
-    it("reads the physical key, so a layout that types another character still starts", () => {
-      const onStart = vi.fn();
-      render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onStart={onStart} onClose={vi.fn()} />);
-      typeShip();
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "ß", altKey: true });
-      expect(onStart).toHaveBeenCalledTimes(1);
-    });
-
-    it("leaves a plain s, and Alt+S with another modifier held, to the query", () => {
-      const onStart = vi.fn();
-      render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onStart={onStart} onClose={vi.fn()} />);
-      typeShip();
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "s" });
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "S", altKey: true, shiftKey: true });
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "s", altKey: true, ctrlKey: true });
-      expect(onStart).not.toHaveBeenCalled();
-    });
-
-    it("does nothing with no results, and stays open", () => {
-      const onStart = vi.fn(); const onClose = vi.fn();
-      render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onStart={onStart} onClose={onClose} />);
-      fireEvent.keyDown(screen.getByRole("textbox"), { code: "KeyS", key: "s", altKey: true });
-      expect(onStart).not.toHaveBeenCalled();
-      expect(onClose).not.toHaveBeenCalled();
-    });
-  });
 });

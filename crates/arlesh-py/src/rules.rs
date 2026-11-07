@@ -192,10 +192,6 @@ pub(crate) enum Rule {
         current: Status,
         /// Whether the Task is compound.
         compound: bool,
-        /// What its sub-items say: the floor they make it read at, and how many are open. Left
-        /// out, they constrain nothing.
-        #[serde(default)]
-        sub_items: gestures::SubItems,
     },
     /// What a verdict control makes of a verdict.
     VerdictAfter {
@@ -359,8 +355,7 @@ fn apply(rule: Rule) -> Result<Value, WireError> {
             step,
             current,
             compound,
-            sub_items,
-        } => match gestures::status_after(step, current, compound, sub_items) {
+        } => match gestures::status_after(step, current, compound) {
             Ok(status) => json(StatusAfter::Written { status }),
             Err(reason) => json(StatusAfter::Refused { reason }),
         },

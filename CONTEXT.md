@@ -66,9 +66,9 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Asynchronous** — A Task whose doing starts a **wait** rather than finishing something: send the email, order the part, kick off the build. A stored boolean on Tasks (`tasks.asynchronous`, NOT NULL, default false) that **does not inherit** — deliberately unlike **Agentic** — because "starts a wait" is a property of one concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the wait. Tasks only. While the flag is on the Task may carry an optional **Expectation template** (title, tags, a Time Scope rule, Check every; no status); while such a Task is done, a virtual **spawned** Expectation is derived from it. Without a template nothing is spawned. Set from a switch in the Task editor (the template fills the Expectation section below it) and the bare `W` key, badged in both views with an hourglass, filterable as its own List View pill dimension, and the flag the List View's opt-in **Asynchronous first** ordering reads.
 
-**Compound** — A Task set to **consist of its sub-items**: its status is derived from its whole subtree and never set by hand. A stored boolean on Tasks (`tasks.compound`, NOT NULL, default false) that does not inherit; stored Tasks only. Every Task (Habit occurrences and check tasks included), Goal, wait and Commitment beneath it counts unless it is effectively Archived; a Goal counts Done when Achieved, a pending wait or an Unresolved Commitment counts Started. The **progress rule**: all Done → Done; else any In Progress → In Progress; else any Started or Done → Started; else To Do. Derived on every board load, never stored; manual status writes are refused. When every open item beneath it is blocked, it is blocked too (a derived block reason). Set from a switch in the Task editor and the bare `V` key; its status glyph's outer ring is dashed. Switching it off keeps the derived status as the stored one. Compound means the sub-items are **exhaustive**: Done is derived on completion and a manual In Progress is refused. When it reads as Agentic it shows On Agent, or Review, as its items say (Doing or In Progress beats both; Done items are ignored). Any **other** Task with sub-items reads at least Started or In Progress by the same counting, its own stored status raised and never lowered, and cannot be set Done while a counted item is not Done; Agentic status is not derived from sub-items.
+**Compound** — A Task set to **consist of its sub-items**: its status is derived from its whole subtree and never set by hand. A stored boolean on Tasks (`tasks.compound`, NOT NULL, default false) that does not inherit; stored Tasks only. Every Task (Habit occurrences and check tasks included), Goal, wait and Commitment beneath it counts unless it is effectively Archived; a Goal counts Done when Achieved, a pending wait or an Unresolved Commitment counts Started. The **progress rule**: all Done → Done; else any In Progress → In Progress; else any Started or Done → Started; else To Do. Derived on every board load, never stored; manual status writes are refused. When every open item beneath it is blocked, it is blocked too (a derived block reason). Set from a switch in the Task editor and the bare `V` key; its status glyph's outer ring is dashed. Switching it off keeps the derived status as the stored one.
 
-**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Is not an instance and never gates resolution directly, but an open one blocks marking its occurrence done (refused, as for any Task with an open sub-item), so the occurrence stays open until it is finished or archived; nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
+**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
 **Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment is clickable and **enters** that node as the subtree, the same re-rooting `Ctrl+O` performs. Replaces the former Goal header and its visibility toggle.
 
@@ -150,26 +150,6 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
-## Replication
-
-Designed in [ADR 0017](docs/adr/0017-client-board-replica.md), not built yet.
-
-**Replica** — A client's own copy of the board, running the same core as the server. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
-
-**Prediction** — A write run on the Replica before the server has answered it. What it shows is what the board will look like if the server agrees. _Avoid_: optimistic patch, speculation.
-
-**Settling** — The moment the queue of writes drains: the Replica drops its Predictions and takes the server's rows. A correct Prediction changes nothing on screen.
-
-**Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
-
-**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas sync from. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
-
-**Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and falls back to one when it cannot prove it is current. _Avoid_: backup (that is the administrator's).
-
-**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show.
-
----
-
 ## Not built yet
 
 Specced, and deliberately kept, but not in the app today. Nothing above depends on them.
@@ -191,7 +171,7 @@ Specced, and deliberately kept, but not in the app today. Nothing above depends 
 - A Task is never both backlogged and planned. Backlogging a planned Task asks first and offers to clear the Plan; planning a backlogged Task takes it out of the Backlog.
 - A forced **Archived** Resolution overrides a stored **Frozen** *or* **Backlog**, flagging the conflict either way — setting an item aside does not exempt it from its own window.
 - A Habit instance is never materialized by being diverged from. A per-instance child is recorded against the virtual instance; the instance stays virtual (ADR 0002).
-- An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances, but an open one blocks marking its occurrence done, so the iteration stays unresolved until it is finished or archived.
+- An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
 - A List View row's **Path header** and its **Visible depth** partition its ancestors: every ancestor is named in exactly one of the two, never both and never neither.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - A Commitment's **Verdict Window** is the only automatic state change in the kind, and it moves **Archival**, never the Verdict: an unresolved Commitment whose window has run out archives *still unresolved*.
