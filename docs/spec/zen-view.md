@@ -52,6 +52,8 @@ View's setting says (ruled by the user). The **focus exemption** holds as elsewh
 Logic](filtering-logic.md)): a card your own edit stops matching — cycling it to Done with `Enter` —
 stays where it is, dimmed, until the selection leaves it.
 
+**No derived parents** (ruled by the user, 2026-11-07). A card that reads In Progress only from its sub-items — a Compound Task, or a parent raised to it — is not drawn while the In Progress item beneath it is on the grid; set by hand, or with that item filtered out, it stays. See [*Filtering Logic*](filtering-logic.md).
+
 **Only what you hold** (ruled by the user, 2026-10-01). A **delegated** Task — one a Person holds —
 gets **no card**, In Progress or not, so the grid shows only work you are doing yourself.
 Do itself is unchanged: an in-progress delegated Task still shows in the List View under Do (see
@@ -202,6 +204,7 @@ never drift between the two views. The strips and the Agentic pill are switched 
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo
 - `Ctrl+J` shows this view; `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F`, `Ctrl+F` are the
   [global bindings](tabs.md) as everywhere
+- `Alt+S` in the `Ctrl+O` search starts the highlighted row — see [*Mindmap View*](mindmap-view.md).
 
 **Moving in two dimensions.** The grid is read in rows; the last row may be short and is centred.
 

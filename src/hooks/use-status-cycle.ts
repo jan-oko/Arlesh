@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { updateGoal } from "@/api/goals";
+import { updateTask } from "@/api/tasks";
+import type { TaskStatus } from "@/api/tasks";
 import type { BacklogCleared, StatusRefusal, StatusStep } from "@/api/node-gestures";
 import { stepTaskStatus } from "@/api/node-gestures";
 import { GOAL_STATUS } from "@/utils/status-mapping";
@@ -18,9 +20,11 @@ import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
 
 /** The `warnings` key that says why a status gesture wrote nothing. */
-const REFUSAL_MESSAGE: Record<StatusRefusal, "compoundStatusRefused" | "altEnterAgenticNotDoing"> = {
+const REFUSAL_MESSAGE: Record<StatusRefusal, "compoundStatusRefused" | "altEnterAgenticNotDoing" | "openSubItemsRefused" | "belowSubItemsRefused"> = {
   compound: "compoundStatusRefused",
   alt_enter_agentic_not_doing: "altEnterAgenticNotDoing",
+  open_sub_items: "openSubItemsRefused",
+  below_sub_items: "belowSubItemsRefused",
 };
 
 /** The `warnings` key that names a Task coming out of the Backlog, by the status that did it. */
@@ -51,6 +55,9 @@ interface StatusCycle {
    * Progress; on an Agentic one, hands a Doing Task back to its agent (On Agent), and anywhere
    * else says it cannot. Anything that is not a Task is left alone. */
   toggleStarted: (nodeId: string) => void;
+  /** Sets a Task to exactly `status`, as an edit would (`updateTask`): one write through the same
+   * lane, one Gesture to undo. For the callers that name the status rather than step to it. */
+  setTaskStatus: (nodeId: string, status: TaskStatus) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
@@ -69,7 +76,10 @@ interface StatusCycle {
  * A press is **shown at once** and sent through the window's lane (ADR 0012): the status it writes
  * is predicted by `utils/task-gestures.ts`, a pinned copy of `tasks::rules::gestures`, and the
  * status the board shows after the answer is the returned row's. A Compound Task's press, and
- * `Alt+Enter` on Agentic work that is not Doing, are refused here with their toast and write nothing.
+ * `Alt+Enter` on Agentic work that is not Doing, are refused here with their toast and write nothing;
+ * so are a press to Done over open sub-items and one that would lower a Task below what its
+ * sub-items make it read, which only the backend can tell (it reads them off the board) and answers
+ * as a refusal, rolled back with the same toast.
  *
  * Two rules travel with the gesture rather than with the caller, which is the whole point of it
  * living here. Marking an occurrence done while it still holds unfinished added children goes
@@ -170,5 +180,26 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
     [findNode, stepStatus],
   );
 
-  return { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence };
+  const setTaskStatus = useCallback(
+    (nodeId: string, status: TaskStatus) => {
+      const node = findNode(nodeId);
+      if (node?.kind !== "task") return;
+      submit(node, {
+        label: "status change",
+        patch: { kind: "fields", fields: { status: status.status, taskStatus: status } },
+        refuseReadOnly: refuseReadOnly(nodeId),
+        send: async (confirmed) => {
+          const written = await updateTask(rowIdAtSend(node), { status }, ...acknowledged(confirmed));
+          // The writer takes a set-aside Task out of the Backlog; say so, as the status keys do.
+          if (node.backlogged === true && written.archival === "live") {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          return writtenWith(taskAnswerFields(written));
+        },
+      });
+    },
+    [findNode, submit, refuseReadOnly, showToast, t],
+  );
+
+  return { cycleStatus, toggleStarted, setTaskStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };
 }

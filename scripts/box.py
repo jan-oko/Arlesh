@@ -3103,9 +3103,6 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
         print(
             f"firebase: {package} registered as {app_id}; google-services.json written (gitignored)."
         )
-        note(
-            "note: app/build.gradle.kts does not apply the google-services plugin yet, so the file is not read by the build."
-        )
 
     # With one target dir shared across worktrees, the first build in a new worktree otherwise finds
     # the generated TauriActivity missing: cargo thinks tauri and wry are up to date.

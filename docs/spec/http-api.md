@@ -167,9 +167,10 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
+| `/push`, `/devices/current/push` | `GET /push` (`enabled`, `project_id`: whether the server has FCM credentials), `PUT /devices/current/push` (body `{"fcm_token"}`: the asking device registers for phone notifications) and `DELETE`. See [Notifications](notifications.md) |
 | `/mcp` | Arlesh's MCP endpoint (below) |
 | `POST /pair`, `POST /pair/poll` | **Open without a token.** A new device asks for a PIN (body `{"name"}`, answers `id`, `pin`, `name`, `expires_at`; rate limited per address) and polls with `{"id", "pin"}` (answers `pending`, or `approved` with the device's `name` and `token`, once). See *Pairing* below |
-| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
+| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`, `push`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
 
 ## Pairing
 
@@ -251,7 +252,7 @@ does not know is answered as 500 `internal`. FastAPI's own 422 for a malformed r
 replaced, because 422 here means *confirm or add a window*.
 
 **The confirmation protocol is kept, not flattened.** A write the core will not make without
-consent, such as completing a Habit occurrence that still holds unfinished children, is refused
+consent, such as a Flow item's cycle change that would orphan recorded iterations, is refused
 422 `needs_confirmation`. Its `details` name what is at stake. The same request sent again with
 `?confirmed=true` goes ahead. Setting a Flow item's cycles is confirmed with `?reconcile=fork` or
 `discard`. A Commitment with no window is refused 422 `needs_time_scope`, and goes ahead when sent

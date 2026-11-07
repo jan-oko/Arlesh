@@ -5,8 +5,8 @@ import type { StatusRefusal, StatusStep, VerdictPress } from "@/api/node-gesture
 import type { AgenticStatus, OrdinaryStatus, TaskStatus } from "@/api/tasks";
 import type { Verdict } from "@/api/verdict";
 import { AGENTIC_STATUS, TASK_STATUS, agentic, ordinary } from "@/utils/status-mapping";
-import { altStep, nextStatus, statusAfter, verdictAfter } from "@/utils/task-gestures";
-import type { StatusPrediction } from "@/utils/task-gestures";
+import { NO_SUB_ITEMS, altStep, nextStatus, statusAfter, verdictAfter } from "@/utils/task-gestures";
+import type { StatusPrediction, SubItems } from "@/utils/task-gestures";
 
 /**
  * The status step, `Alt+Enter`, the Compound refusal and the verdict have two evaluators:
@@ -18,7 +18,8 @@ import type { StatusPrediction } from "@/utils/task-gestures";
 const ORDINARY: readonly OrdinaryStatus[] = Object.values(TASK_STATUS);
 const AGENTIC: readonly AgenticStatus[] = Object.values(AGENTIC_STATUS);
 const STEPS: readonly StatusStep[] = ["advance", "alt"];
-const REFUSALS: readonly StatusRefusal[] = ["compound", "alt_enter_agentic_not_doing"];
+const REFUSALS: readonly StatusRefusal[] = ["compound", "alt_enter_agentic_not_doing", "open_sub_items", "below_sub_items"];
+const FLOORS: readonly OrdinaryStatus[] = ["todo", "started", "in_progress"];
 const PRESSES: readonly VerdictPress[] = ["cycle", "kept", "broken"];
 const VERDICTS: readonly Verdict[] = ["unresolved", "kept", "broken"];
 
@@ -43,6 +44,12 @@ function parseResult(value: unknown, what: string): StatusPrediction {
   return fail(`${what}.outcome is neither written nor refused: ${outcome}`);
 }
 
+function parseSubItems(value: unknown, what: string): SubItems {
+  const raw = record(value, what);
+  if (typeof raw.open !== "number") fail(`${what}.open is not a number`);
+  return { floor: oneOf(raw.floor, FLOORS, `${what}.floor`), open: raw.open };
+}
+
 function list(value: unknown, what: string): unknown[] {
   return Array.isArray(value) ? value : fail(`${what} is not an array`);
 }
@@ -62,10 +69,12 @@ const altCases = list(top.alt_step, "`alt_step`").map((value, index) => {
 const afterCases = list(top.status_after, "`status_after`").map((value, index) => {
   const raw = record(value, `status_after[${index}]`);
   if (typeof raw.compound !== "boolean") fail(`status_after[${index}].compound is not a boolean`);
+  const subItems = raw.sub_items === undefined ? NO_SUB_ITEMS : parseSubItems(raw.sub_items, `status_after[${index}].sub_items`);
   return {
     step: oneOf(raw.step, STEPS, `status_after[${index}].step`),
     current: parseStatus(raw.current, `status_after[${index}].current`),
     compound: raw.compound,
+    subItems,
     result: parseResult(raw.result, `status_after[${index}].result`),
   };
 });
@@ -97,7 +106,7 @@ describe("task gestures conformance corpus", () => {
   for (const testCase of afterCases) {
     const compound = testCase.compound ? "a Compound" : "a";
     it(`takes ${testCase.step} on ${compound} ${name(testCase.current)} as the corpus says`, () => {
-      expect(statusAfter(testCase.step, testCase.current, testCase.compound)).toEqual(testCase.result);
+      expect(statusAfter(testCase.step, testCase.current, testCase.compound, testCase.subItems)).toEqual(testCase.result);
     });
   }
 

@@ -13,8 +13,11 @@ use crate::{
     error::WireError,
     nodes::{composite, id::NodeId, write},
     tasks::{
+        compound,
         model::{Commitment, Task, TaskAgentic, UpdateCommitmentRequest, UpdateTaskRequest},
-        rules::gestures::{self, BacklogCleared, StatusRefusal, StatusStep, VerdictPress},
+        rules::gestures::{
+            self, BacklogCleared, StatusRefusal, StatusStep, SubItems, VerdictPress,
+        },
     },
 };
 
@@ -52,7 +55,16 @@ pub async fn step_status(
     let before = write::task(db, id, now)
         .await
         .map_err(WireError::from_error)?;
-    let next = match gestures::status_after(step, before.status, before.compound) {
+    // A press cycles from what the Task **reads** — the board's status, which a parent raises to
+    // what its sub-items say — and is held to what they say.
+    let served = compound::serve(db, id, now)
+        .await
+        .map_err(WireError::from_error)?;
+    let (current, sub_items) = served.map_or_else(
+        || (before.status, SubItems::default()),
+        |served| (served.status, served.sub_items),
+    );
+    let next = match gestures::status_after(step, current, before.compound, sub_items) {
         Ok(next) => next,
         Err(reason) => return Ok(StatusStepOutcome::Refused { reason }),
     };

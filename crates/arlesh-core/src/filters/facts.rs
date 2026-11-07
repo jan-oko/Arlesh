@@ -173,6 +173,8 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         unmet_dependencies,
     } = index_blocked(load);
     let todo_parents = index_todo_parents(load);
+    let derived_in_progress: HashSet<&crate::nodes::id::NodeId> =
+        load.derived_in_progress.iter().collect();
     let dependencies = index_dependencies(load);
 
     let mut facts: Vec<NodeFacts> = Vec::new();
@@ -216,6 +218,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.has_todo_child = todo_parents.contains(&node.id);
         node.asynchronous = task.asynchronous;
         node.compound = task.compound;
+        node.derived_in_progress = derived_in_progress.contains(&task.id);
         node.dependencies = dependencies.get(&task.id).cloned().unwrap_or_default();
         apply_lifecycle(
             &mut node,

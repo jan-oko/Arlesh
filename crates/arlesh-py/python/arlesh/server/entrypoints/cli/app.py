@@ -15,6 +15,9 @@
     arlesh-server pin approve 123456 --name phone --db ~/arlesh.db
     ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
 
+Push notifications to phones need a Firebase service-account key: ``ARLESH_FCM_CREDENTIALS_FILE``
+(see ``docs/spec/notifications.md``). Without it the server runs and sends none.
+
 Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and so on; see
 :mod:`arlesh.server.config`); a flag given wins.
 """
@@ -37,6 +40,8 @@ from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.push.database_push_store import DatabasePushStore
+from arlesh.server.ports.push.fcm_sender import CredentialsError, FcmSender, ServiceAccount
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
@@ -107,6 +112,8 @@ def serve(
             tokens=tokens,
             pairs=DatabasePairingStore(path),
             version=version("arlesh"),
+            pushes=DatabasePushStore(path),
+            sender=_sender(config),
             backup=(
                 Backup(path, config.backup_token.get_secret_value())
                 if config.backup_token is not None and config.backup_token.get_secret_value()
@@ -204,6 +211,18 @@ def _unheld(path: Path) -> bool:
     except arlesh.NotPermitted:
         return False
     return True
+
+
+def _sender(config: Config) -> FcmSender | None:
+    """The FCM sender the credentials file names, or ``None`` when none is named: pushes are off.
+    A file that cannot be used stops the server, so a mistake is not mistaken for 'off'."""
+    file = config.fcm_credentials_file
+    if file is None:
+        return None
+    try:
+        return FcmSender(ServiceAccount.read(file))
+    except CredentialsError as error:
+        raise typer.BadParameter(f"ARLESH_FCM_CREDENTIALS_FILE: {error}") from None
 
 
 def _tokens(db: Path | None) -> DatabaseTokenStore:
