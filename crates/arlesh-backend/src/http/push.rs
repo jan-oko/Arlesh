@@ -6,7 +6,7 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::error::WireError;
+use arlesh_core::error::WireError;
 
 use super::{Call, HttpBackend};
 
