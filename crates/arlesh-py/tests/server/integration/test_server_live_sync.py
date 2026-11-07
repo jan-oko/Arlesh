@@ -1,5 +1,5 @@
 """Live sync across two devices, over a real socket: one device's write reaches another device's
-``/events`` subscription, stamped with the revision the write reached."""
+``/events/changes`` subscription, stamped with the revision the write reached."""
 
 from __future__ import annotations
 
@@ -18,13 +18,13 @@ Start = Callable[..., ArleshServer]
 
 
 def _subscribe(base: str, token: str) -> tuple[queue.Queue[dict[str, Any]], threading.Event]:
-    """Follows ``/events`` as a device; each ``board-changed``'s data lands on the queue."""
+    """Follows ``/events/changes`` as a device; each ``board-changed``'s data lands on the queue."""
     heard: queue.Queue[dict[str, Any]] = queue.Queue()
     connected = threading.Event()
 
     def follow() -> None:
         headers = {"Authorization": f"Bearer {token}", "Accept-Encoding": "gzip"}
-        with httpx.stream("GET", f"{base}/events", headers=headers, timeout=60) as response:
+        with httpx.stream("GET", f"{base}/events/changes", headers=headers, timeout=60) as response:
             name = ""
             for line in response.iter_lines():
                 if line.startswith(": connected"):

@@ -831,7 +831,7 @@ pub(crate) async fn run(
             as_gesture(factory, stacks, write).await
         }
     }?;
-    // Committed: every device showing the board has to hear about it (`GET /events`).
+    // Committed: every device showing the board has to hear about it (`GET /events/changes`).
     shared.changes.bump();
     Ok(answer.to_string())
 }

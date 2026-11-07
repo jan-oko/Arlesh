@@ -136,6 +136,26 @@ about an hour."*
 - **Housekeeping between rounds:** remove finished worktrees (check `/proc/*/cwd` for a live
   agent first) and their launcher entries; keep local `dev` at `origin/dev`.
 
+## Waits and notifications
+
+Whether an agent can be woken when its question is answered depends on the `arlesh-notify` plugin
+(AGENTS.md, *Waiting for the user's answer*). The plugin's own line at session start ("Arlesh
+notifications are on in this session") is the only thing that says it is on; the MCP server's
+instructions never do.
+
+- **Install it for the sessions you run** (`/plugin install arlesh-notify --marketplace
+  jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh-notify`). Sub-agents share the session's
+  plugin, so they are notified too: the sub-agent that raised the wait if it is still running, else
+  you, with the sub-agent named.
+- **Put the rules in every brief**, in the form that matches the session: with the plugin, "after
+  raising a wait you are blocked on, end your turn and report back; never poll or sleep"; without
+  it, "raise the wait, ask the question in your report, and finish; do not wait on the wait".
+- **A notification is the cue to re-read the board**, not the answer: it points at a wait. Read it
+  with `arlesh_waits.get`, then the Task, and relay or act as the user's answer. A *reopened* wait
+  means stop the dependent work; a *gone* one means the question was withdrawn.
+- **Without the plugin, nobody wakes an idle agent.** You are the one who relays the user's answer
+  to a sub-agent that asked, through the conversation.
+
 ## Verification — what counts as evidence
 
 - **A clean merge is not evidence.** Lesson, ten times on 2026-09-22: two green branches
