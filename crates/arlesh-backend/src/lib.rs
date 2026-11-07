@@ -23,6 +23,7 @@
 //! windows.
 
 pub mod access;
+pub mod agents;
 pub mod block_reasons;
 pub mod capacity;
 pub mod commitments;
@@ -45,6 +46,7 @@ pub mod undo;
 /// Every operation a backend serves: the union of the per-domain ports.
 pub trait Backend:
     access::AccessPort
+    + agents::AgentsPort
     + block_reasons::BlockReasonsPort
     + capacity::CapacityPort
     + commitments::CommitmentsPort
@@ -63,6 +65,7 @@ pub trait Backend:
 
 impl<T> Backend for T where
     T: access::AccessPort
+        + agents::AgentsPort
         + block_reasons::BlockReasonsPort
         + capacity::CapacityPort
         + commitments::CommitmentsPort

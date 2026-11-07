@@ -7,6 +7,7 @@ import McpEndpointSection from "./McpEndpointSection";
 import HelpTip from "./HelpTip";
 import own from "./McpEndpointSection.module.css";
 import AgentCapacitySection from "./AgentCapacitySection";
+import AgentsSection from "./AgentsSection";
 import styles from "./SettingsModal.module.css";
 import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 
@@ -72,6 +73,7 @@ export default function McpAccessPage() {
       )}
       {/* In Client mode the app serves no MCP: agents use the server's `/mcp`. */}
       {!isClient && <McpEndpointSection />}
+      <AgentsSection />
       <AgentCapacitySection />
     </div>
   );

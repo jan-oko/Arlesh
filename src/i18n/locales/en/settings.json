@@ -46,6 +46,58 @@
       "help": "About the agent capacity lock"
     },
     "rootsHeading": "MCP roots",
-    "rootsHelp": "About MCP roots"
+    "rootsHelp": "About MCP roots",
+    "agents": {
+      "heading": "Agents",
+      "intro": "An agent attaches with a one-time PIN, then sees only the subtree it claims. One active claim may cover any node. The arlesh-notify mod attaches for you; otherwise give the agent a PIN.",
+      "help": "About agents",
+      "getPin": "Get a PIN",
+      "pinHeading": "PIN for an agent",
+      "pinExpires": "Valid until {{time}}",
+      "pinCopy": "Copy PIN",
+      "pinCopied": "Copied",
+      "pinHelp": "Give this PIN to the agent (the arlesh-notify mod does it for you); it works once.",
+      "none": "No agents have attached.",
+      "loading": "Loading…",
+      "list": "Agents",
+      "account": "Account {{account}}",
+      "noClaim": "No claim",
+      "lastSeen": "Last seen {{time}}",
+      "neverSeen": "Never seen",
+      "standing": {
+        "unclaimed": "Unclaimed",
+        "active": "Active",
+        "paused": "Paused",
+        "shadowed": "Shadowed",
+        "unreachable": "Unreachable"
+      },
+      "standingNote": {
+        "unclaimed": "It holds no claim, so it sees nothing.",
+        "active": "It reads and writes inside its claim.",
+        "paused": "Another agent may claim the subtree; it reads but writes nothing.",
+        "shadowed": "Its claim now overlaps an older active claim, so it sees nothing until that is resolved.",
+        "unreachable": "Its subtree left the MCP roots, went private or was deleted, so it sees nothing."
+      },
+      "capacity": {
+        "agent_locked": "At capacity: locked by hand",
+        "account_locked": "At capacity: its account is locked by hand",
+        "usage_limit": "At capacity: {{window}} limit used up, resets {{time}}"
+      },
+      "pause": "Pause",
+      "resume": "Resume",
+      "release": "Release claim",
+      "lock": "Lock",
+      "unlock": "Unlock",
+      "remove": "Remove",
+      "removeAsk": "Remove {{name}}? Its token stops working.",
+      "removeConfirm": "Remove",
+      "removeCancel": "Cancel",
+      "forAgent": "{{action}} {{name}}",
+      "accountsHeading": "Accounts",
+      "accountsNone": "No accounts yet.",
+      "accountLock": "Lock account {{label}}",
+      "noUsage": "No usage reported",
+      "window": "{{window}}: {{percent}}% used, resets {{time}}"
+    }
   }
 }

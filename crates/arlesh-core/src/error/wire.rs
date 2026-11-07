@@ -4,9 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    access::error::AccessError, domains::error::DomainError, error::AppError,
-    flows::error::FlowError, knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError,
-    tasks::error::TaskError, undo::error::UndoError,
+    access::error::AccessError, agents::error::AgentError, domains::error::DomainError,
+    error::AppError, flows::error::FlowError, knowledge_base::error::KnowledgeBaseError,
+    scopes::error::ScopeError, tasks::error::TaskError, undo::error::UndoError,
 };
 
 /// Stable, machine-readable classification of a [`WireError`].
@@ -224,6 +224,7 @@ fn kind_of(error: &AppError) -> WireErrorKind {
         AppError::Flow(inner) => flow_kind(inner),
         AppError::Undo(inner) => undo_kind(inner),
         AppError::Access(inner) => access_kind(inner),
+        AppError::Agents(inner) => agents_kind(inner),
         AppError::Database(sqlx::Error::RowNotFound) => WireErrorKind::NotFound,
         AppError::Database(_) => WireErrorKind::Database,
     }
@@ -238,6 +239,26 @@ fn access_kind(error: &AccessError) -> WireErrorKind {
         AccessError::Corrupt(_) => WireErrorKind::Internal,
         AccessError::Agentic(inner) => task_kind(inner),
         AccessError::Database(_) => WireErrorKind::Database,
+    }
+}
+
+/// Classifies an [`AgentError`]: a door that stays shut or a Claim the rules refuse is
+/// `not_permitted`; an agent that is not there, `not_found`; a malformed name or report,
+/// `invalid_request`.
+fn agents_kind(error: &AgentError) -> WireErrorKind {
+    match error {
+        AgentError::PinInvalid
+        | AgentError::PinLockedOut
+        | AgentError::TooManyPins
+        | AgentError::TokenInvalid
+        | AgentError::NotAttached
+        | AgentError::OutsideRoots(_)
+        | AgentError::Overlaps { .. } => WireErrorKind::NotPermitted,
+        AgentError::NotFound(_) => WireErrorKind::NotFound,
+        AgentError::NoClaim(_) | AgentError::Invalid(_) => WireErrorKind::InvalidRequest,
+        AgentError::Entropy(_) | AgentError::Corrupt(_) => WireErrorKind::Internal,
+        AgentError::Access(inner) => access_kind(inner),
+        AgentError::Database(_) => WireErrorKind::Database,
     }
 }
 

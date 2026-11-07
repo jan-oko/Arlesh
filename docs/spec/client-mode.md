@@ -402,8 +402,17 @@ locally while it is still queued, and otherwise waits for the lane and undoes on
 ## MCP
 
 In Client mode the app serves **no** MCP endpoint, and Settings → Agents shows no endpoint section;
-the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly, each
-with its own token. This is the [HTTP Server](http-api.md)'s *the app serves none*.
+the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly. This is
+the [HTTP Server](http-api.md)'s *the app serves none*.
+
+**Agents** (2026-11-07, Task `7a0`; see [Agents](agents.md)). `/mcp` no longer takes a device token: every
+session connects with the server's one low-privilege **connect token** (`arlesh-server connect-token`),
+then attaches as an Agent with a one-time PIN. Settings → Agents lists the server's Agents, their Claims,
+accounts and usage, and asks for PINs, apart from the Devices list; the Agents are the server's, shared
+by every device. Pairing stays device-only: its six-digit PIN and an agent's eight-digit PIN are
+different things. Although the app serves no MCP endpoint in Client mode, it still serves the **loopback
+PIN door** (`POST /agents/pin`, loopback only, no `Origin`), which forwards the request to the server with
+the device's token, so an agent on the same machine can attach without anyone copying a PIN.
 
 ## Tokens on the device
 

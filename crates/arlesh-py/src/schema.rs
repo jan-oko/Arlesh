@@ -8,6 +8,7 @@
 
 use arlesh_core::{
     access::model::{EffectiveAccess, McpAccessCatalogue, NodeTable},
+    agents::model::{AgentAction, AgentsOverview, IssuedPin},
     block_reasons::model::BlockReason,
     capacity::CapacityState,
     domains::model::Domain,
@@ -181,6 +182,9 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<McpAccessCatalogue>(generator);
     add::<EffectiveAccess>(generator);
     add::<CapacityState>(generator);
+    add::<AgentsOverview>(generator);
+    add::<IssuedPin>(generator);
+    add::<AgentAction>(generator);
     add::<UndoStatus>(generator);
     add::<GestureSummary>(generator);
 }

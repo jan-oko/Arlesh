@@ -140,7 +140,7 @@ fn comment(text: &str) -> Bytes {
     Bytes::from(format!(": {text}\n\n"))
 }
 
-fn guard(headers: &HeaderMap) -> Result<(), StatusCode> {
+pub(super) fn guard(headers: &HeaderMap) -> Result<(), StatusCode> {
     let text = |name| headers.get(name).and_then(|value| value.to_str().ok());
     if admitted(text(header::HOST), text(header::ORIGIN)) {
         Ok(())

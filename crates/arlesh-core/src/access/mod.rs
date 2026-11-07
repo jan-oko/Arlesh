@@ -273,11 +273,11 @@ impl<'session> AccessOperator<'session> {
     }
 }
 
-/// Every stored node's effective MCP access, as the roots stand on `db` now.
-///
-/// Two reads on one session: a pooled session sees each at its own instant, a transactional one
-/// sees both at one. The MCP snapshot resolves inside its own transaction for that reason.
-pub async fn access_map<M: SessionMode>(db: &mut Db<M>) -> Result<AccessMap, AccessError> {
+/// Every stored node as access resolution reads it: where it hangs and its own flags, with what a
+/// Habit occurrence reads as for Agentic put on the rows hung on it.
+pub async fn stored_nodes<M: SessionMode>(
+    db: &mut Db<M>,
+) -> Result<Vec<model::StoredNode>, AccessError> {
     let mut nodes: Vec<_> = db
         .access()
         .catalogue()
@@ -299,6 +299,15 @@ pub async fn access_map<M: SessionMode>(db: &mut Db<M>) -> Result<AccessMap, Acc
             node.occurrence_agentic = *agentic;
         }
     }
+    Ok(nodes)
+}
+
+/// Every stored node's effective MCP access, as the roots stand on `db` now.
+///
+/// Two reads on one session: a pooled session sees each at its own instant, a transactional one
+/// sees both at one. The MCP snapshot resolves inside its own transaction for that reason.
+pub async fn access_map<M: SessionMode>(db: &mut Db<M>) -> Result<AccessMap, AccessError> {
+    let nodes = stored_nodes(db).await?;
     let roots = db.access().roots().await?;
     Ok(AccessMap::resolve(&nodes, &roots))
 }

@@ -28,6 +28,8 @@ from arlesh import _native
 from arlesh.backends import Backend, BoardRevision, NativeHandle, ServerStatus, SqliteBackend
 from arlesh.errors import InvalidRequest, from_native
 from arlesh.models import (
+    AgentAction,
+    AgentsOverview,
     BlockReason,
     CapacityState,
     Commitment,
@@ -70,6 +72,7 @@ from arlesh.models import (
     GestureSummary,
     Goal,
     Info,
+    IssuedPin,
     ItemLifecycle,
     MaterializedFlow,
     McpAccessCatalogue,
@@ -193,14 +196,35 @@ class Database(ABC):
         MCP roots it may see."""
 
     @abstractmethod
-    async def mcp_initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+    def mcp_open_session(self) -> str:
+        """Opens an MCP session and answers its id, which the client sends as ``Mcp-Session-Id``
+        with every later request. The session is unattached until it attaches as an agent."""
+
+    @abstractmethod
+    def mcp_has_session(self, session_id: str) -> bool:
+        """Whether ``session_id`` is a session this process opened and has not forgotten (a
+        restart forgets them all)."""
+
+    @abstractmethod
+    def mcp_close_session(self, session_id: str) -> bool:
+        """Forgets an MCP session. Answers whether there was one."""
+
+    @abstractmethod
+    async def mcp_initialize(
+        self, params: dict[str, Any], session_id: str | None = None
+    ) -> dict[str, Any]:
         """The answer to an ``initialize`` request with these ``params``, as the core's MCP
         endpoint gives it: ``{"result": {...}}`` (protocol version, capabilities, server info,
-        instructions) or ``{"error": {"code", "message", "data"}}``."""
+        instructions) or ``{"error": {"code", "message", "data"}}``. ``session_id`` is the MCP
+        session it is for: the instructions say whether it is attached."""
 
     @abstractmethod
     async def mcp_call(
-        self, name: str, arguments: dict[str, Any] | None, protocol_version: str | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any] | None,
+        protocol_version: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """Runs the MCP tool ``name`` as ``tools/call`` would, on this database's own
         connection, so a write is journaled under its client and counted as a change.
@@ -208,6 +232,9 @@ class Database(ABC):
         ``protocol_version`` is the client's own (its ``MCP-Protocol-Version``); a client older
         than the first version whose results carry ``resultType``, or naming none, is answered
         without it, as the connected endpoint does.
+
+        ``session_id`` is the MCP session the call is made over: an unattached one may call only
+        the attach tool, and an attached one sees only its agent's Claim.
 
         Answers ``{"result": {...}}`` — a tool's failure is a result with ``isError`` — or
         ``{"error": {"code", "message", "data"}}`` for a protocol error such as an unknown tool.
@@ -762,6 +789,22 @@ class Database(ABC):
         """Stops one node being an MCP root."""
 
     @abstractmethod
+    async def list_agents(self) -> AgentsOverview:
+        """Every Agent and account, with where each Claim stands and why an agent is at capacity."""
+
+    @abstractmethod
+    async def issue_agent_pin(self) -> IssuedPin:
+        """A one-time PIN to give an agent, so it can attach."""
+
+    @abstractmethod
+    async def apply_agent_action(self, id: int, action: AgentAction) -> None:
+        """Changes an Agent by hand: pauses, resumes or releases its Claim, locks it, removes it."""
+
+    @abstractmethod
+    async def set_agent_account_locked(self, label: str, locked: bool) -> None:
+        """Locks or unlocks a whole account by hand."""
+
+    @abstractmethod
     async def agent_capacity(self) -> CapacityState:
         """The agent capacity lock, as every open of this file in the process shares it."""
 
@@ -912,19 +955,40 @@ class Arlesh(Database):
             raise from_native(error) from None
         return instructions
 
-    async def mcp_initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+    def mcp_open_session(self) -> str:
         try:
-            raw = await self._mcp_native().mcp_initialize(json.dumps(params))
+            session: str = self._mcp_native().mcp_open_session()
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        return session
+
+    def mcp_has_session(self, session_id: str) -> bool:
+        return bool(self._mcp_native().mcp_has_session(session_id))
+
+    def mcp_close_session(self, session_id: str) -> bool:
+        return bool(self._mcp_native().mcp_close_session(session_id))
+
+    async def mcp_initialize(
+        self, params: dict[str, Any], session_id: str | None = None
+    ) -> dict[str, Any]:
+        try:
+            raw = await self._mcp_native().mcp_initialize(json.dumps(params), session_id)
         except _native.NativeError as error:
             raise from_native(error) from None
         answer: dict[str, Any] = json.loads(raw)
         return answer
 
     async def mcp_call(
-        self, name: str, arguments: dict[str, Any] | None, protocol_version: str | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any] | None,
+        protocol_version: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         try:
-            raw = await self._mcp_native().mcp_call(name, json.dumps(arguments), protocol_version)
+            raw = await self._mcp_native().mcp_call(
+                name, json.dumps(arguments), protocol_version, session_id
+            )
         except _native.NativeError as error:
             raise from_native(error) from None
         answer: dict[str, Any] = json.loads(raw)
@@ -1441,6 +1505,18 @@ class Arlesh(Database):
     async def remove_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
         await self._call(_NOTHING, "remove_mcp_root", node_kind=node_kind, node_id=node_id)
 
+    async def list_agents(self) -> AgentsOverview:
+        return await self._call(_AGENTS, "list_agents")
+
+    async def issue_agent_pin(self) -> IssuedPin:
+        return await self._call(_PIN, "issue_agent_pin")
+
+    async def apply_agent_action(self, id: int, action: AgentAction) -> None:
+        await self._call(_NOTHING, "apply_agent_action", id=id, action=action)
+
+    async def set_agent_account_locked(self, label: str, locked: bool) -> None:
+        await self._call(_NOTHING, "set_agent_account_locked", label=label, locked=locked)
+
     async def agent_capacity(self) -> CapacityState:
         return await self._call(_CAPACITY, "agent_capacity")
 
@@ -1538,6 +1614,8 @@ _BLOCK_REASONS: TypeAdapter[list[BlockReason]] = TypeAdapter(list[BlockReason])
 _ACCESS_CATALOGUE: TypeAdapter[McpAccessCatalogue] = TypeAdapter(McpAccessCatalogue)
 _EFFECTIVE_ACCESS: TypeAdapter[list[EffectiveAccess]] = TypeAdapter(list[EffectiveAccess])
 _CAPACITY: TypeAdapter[CapacityState] = TypeAdapter(CapacityState)
+_AGENTS: TypeAdapter[AgentsOverview] = TypeAdapter(AgentsOverview)
+_PIN: TypeAdapter[IssuedPin] = TypeAdapter(IssuedPin)
 _SUMMARY_OR_NONE: TypeAdapter[GestureSummary | None] = TypeAdapter(GestureSummary | None)
 _UNDO_STATUS = TypeAdapter(UndoStatus)
 _ANSWERS: TypeAdapter[list[Any]] = TypeAdapter(list[Any])

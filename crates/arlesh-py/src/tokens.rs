@@ -64,6 +64,16 @@ enum Request {
     PairingApprove { pin: String, name: String },
     /// Deletes a request; answers whether there was one.
     PairingDelete { id_sha256: String },
+    /// Issues the connect token, replacing the old one, at `now`; answers the token, once.
+    ConnectIssue { now: String },
+    /// Whether `token` is the connect token; a use is recorded at `now`.
+    ConnectCheck { token: String, now: String },
+    /// When the connect token was issued and last used, or `null` for none.
+    ConnectInfo,
+    /// Removes the connect token; answers whether there was one.
+    ConnectRevoke,
+    /// Whether `token` is the token of an Agent that still exists.
+    AgentTokenKnown { token: String },
 }
 
 /// Runs one token call on the database at `path`, waiting for it.
@@ -165,6 +175,37 @@ async fn dispatch(factory: &SessionFactory, request: Request) -> Result<Value, W
             .approve(&pin, &name)
             .await
             .map_err(WireError::from_error)?),
+        Request::ConnectIssue { now } => json!(arlesh_core::agents::service::issue_connect_token(
+            &mut db,
+            parse_time(&now)?
+        )
+        .await
+        .map_err(WireError::from_error)?),
+        Request::ConnectCheck { token, now } => {
+            json!(arlesh_core::agents::service::connect_token_is_valid(
+                &mut db,
+                &token,
+                parse_time(&now)?
+            )
+            .await
+            .map_err(WireError::from_error)?)
+        }
+        Request::ConnectInfo => json!(db
+            .agents()
+            .connect_token_info()
+            .await
+            .map_err(WireError::from_error)?),
+        Request::AgentTokenKnown { token } => json!(db
+            .agents()
+            .by_token(&arlesh_core::agents::secret::digest(&token))
+            .await
+            .map_err(WireError::from_error)?
+            .is_some()),
+        Request::ConnectRevoke => json!(db
+            .agents()
+            .clear_connect_token()
+            .await
+            .map_err(WireError::from_error)?),
         Request::PairingDelete { id_sha256 } => json!(db
             .pairing_pins()
             .delete(&id_sha256)
@@ -173,4 +214,10 @@ async fn dispatch(factory: &SessionFactory, request: Request) -> Result<Value, W
     };
     db.commit().await.map_err(WireError::from_error)?;
     Ok(answer)
+}
+
+/// An ISO 8601 local time as the caller spells it.
+fn parse_time(text: &str) -> Result<chrono::NaiveDateTime, WireError> {
+    chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S")
+        .map_err(|_| WireError::invalid_request(format!("{text:?} is not a local ISO 8601 time")))
 }

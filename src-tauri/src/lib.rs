@@ -13,8 +13,8 @@ pub mod windows;
 // before the workspace split, so `crate::tasks` in a command and `arlesh_lib::tasks` in an
 // integration test still name the same thing.
 pub use arlesh_core::{
-    access, block_reasons, board, capacity, database, domains, duplicate, error, filters, flows,
-    infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
+    access, agents, block_reasons, board, capacity, database, domains, duplicate, error, filters,
+    flows, infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
 };
 
 use tauri::Manager;
@@ -104,6 +104,10 @@ pub fn run() {
             commands::mcp_endpoint::mcp_endpoint_status,
             commands::mcp_endpoint::restart_mcp_endpoint,
             commands::mcp_endpoint::set_mcp_port,
+            commands::agents::list_agents,
+            commands::agents::issue_agent_pin,
+            commands::agents::apply_agent_action,
+            commands::agents::set_agent_account_locked,
             commands::capacity::agent_capacity,
             commands::capacity::set_agent_capacity,
             commands::block_reasons::list_all_block_reasons,
@@ -345,6 +349,9 @@ fn setup_client(
         .map_err(|error| format!("{error:?}"))?,
     );
     app.manage(backend::AppBackend::shared(backend.clone()));
+    // The app serves no MCP in Client mode, but agents on this machine still get their PIN from
+    // it: the door forwards to the server with this device's token.
+    commands::agents::serve_pin_door(app.handle(), app_dir);
     if url.is_empty() {
         // First run of a build with no Standalone mode: no server chosen yet, so nothing to follow.
         return Ok(backend);

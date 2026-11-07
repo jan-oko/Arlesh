@@ -7,6 +7,7 @@
 //! hosts over it, and it depends on neither — in particular not on Tauri, which CI checks.
 
 pub mod access;
+pub mod agents;
 pub mod block_reasons;
 pub mod board;
 pub mod capacity;

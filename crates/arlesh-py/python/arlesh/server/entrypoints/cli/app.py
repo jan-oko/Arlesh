@@ -11,6 +11,8 @@
     arlesh-server token list --db ~/arlesh.db
     arlesh-server token revoke phone --db ~/arlesh.db
 
+    arlesh-server connect-token issue --db ~/arlesh.db  # the token every MCP session connects with
+
     arlesh-server pin list --db ~/arlesh.db             # devices showing a PIN, waiting
     arlesh-server pin approve 123456 --name phone --db ~/arlesh.db
     ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
@@ -37,6 +39,7 @@ from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
@@ -51,6 +54,10 @@ app = typer.Typer(
 )
 token_app = typer.Typer(help="Manage the bearer tokens, one per client.", no_args_is_help=True)
 app.add_typer(token_app, name="token")
+connect_app = typer.Typer(
+    help="The connect token every MCP session connects with.", no_args_is_help=True
+)
+app.add_typer(connect_app, name="connect-token")
 pin_app = typer.Typer(
     help="Pair devices: list and approve the PINs they show.", no_args_is_help=True
 )
@@ -108,6 +115,7 @@ def serve(
             board=board,
             tokens=tokens,
             pairs=DatabasePairingStore(path),
+            connect=ConnectTokens(path),
             version=version("arlesh"),
         ),
         config.server,
@@ -141,6 +149,38 @@ def revoke_token(
         _tokens(db).revoke(client)
     except UnknownClient as refusal:
         _fail(refusal)
+
+
+@connect_app.command("issue")
+def issue_connect_token(db: Db = None) -> None:
+    """Issues the connect token and prints it. It replaces the old one, which stops working at
+    once, and is shown this once. Put it in the MCP configuration's Authorization header
+    (`Bearer <token>`); agents then attach with a PIN."""
+    path = _config(database={"path": db}).database.path
+    prepare(path)
+    typer.echo(ConnectTokens(path).issue())
+
+
+@connect_app.command("info")
+def connect_token_info(db: Db = None) -> None:
+    """When the connect token was issued and last used."""
+    path = _config(database={"path": db}).database.path
+    prepare(path)
+    info = ConnectTokens(path).info()
+    if info is None:
+        typer.echo(f"{PROGRAM}: no connect token: run `{PROGRAM} connect-token issue`", err=True)
+        raise typer.Exit(1)
+    used = f"{info.last_used:%Y-%m-%d %H:%M}" if info.last_used else "never"
+    typer.echo(f"issued {info.created:%Y-%m-%d %H:%M}\tlast used {used}")
+
+
+@connect_app.command("revoke")
+def revoke_connect_token(db: Db = None) -> None:
+    """Removes the connect token: no session can connect until a new one is issued."""
+    path = _config(database={"path": db}).database.path
+    prepare(path)
+    if not ConnectTokens(path).revoke():
+        _fail(RuntimeError("there is no connect token"))
 
 
 @pin_app.command("list")

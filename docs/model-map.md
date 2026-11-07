@@ -55,7 +55,8 @@ never stored.
 | **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
 | **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
 | **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
-| **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
+| **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. | `rs:agents/rules/usage.rs::cause` |
+| **Capacity block** | capacity lock, Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and either the global lock is on or it lies inside the active Claim of an Agent at capacity. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
 | **Habit iteration** | status of its occurrences, compound status, verdicts of its Commitment items, releases of its wait items, clock and miss policy, now | Resolved when every template occurrence is settled: done (a compound one by its derived status), a Commitment item's given a verdict, a wait item's released. Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
@@ -326,7 +327,7 @@ How the presets read them:
 
 ### Derived blocks
 - **Is:** blocks no one writes:
-  - the agent capacity lock, on every Agentic Task not yet Done;
+  - the agent capacity lock, on every Agentic Task not yet Done, and an Agent at capacity, on the Agentic Tasks of its Claim;
   - a Habit's cooldown;
   - a compound Task whose open sub-items are all blocked.
   
@@ -384,15 +385,25 @@ How the presets read them:
 - **Why:** a clean, bounded context for an agent, on the same truth you see.
 - **Without:** agents read everything, or a separate copy that disagrees.
 - **Lives:**
-  - `rs:mcp/` (snapshot, tasks, waits, `ids.rs`, `access.rs`, `capacity`) and `rs:access/` (`AccessMap`).
+  - `rs:mcp/` (snapshot, tasks, waits, agents, `ids.rs`, `access.rs`, `capacity`) and `rs:access/` (`AccessMap`).
   - The roots are stored in `mcp_roots`.
 - **Spec:** [MCP Server](spec/mcp-server.md).
+
+### Agents and Claims
+- **Is:** the identity behind an MCP session.
+  - A session starts unattached and sees nothing; a one-time PIN (or its agent token) makes it an **Agent**, bound for the connection.
+  - An Agent holds at most one **Claim**: a subtree inside your roots that is its whole view. One active Claim per node; a paused Claim frees the subtree and reads only.
+  - Agents declare an **Account**; usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset. Derived, so it lifts by itself.
+- **Why:** several agents can work one board without overlapping, each in a bounded context, and one agent hitting its plan limit blocks only its own work.
+- **Without:** every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one.
+- **Lives:** `rs:agents/` (`rules/` for claims, usage, PINs; `service.rs`), `rs:mcp/agents.rs` and `session.rs`, the `agents` tables (migration 0101, not journaled).
+- **Spec:** [Agents](spec/agents.md), [ADR 0018](adr/0018-agents-claims-and-account-capacity.md).
 
 ### The server
 - **Is:** `arlesh-server`, the board over HTTP. It is the first step toward multi-device, where the app becomes a client of it.
   - It runs the core through the Python bindings, and adds no rules of its own.
   - Every request carries a bearer token, and the token names the client the journal records.
-  - It serves the MCP too, at `/mcp`, behind the same token.
+  - It serves the MCP too, at `/mcp`, behind its own low-privilege connect token (device tokens do not work there).
   - It holds the database while it runs, as the app does, so there is one writer per database: it will not start while the app or another server holds it, unless forced.
 - **Why:** one copy of the board, reachable from more than one device, with one writer.
 - **Without:** the board lives only inside the running app on one machine.
