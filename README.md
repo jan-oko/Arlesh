@@ -120,12 +120,30 @@ Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an M
 `npm run box -- run <branch> [<target>]` builds a branch's worktree (only when it changed) and launches it
 beside your real app, on this machine (`desktop`) or on an Android phone registered with
 `npm run box -- devices add <name> --os android --host <host[:port]>`. It needs [uv](https://docs.astral.sh/uv/);
-a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`).
+a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`),
+and each worktree gets its own `node_modules` via `npm ci`, redone when its `package-lock.json` changes.
 For an Android phone, a clean pushed tree whose commit already has a successful `bundles.yml` box
 run installs that CI build instead of compiling (needs an authenticated `gh`); `--local` forces a
 local build and `--ci` triggers the CI build and waits for it. Run `npm run box -- keystore init`
-once so CI and local builds share a signing key and update one another (otherwise reinstall with
-`--reinstall`).
+once before the first Android build: it makes the signing key, keeps its random password in
+`~/.config/arlesh/box.env` as `ARLESH_BOX_KEYSTORE_PASSWORD`, and sets the repo secrets, so CI and
+local builds share a key and update one another (otherwise reinstall with `--reinstall`). An
+older setup that kept the password in a file beside the keystore: `npm run box -- keystore migrate`
+once. `run` fast-forwards a clean worktree that is behind `origin/<branch>` (`--stale-ok`
+builds a dirty or diverged one anyway), and a worktree folder name (`qa-2026-11-round`) works for its
+branch. A phone is found among already-connected adb transports, then by `adb mdns`/`avahi-browse`;
+`devices add --serial <hardware serial>` matches a tailnet-named phone by serial, and `--ssh
+<host>[:port]` (Termux sshd) installs over `scp` + `termux-open` when adb cannot reach it.
+`npm run box -- list` shows every open PR's branch with its worktree, builds, installs and server (needs
+an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune` prints which worktrees
+without an open PR it would remove (never `dev`, `master`, the current one, or any with uncommitted or
+unpushed work) and asks before removing them with their test apps (`-y` skips the question, `--dry-run`
+only prints); a local branch is deleted only
+once it is merged, and remote branches never.
+A branch's databases are seeded from the production server, not the stale local copy: run
+`npm run box -- seed set <server url>` once (it reads the server's `ARLESH_BACKUP_TOKEN` from stdin
+or a prompt), `--local-seed` falls back to the local copy, and `npm run box -- reseed <branch>`
+swaps a branch's databases for a fresh snapshot (the old ones stay as `.prev`).
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack

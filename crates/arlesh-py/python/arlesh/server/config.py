@@ -6,7 +6,10 @@ Nested settings take ``__`` in their variable: ``ARLESH_DATABASE__PATH``,
 The database can instead be named by a URL, as a container expects: ``ARLESH_DATABASE_URL``
 (``sqlite:///relative.db`` or ``sqlite:////absolute/arlesh.db``), or ``ARLESH_DATABASE_URL_FILE``,
 a file holding the URL, for a secret mounted as a file. ``--db`` and ``ARLESH_DATABASE__PATH``
-are the shorthand and win over both. SQLite is the only scheme for now.
+are the shorthand and win over both. An empty variable counts as unset, so a container can blank the
+image's default ``ARLESH_DATABASE_URL`` to use the file. SQLite is the only scheme for now.
+
+``ARLESH_BACKUP_TOKEN`` switches on ``GET /backup`` (a database snapshot, for the administrator).
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
@@ -41,7 +44,13 @@ class Config(BaseSettings):
     database_url_file: Path | None = None
     """A file holding the database URL: ``ARLESH_DATABASE_URL_FILE``."""
 
-    model_config = SettingsConfigDict(env_prefix="ARLESH_", env_nested_delimiter="__")
+    backup_token: SecretStr | None = None
+    """``ARLESH_BACKUP_TOKEN``: the administrator's secret for ``GET /backup``. Unset, there is no
+    such route. Separate from the device tokens, which do not grant it."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="ARLESH_", env_nested_delimiter="__", env_ignore_empty=True
+    )
 
     @model_validator(mode="before")
     @classmethod
