@@ -89,10 +89,5 @@
   "quickDependencyLoadFailed": "Couldn't read the dependencies to search: {{message}}",
   "quickDependencyFailed": "Couldn't make “{{title}}” depend on “{{prerequisite}}”: {{message}}",
   "altEnterAgenticNotDoing": "Started is not an Agentic status — Alt+Enter hands a task you are Doing back to its agent.",
-  "startedInProgress": "“{{title}}” is In Progress.",
-  "startedDoing": "“{{title}}” is Doing.",
-  "startNotATask": "Alt+S starts a task — this is not one.",
-  "startBlocked": "“{{title}}” is blocked, so it cannot be started.",
-  "startUnsettled": "“{{title}}” is still being created — try again in a moment.",
   "pendingWritesUnreachable": "The server can't be reached. Your pending changes were not saved."
 }

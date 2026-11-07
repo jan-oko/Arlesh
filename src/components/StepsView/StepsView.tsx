@@ -11,7 +11,6 @@ import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useFoldReading } from "@/hooks/use-fold-reading";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useStatusCycle } from "@/hooks/use-status-cycle";
-import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -140,7 +139,6 @@ export default function StepsView() {
   const { subtreeRootId } = useSubtreeNav(tree);
   // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
   const searchableNodes = useSearchableNodes(tree);
-  const startFromSearch = useSearchStart(tree);
 
   const [selection, setSelection] = useState<StepSelection>(null);
   const [page, setPage] = useState(0);
@@ -682,7 +680,6 @@ export default function StepsView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
-          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); setSelection(null); setPage(0); }}
           onClose={closeSearch}
         />
