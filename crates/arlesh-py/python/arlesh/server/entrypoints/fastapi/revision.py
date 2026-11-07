@@ -36,6 +36,11 @@ compress, and an event must reach the device as it happens."""
 GZIP_MINIMUM_BYTES = 1024
 """Answers smaller than this are sent as they are: compressing them costs more than it saves."""
 
+GZIP_LEVEL = 3
+"""starlette's default is 9, which added about 115 ms to the 1.7 MB board; level 3 adds about 35 ms
+for a body 15% larger (0.28 MB against 0.24). gzip runs on the event loop, so those ms stall every
+request."""
+
 READS = frozenset({"GET", "HEAD"})
 
 
@@ -77,7 +82,9 @@ class GzipExceptEventsMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
-        self._compressed = GZipMiddleware(app, minimum_size=GZIP_MINIMUM_BYTES)
+        self._compressed = GZipMiddleware(
+            app, minimum_size=GZIP_MINIMUM_BYTES, compresslevel=GZIP_LEVEL
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and scope["path"].endswith(EVENTS_PATH):
