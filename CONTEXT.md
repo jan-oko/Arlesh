@@ -86,6 +86,18 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
 
+**Agent** — An AI session that attached to the MCP with a one-time PIN (or its agent token): a name, an **Account** label, a session id and at most one **Claim**. Kept in the database (`agents`) and not journaled, so Ctrl+Z never revokes one. Listed in Settings → Agents, apart from the Devices list. Not a device and not a person. An unattached MCP session is not an Agent: it may call only the attach tool. The MCP session is bound to its Agent, so the subagents sharing the connection are covered by one attach. See ADR 0018.
+
+**Claim** — The subtree an Agent holds, and its whole view: it reads and writes only inside it, as if it were its own MCP root, within the user's MCP roots and with private nodes hidden. **Active**: held; no other active Claim may cover any node of it, ancestors and descendants included. **Paused**: set aside by the agent or by hand so another agent may claim the subtree; the Agent keeps its token and reads the subtree but writes nothing, and resuming is refused while an active Claim overlaps. A Claim lasts until released. Of two Claims that come to overlap (a node was moved), the older keeps its place and the younger is **shadowed**; a Claim whose root is gone or no longer inside the user's roots is **unreachable**. Either sees nothing.
+
+**Account** — The plan whose usage limits a group of Agents share, named by a label the Agent declares (not authenticated against Claude). Usage is kept per account as the last report of each limit window. An Agent is **at capacity** while any window of its account sits at 100% before its reset, or while it or its account is locked by hand; derived from the reports and now, so it lifts at the reset by itself. At capacity, the Agent's claimed Agentic Tasks read blocked. The global capacity lock stays as a master switch.
+
+**Connect token** — The one low-privilege bearer token of a server (`connect_tokens`, issued with `arlesh-server connect-token`) that admits an MCP session to `/mcp` and lets it call the attach tool, nothing else. Device tokens do not work on `/mcp`.
+
+**PIN (agent)** — A one-time, eight-digit code, valid five minutes, that a signed-in client asks for (Settings → Agents, or the desktop's loopback door) and hands to an agent so it can **attach**. Distinct from the six-digit pairing PIN of a device.
+
+**Attach** — The one thing an unattached MCP session may do: `arlesh_agents.attach` with a PIN (a new Agent) or an agent token (the same Agent again), optionally claiming a subtree. Binds the session to the Agent. The binding lives in memory, so a restarted server asks the agent to attach again with its token.
+
 **MCP root** — A stored node whose subtree the MCP endpoint may see. The MCP reads everything inside a root and nothing outside every root; with no roots it sees nothing. Inside a root an **Agentic** Task is writable too and everything else is read-only; private nodes stay hidden throughout. Stored on the board (`mcp_roots`), journaled, and set on the settings modal's *Agents* page (called *MCP access* until 2026-10-01).
 
 **Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.

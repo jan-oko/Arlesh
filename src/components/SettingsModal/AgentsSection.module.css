@@ -1,0 +1,60 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--node-border);
+  border-radius: 4px;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.name {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.badge,
+.meta {
+  color: var(--text-secondary);
+  font-size: var(--text-xs, var(--text-sm));
+}
+
+.capacity {
+  color: var(--agent-capacity);
+  font-size: var(--text-xs, var(--text-sm));
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pin {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-lg, 1.25em);
+  letter-spacing: 0.15em;
+  color: var(--text-primary);
+}
+
+.pinRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

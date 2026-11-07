@@ -177,9 +177,22 @@ resolver in `src-tauri/src/access/`:
   sections, filtered like every derived row.
 
 
+**Sessions and Claims** (2026-11-07, Task `7a0`; see [Agents](agents.md)). The roots above are the
+**user's**. An MCP session no longer sees them directly: it starts **unattached**, seeing nothing and
+able to call only `arlesh_agents.attach`; every other tool refuses it with `not_permitted`. Once it
+attaches (a one-time PIN, or the agent token an earlier attach answered) the session is bound to an
+**Agent**, and its view is the Agent's **Claim**: a subtree inside the user's roots, in place of
+them. Every rule in this section then applies with the Claim as the one root, so a node outside it is
+omitted from bulk reads and refused by name, and the instructions the server returns on `initialize`
+name the Agent and its Claim instead of the roots (or, unattached, say how to attach). A paused
+Claim reads and writes nothing new. The binding lasts as long as the session and is lost when the
+server restarts; the agent attaches again with its token. In-process callers and tests that build a
+bare handler still see the user's roots.
+
+
 ## Tools
 
-Nine tools rather than one per backend command, because an MCP client pays context for every tool
+Ten tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -192,6 +205,7 @@ definition it loads.
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
+| `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `report_usage(windows)` — this session's own identity, Claim and account usage. See [Agents](agents.md) |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
 Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
@@ -704,6 +718,16 @@ block. Neither the lifecycles nor `BoardFilter` change.
 an agent that already holds work may move it along — into In Progress included — while the lock is
 on. Only the app refuses to start a blocked Task, as it does for any block.
 
+**Per agent and per account** (2026-11-07, Task `7a0`). The lock above is the **master switch**: on, it
+blocks every Agentic Task. Beneath it, an Agent that is **at capacity** blocks the Agentic Tasks
+inside its active Claim, and only those. An Agent is at capacity while it is locked by hand, its
+account is locked by hand, or a limit window of its account sits at 100% before its reset; the
+windows are reported with `arlesh_agents.report_usage` and kept per account. It is derived from the
+reports and `now` on every load, so it lifts at the reset by itself. The reason is the same derived
+one ("Agents at capacity", `derived: "agent_capacity"`). The per-agent and per-account locks are
+set in Settings → Agents, and stored in the database, not in `agent-capacity.json`. See
+[Agents](agents.md).
+
 **Where it lives.** A file in the app's data directory, `agent-capacity.json`, beside the port's
 `mcp.json` and for the same reason: it is operational state about the agents working this board,
 not board data. A row would be journaled, and Ctrl+Z would flip the lock; so there is no
@@ -762,7 +786,7 @@ so the row is live; the lock's own state arrives with `agent-capacity-changed` a
 ## What writes
 
 `arlesh_tasks`, `arlesh_waits` and `arlesh_infos` write to the board, and
-`arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; every other tool is annotated
+`arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; `arlesh_agents` writes the Agent tables (attach, Claim, usage), which are not journaled either; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
@@ -787,8 +811,10 @@ setting a planned Task aside; `needs_time_scope` is raised only by writes this s
 expose.)
 
 `not_permitted` is the MCP's own: the request names a node the MCP may not touch — outside every
-root, private, or (for a write) not an Agentic Task — or one that does not exist, which it
-deliberately cannot tell apart. The fix is the user's, on the *Agents* page; an agent that
+root (or, for an attached session, outside its Claim), private, or (for a write) not an Agentic Task — or one that does not exist, which it
+deliberately cannot tell apart. It is also what a session that has not attached is told by every tool
+but the attach tool, what a wrong or lapsed PIN or token gets, and what a Claim that is outside the
+roots or overlaps another agent's gets (the overlap names the holder). The fix is the user's, on the *Agents* page; an agent that
 gets one should say what it needs rather than retry. The app's own commands never raise it.
 
 `ambiguous_id` and `status_changed` are the MCP's too (see *Short ids* and *Writing tasks*): the
