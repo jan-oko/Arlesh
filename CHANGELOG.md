@@ -10,6 +10,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.
+
 - **The server ships as a container image and as wheels.** Every release now publishes `ghcr.io/jan-oko/arlesh-server` (linux/amd64 and linux/arm64, running as a non-root user with its database on a `/data` volume) and Python wheels for linux x86_64 and aarch64, beside the desktop and Android builds. See Running the server in the Client mode spec for a `docker run` and a compose file.
 
 - **`GET /backup` on the server.** Set `ARLESH_BACKUP_TOKEN` in the server's environment (a
