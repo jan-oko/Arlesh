@@ -36,9 +36,10 @@ compress, and an event must reach the device as it happens."""
 GZIP_MINIMUM_BYTES = 1024
 """Answers smaller than this are sent as they are: compressing them costs more than it saves."""
 
-GZIP_LEVEL = 5
-"""starlette's default is 9, which took 94 ms for the 1.7 MB board where level 6 took 49 ms and
-saved a few percent of size. gzip runs on the event loop, so those ms stall every request."""
+GZIP_LEVEL = 3
+"""starlette's default is 9, which added about 115 ms to the 1.7 MB board; level 3 adds about 35 ms
+for a body 15% larger (0.28 MB against 0.24). gzip runs on the event loop, so those ms stall every
+request."""
 
 READS = frozenset({"GET", "HEAD"})
 
