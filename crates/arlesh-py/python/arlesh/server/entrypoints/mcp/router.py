@@ -1,21 +1,24 @@
 """``/mcp`` and ``/events/expectations``: the MCP entrypoint, served from this process.
 
-``/mcp`` is Streamable HTTP without sessions: a POST carries one JSON-RPC message (or a batch)
-and is answered with plain JSON, a message that wants no answer with ``202``. There is no stream
-for the server to speak first on, so ``GET`` answers ``405``, as ``DELETE`` does (nothing to end),
-and no session id is issued or required. The bearer token stands where the loopback-only endpoint
-had its ``Host`` and ``Origin`` rules.
+``/mcp`` is Streamable HTTP with sessions: ``initialize`` opens one and answers its id in
+``Mcp-Session-Id``, which the client sends with every later request; a POST carries one JSON-RPC
+message and is answered with plain JSON, a message that wants no answer with ``202``. A request
+with no session id is ``400``, one whose session this process does not know (it restarted, or
+forgot it) is ``404`` and the client starts a new session, as the protocol says. There is no stream
+for the server to speak first on, so ``GET`` answers ``405``; ``DELETE`` ends a session.
 
-The protocol is :mod:`arlesh.server.entrypoints.mcp.jsonrpc`'s and the tools are the core's, run
-on the write-open of the client the token names, so an agent's writes carry that client in the
-undo journal.
+A session is **unattached** until its agent attaches with a one-time PIN, and then it is bound to
+that agent: it sees only the agent's Claim. The connect token stands where the loopback-only
+endpoint had its ``Host`` and ``Origin`` rules, and admits a session to attach and nothing more.
+
+The protocol is :mod:`arlesh.server.entrypoints.mcp.jsonrpc`'s and the tools are the core's, run on
+the write-open of one client for all agents (:data:`MCP_CLIENT`).
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from contextvars import ContextVar
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -27,6 +30,8 @@ from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.fastapi.shutdown import going_down
 from arlesh.server.entrypoints.mcp import jsonrpc
 
+SESSION_HEADER = "Mcp-Session-Id"
+
 SHUTDOWN_POLL_SECONDS = 0.5
 """How often a waiting long poll looks up to see whether the server is going down."""
 
@@ -36,15 +41,24 @@ _NO_STORE = {"Cache-Control": "no-store"}
 class McpRouter(APIRouter):
     """``POST /mcp``: JSON-RPC in, JSON out."""
 
-    def __init__(self, board: Board, client_context: ContextVar[str]) -> None:
-        super().__init__(include_in_schema=False)
+    def __init__(self, board: Board, client: str, **kwargs: Any) -> None:
+        super().__init__(include_in_schema=False, **kwargs)
         self._board = board
-        self._client_context = client_context
+        self._client = client
         self.post("")(self._post)
-        self.api_route("", methods=["GET", "DELETE"])(self._not_allowed)
+        self.delete("")(self._delete)
+        self.get("")(self._not_allowed)
 
     async def _not_allowed(self) -> Response:
-        return Response(status_code=405, headers={"Allow": "POST"})
+        return Response(status_code=405, headers={"Allow": "POST, DELETE"})
+
+    async def _delete(self, request: Request) -> Response:
+        """Ends a session."""
+        database = await self._board.writer(self._client)
+        session = request.headers.get(SESSION_HEADER)
+        if session is None or not database.mcp_close_session(session):
+            return Response(status_code=404)
+        return Response(status_code=204)
 
     async def _post(self, request: Request) -> Response:
         try:
@@ -52,32 +66,55 @@ class McpRouter(APIRouter):
         except ValueError:
             unreadable = jsonrpc.error_reply(None, jsonrpc.PARSE_ERROR, "the body is not JSON")
             return JSONResponse(unreadable, status_code=400)
-        database = await self._board.writer(self._client_context.get())
+        database = await self._board.writer(self._client)
         version = request.headers.get("mcp-protocol-version")
+        opening = _opens_a_session(body)
+        session = request.headers.get(SESSION_HEADER)
+        if opening:
+            session = database.mcp_open_session()
+        elif session is None:
+            missing = jsonrpc.error_reply(
+                None, jsonrpc.INVALID_REQUEST, f"{SESSION_HEADER} is required"
+            )
+            return JSONResponse(missing, status_code=400)
+        elif not database.mcp_has_session(session):
+            return Response(status_code=404)
+        headers = {SESSION_HEADER: session} if opening and session else None
         if isinstance(body, list):
-            return await _batch(database, body, version)
-        reply = await _guarded(database, body, version)
-        return Response(status_code=202) if reply is None else JSONResponse(reply)
+            return await _batch(database, body, version, session)
+        reply = await _guarded(database, body, version, session)
+        if reply is None:
+            return Response(status_code=202)
+        return JSONResponse(reply, headers=headers)
+
+
+def _opens_a_session(body: object) -> bool:
+    """Whether the request is the ``initialize`` that opens a session."""
+    return isinstance(body, dict) and body.get("method") == "initialize"
 
 
 async def _guarded(
-    database: arlesh.Database, message: object, version: str | None
+    database: arlesh.Database, message: object, version: str | None, session: str | None
 ) -> jsonrpc.JSON | None:
     """The answer to ``message``, with anything unexpected made a JSON-RPC internal error."""
     try:
-        return await jsonrpc.handle(database, message, version)
+        return await jsonrpc.handle(database, message, version, session)
     except Exception:
         logger.exception("An MCP request failed")
         request_id = message.get("id") if isinstance(message, dict) else None
         return jsonrpc.error_reply(request_id, jsonrpc.INTERNAL_ERROR, "internal error")
 
 
-async def _batch(database: arlesh.Database, messages: list[Any], version: str | None) -> Response:
+async def _batch(
+    database: arlesh.Database, messages: list[Any], version: str | None, session: str | None
+) -> Response:
     if not messages:
         empty = jsonrpc.error_reply(None, jsonrpc.INVALID_REQUEST, "an empty batch")
         return JSONResponse(empty, status_code=400)
     replies = [
-        reply for message in messages if (reply := await _guarded(database, message, version))
+        reply
+        for message in messages
+        if (reply := await _guarded(database, message, version, session))
     ]
     return JSONResponse(replies) if replies else Response(status_code=202)
 
@@ -85,8 +122,8 @@ async def _batch(database: arlesh.Database, messages: list[Any], version: str | 
 class ExpectationsRouter(APIRouter):
     """``GET /events/expectations``: the long poll over changes to the agents' waits."""
 
-    def __init__(self, board: Board) -> None:
-        super().__init__()
+    def __init__(self, board: Board, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self._board = board
         self.get("")(self._poll)
 

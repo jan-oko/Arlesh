@@ -7,6 +7,7 @@
 //! so a Rust type cannot change without its Python model changing with it.
 
 use arlesh_core::{
+    agents::model::{AgentAction, AgentsOverview, IssuedPin},
     access::model::{EffectiveAccess, McpAccessCatalogue, NodeTable},
     block_reasons::model::BlockReason,
     capacity::CapacityState,
@@ -181,6 +182,9 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<McpAccessCatalogue>(generator);
     add::<EffectiveAccess>(generator);
     add::<CapacityState>(generator);
+    add::<AgentsOverview>(generator);
+    add::<IssuedPin>(generator);
+    add::<AgentAction>(generator);
     add::<UndoStatus>(generator);
     add::<GestureSummary>(generator);
 }

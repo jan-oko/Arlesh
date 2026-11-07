@@ -36,7 +36,10 @@ def _reply(request_id: object, outcome: JSON) -> JSON:
 
 
 async def handle(
-    database: arlesh.Database, message: object, protocol_version: str | None = None
+    database: arlesh.Database,
+    message: object,
+    protocol_version: str | None = None,
+    session_id: str | None = None,
 ) -> JSON | None:
     """The answer to one JSON-RPC ``message``, or ``None`` when it wants none.
 
@@ -58,7 +61,9 @@ async def handle(
     if params is not None and not isinstance(params, dict):
         return error_reply(request_id, INVALID_PARAMS, "params must be an object")
     try:
-        return await _request(database, request_id, method, params or {}, protocol_version)
+        return await _request(
+            database, request_id, method, params or {}, protocol_version, session_id
+        )
     except arlesh.ArleshError as failure:
         logger.warning("The core refused an MCP request", method=method, kind=failure.KIND)
         return error_reply(request_id, INTERNAL_ERROR, failure.message)
@@ -70,20 +75,25 @@ async def _request(
     method: str,
     params: JSON,
     protocol_version: str | None,
+    session_id: str | None,
 ) -> JSON:
     if method == "initialize":
-        return _reply(request_id, await database.mcp_initialize(params))
+        return _reply(request_id, await database.mcp_initialize(params, session_id))
     if method == "ping":
         return _reply(request_id, {"result": {}})
     if method == "tools/list":
         return _reply(request_id, {"result": {"tools": database.mcp_tools()}})
     if method == "tools/call":
-        return await _call(database, request_id, params, protocol_version)
+        return await _call(database, request_id, params, protocol_version, session_id)
     return error_reply(request_id, METHOD_NOT_FOUND, f"method not found: {method}")
 
 
 async def _call(
-    database: arlesh.Database, request_id: object, params: JSON, protocol_version: str | None
+    database: arlesh.Database,
+    request_id: object,
+    params: JSON,
+    protocol_version: str | None,
+    session_id: str | None,
 ) -> JSON:
     name = params.get("name")
     arguments = params.get("arguments")
@@ -91,4 +101,6 @@ async def _call(
         return error_reply(request_id, INVALID_PARAMS, "name must be the tool's name")
     if arguments is not None and not isinstance(arguments, dict):
         return error_reply(request_id, INVALID_PARAMS, "arguments must be an object")
-    return _reply(request_id, await database.mcp_call(name, arguments, protocol_version))
+    return _reply(
+        request_id, await database.mcp_call(name, arguments, protocol_version, session_id)
+    )

@@ -49,6 +49,7 @@ class Agent:
     def __init__(self, base: str, token: str) -> None:
         self._base = base
         self._headers = {"Authorization": f"Bearer {token}", **MCP_HEADERS}
+        self.agent_token = ""
         self._next = 1
         initialised = self._post(
             {
@@ -62,8 +63,20 @@ class Agent:
                 },
             }
         )
-        assert "mcp-session-id" not in initialised.headers
+        self._headers["Mcp-Session-Id"] = initialised.headers["mcp-session-id"]
         self._post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def attach(self, pin: str, domain: int) -> None:
+        """Attaches the session as an agent claiming ``domain``, keeping its agent token."""
+        attached = self.call(
+            "arlesh_agents",
+            operation="attach",
+            pin=pin,
+            session_id="pytest-session",
+            name="agent-box",
+            subtree={"node_type": "domain", "node_id": str(domain)},
+        )
+        self.agent_token = attached["token"]
 
     def _post(self, message: dict[str, Any]) -> httpx.Response:
         response = httpx.post(f"{self._base}/mcp", json=message, headers=self._headers, timeout=30)
@@ -104,9 +117,10 @@ class Agent:
 
 
 @pytest.fixture
-def agent_board(live: str, tokens: DatabaseTokenStore, server_db: Path) -> dict[str, Any]:
-    """An agent's token, a Domain open to the MCP, and an agentic Task in it."""
-    token = tokens.add("agent-box")
+def agent_board(
+    live: str, tokens: DatabaseTokenStore, server_db: Path, connect_token: str
+) -> dict[str, Any]:
+    """An attached agent, a Domain open to the MCP and claimed, and an agentic Task in it."""
     admin = {"Authorization": f"Bearer {tokens.add('user')}"}
     domain = httpx.post(
         f"{live}/domains",
@@ -117,7 +131,10 @@ def agent_board(live: str, tokens: DatabaseTokenStore, server_db: Path) -> dict[
         connection.execute(
             "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)", (domain,)
         )
-    agent = Agent(live, token)
+    agent = Agent(live, connect_token)
+    pin = httpx.post(f"{live}/agents/pins", headers=admin).json()["pin"]
+    agent.attach(pin, domain)
+    token = connect_token
     task = agent.call(
         "arlesh_tasks",
         operation="create",
@@ -131,7 +148,10 @@ def agent_board(live: str, tokens: DatabaseTokenStore, server_db: Path) -> dict[
 def _poll(live: str, agent_board: dict[str, Any], query: str) -> dict[str, Any]:
     response = httpx.get(
         f"{live}/events/expectations?{query}",
-        headers={"Authorization": f"Bearer {agent_board['token']}"},
+        headers={
+            "Authorization": f"Bearer {agent_board['token']}",
+            "X-Arlesh-Agent-Token": agent_board["agent"].agent_token,
+        },
         timeout=60,
     )
     assert response.status_code == 200, response.text

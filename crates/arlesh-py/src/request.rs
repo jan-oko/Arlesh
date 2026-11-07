@@ -11,6 +11,7 @@
 use std::path::Path;
 
 use arlesh_core::{
+    agents::{self, model::AgentAction},
     access::{
         self,
         model::{McpAccessCatalogue, NodeKey, NodeTable},
@@ -713,6 +714,24 @@ pub(crate) enum Request {
     },
     /// The agent capacity lock as it stands.
     AgentCapacity,
+    /// Every Agent and account, with where each Claim stands and why an agent is at capacity.
+    ListAgents,
+    /// A one-time PIN to give an agent, so it can attach.
+    IssueAgentPin,
+    /// Changes an Agent by hand.
+    ApplyAgentAction {
+        /// The Agent.
+        id: i64,
+        /// What to do.
+        action: AgentAction,
+    },
+    /// Locks or unlocks a whole account by hand.
+    SetAgentAccountLocked {
+        /// The account's label.
+        label: String,
+        /// Whether the lock is on.
+        locked: bool,
+    },
     /// Deletes every node in `nodes`, all or nothing: the multi-node delete gesture.
     DeleteNodes {
         /// The nodes, in the order they are deleted.
@@ -780,6 +799,7 @@ impl Request {
                 | Self::McpAccessCatalogue
                 | Self::ListMcpAccess
                 | Self::AgentCapacity
+                | Self::ListAgents
                 | Self::UndoStatus
         )
     }
@@ -1727,6 +1747,35 @@ async fn dispatch(
             .await
         }
         Request::AgentCapacity => json(crate::shared::for_database(path).capacity.get().await),
+        Request::ListAgents => {
+            transaction(factory, async |db| {
+                agents::service::overview(db, now()).await.wired()
+            })
+            .await
+        }
+        Request::IssueAgentPin => {
+            transaction(factory, async |db| {
+                agents::service::issue_pin(db, now()).await.wired()
+            })
+            .await
+        }
+        Request::ApplyAgentAction { id, action } => {
+            transaction(factory, async |db| {
+                agents::service::act(db, agents::model::AgentId(id), action)
+                    .await
+                    .map(|_| ())
+                    .wired()
+            })
+            .await
+        }
+        Request::SetAgentAccountLocked { label, locked } => {
+            transaction(factory, async |db| {
+                agents::service::set_account_locked(db, &label, locked)
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::DeleteNodes { nodes } => {
             transaction(factory, async |db| {
                 nodes::gestures::delete_nodes(db, &nodes, now()).await

@@ -16,7 +16,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use arlesh_core::{
     capacity::AgentCapacity,
-    mcp::events::{ChangeFeed, EventStreams, WaitLogs},
+    mcp::{
+        events::{ChangeFeed, EventStreams, WaitLogs},
+        session::Sessions,
+    },
 };
 
 /// The board's revision: bumped once for every committed write, from any open of the file.
@@ -33,6 +36,9 @@ pub(crate) struct Shared {
     pub(crate) changes: Changes,
     /// What the long poll of `/events/expectations` answers from, beside the revision.
     pub(crate) logs: WaitLogs,
+    /// The MCP sessions of this file, by the id `/mcp` issued: each is bound to an Agent once it
+    /// attaches. In memory only, so a restart forgets them and the clients attach again.
+    pub(crate) sessions: Sessions,
 }
 
 impl Shared {
@@ -69,6 +75,7 @@ pub(crate) fn for_database(path: &Path) -> Arc<Shared> {
             writes: tokio::sync::Mutex::new(()),
             changes,
             logs: WaitLogs::default(),
+            sessions: Sessions::default(),
         })
     }))
 }

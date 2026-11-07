@@ -400,6 +400,14 @@ async fn dispatch(backend: &dyn Backend, request: Request) -> Result<Value, Wire
             json(backend.remove_mcp_root(node_kind, node_id).await?)
         }
         Request::AgentCapacity => json(backend.agent_capacity().await?),
+        Request::ListAgents => json(backend.list_agents().await?),
+        Request::IssueAgentPin => json(backend.issue_agent_pin().await?),
+        Request::ApplyAgentAction { id, action } => {
+            json(backend.apply_agent_action(id, action).await?)
+        }
+        Request::SetAgentAccountLocked { label, locked } => {
+            json(backend.set_agent_account_locked(label, locked).await?)
+        }
         Request::SetAgentCapacity { at_capacity } => {
             json(backend.set_agent_capacity(at_capacity).await?)
         }

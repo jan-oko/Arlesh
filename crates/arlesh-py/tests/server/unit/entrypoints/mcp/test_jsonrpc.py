@@ -33,7 +33,7 @@ async def test_a_tool_call_is_the_cores_answer_in_the_requests_envelope() -> Non
     )
 
     assert reply == {"jsonrpc": "2.0", "id": 5, "result": {"content": []}}
-    database.mcp_call.assert_awaited_once_with("arlesh_snapshot", {"a": 1}, None)
+    database.mcp_call.assert_awaited_once_with("arlesh_snapshot", {"a": 1}, None, None)
 
 
 async def test_a_call_with_no_arguments_passes_none() -> None:
@@ -43,7 +43,7 @@ async def test_a_call_with_no_arguments_passes_none() -> None:
         database, {"id": 1, "method": "tools/call", "params": {"name": "arlesh_snapshot"}}
     )
 
-    database.mcp_call.assert_awaited_once_with("arlesh_snapshot", None, None)
+    database.mcp_call.assert_awaited_once_with("arlesh_snapshot", None, None, None)
 
 
 @pytest.mark.parametrize(
@@ -107,4 +107,4 @@ async def test_the_clients_protocol_version_goes_to_the_core() -> None:
         database, {"id": 1, "method": "tools/call", "params": {"name": "t"}}, "2025-06-18"
     )
 
-    database.mcp_call.assert_awaited_once_with("t", None, "2025-06-18")
+    database.mcp_call.assert_awaited_once_with("t", None, "2025-06-18", None)

@@ -59,10 +59,12 @@ impl ArleshMcp {
     pub(super) fn admit(&self, tool: &str) -> Option<Result<CallToolResult, ErrorData>> {
         match &self.callers {
             Callers::Anyone => None,
-            Callers::Session(binding) => {
-                (tool != agents::TOOL && binding.agent().is_none())
-                    .then(|| result::failed(AgentError::NotAttached))
-            }
+            // An unknown tool is the router's own protocol error, as for any caller: the names of
+            // the tools are public.
+            Callers::Session(binding) => (tool != agents::TOOL
+                && self.tool_router.has_route(tool)
+                && binding.agent().is_none())
+            .then(|| result::failed(AgentError::NotAttached)),
         }
     }
 }
