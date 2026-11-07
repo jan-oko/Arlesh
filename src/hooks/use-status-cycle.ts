@@ -20,9 +20,11 @@ import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
 
 /** The `warnings` key that says why a status gesture wrote nothing. */
-const REFUSAL_MESSAGE: Record<StatusRefusal, "compoundStatusRefused" | "altEnterAgenticNotDoing"> = {
+const REFUSAL_MESSAGE: Record<StatusRefusal, "compoundStatusRefused" | "altEnterAgenticNotDoing" | "openSubItemsRefused" | "belowSubItemsRefused"> = {
   compound: "compoundStatusRefused",
   alt_enter_agentic_not_doing: "altEnterAgenticNotDoing",
+  open_sub_items: "openSubItemsRefused",
+  below_sub_items: "belowSubItemsRefused",
 };
 
 /** The `warnings` key that names a Task coming out of the Backlog, by the status that did it. */
@@ -74,7 +76,10 @@ interface StatusCycle {
  * A press is **shown at once** and sent through the window's lane (ADR 0012): the status it writes
  * is predicted by `utils/task-gestures.ts`, a pinned copy of `tasks::rules::gestures`, and the
  * status the board shows after the answer is the returned row's. A Compound Task's press, and
- * `Alt+Enter` on Agentic work that is not Doing, are refused here with their toast and write nothing.
+ * `Alt+Enter` on Agentic work that is not Doing, are refused here with their toast and write nothing;
+ * so are a press to Done over open sub-items and one that would lower a Task below what its
+ * sub-items make it read, which only the backend can tell (it reads them off the board) and answers
+ * as a refusal, rolled back with the same toast.
  *
  * Two rules travel with the gesture rather than with the caller, which is the whole point of it
  * living here. Marking an occurrence done while it still holds unfinished added children goes

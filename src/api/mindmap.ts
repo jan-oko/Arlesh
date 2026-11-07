@@ -52,6 +52,9 @@ export interface NodeFacts {
   open_question?: RowId;
   /** Whether a Commitment's Verdict Window ran out before anything was recorded. */
   expired?: boolean;
+  /** Whether a Task reads In Progress (Doing) only from its sub-items rather than a status held by
+   * hand: a Compound Task, or a parent raised to it. */
+  derived_in_progress?: boolean;
   /** Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
    * Achieved, a wait no longer pending. */
   met?: boolean;

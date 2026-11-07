@@ -239,7 +239,7 @@ pub fn derive_board(
     // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
     // compound Task's derived status, since each reads the other (see `tasks::compound`):
     // from here on a compound Task's `status` is the one its sub-items give it.
-    let waits = settle_in(
+    let settled_board = settle_in(
         &waits_sources,
         &stored.ancestry,
         now,
@@ -253,8 +253,9 @@ pub fn derive_board(
             instants: &std::collections::HashMap::new(),
             exit: OccurrenceExit::Honoured,
         },
-    )?
-    .waits;
+    )?;
+    let derived_in_progress = settled_board.derived_in_progress;
+    let waits = settled_board.waits;
     tasks.extend(waits.tasks);
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);
@@ -364,6 +365,7 @@ pub fn derive_board(
         facts: std::collections::HashMap::new(),
         agent_activity: None,
         plans,
+        derived_in_progress,
     })
 }
 

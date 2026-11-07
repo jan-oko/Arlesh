@@ -505,6 +505,12 @@ pub fn derive(
     for (key, question) in open_questions(load, &lifecycles) {
         facts.entry(key).or_default().open_question = Some(question);
     }
+    for id in &load.derived_in_progress {
+        facts
+            .entry(format!("task-{id}"))
+            .or_default()
+            .derived_in_progress = true;
+    }
     let expired: HashSet<&NodeId> = load
         .commitments
         .iter()

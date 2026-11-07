@@ -239,6 +239,16 @@ describe("useStatusCycle: refusals", () => {
     expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
   });
 
+  it("rolls back and says why when the backend refuses Done over open sub-items", async () => {
+    vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "refused", reason: "open_sub_items" });
+    const { result, showToast } = setup([node("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") })]);
+
+    act(() => { result.current.cycleStatus("task-5"); });
+
+    await waitFor(() => expect(lane()).toEqual([]));
+    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:openSubItemsRefused" });
+  });
+
   it("rolls back and says why when the write is rejected", async () => {
     vi.mocked(stepTaskStatus).mockRejectedValue({ kind: "database", message: "db is locked" });
     const { result, showToast } = setup([todo("task-5")]);

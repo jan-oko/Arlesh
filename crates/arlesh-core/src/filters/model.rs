@@ -407,6 +407,11 @@ pub struct NodeFacts {
     /// Whether a Task is **Compound**: it consists of its sub-items, and its status is derived.
     #[serde(default)]
     pub compound: bool,
+    /// Whether a Task reads In Progress (Doing) only from its sub-items rather than a status held
+    /// by hand: a Compound Task, or a parent raised to it. The Zen View hides such a card while
+    /// the item that caused it is drawn.
+    #[serde(default)]
+    pub derived_in_progress: bool,
     /// Whether an Expectation is an **agentic wait**: one an agent raised on the Task it hangs under.
     #[serde(default)]
     pub agent_waiting: bool,
@@ -441,6 +446,7 @@ impl NodeFacts {
             planned: false,
             missed: false,
             compound: false,
+            derived_in_progress: false,
             agent_waiting: false,
         }
     }
