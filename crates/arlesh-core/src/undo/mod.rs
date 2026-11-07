@@ -108,6 +108,8 @@ pub const EXCLUDED_TABLES: &[&str] = &[
     "undo_journal",
     "server_tokens",
     "pairing_pins",
+    "push_devices",
+    "push_sent",
 ];
 
 /// How many Gestures the journal keeps before the oldest are dropped.

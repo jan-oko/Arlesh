@@ -409,6 +409,15 @@
     ],
     "revoke_device": [
       "DELETE /devices/{name}"
+    ],
+    "push_state": [
+      "GET /push"
+    ],
+    "register_push": [
+      "PUT /devices/current/push"
+    ],
+    "unregister_push": [
+      "DELETE /devices/current/push"
     ]
   }
 }

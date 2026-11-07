@@ -69,6 +69,9 @@ fn every_call_here_is_listed_in_the_contract() {
         "waiting_device",
         "approve_device",
         "revoke_device",
+        "push_state",
+        "register_push",
+        "unregister_push",
     ] {
         assert!(listed.contains_key(name), "{name} is not in the contract");
     }

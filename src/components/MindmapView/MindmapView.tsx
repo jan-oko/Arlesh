@@ -32,6 +32,7 @@ import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
@@ -97,6 +98,7 @@ export default function MindmapView() {
   useSubtreeNav(tree);
   // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
   const searchableNodes = useSearchableNodes(tree);
+  const startFromSearch = useSearchStart(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   // The inline editor follows a created node to its real id, and closes on a placeholder that is gone.
@@ -681,6 +683,7 @@ export default function MindmapView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
+          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />
