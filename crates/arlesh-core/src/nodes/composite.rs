@@ -55,7 +55,9 @@ pub fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
     )
 }
 
-/// Writes `request` to the Task `id`, settling the Tasks below whose own Plan a new Plan would leave outside as `descendant_plans`
+/// Writes `request` to the Task `id` — through the guard that asks, unless `confirmed`, before a
+/// Habit occurrence is marked done while it still holds unfinished children it would close over —
+/// settling the Tasks below whose own Plan a new Plan would leave outside as `descendant_plans`
 /// says (clamped, or cleared to inherit). Without `descendant_plans` such a write is refused.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_task_confirmed(
@@ -66,6 +68,9 @@ pub async fn update_task_confirmed(
     descendant_plans: Option<DescendantPlans>,
     now: NaiveDateTime,
 ) -> Result<Task, WireError> {
+    if request.status.is_some_and(|status| status.is_done()) && !confirmed {
+        refuse_over_unfinished_children(db, id, now).await?;
+    }
     write::plan_task(db, id, request, now, descendant_plans)
         .await
         .map_err(WireError::from_error)

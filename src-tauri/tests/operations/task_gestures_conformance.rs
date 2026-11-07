@@ -8,8 +8,7 @@
 
 use arlesh_lib::tasks::model::{AgenticStatus, Status, TaskStatus, Verdict};
 use arlesh_lib::tasks::rules::gestures::{
-    alt_step, next_status, status_after, verdict_after, StatusRefusal, StatusStep, SubItems,
-    VerdictPress,
+    alt_step, next_status, status_after, verdict_after, StatusRefusal, StatusStep, VerdictPress,
 };
 use serde::Deserialize;
 
@@ -52,8 +51,6 @@ struct AfterCase {
     step: StatusStep,
     current: Status,
     compound: bool,
-    #[serde(default)]
-    sub_items: SubItems,
     result: Expected,
 }
 
@@ -118,13 +115,12 @@ fn alt_enter_does_what_the_corpus_says() {
 fn a_step_on_a_compound_or_an_ordinary_task_does_what_the_corpus_says() {
     for case in corpus().status_after {
         assert_eq!(
-            status_after(case.step, case.current, case.compound, case.sub_items),
+            status_after(case.step, case.current, case.compound),
             Result::from(case.result),
-            "{:?} on {:?} (compound: {}, sub-items: {:?})",
+            "{:?} on {:?} (compound: {})",
             case.step,
             case.current,
-            case.compound,
-            case.sub_items
+            case.compound
         );
     }
 }

@@ -28,34 +28,6 @@ pub enum StatusRefusal {
     /// `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     /// only Doing work can be handed back.
     AltEnterAgenticNotDoing,
-    /// The press would set the Task Done while a counted sub-item is not: a Task cannot be
-    /// finished over open work. Complete or archive what is left.
-    OpenSubItems,
-    /// The press would lower the Task below what its sub-items make it read: it reads at least
-    /// Started, or In Progress, from them, so the lower status would change nothing.
-    BelowSubItems,
-}
-
-/// What a Task's sub-items say about a status press on it: the part of its subtree the status
-/// gestures depend on. The backend reads it off the board, whole subtree counted by Compound's
-/// rule; a caller that cannot read it passes the default, which constrains nothing, and the
-/// backend still decides.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct SubItems {
-    /// What the sub-items make the Task read at least: To Do, Started or In Progress. Never Done.
-    pub floor: TaskStatus,
-    /// How many counted sub-items are not Done: Backlogged ones, pending waits and Unresolved
-    /// Commitments included. A Task cannot be set Done while any is.
-    pub open: usize,
-}
-
-impl Default for SubItems {
-    fn default() -> Self {
-        Self {
-            floor: TaskStatus::Todo,
-            open: 0,
-        }
-    }
 }
 
 /// The status one step of the click/`Enter` cycle moves a Task to, in the model it holds.
@@ -95,31 +67,19 @@ pub fn alt_step(current: Status) -> Result<Status, StatusRefusal> {
 }
 
 /// What `step` writes on a Task whose status is `current`, or why it writes nothing. A Compound
-/// Task has no status of its own to write, whatever the gesture. Any Task is held to its
-/// `sub_items`: it is not set Done over open ones, and an ordinary one is not set below what they
-/// make it read.
+/// Task has no status of its own to write, whatever the gesture.
 pub fn status_after(
     step: StatusStep,
     current: Status,
     compound: bool,
-    sub_items: SubItems,
 ) -> Result<Status, StatusRefusal> {
     if compound {
         return Err(StatusRefusal::Compound);
     }
-    let next = match step {
-        StatusStep::Advance => next_status(current),
-        StatusStep::Alt => alt_step(current)?,
-    };
-    if next.is_done() && sub_items.open > 0 {
-        return Err(StatusRefusal::OpenSubItems);
+    match step {
+        StatusStep::Advance => Ok(next_status(current)),
+        StatusStep::Alt => alt_step(current),
     }
-    if let Status::Ordinary(status) = next {
-        if status.rank() < sub_items.floor.rank() {
-            return Err(StatusRefusal::BelowSubItems);
-        }
-    }
-    Ok(next)
 }
 
 /// How a status write took a Task out of the Backlog, which is said out loud.

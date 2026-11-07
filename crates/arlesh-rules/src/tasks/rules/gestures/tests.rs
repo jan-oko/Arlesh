@@ -114,107 +114,13 @@ fn alt_enter_hands_a_doing_agentic_task_back_and_refuses_anywhere_else() {
 fn a_compound_task_refuses_every_status_gesture() {
     for step in [StatusStep::Advance, StatusStep::Alt] {
         assert_eq!(
-            status_after(step, ordinary(TaskStatus::Todo), true, SubItems::default()),
+            status_after(step, ordinary(TaskStatus::Todo), true),
             Err(StatusRefusal::Compound)
         );
     }
     assert_eq!(
-        status_after(
-            StatusStep::Advance,
-            ordinary(TaskStatus::Todo),
-            false,
-            SubItems::default()
-        ),
+        status_after(StatusStep::Advance, ordinary(TaskStatus::Todo), false),
         Ok(ordinary(TaskStatus::InProgress))
-    );
-}
-
-fn after(step: StatusStep, current: Status, sub_items: SubItems) -> Result<Status, StatusRefusal> {
-    status_after(step, current, false, sub_items)
-}
-
-fn sub_items(floor: TaskStatus, open: usize) -> SubItems {
-    SubItems { floor, open }
-}
-
-#[test]
-fn a_task_is_not_set_done_over_open_sub_items() {
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            ordinary(TaskStatus::InProgress),
-            sub_items(TaskStatus::InProgress, 2)
-        ),
-        Err(StatusRefusal::OpenSubItems)
-    );
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            agentic(AgenticStatus::Doing),
-            sub_items(TaskStatus::Todo, 1)
-        ),
-        Err(StatusRefusal::OpenSubItems),
-        "an Agentic Task is held to it too"
-    );
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            ordinary(TaskStatus::InProgress),
-            sub_items(TaskStatus::InProgress, 0)
-        ),
-        Ok(ordinary(TaskStatus::Done)),
-        "with nothing open it finishes"
-    );
-}
-
-#[test]
-fn a_press_that_cannot_lower_what_the_sub_items_make_it_read_is_refused() {
-    // Reads Started from a child, and Enter on Done would drop it to To Do.
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            ordinary(TaskStatus::Done),
-            sub_items(TaskStatus::Started, 0)
-        ),
-        Err(StatusRefusal::BelowSubItems)
-    );
-    // Reads In Progress from a child, and Alt+Enter would pause it to Started.
-    assert_eq!(
-        after(
-            StatusStep::Alt,
-            ordinary(TaskStatus::InProgress),
-            sub_items(TaskStatus::InProgress, 1)
-        ),
-        Err(StatusRefusal::BelowSubItems)
-    );
-    // Started is the floor, so Started is allowed, and so is rising above it.
-    assert_eq!(
-        after(
-            StatusStep::Alt,
-            ordinary(TaskStatus::Done),
-            sub_items(TaskStatus::Started, 0)
-        ),
-        Ok(ordinary(TaskStatus::Started))
-    );
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            ordinary(TaskStatus::Started),
-            sub_items(TaskStatus::Started, 1)
-        ),
-        Ok(ordinary(TaskStatus::InProgress))
-    );
-}
-
-#[test]
-fn an_agentic_task_is_not_held_to_a_floor() {
-    assert_eq!(
-        after(
-            StatusStep::Advance,
-            agentic(AgenticStatus::Done),
-            sub_items(TaskStatus::InProgress, 0)
-        ),
-        Ok(agentic(AgenticStatus::Todo))
     );
 }
 

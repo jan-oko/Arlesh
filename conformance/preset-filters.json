@@ -3023,50 +3023,6 @@
         "task-in-live"
       ],
       "commitments": []
-    },
-    {
-      "name": "do shows a parent that reads in progress from its child, beside the child",
-      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
-      "filter": {
-        "preset": "do"
-      },
-      "board": "parent",
-      "mindmap": [
-        "domain-parent",
-        "task-child-active",
-        "task-parent-active"
-      ],
-      "list": [
-        "task-child-active",
-        "task-parent-active"
-      ],
-      "commitments": []
-    },
-    {
-      "name": "start shows a parent that reads in progress only while it has a to do child, and a started one by the setting",
-      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
-      "filter": {
-        "preset": "start"
-      },
-      "board": "parent",
-      "mindmap": [
-        "domain-parent",
-        "task-child-open",
-        "task-child-todo",
-        "task-idle-child",
-        "task-parent-active",
-        "task-parent-begun",
-        "task-parent-idle"
-      ],
-      "list": [
-        "task-child-open",
-        "task-child-todo",
-        "task-idle-child",
-        "task-parent-active",
-        "task-parent-begun",
-        "task-parent-idle"
-      ],
-      "commitments": []
     }
   ],
   "boards": {
@@ -4823,65 +4779,6 @@
               "id": "task-in-archived-project",
               "kind": "task",
               "status": "todo"
-            }
-          ]
-        }
-      ]
-    },
-    "parent": {
-      "id": "root",
-      "kind": "aspect",
-      "children": [
-        {
-          "id": "domain-parent",
-          "kind": "project",
-          "status": "active",
-          "children": [
-            {
-              "id": "task-parent-active",
-              "kind": "task",
-              "status": "in_progress",
-              "children": [
-                {
-                  "id": "task-child-active",
-                  "kind": "task",
-                  "status": "in_progress"
-                },
-                {
-                  "id": "task-child-open",
-                  "kind": "task",
-                  "status": "todo"
-                }
-              ]
-            },
-            {
-              "id": "task-parent-begun",
-              "kind": "task",
-              "status": "started",
-              "children": [
-                {
-                  "id": "task-child-done",
-                  "kind": "task",
-                  "status": "done"
-                },
-                {
-                  "id": "task-child-todo",
-                  "kind": "task",
-                  "status": "todo"
-                }
-              ]
-            },
-            {
-              "id": "task-parent-idle",
-              "kind": "task",
-              "status": "todo",
-              "children": [
-                {
-                  "id": "task-idle-child",
-                  "kind": "task",
-                  "status": "todo"
-                }
-              ]
             }
           ]
         }

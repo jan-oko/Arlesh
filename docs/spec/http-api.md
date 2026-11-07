@@ -252,7 +252,7 @@ does not know is answered as 500 `internal`. FastAPI's own 422 for a malformed r
 replaced, because 422 here means *confirm or add a window*.
 
 **The confirmation protocol is kept, not flattened.** A write the core will not make without
-consent, such as a Flow item's cycle change that would orphan recorded iterations, is refused
+consent, such as completing a Habit occurrence that still holds unfinished children, is refused
 422 `needs_confirmation`. Its `details` name what is at stake. The same request sent again with
 `?confirmed=true` goes ahead. Setting a Flow item's cycles is confirmed with `?reconcile=fork` or
 `discard`. A Commitment with no window is refused 422 `needs_time_scope`, and goes ahead when sent

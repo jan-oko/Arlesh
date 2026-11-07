@@ -12,8 +12,6 @@ export type { SearchableNode };
 interface Props {
   nodes: SearchableNode[];
   onSelect: (id: string) => void;
-  /** `Alt+S` on the highlighted row: start it. The modal closes after; the view stays where it is. */
-  onStart?: (id: string) => void;
   onClose: () => void;
 }
 
@@ -26,8 +24,8 @@ function kindRank(kind: NodeKind): number {
   return i === -1 ? KIND_ORDER.length : i;
 }
 
-/** Ctrl+O node search: type to filter nodes by title, select one to enter it as the display subtree, or Alt+S to start it. */
-export default function NodeSearchModal({ nodes, onSelect, onStart, onClose }: Props) {
+/** Ctrl+O node search: type to filter nodes by title, select one to enter it as the display subtree. */
+export default function NodeSearchModal({ nodes, onSelect, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["common", "nodeKinds"]);
   const [query, setQuery] = useState("");
@@ -50,21 +48,7 @@ export default function NodeSearchModal({ nodes, onSelect, onStart, onClose }: P
     if (node !== undefined) onSelect(node.id);
   }
 
-  function start(index: number) {
-    const node = results[index];
-    if (node === undefined || onStart === undefined) return;
-    onStart(node.id);
-    onClose();
-  }
-
-  // The physical key, so a layout where Alt+S types another character (or none) still reaches it. A
-  // plain `s` cannot start anything: it types into the query, which keeps the focus.
-  function isStartChord(event: React.KeyboardEvent): boolean {
-    return event.code === "KeyS" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-  }
-
   function handleKeyDown(event: React.KeyboardEvent) {
-    if (isStartChord(event)) { event.preventDefault(); start(clampedActive); return; }
     if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
     if (event.key === "ArrowDown") {
       event.preventDefault();

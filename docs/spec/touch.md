@@ -272,12 +272,6 @@ no others for these actions:
 are dropped. "Search" is left to text boxes. The desktop's two search labels (`openSearch`,
 `openFilterSearch`) now read "Open a node: …" and "Filter: …".
 
-**`Alt+S` inside Open has no touch counterpart** (2026-11-06). It starts the highlighted row from the
-keyboard (see [*Mindmap View*](mindmap-view.md)); it is a key of the search modal, not a binding in the
-registry, so the palette does not list it and the coverage test does not ask for it. On a phone a
-result is opened, selected, and set going with **Status**. No control was added for it: whether
-a result row wants one is the user's to say.
-
 **A long-press on Child** opens a sheet to pick the new child's **kind** (user, round 5); a tap stays
 a Task. The sheet lists the kinds the selected node can parent, by the rule creating and re-parenting
 share (`childKindsFor`, over `isValidDropTarget`), and a pick runs the desktop's typed-child chord for
