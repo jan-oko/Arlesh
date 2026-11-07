@@ -102,4 +102,4 @@ hosts, the app and `arlesh-server`, use them.
 - Every board read on a bound session rebuilds the agent's view: one catalogue read and a pass
   over the Claims.
 - Agents are identified by what they declare. The account label is trust, not proof.
-- The wait stream (`/events/expectations`) is scoped by the same view.
+- The wait stream (`/events/expectations`) is **not yet scoped** by the view. It takes the connect token and a valid agent token (`X-Arlesh-Agent-Token`), but answers every wait inside the user's MCP roots, as ids and statuses with no titles. Scoping it needs the stream to know a deleted wait's Claim, which the board no longer holds; a follow-up.
