@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { updateGoal } from "@/api/goals";
+import { updateTask } from "@/api/tasks";
+import type { TaskStatus } from "@/api/tasks";
 import type { BacklogCleared, StatusRefusal, StatusStep } from "@/api/node-gestures";
 import { stepTaskStatus } from "@/api/node-gestures";
 import { GOAL_STATUS } from "@/utils/status-mapping";
@@ -51,6 +53,9 @@ interface StatusCycle {
    * Progress; on an Agentic one, hands a Doing Task back to its agent (On Agent), and anywhere
    * else says it cannot. Anything that is not a Task is left alone. */
   toggleStarted: (nodeId: string) => void;
+  /** Sets a Task to exactly `status`, as an edit would (`updateTask`): one write through the same
+   * lane, one Gesture to undo. For the callers that name the status rather than step to it. */
+  setTaskStatus: (nodeId: string, status: TaskStatus) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
@@ -170,5 +175,26 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
     [findNode, stepStatus],
   );
 
-  return { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence };
+  const setTaskStatus = useCallback(
+    (nodeId: string, status: TaskStatus) => {
+      const node = findNode(nodeId);
+      if (node?.kind !== "task") return;
+      submit(node, {
+        label: "status change",
+        patch: { kind: "fields", fields: { status: status.status, taskStatus: status } },
+        refuseReadOnly: refuseReadOnly(nodeId),
+        send: async (confirmed) => {
+          const written = await updateTask(rowIdAtSend(node), { status }, ...acknowledged(confirmed));
+          // The writer takes a set-aside Task out of the Backlog; say so, as the status keys do.
+          if (node.backlogged === true && written.archival === "live") {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          return writtenWith(taskAnswerFields(written));
+        },
+      });
+    },
+    [findNode, submit, refuseReadOnly, showToast, t],
+  );
+
+  return { cycleStatus, toggleStarted, setTaskStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };
 }
