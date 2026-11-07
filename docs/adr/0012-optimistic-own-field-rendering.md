@@ -175,8 +175,8 @@ What the user decided (2026-11-01), and this ADR does not reopen:
      cancelled unsent. One toast, anchored to the node (to its parent if the node was a placeholder
      that is now gone), names the backend's own reason. Writes on other nodes go on. A refused
      **editor Save** also reopens the editor (decision 14).
-   - **A confirmation the backend holds** (marking a Habit occurrence done over unfinished
-     children) is a refusal without a toast: the patch rolls back and the occurrence prompt opens.
+   - **A confirmation the backend holds** (marking a Goal occurrence achieved over unfinished
+     children; a Task occurrence is refused outright since 2026-11-07) is a refusal without a toast: the patch rolls back and the occurrence prompt opens.
      Confirming enqueues the write again with `confirmed`, patch and all. *Why:* the occurrence
      reads not Done while the question is open, which is the truth. Holding the lane on a prompt of
      indefinite length would hold every other node's writes with it.

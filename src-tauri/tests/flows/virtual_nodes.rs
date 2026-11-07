@@ -768,8 +768,8 @@ async fn completing_every_occurrence_resolves_the_iteration() {
     let (flow_id, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
     load(&app, "2026-01-05T09:00:00").await;
     for id in [
-        root(flow_id, ymd(2026, 1, 5)),
         item(item_id, ymd(2026, 1, 5)),
+        root(flow_id, ymd(2026, 1, 5)),
     ] {
         task_commands::update_task(
             app.state(),
@@ -829,10 +829,22 @@ async fn a_done_occurrence_archives_once_its_window_passes_under_accumulating() 
     load(&app, "2026-01-06T09:00:00").await;
     let (fifth, sixth) = (ymd(2026, 1, 5), ymd(2026, 1, 6));
     // The 5th: its root and its step both done — a Done iteration.
-    mark_done(&app, &root(flow_id, fifth)).await;
     mark_done(&app, &item(item_id, fifth)).await;
-    // The 6th: the root ticked off, the step still open.
-    mark_done(&app, &root(flow_id, sixth)).await;
+    mark_done(&app, &root(flow_id, fifth)).await;
+    // The 6th: the step still open, so the root cannot be ticked off ahead of it.
+    let refused = task_commands::update_task(
+        app.state(),
+        root(flow_id, sixth),
+        UpdateTaskRequest {
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
+            ..Default::default()
+        },
+        None,
+    )
+    .await;
+    assert!(refused.is_err());
 
     let same_day = load(&app, "2026-01-06T09:00:00").await;
     let root_today = lifecycle_of(&same_day, &root(flow_id, sixth));
