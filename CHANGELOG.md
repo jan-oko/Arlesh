@@ -10,8 +10,6 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
-- **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.
-
 - **Phone notifications on Android.** The Android app (connected to a server with push set up) registers with Firebase Cloud Messaging and shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, or the agent capacity lock is set or cleared. Tapping one opens its Task. Each event is its own Android notification channel, so you switch each on or off, and set its sound, in Android's notification settings; Settings → Notifications asks for the permission and links there.
 
 - **Phone push notifications (server).** `arlesh-server` can notify a paired phone through Firebase Cloud Messaging when an agent asks a question, a Task becomes Overdue, a task is generated (a Habit occurrence, a wait's check), and when the agent capacity lock is set or cleared. Each event is its own notification channel, so Android's settings switch each on or off.
@@ -211,8 +209,6 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   **The board alone:** **F11**, or **F** with nothing selected, hides the tab strip and the top bar; press it again to bring them back. Arlesh always reopens with them shown.
 
 ### Changed
-- **A parent reads the work under it.** A Task with sub-tasks now shows Started or In Progress as soon as work under it has begun (and Started once anything beneath it is done), instead of staying To Do. You can still set its own status by hand; it never reads lower than its sub-items say. A Task cannot be set Done while anything under it is still open, including backlogged sub-tasks, pending waits and unresolved Commitments: the press, the editor and the MCP all refuse, with a note saying what is left. Finish or archive what remains first. A parent already Done stays Done. A Compound Task now also reads On Agent or Review from its Agentic sub-tasks (Doing or In Progress still wins). The Zen View leaves out a parent that reads In Progress only from its sub-tasks, since the sub-task you are working on shows anyway; one you set In Progress yourself stays.
-
 - **A new node shows at once.** Creating a child or a sibling (`Tab`, `Enter`, the Child button) puts the node on screen the moment you ask, with the same faint pulse until the server answers, so you can type its title, set its status or add a child under it straight away; those go out in order once it exists. If the server refuses the create, the node and anything you added under it go away, with one note saying why. Undoing a create that has not been sent takes it back without a trip to the server. New Flows and Habits still wait for the server.
 - **Planning in the Plan View shows at once.** Planning an item into the scope (a swipe right, or the move-across key) puts it in the planned pane the moment you ask, and taking it out puts it back in the candidates, each with the same faint pulse until the server answers. If the server refuses, the item goes back with one note saying why. When the new Plan would leave Tasks below it outside, the prompt still opens first.
 
