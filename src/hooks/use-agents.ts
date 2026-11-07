@@ -38,12 +38,12 @@ export function useAgents(): Agents {
   const [error, setError] = useState<string | null>(null);
   const [pin, setPin] = useState<IssuedPin | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (clearError = true) => {
     try {
       const [next, catalogue] = await Promise.all([fetchAgents(), fetchMcpAccessCatalogue()]);
       setOverview(next);
       setNodes(catalogue.nodes);
-      setError(null);
+      if (clearError) setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
@@ -66,13 +66,14 @@ export function useAgents(): Agents {
   }, [load]);
 
   const edit = useCallback(async (write: () => Promise<void>) => {
+    setError(null);
     try {
       await write();
-      setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     }
-    await load();
+    // Read again either way, but leave a failed edit's message standing.
+    await load(false);
   }, [load]);
 
   const act = useCallback(

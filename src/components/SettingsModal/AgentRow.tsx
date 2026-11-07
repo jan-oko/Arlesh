@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Account, AgentSummary, CapacityCause } from "@/api/agents";
+import type { Account, AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
 import type { AgentAction } from "@/api/agents";
 import type { McpCatalogueNode } from "@/api/mcp-access";
 import { controlsFor, relativeTime } from "@/utils/agents";
@@ -23,16 +23,40 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
   const controls = controlsFor(summary);
   const now = new Date();
   const claimRow = agent.claim === null ? null : describeRoots([agent.claim.root], nodes, [])[0];
-  const named = (key: string) => t(`settings:mcp.agents.${key}`);
-  const labelled = (key: string) =>
-    t("settings:mcp.agents.forAgent", { action: named(key), name: agent.name });
+  const names = {
+    pause: t("settings:mcp.agents.pause"),
+    resume: t("settings:mcp.agents.resume"),
+    release: t("settings:mcp.agents.release"),
+    lock: t("settings:mcp.agents.lock"),
+    unlock: t("settings:mcp.agents.unlock"),
+    remove: t("settings:mcp.agents.remove"),
+    removeConfirm: t("settings:mcp.agents.removeConfirm"),
+    removeCancel: t("settings:mcp.agents.removeCancel"),
+  };
+  const named = (key: keyof typeof names): string => names[key];
+  const labelled = (key: keyof typeof names) =>
+    t("settings:mcp.agents.forAgent", { action: names[key], name: agent.name });
+  const standingNames: Record<AgentStanding, string> = {
+    unclaimed: t("settings:mcp.agents.standing.unclaimed"),
+    active: t("settings:mcp.agents.standing.active"),
+    paused: t("settings:mcp.agents.standing.paused"),
+    shadowed: t("settings:mcp.agents.standing.shadowed"),
+    unreachable: t("settings:mcp.agents.standing.unreachable"),
+  };
+  const standingNotes: Record<AgentStanding, string> = {
+    unclaimed: t("settings:mcp.agents.standingNote.unclaimed"),
+    active: t("settings:mcp.agents.standingNote.active"),
+    paused: t("settings:mcp.agents.standingNote.paused"),
+    shadowed: t("settings:mcp.agents.standingNote.shadowed"),
+    unreachable: t("settings:mcp.agents.standingNote.unreachable"),
+  };
 
   return (
     <li className={own.agent}>
       <div className={own.head}>
         <span className={own.name}>{agent.name}</span>
-        <span className={own.badge} title={t(`settings:mcp.agents.standingNote.${standing}`)}>
-          {t(`settings:mcp.agents.standing.${standing}`)}
+        <span className={own.badge} title={standingNotes[standing]}>
+          {standingNames[standing]}
         </span>
         <span className={own.meta}>{t("settings:mcp.agents.account", { account: agent.account })}</span>
         <span className={own.meta}>
@@ -51,10 +75,14 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
           ].filter((part) => part !== null).join(" · ")}
       </div>
       {standing !== "active" && standing !== "paused" && standing !== "unclaimed" && (
-        <div className={own.meta}>{t(`settings:mcp.agents.standingNote.${standing}`)}</div>
+        <div className={own.meta}>{standingNotes[standing]}</div>
       )}
       {summary.at_capacity !== null && (
-        <div className={own.capacity}>{capacityText(summary.at_capacity, now, t)}</div>
+        <div className={own.capacity}>{capacityText(summary.at_capacity, now, {
+          agentLocked: t("settings:mcp.agents.capacity.agent_locked"),
+          accountLocked: t("settings:mcp.agents.capacity.account_locked"),
+          usage: (window, time) => t("settings:mcp.agents.capacity.usage_limit", { window, time }),
+        })}</div>
       )}
       {account !== undefined && account.windows.map((window) => (
         <div key={window.kind} className={own.meta}>
@@ -110,16 +138,19 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
   );
 }
 
-function capacityText(
-  cause: CapacityCause,
-  now: Date,
-  t: (key: string, options?: Record<string, string>) => string,
-): string {
-  if (cause.kind === "usage_limit") {
-    return t("settings:mcp.agents.capacity.usage_limit", {
-      window: cause.window,
-      time: relativeTime(cause.resets_at, now),
-    });
+interface CapacityWords {
+  agentLocked: string;
+  accountLocked: string;
+  usage: (window: string, time: string) => string;
+}
+
+function capacityText(cause: CapacityCause, now: Date, words: CapacityWords): string {
+  switch (cause.kind) {
+    case "usage_limit":
+      return words.usage(cause.window, relativeTime(cause.resets_at, now));
+    case "agent_locked":
+      return words.agentLocked;
+    case "account_locked":
+      return words.accountLocked;
   }
-  return t(`settings:mcp.agents.capacity.${cause.kind}`);
 }

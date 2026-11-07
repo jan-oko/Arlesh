@@ -8,8 +8,10 @@ import type { AgentSummary, AgentsOverview } from "@/api/agents";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) =>
-      options === undefined ? key : `${key} ${JSON.stringify(options)}`,
+    t: (key: string, options?: Record<string, unknown>) => {
+      const bare = key.replace(/^settings:/, "");
+      return options === undefined ? bare : `${bare} ${JSON.stringify(options)}`;
+    },
   }),
 }));
 
