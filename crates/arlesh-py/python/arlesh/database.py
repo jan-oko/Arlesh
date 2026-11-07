@@ -874,7 +874,7 @@ class Arlesh(Database):
     async def board_json(
         self, *, now: datetime | None = None, at_capacity: bool | None = None
     ) -> str:
-        return await self._call_raw("board", now=now, at_capacity=at_capacity)
+        return await self._call_raw("board", now=now, at_capacity=at_capacity, without_nulls=True)
 
     async def get_task(self, id: int) -> TaskWithBlockers:
         return await self._call(_TASK_WITH_BLOCKERS, "get_task", id=id)

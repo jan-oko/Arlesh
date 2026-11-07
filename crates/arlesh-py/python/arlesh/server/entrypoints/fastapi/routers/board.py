@@ -19,9 +19,7 @@ class BoardsRouter(BoardRouter):
         self.get("/task-dependencies")(self._task_dependencies)
         self.get("/block-reasons")(self._block_reasons)
 
-    async def _get(
-        self, now: datetime | None = None, at_capacity: bool | None = None
-    ) -> Response:
+    async def _get(self, now: datetime | None = None, at_capacity: bool | None = None) -> Response:
         """Every node of every kind, with its derived lifecycle, short id and facts.
 
         ``now`` defaults to the server's clock, ``at_capacity`` to the agent capacity lock.
