@@ -5,6 +5,8 @@
 //! render-time overlay on the view's own selection, not a rule, and stays with the frontend. Mirrors
 //! `src/utils/zen-contents.ts`; `conformance/zen-contents.json` holds the two together.
 
+use std::collections::HashSet;
+
 use super::{
     list::{self, OwnedRow},
     model::{BoardFilter, ListPills, Pill, Preset, RowKind},
@@ -73,13 +75,37 @@ fn is_review(row: &OwnedRow) -> bool {
     row.node.agentic && row.node.status_str() == "review"
 }
 
+/// Whether a Task row reads In Progress (Doing, for an Agentic one).
+fn is_in_progress(row: &OwnedRow) -> bool {
+    matches!(row.node.status_str(), "in_progress" | "doing")
+}
+
+/// The grid less every card that reads In Progress **only from its sub-items** while an In Progress
+/// item beneath it is drawn on the grid too: the card that is being worked on shows anyway, and its
+/// parent says nothing more. A parent set In Progress by hand stays, and so does one whose
+/// In Progress sub-item the grid does not draw (private, delegated, filtered out) — work never
+/// leaves the grid that way.
+fn without_derived_parents(grid: Vec<&OwnedRow>) -> Vec<&OwnedRow> {
+    let drawn_below: HashSet<&str> = grid
+        .iter()
+        .filter(|row| is_in_progress(row))
+        .flat_map(|row| row.ancestors.iter().map(|ancestor| ancestor.id.as_str()))
+        .collect();
+    grid.iter()
+        .copied()
+        .filter(|row| !(row.node.derived_in_progress && drawn_below.contains(row.node.id.as_str())))
+        .collect()
+}
+
 /// The Zen View's contents, from the List View's rows.
 ///
 /// - **The grid** is the Task rows under **Do**, in board order, with **Review** cards first —
 ///   each one an agent idle until the user answers — less every **delegated** Task, which someone
 ///   else holds, and less every **Compound** one unless `shows_compound`. Whether a **Started**
 ///   Task counts is `shows_started`, not the Do preset's own setting; a **Review** one shows only
-///   while the filter's [`BoardFilter::show_review`] asks for it.
+///   while the filter's [`BoardFilter::show_review`] asks for it. A card that reads In Progress
+///   only from its sub-items is dropped while an In Progress item beneath it is drawn
+///   ([`without_derived_parents`]).
 /// - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
 /// - **The Expectations strip** is what **Start** shows — Do shows no wait at all — less every
 ///   wait an agent raised: a question is drawn on its Review card, and a wait on something else is
@@ -103,6 +129,7 @@ pub fn contents<'a>(
         .filter(|row| !row.node.delegated)
         .filter(|row| filter.show_review || !is_review(row))
         .collect();
+    let grid = without_derived_parents(grid);
     let (mut tasks, rest): (Vec<_>, Vec<_>) = grid.into_iter().partition(|row| is_review(row));
     tasks.extend(rest);
 

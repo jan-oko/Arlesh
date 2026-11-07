@@ -197,69 +197,10 @@ async fn a_flow_or_a_flow_item_is_refused_by_name() {
 }
 
 #[tokio::test]
-async fn an_unfinished_child_never_withholds_the_habits_next_iteration() {
-    // The highest-value test in the feature, and a negative one: under an Interval clock the one
-    // open instance withholds the next until it is done. Added children are not instances, so an
-    // occurrence carrying one must resolve exactly as it would without it — otherwise something
-    // jotted against tonight could stall the habit forever.
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
-    add_child(&pool, &root_of(flow_id), "task", "buy milk")
-        .await
-        .unwrap();
-
-    // The occurrence is closed over the unfinished child, deliberately.
-    complete_root(&app, flow_id, Some(true)).await.unwrap();
-
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    // The next instance falls the day after the completion, which was recorded at the real clock.
-    let after_the_next_opens = chrono::Local::now().naive_local() + chrono::Duration::days(2);
-    let iterations = arlesh_lib::flows::generate_habit_iterations(
-        &mut db,
-        FlowId(flow_id),
-        after_the_next_opens,
-    )
-    .await
-    .unwrap();
-    db.commit().await.unwrap();
-
-    assert!(
-        iterations.len() > 1,
-        "the resolved iteration released the next one; an added child gates nothing"
-    );
-}
-
-#[tokio::test]
-async fn completing_an_occurrence_that_still_holds_work_asks_first_and_names_it() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
-    add_child(&pool, &root_of(flow_id), "task", "buy milk")
-        .await
-        .unwrap();
-
-    let refusal = complete_root(&app, flow_id, None)
-        .await
-        .expect_err("an occurrence still holding work is not closed without being asked");
-
-    let wire = serde_json::to_value(&refusal).unwrap();
-    assert_eq!(wire["kind"].as_str(), Some("needs_confirmation"));
-    let details = serde_json::to_string(&wire["details"]).unwrap();
-    assert!(
-        details.contains("buy milk"),
-        "the refusal names what is about to be closed over, so the answer is not blind: {details}"
-    );
-
-    assert_eq!(
-        root_status(&app, flow_id).await,
-        "todo",
-        "declining leaves the occurrence exactly as it was"
-    );
-}
-
-#[tokio::test]
-async fn confirming_closes_the_occurrence_and_leaves_the_child_alone() {
+async fn an_unfinished_child_holds_the_occurrence_open_and_with_it_the_next_iteration() {
+    // Ruled by the user, 2026-11-07: a child added by hand blocks Done like any sub-item. Under an
+    // Interval clock the one open instance withholds the next until it is done, so something
+    // jotted against tonight holds the habit until it is finished or archived.
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
@@ -267,18 +208,79 @@ async fn confirming_closes_the_occurrence_and_leaves_the_child_alone() {
         .await
         .unwrap();
 
-    complete_root(&app, flow_id, Some(true)).await.unwrap();
+    complete_root(&app, flow_id, None)
+        .await
+        .expect_err("an occurrence is not closed over a child that is still open");
+    assert_eq!(root_status(&app, flow_id).await, "todo");
 
+    // The next instance falls the day after the completion, which was recorded at the real clock.
+    let after_the_next_opens = chrono::Local::now().naive_local() + chrono::Duration::days(2);
+    let iterations = |pool: sqlx::SqlitePool| async move {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let iterations = arlesh_lib::flows::generate_habit_iterations(
+            &mut db,
+            FlowId(flow_id),
+            after_the_next_opens,
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        iterations
+    };
+    assert_eq!(
+        iterations(pool.clone()).await.len(),
+        1,
+        "the open occurrence withholds the next iteration"
+    );
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    arlesh_lib::tasks::update_task(
+        &mut db,
+        TaskId(child.node_id),
+        UpdateTaskRequest {
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    complete_root(&app, flow_id, None).await.unwrap();
+    assert!(
+        iterations(pool).await.len() > 1,
+        "once the child is finished the occurrence closes and releases the next iteration"
+    );
+}
+
+#[tokio::test]
+async fn completing_an_occurrence_that_still_holds_work_is_refused_and_says_so() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
+
+    // Naming the confirmation changes nothing: there is no longer a prompt to answer.
+    for confirmed in [None, Some(true)] {
+        let refusal = complete_root(&app, flow_id, confirmed)
+            .await
+            .expect_err("an occurrence still holding work is not closed");
+        let wire = serde_json::to_value(&refusal).unwrap();
+        assert_eq!(wire["kind"].as_str(), Some("invalid_request"));
+        assert!(
+            wire["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("unfinished sub-item")),
+            "{wire}"
+        );
+    }
     assert_eq!(
         root_status(&app, flow_id).await,
-        "done",
-        "the occurrence is done"
-    );
-    let still_there = children(&pool, flow_id).await;
-    assert_eq!(
-        still_there.first().map(|c| c.child_id),
-        Some(child.node_id),
-        "the child stays where it was — 'done anyway' discards nothing"
+        "todo",
+        "the occurrence is exactly as it was"
     );
 }
 

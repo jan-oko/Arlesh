@@ -2,6 +2,7 @@ import type { StatusRefusal, StatusStep, VerdictPress } from "@/api/node-gesture
 import type { TaskStatus } from "@/api/tasks";
 import type { Verdict } from "@/api/verdict";
 import { altStep as wasmAltStep, nextStatus as wasmNextStatus, statusAfter as wasmStatusAfter, verdictAfter as wasmVerdictAfter } from "@/wasm/rules";
+import type { SubItemsWire } from "@/wasm/rules";
 
 /**
  * What a press on a Task or a Commitment writes, predicted so the board can show it before the
@@ -36,10 +37,21 @@ export function altStep(current: TaskStatus): StatusPrediction {
   return wasmAltStep(current);
 }
 
+/**
+ * What a Task's sub-items say about a press on it: the status they make it read at least, and how
+ * many of them are not Done. The board does not carry either to a node, so a prediction made
+ * without them (`NO_SUB_ITEMS`) constrains nothing and the backend, which reads them off the board,
+ * refuses what they forbid.
+ */
+export type SubItems = SubItemsWire;
+
+/** A Task whose sub-items say nothing: none, or none begun, and none open. */
+export const NO_SUB_ITEMS: SubItems = { floor: "todo", open: 0 };
+
 /** What `step` writes on a Task reading `current`, or why it writes nothing. A Compound Task has no
- * status of its own to write, whatever the gesture. */
-export function statusAfter(step: StatusStep, current: TaskStatus, compound: boolean): StatusPrediction {
-  return wasmStatusAfter(step, current, compound);
+ * status of its own to write, whatever the gesture; any Task is held to its `subItems`. */
+export function statusAfter(step: StatusStep, current: TaskStatus, compound: boolean, subItems: SubItems = NO_SUB_ITEMS): StatusPrediction {
+  return wasmStatusAfter(step, current, compound, subItems);
 }
 
 /**
