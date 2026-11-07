@@ -1547,6 +1547,16 @@ class StatusRefusal(StrEnum):
     `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     only Doing work can be handed back.
     """
+    open_sub_items = "open_sub_items"
+    """
+    The press would set the Task Done while a counted sub-item is not: a Task cannot be
+    finished over open work. Complete or archive what is left.
+    """
+    below_sub_items = "below_sub_items"
+    """
+    The press would lower the Task below what its sub-items make it read: it reads at least
+    Started, or In Progress, from them, so the lower status would change nothing.
+    """
 
 
 class StatusStep(StrEnum):
@@ -3623,6 +3633,11 @@ class NodeFacts(BaseModel):
     dependency_blocks: list[DependencyBlock] | None = None
     """
     The dependencies a Task is blocked by, in edge order.
+    """
+    derived_in_progress: bool | None = None
+    """
+    Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    by hand: a Compound Task, or a parent raised to it.
     """
     expired: bool | None = None
     """

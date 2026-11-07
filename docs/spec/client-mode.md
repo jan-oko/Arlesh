@@ -365,9 +365,9 @@ undo) **waits for the lane to empty** before it is sent, so it never overtakes a
   later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
   other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
   reason on its error line (ADR 0012, decision 14).
-- **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
+- **Asks first.** Marking a Goal occurrence achieved over unfinished children rolls back quietly and
   opens the occurrence prompt. Confirming applies the patch again and sends the write with the
-  confirmation.
+  confirmation. A Task occurrence over open work is refused outright, with a toast.
 - **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
   goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
   says whether it did. A write the server had already answered stays until a board reflects it. While the

@@ -1,6 +1,6 @@
 import type { FilterState } from "@/utils/filter-tree";
 import { ZEN_VIEW_STATUS_MODE, isDelegated } from "@/utils/filter-tree";
-import { isReview } from "@/utils/status-mapping";
+import { isInProgress, isReview } from "@/utils/status-mapping";
 import type {
   CommitmentListRow, ExpectationListRow, FocusFilteredRows, ListFilterState, PillFilter, TaskListRow,
 } from "@/utils/list-filter";
@@ -111,6 +111,21 @@ function withoutReview(
   return without(grid, (row) => isReview(row.node.taskStatus), focusedId);
 }
 
+/**
+ * The grid without the cards that read In Progress **only from their sub-items** while an In
+ * Progress item beneath them is drawn on the grid too: the card being worked on shows anyway. A
+ * parent set In Progress by hand stays, and so does one whose In Progress sub-item the grid does not
+ * draw (private, delegated, filtered out), so no work leaves the grid this way. A focused card stays.
+ */
+function withoutDerivedParents(grid: FocusFilteredRows<TaskListRow>, focusedId: string | null): FocusFilteredRows<TaskListRow> {
+  const drawnBelow = new Set<string>();
+  for (const row of grid.rows) {
+    if (!isInProgress(row.node.taskStatus)) continue;
+    for (const ancestor of row.ancestors) drawnBelow.add(ancestor.id);
+  }
+  return without(grid, (row) => row.node.derivedInProgress === true && drawnBelow.has(row.node.id), focusedId);
+}
+
 /** A hidden strip: no rows, nothing exempted. */
 function none<Row>(): FocusFilteredRows<Row> {
   return { rows: [], exemptedIds: new Set<string>() };
@@ -159,14 +174,14 @@ export function zenContents(
   const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
-    tasks: reviewFirst(withoutReview(
+    tasks: reviewFirst(withoutDerivedParents(withoutReview(
       withoutDelegated(
         withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
         focusedId,
       ),
       shared,
       focusedId,
-    )),
+    ), focusedId)),
     commitments: options.commitments
       ? filterCommitmentListWithFocus(source.commitments, underDo, doFilter, focusedId)
       : none(),
