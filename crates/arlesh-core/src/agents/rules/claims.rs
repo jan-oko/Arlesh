@@ -93,7 +93,9 @@ pub fn check(
         .filter(|other| other.agent != agent)
         .find(|other| lineage.overlaps(candidate, other.root));
     match conflict {
-        Some(other) => Err(Refusal::Overlaps { holder: other.agent }),
+        Some(other) => Err(Refusal::Overlaps {
+            holder: other.agent,
+        }),
         None => Ok(()),
     }
 }

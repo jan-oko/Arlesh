@@ -42,11 +42,7 @@ impl AgentsPort for SqliteBackend {
         Ok(())
     }
 
-    async fn set_agent_account_locked(
-        &self,
-        label: String,
-        locked: bool,
-    ) -> Result<(), WireError> {
+    async fn set_agent_account_locked(&self, label: String, locked: bool) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         service::set_account_locked(&mut db, &label, locked)
             .await

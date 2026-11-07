@@ -13,8 +13,8 @@ pub mod windows;
 // before the workspace split, so `crate::tasks` in a command and `arlesh_lib::tasks` in an
 // integration test still name the same thing.
 pub use arlesh_core::{
-    access, agents, block_reasons, board, capacity, database, domains, duplicate, error, filters, flows,
-    infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
+    access, agents, block_reasons, board, capacity, database, domains, duplicate, error, filters,
+    flows, infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
 };
 
 use tauri::Manager;

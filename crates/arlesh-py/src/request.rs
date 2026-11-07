@@ -11,11 +11,11 @@
 use std::path::Path;
 
 use arlesh_core::{
-    agents::{self, model::AgentAction},
     access::{
         self,
         model::{McpAccessCatalogue, NodeKey, NodeTable},
     },
+    agents::{self, model::AgentAction},
     database::session::{Db, SessionFactory, Transactional},
     domains::model::{CreateDomainRequest, DomainId, DomainSubtype, UpdateDomainRequest},
     duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},

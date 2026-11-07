@@ -21,7 +21,8 @@ struct AccountLock {
 #[async_trait::async_trait]
 impl AgentsPort for HttpBackend {
     async fn list_agents(&self) -> Result<AgentsOverview, WireError> {
-        self.read(Call::new(Method::GET, "/agents".to_owned())).await
+        self.read(Call::new(Method::GET, "/agents".to_owned()))
+            .await
     }
 
     async fn issue_agent_pin(&self) -> Result<IssuedPin, WireError> {
@@ -36,11 +37,7 @@ impl AgentsPort for HttpBackend {
         .await
     }
 
-    async fn set_agent_account_locked(
-        &self,
-        label: String,
-        locked: bool,
-    ) -> Result<(), WireError> {
+    async fn set_agent_account_locked(&self, label: String, locked: bool) -> Result<(), WireError> {
         self.write(
             Call::new(Method::PUT, "/agent-accounts/lock".to_owned())
                 .json(&AccountLock { label, locked }),

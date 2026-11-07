@@ -74,7 +74,13 @@ fn a_claim_outside_the_roots_is_refused_before_overlap_is_looked_at() {
 fn a_claim_overlapping_another_agents_is_refused_naming_the_holder() {
     let others = [held(7, key(NodeTable::Domain, 2), "2026-11-07T09:00:00")];
 
-    let result = check(&lineage(), key(NodeTable::Task, 100), true, &others, AgentId(1));
+    let result = check(
+        &lineage(),
+        key(NodeTable::Task, 100),
+        true,
+        &others,
+        AgentId(1),
+    );
 
     assert_eq!(result, Err(Refusal::Overlaps { holder: AgentId(7) }));
 }
@@ -83,7 +89,13 @@ fn a_claim_overlapping_another_agents_is_refused_naming_the_holder() {
 fn an_agent_may_claim_again_over_its_own_claim() {
     let own = [held(1, key(NodeTable::Goal, 10), "2026-11-07T09:00:00")];
 
-    let result = check(&lineage(), key(NodeTable::Domain, 2), true, &own, AgentId(1));
+    let result = check(
+        &lineage(),
+        key(NodeTable::Domain, 2),
+        true,
+        &own,
+        AgentId(1),
+    );
 
     assert_eq!(result, Ok(()));
 }
@@ -92,7 +104,13 @@ fn an_agent_may_claim_again_over_its_own_claim() {
 fn a_sibling_subtree_is_free_to_claim() {
     let others = [held(7, key(NodeTable::Goal, 10), "2026-11-07T09:00:00")];
 
-    let result = check(&lineage(), key(NodeTable::Goal, 11), true, &others, AgentId(1));
+    let result = check(
+        &lineage(),
+        key(NodeTable::Goal, 11),
+        true,
+        &others,
+        AgentId(1),
+    );
 
     assert_eq!(result, Ok(()));
 }
@@ -125,8 +143,8 @@ fn a_claim_stands_as_unclaimed_unreachable_paused_shadowed_or_active() {
     let paused = Some((ClaimStatus::Paused, root));
 
     assert_eq!(standing(None, true, false), AgentStanding::Unclaimed);
-    assert_eq!(standing(active.clone(), false, false), AgentStanding::Unreachable);
+    assert_eq!(standing(active, false, false), AgentStanding::Unreachable);
     assert_eq!(standing(paused, true, true), AgentStanding::Paused);
-    assert_eq!(standing(active.clone(), true, true), AgentStanding::Shadowed);
+    assert_eq!(standing(active, true, true), AgentStanding::Shadowed);
     assert_eq!(standing(active, true, false), AgentStanding::Active);
 }

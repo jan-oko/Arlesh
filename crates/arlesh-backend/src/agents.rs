@@ -23,6 +23,5 @@ pub trait AgentsPort: Send + Sync {
     async fn apply_agent_action(&self, id: i64, action: AgentAction) -> Result<(), WireError>;
 
     /// Locks or unlocks a whole account by hand.
-    async fn set_agent_account_locked(&self, label: String, locked: bool)
-        -> Result<(), WireError>;
+    async fn set_agent_account_locked(&self, label: String, locked: bool) -> Result<(), WireError>;
 }

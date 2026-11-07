@@ -24,7 +24,9 @@ pub struct Binding {
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     // A panic while holding the lock cannot leave the plain value inside it half-written.
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl Binding {

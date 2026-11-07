@@ -111,8 +111,7 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
         let now = self.now();
-        let board =
-            attempt!(self.board(&mut db, now).await);
+        let board = attempt!(self.board(&mut db, now).await);
 
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,

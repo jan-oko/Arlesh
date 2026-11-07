@@ -224,7 +224,10 @@ impl ArleshMcp {
         Some(refusal)
     }
 
-    async fn report_usage(&self, windows: Vec<UsageWindowParam>) -> Result<CallToolResult, ErrorData> {
+    async fn report_usage(
+        &self,
+        windows: Vec<UsageWindowParam>,
+    ) -> Result<CallToolResult, ErrorData> {
         let id = match self.attached() {
             Ok(id) => id,
             Err(refusal) => return refusal,

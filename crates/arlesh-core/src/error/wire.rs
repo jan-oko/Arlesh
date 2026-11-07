@@ -4,9 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    access::error::AccessError, agents::error::AgentError, domains::error::DomainError, error::AppError,
-    flows::error::FlowError, knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError,
-    tasks::error::TaskError, undo::error::UndoError,
+    access::error::AccessError, agents::error::AgentError, domains::error::DomainError,
+    error::AppError, flows::error::FlowError, knowledge_base::error::KnowledgeBaseError,
+    scopes::error::ScopeError, tasks::error::TaskError, undo::error::UndoError,
 };
 
 /// Stable, machine-readable classification of a [`WireError`].

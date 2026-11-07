@@ -38,7 +38,7 @@ def _connected(connect_token: str, session: str | None = None) -> dict[str, str]
 def _session(server: TestClient, connect_token: str) -> str:
     response = server.post("/mcp", json=INITIALIZE, headers=_connected(connect_token))
     assert response.status_code == 200, response.text
-    return response.headers["mcp-session-id"]
+    return str(response.headers["mcp-session-id"])
 
 
 def _call(

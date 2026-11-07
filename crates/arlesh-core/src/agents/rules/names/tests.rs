@@ -19,7 +19,10 @@ fn nothing_visible_is_no_name() {
 fn a_long_name_is_cut() {
     let long = "x".repeat(200);
 
-    assert_eq!(tidy(&long).map(|name| name.chars().count()), Some(MAX_LENGTH));
+    assert_eq!(
+        tidy(&long).map(|name| name.chars().count()),
+        Some(MAX_LENGTH)
+    );
 }
 
 #[test]

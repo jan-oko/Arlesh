@@ -5,11 +5,7 @@ use serde_json::{json, Value};
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
 use super::*;
-use crate::{
-    agents::service::issue_pin,
-    database::session::SessionFactory,
-    mcp::session::Binding,
-};
+use crate::{agents::service::issue_pin, database::session::SessionFactory, mcp::session::Binding};
 
 async fn board() -> (ArleshMcp, SqlitePool) {
     let pool = SqlitePoolOptions::new()
@@ -81,7 +77,10 @@ async fn an_unattached_session_may_call_nothing_but_the_attach_tool() {
     for (tool, arguments) in [
         ("arlesh_tasks", json!({ "operation": "get", "id": "100" })),
         ("arlesh_snapshot", json!({ "operation": "load" })),
-        ("arlesh_scopes", json!({ "operation": "get", "id": { "kind": "day", "date": "2026-11-07" } })),
+        (
+            "arlesh_scopes",
+            json!({ "operation": "get", "id": { "kind": "day", "date": "2026-11-07" } }),
+        ),
         ("arlesh_capacity", json!({ "operation": "get" })),
         ("arlesh_kb", json!({ "operation": "list_people" })),
         ("arlesh_agents", json!({ "operation": "status" })),
@@ -98,7 +97,12 @@ async fn the_in_process_handler_needs_no_attach() {
     let (mcp, _pool) = board().await;
     let in_process = ArleshMcp::new(mcp.factory.clone());
 
-    let answer = call(&in_process, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let answer = call(
+        &in_process,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
 
     assert!(!is_error(&answer), "{answer}");
 }
@@ -116,7 +120,12 @@ async fn a_wrong_pin_attaches_nothing() {
     .await;
 
     assert!(is_error(&answer), "{answer}");
-    let still = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let still = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     assert!(is_error(&still));
 }
 
@@ -130,9 +139,19 @@ async fn attaching_binds_the_session_and_its_view_is_the_claim() {
     assert!(!is_error(&attached), "{attached}");
     assert!(structured(&attached)["token"].is_string(), "{attached}");
     assert_eq!(structured(&attached)["standing"], "active");
-    let inside = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let inside = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     assert!(!is_error(&inside), "{inside}");
-    let outside = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": "101" })).await;
+    let outside = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "101" }),
+    )
+    .await;
     assert!(is_error(&outside), "{outside}");
     assert_eq!(structured(&outside)["kind"], "not_permitted");
 }
@@ -143,7 +162,12 @@ async fn reads_outside_the_claim_are_omitted_from_the_snapshot() {
     let session = session(&mcp);
     attach(&session, "writer", 10).await;
 
-    let answer = call(&session, "arlesh_snapshot", json!({ "operation": "load", "sections": ["tasks"] })).await;
+    let answer = call(
+        &session,
+        "arlesh_snapshot",
+        json!({ "operation": "load", "sections": ["tasks"] }),
+    )
+    .await;
 
     let titles: Vec<&str> = structured(&answer)["tasks"]
         .as_array()
@@ -176,8 +200,16 @@ async fn an_agent_writes_inside_its_claim_and_not_outside_it() {
     assert!(!is_error(&inside), "{inside}");
     assert!(is_error(&outside), "{outside}");
     let created = structured(&inside)["id"].clone();
-    let again = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": created.to_string().trim_matches('"') })).await;
-    assert!(!is_error(&again), "an agent still sees the task it created: {again}");
+    let again = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": created.to_string().trim_matches('"') }),
+    )
+    .await;
+    assert!(
+        !is_error(&again),
+        "an agent still sees the task it created: {again}"
+    );
 }
 
 #[tokio::test]
@@ -189,12 +221,23 @@ async fn a_second_agent_claiming_an_overlapping_subtree_is_refused_naming_the_fi
 
     let attached = attach(&second, "reviewer", 10).await;
 
-    assert!(!is_error(&attached), "the attach itself goes through: {attached}");
     assert!(
-        structured(&attached)["claim_refused"].as_str().unwrap().contains("writer"),
+        !is_error(&attached),
+        "the attach itself goes through: {attached}"
+    );
+    assert!(
+        structured(&attached)["claim_refused"]
+            .as_str()
+            .unwrap()
+            .contains("writer"),
         "{attached}"
     );
-    let seen = call(&second, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let seen = call(
+        &second,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     assert!(is_error(&seen), "it holds nothing, so it sees nothing");
 }
 
@@ -229,7 +272,12 @@ async fn a_paused_agent_reads_and_writes_nothing() {
     attach(&session, "writer", 10).await;
     call(&session, "arlesh_agents", json!({ "operation": "pause" })).await;
 
-    let read = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let read = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     let write = call(
         &session,
         "arlesh_tasks",
@@ -249,7 +297,12 @@ async fn a_new_session_re_attaches_with_the_token_after_the_old_one_is_lost() {
     let token = structured(&attached)["token"].as_str().unwrap().to_owned();
 
     let after_restart = session(&mcp);
-    let denied = call(&after_restart, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let denied = call(
+        &after_restart,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     let back = call(
         &after_restart,
         "arlesh_agents",
@@ -260,8 +313,17 @@ async fn a_new_session_re_attaches_with_the_token_after_the_old_one_is_lost() {
     assert!(is_error(&denied));
     assert!(!is_error(&back), "{back}");
     assert_eq!(structured(&back)["agent"]["name"], "writer");
-    assert_eq!(structured(&back)["standing"], "active", "the claim outlives the session");
-    let seen = call(&after_restart, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    assert_eq!(
+        structured(&back)["standing"],
+        "active",
+        "the claim outlives the session"
+    );
+    let seen = call(
+        &after_restart,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     assert!(!is_error(&seen), "{seen}");
 }
 
@@ -271,9 +333,17 @@ async fn an_agent_removed_by_hand_is_turned_away_at_its_next_call() {
     let session = session(&mcp);
     attach(&session, "writer", 10).await;
 
-    sqlx::query("DELETE FROM agents").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM agents")
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let answer = call(&session, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
+    let answer = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
     assert!(is_error(&answer), "{answer}");
 }
 
@@ -295,7 +365,9 @@ async fn the_agent_that_hits_its_limit_has_its_claimed_tasks_blocked_and_others_
     )
     .await;
 
-    let resets = (mcp.now() + chrono::Duration::hours(3)).format("%Y-%m-%dT%H:%M:%S").to_string();
+    let resets = (mcp.now() + chrono::Duration::hours(3))
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string();
     let reported = call(
         &working,
         "arlesh_agents",
@@ -304,10 +376,23 @@ async fn the_agent_that_hits_its_limit_has_its_claimed_tasks_blocked_and_others_
     .await;
 
     assert!(!is_error(&reported), "{reported}");
-    let blocked = call(&working, "arlesh_tasks", json!({ "operation": "get", "id": "100" })).await;
-    let free = call(&idle, "arlesh_tasks", json!({ "operation": "get", "id": "101" })).await;
+    let blocked = call(
+        &working,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
+    let free = call(
+        &idle,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "101" }),
+    )
+    .await;
     let reasons = |answer: &Value| structured(answer)["block_reasons"].to_string();
-    assert!(reasons(&blocked).contains("Agents at capacity"), "{blocked}");
+    assert!(
+        reasons(&blocked).contains("Agents at capacity"),
+        "{blocked}"
+    );
     assert!(!reasons(&free).contains("Agents at capacity"), "{free}");
 }
 
@@ -322,7 +407,10 @@ async fn an_unattached_session_is_told_how_to_attach_and_an_attached_one_what_it
     let text = session.instructions().await;
     assert!(text.contains("YOU ARE AGENT"), "{text}");
     assert!(text.contains("Ship"), "{text}");
-    assert!(!text.contains("Launch"), "it names its claim, not the user's roots: {text}");
+    assert!(
+        !text.contains("Launch"),
+        "it names its claim, not the user's roots: {text}"
+    );
 }
 
 #[tokio::test]
@@ -336,7 +424,15 @@ async fn the_attach_tool_is_listed_with_every_operation() {
         .unwrap();
 
     let schema = serde_json::to_string(&*tool.input_schema).unwrap();
-    for operation in ["attach", "status", "claim", "pause", "resume", "release", "report_usage"] {
+    for operation in [
+        "attach",
+        "status",
+        "claim",
+        "pause",
+        "resume",
+        "release",
+        "report_usage",
+    ] {
         assert!(schema.contains(operation), "{operation}");
     }
 }

@@ -7,8 +7,8 @@
 //! so a Rust type cannot change without its Python model changing with it.
 
 use arlesh_core::{
-    agents::model::{AgentAction, AgentsOverview, IssuedPin},
     access::model::{EffectiveAccess, McpAccessCatalogue, NodeTable},
+    agents::model::{AgentAction, AgentsOverview, IssuedPin},
     block_reasons::model::BlockReason,
     capacity::CapacityState,
     domains::model::Domain,

@@ -24,11 +24,7 @@ use super::{
     secret,
 };
 use crate::{
-    access::{
-        self,
-        model::NodeKey,
-        resolve::AccessMap,
-    },
+    access::{self, model::NodeKey, resolve::AccessMap},
     capacity::blocks::Blocking,
     database::session::{Db, SessionFactory, SessionMode},
 };
@@ -235,11 +231,7 @@ pub async fn attach(
             (agent.id, None)
         }
     };
-    let agent = db
-        .agents()
-        .get(id)
-        .await?
-        .ok_or(AgentError::NotFound(id))?;
+    let agent = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
     db.commit().await?;
     Ok(Attached { agent, token })
 }
@@ -290,23 +282,24 @@ impl Ground {
     /// Whether `agent` may hold an active Claim on `node`.
     fn permit(&self, agent: AgentId, node: NodeKey) -> Result<(), AgentError> {
         let readable = self.user_map.can_read(node);
-        claims::check(&self.lineage, node, readable, &self.held(), agent).map_err(
-            |refusal| match refusal {
+        claims::check(&self.lineage, node, readable, &self.held(), agent).map_err(|refusal| {
+            match refusal {
                 Refusal::OutsideRoots => AgentError::OutsideRoots(node),
                 Refusal::Overlaps { holder } => AgentError::Overlaps {
                     node,
                     holder: self.name_of(holder),
                 },
-            },
-        )
+            }
+        })
     }
 
     /// Where an agent's Claim stands, given the Claims that are shadowed.
-    fn standing_of(&self, agent: &Agent, shadowed: &std::collections::HashSet<AgentId>) -> AgentStanding {
-        let claim = agent
-            .claim
-            .as_ref()
-            .map(|claim| (claim.status, claim.root));
+    fn standing_of(
+        &self,
+        agent: &Agent,
+        shadowed: &std::collections::HashSet<AgentId>,
+    ) -> AgentStanding {
+        let claim = agent.claim.as_ref().map(|claim| (claim.status, claim.root));
         let readable = agent
             .claim
             .as_ref()
@@ -358,11 +351,7 @@ pub async fn act<M: SessionMode>(
     id: AgentId,
     action: AgentAction,
 ) -> Result<Option<Agent>, AgentError> {
-    let agent = db
-        .agents()
-        .get(id)
-        .await?
-        .ok_or(AgentError::NotFound(id))?;
+    let agent = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
     match action {
         AgentAction::Pause => {
             agent.claim.as_ref().ok_or(AgentError::NoClaim(id))?;
@@ -385,7 +374,7 @@ pub async fn act<M: SessionMode>(
             return Ok(None);
         }
     }
-    Ok(db.agents().get(id).await?)
+    db.agents().get(id).await
 }
 
 /// Locks or unlocks a whole account by hand.
@@ -409,11 +398,7 @@ pub async fn report_usage<M: SessionMode>(
     windows: &[UsageWindow],
     now: NaiveDateTime,
 ) -> Result<(), AgentError> {
-    let agent = db
-        .agents()
-        .get(id)
-        .await?
-        .ok_or(AgentError::NotFound(id))?;
+    let agent = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
     for window in windows {
         let kind = names::tidy(&window.kind)
             .ok_or_else(|| AgentError::Invalid("a usage window needs a kind".to_owned()))?;
@@ -512,7 +497,9 @@ fn cause_for(
     accounts: &[Account],
     now: NaiveDateTime,
 ) -> Result<Option<CapacityCause>, AgentError> {
-    let account = accounts.iter().find(|account| account.label == agent.account);
+    let account = accounts
+        .iter()
+        .find(|account| account.label == agent.account);
     let windows = account.map(usage_windows).transpose()?.unwrap_or_default();
     Ok(usage::cause(
         agent.locked,

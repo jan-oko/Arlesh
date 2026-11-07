@@ -138,7 +138,9 @@ async fn a_pin_makes_an_agent_with_a_token_and_is_spent_by_it() {
         account: Some("work".to_owned()),
     };
 
-    let attached = attach(&board.factory, at(NOW), request(&pin)).await.unwrap();
+    let attached = attach(&board.factory, at(NOW), request(&pin))
+        .await
+        .unwrap();
     let again = attach(&board.factory, at(NOW), request(&pin)).await;
 
     assert_eq!(attached.agent.name, "writer");
@@ -187,7 +189,10 @@ async fn five_wrong_pins_shut_the_door_even_to_the_right_one() {
     }
     let outcome = attach(&board.factory, at(NOW), wrong(&good)).await;
 
-    assert!(matches!(outcome, Err(AgentError::PinLockedOut)), "{outcome:?}");
+    assert!(
+        matches!(outcome, Err(AgentError::PinLockedOut)),
+        "{outcome:?}"
+    );
 }
 
 #[tokio::test]
@@ -249,7 +254,10 @@ async fn a_claim_inside_the_roots_is_taken_and_one_outside_is_refused() {
     let board = board().await;
     let agent = board.attach("writer", "work", NOW).await.agent.id;
 
-    let inside = board.claim(agent, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    let inside = board
+        .claim(agent, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
     let outside = board.claim(agent, node(NodeTable::Domain, 904), NOW).await;
 
     assert_eq!(inside.claim.unwrap().root, node(NodeTable::Goal, 10));
@@ -261,7 +269,10 @@ async fn an_overlapping_claim_is_refused_naming_the_first_agent() {
     let board = board().await;
     let first = board.attach("writer", "work", NOW).await.agent.id;
     let second = board.attach("reviewer", "work", NOW).await.agent.id;
-    board.claim(first, node(NodeTable::Domain, 902), NOW).await.unwrap();
+    board
+        .claim(first, node(NodeTable::Domain, 902), NOW)
+        .await
+        .unwrap();
 
     let refused = board.claim(second, node(NodeTable::Goal, 10), NOW).await;
 
@@ -276,10 +287,16 @@ async fn a_paused_claim_frees_the_subtree_and_resuming_is_refused_while_it_is_ta
     let board = board().await;
     let first = board.attach("writer", "work", NOW).await.agent.id;
     let second = board.attach("reviewer", "work", NOW).await.agent.id;
-    board.claim(first, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(first, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
     board.act(first, AgentAction::Pause).await.unwrap();
 
-    board.claim(second, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(second, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
     let resumed = board.act(first, AgentAction::Resume).await;
 
     assert!(matches!(resumed, Err(AgentError::Overlaps { .. })));
@@ -293,14 +310,23 @@ async fn a_paused_claim_frees_the_subtree_and_resuming_is_refused_while_it_is_ta
 async fn an_agent_sees_and_writes_its_claim_and_nothing_else() {
     let board = board().await;
     let agent = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(agent, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(agent, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
 
     let view = board.view(agent).await;
 
     assert!(view.map.can_write(node(NodeTable::Task, 100)));
     assert!(view.map.can_read(node(NodeTable::Goal, 10)));
-    assert!(!view.map.can_read(node(NodeTable::Task, 101)), "a sibling subtree");
-    assert!(!view.map.can_read(node(NodeTable::Domain, 902)), "an ancestor");
+    assert!(
+        !view.map.can_read(node(NodeTable::Task, 101)),
+        "a sibling subtree"
+    );
+    assert!(
+        !view.map.can_read(node(NodeTable::Domain, 902)),
+        "an ancestor"
+    );
 }
 
 #[tokio::test]
@@ -318,7 +344,10 @@ async fn an_agent_without_a_claim_sees_nothing() {
 async fn a_paused_claim_reads_and_writes_nothing() {
     let board = board().await;
     let agent = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(agent, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(agent, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
     board.act(agent, AgentAction::Pause).await.unwrap();
 
     let view = board.view(agent).await;
@@ -333,14 +362,21 @@ async fn a_paused_claim_reads_and_writes_nothing() {
 async fn a_task_moved_out_of_the_claim_leaves_the_view_at_once() {
     let board = board().await;
     let agent = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(agent, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(agent, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
 
     sqlx::query("UPDATE tasks SET parent_id = 11 WHERE id = 100")
         .execute(&board.pool)
         .await
         .unwrap();
 
-    assert!(!board.view(agent).await.map.can_read(node(NodeTable::Task, 100)));
+    assert!(!board
+        .view(agent)
+        .await
+        .map
+        .can_read(node(NodeTable::Task, 100)));
 }
 
 #[tokio::test]
@@ -348,8 +384,14 @@ async fn a_claim_moved_under_an_older_one_is_shadowed_and_sees_nothing() {
     let board = board().await;
     let older = board.attach("writer", "work", NOW).await.agent.id;
     let younger = board.attach("reviewer", "work", NOW).await.agent.id;
-    board.claim(older, node(NodeTable::Domain, 903), "2026-11-07T10:00:00").await.unwrap();
-    board.claim(younger, node(NodeTable::Goal, 10), "2026-11-07T11:00:00").await.unwrap();
+    board
+        .claim(older, node(NodeTable::Domain, 903), "2026-11-07T10:00:00")
+        .await
+        .unwrap();
+    board
+        .claim(younger, node(NodeTable::Goal, 10), "2026-11-07T11:00:00")
+        .await
+        .unwrap();
 
     sqlx::query("UPDATE goals SET parent_type = 'domain', parent_id = 903 WHERE id = 10")
         .execute(&board.pool)
@@ -366,9 +408,15 @@ async fn a_claim_moved_under_an_older_one_is_shadowed_and_sees_nothing() {
 async fn a_claim_whose_root_left_the_users_roots_is_unreachable() {
     let board = board().await;
     let agent = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(agent, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(agent, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
 
-    sqlx::query("DELETE FROM mcp_roots").execute(&board.pool).await.unwrap();
+    sqlx::query("DELETE FROM mcp_roots")
+        .execute(&board.pool)
+        .await
+        .unwrap();
 
     let view = board.view(agent).await;
     assert_eq!(view.standing, AgentStanding::Unreachable);
@@ -379,7 +427,10 @@ async fn a_claim_whose_root_left_the_users_roots_is_unreachable() {
 async fn a_removed_agent_has_no_view_and_its_token_is_dead() {
     let board = board().await;
     let attached = board.attach("writer", "work", NOW).await;
-    board.act(attached.agent.id, AgentAction::Remove).await.unwrap();
+    board
+        .act(attached.agent.id, AgentAction::Remove)
+        .await
+        .unwrap();
 
     let mut db = board.db().await;
     assert!(view(&mut db, attached.agent.id).await.unwrap().is_none());
@@ -403,10 +454,18 @@ async fn a_full_window_blocks_only_that_accounts_claims_until_it_resets() {
     let board = board().await;
     let work = board.attach("writer", "work", NOW).await.agent.id;
     let home = board.attach("reviewer", "home", NOW).await.agent.id;
-    board.claim(work, node(NodeTable::Goal, 10), NOW).await.unwrap();
-    board.claim(home, node(NodeTable::Goal, 11), NOW).await.unwrap();
+    board
+        .claim(work, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
+    board
+        .claim(home, node(NodeTable::Goal, 11), NOW)
+        .await
+        .unwrap();
 
-    board.report(work, "five_hour", 100.0, "2026-11-07T14:00:00", NOW).await;
+    board
+        .report(work, "five_hour", 100.0, "2026-11-07T14:00:00", NOW)
+        .await;
 
     let during = board.blocking(false, "2026-11-07T12:00:00").await;
     assert_eq!(during.subtrees, vec![node(NodeTable::Goal, 10)]);
@@ -419,9 +478,14 @@ async fn a_full_window_blocks_only_that_accounts_claims_until_it_resets() {
 async fn an_account_below_its_limit_blocks_nothing() {
     let board = board().await;
     let work = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(work, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(work, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
 
-    board.report(work, "five_hour", 99.0, "2026-11-07T14:00:00", NOW).await;
+    board
+        .report(work, "five_hour", 99.0, "2026-11-07T14:00:00", NOW)
+        .await;
 
     assert!(board.blocking(false, NOW).await.is_none());
 }
@@ -430,11 +494,20 @@ async fn an_account_below_its_limit_blocks_nothing() {
 async fn a_manual_lock_on_an_agent_or_its_account_blocks_its_claim() {
     let board = board().await;
     let work = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(work, node(NodeTable::Goal, 10), NOW).await.unwrap();
+    board
+        .claim(work, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
 
-    board.act(work, AgentAction::Lock { locked: true }).await.unwrap();
+    board
+        .act(work, AgentAction::Lock { locked: true })
+        .await
+        .unwrap();
     assert_eq!(board.blocking(false, NOW).await.subtrees.len(), 1);
-    board.act(work, AgentAction::Lock { locked: false }).await.unwrap();
+    board
+        .act(work, AgentAction::Lock { locked: false })
+        .await
+        .unwrap();
     assert!(board.blocking(false, NOW).await.is_none());
 
     let mut db = board.db().await;
@@ -447,8 +520,14 @@ async fn a_manual_lock_on_an_agent_or_its_account_blocks_its_claim() {
 async fn a_paused_claim_is_not_blocked_because_it_is_not_held() {
     let board = board().await;
     let work = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(work, node(NodeTable::Goal, 10), NOW).await.unwrap();
-    board.act(work, AgentAction::Lock { locked: true }).await.unwrap();
+    board
+        .claim(work, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
+    board
+        .act(work, AgentAction::Lock { locked: true })
+        .await
+        .unwrap();
     board.act(work, AgentAction::Pause).await.unwrap();
 
     assert!(board.blocking(false, NOW).await.is_none());
@@ -465,8 +544,13 @@ async fn the_global_lock_stays_a_master_switch() {
 async fn the_overview_says_where_each_claim_stands_and_why_an_agent_is_at_capacity() {
     let board = board().await;
     let work = board.attach("writer", "work", NOW).await.agent.id;
-    board.claim(work, node(NodeTable::Goal, 10), NOW).await.unwrap();
-    board.report(work, "five_hour", 100.0, "2026-11-07T14:00:00", NOW).await;
+    board
+        .claim(work, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
+    board
+        .report(work, "five_hour", 100.0, "2026-11-07T14:00:00", NOW)
+        .await;
 
     let mut db = board.db().await;
     let overview = overview(&mut db, at(NOW)).await.unwrap();
@@ -537,10 +621,18 @@ async fn the_connect_token_is_checked_by_digest_and_replaced_by_a_new_one() {
     let mut db = board.db().await;
 
     let first = issue_connect_token(&mut db, at(NOW)).await.unwrap();
-    assert!(connect_token_is_valid(&mut db, &first, at(NOW)).await.unwrap());
-    assert!(!connect_token_is_valid(&mut db, "other", at(NOW)).await.unwrap());
+    assert!(connect_token_is_valid(&mut db, &first, at(NOW))
+        .await
+        .unwrap());
+    assert!(!connect_token_is_valid(&mut db, "other", at(NOW))
+        .await
+        .unwrap());
 
     let second = issue_connect_token(&mut db, at(NOW)).await.unwrap();
-    assert!(!connect_token_is_valid(&mut db, &first, at(NOW)).await.unwrap());
-    assert!(connect_token_is_valid(&mut db, &second, at(NOW)).await.unwrap());
+    assert!(!connect_token_is_valid(&mut db, &first, at(NOW))
+        .await
+        .unwrap());
+    assert!(connect_token_is_valid(&mut db, &second, at(NOW))
+        .await
+        .unwrap());
 }

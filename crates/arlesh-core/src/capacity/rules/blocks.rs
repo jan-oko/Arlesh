@@ -176,9 +176,7 @@ fn within(links: &HashMap<Key, Link>, key: &str, roots: &std::collections::HashS
         if roots.contains(current) {
             return true;
         }
-        cursor = links
-            .get(current)
-            .and_then(|link| link.parent.as_deref());
+        cursor = links.get(current).and_then(|link| link.parent.as_deref());
     }
     false
 }

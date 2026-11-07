@@ -129,12 +129,15 @@ impl NativeDatabase {
 
     /// Opens an MCP session and answers its id, which the client sends with every later request.
     fn mcp_open_session(&self) -> PyResult<String> {
-        shared::for_database(&self.path).sessions.open().map_err(|error| {
-            raise(errors::Failure::new(
-                arlesh_core::error::WireErrorKind::Internal,
-                error.to_string(),
-            ))
-        })
+        shared::for_database(&self.path)
+            .sessions
+            .open()
+            .map_err(|error| {
+                raise(errors::Failure::new(
+                    arlesh_core::error::WireErrorKind::Internal,
+                    error.to_string(),
+                ))
+            })
     }
 
     /// Whether `session_id` is a session this process opened and has not forgotten.

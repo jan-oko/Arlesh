@@ -25,7 +25,7 @@ pub struct Window {
 
 /// The window, if any, that keeps an account out of capacity at `now`: full, and not yet reset.
 /// When several are, the one that resets last decides when the account is free.
-pub fn full_until<'windows>(windows: &'windows [Window], now: NaiveDateTime) -> Option<&'windows Window> {
+pub fn full_until(windows: &[Window], now: NaiveDateTime) -> Option<&Window> {
     windows
         .iter()
         .filter(|window| window.percent_used >= 100.0 && window.resets_at > now)
