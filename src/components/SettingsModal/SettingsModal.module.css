@@ -9,7 +9,7 @@
   padding: 16px;
 }
 
-/* A fixed frame, slightly larger than the content usually needs, bounded by the window: a long
+/* A fixed frame, close to the original base size and bounded by the window: a long
    page scrolls inside it instead of stretching the modal. */
 .modal {
   display: flex;
@@ -17,8 +17,8 @@
   background: var(--surface-raised);
   border: 1px solid var(--node-border);
   border-radius: 8px;
-  width: min(840px, 100%);
-  height: min(680px, 100%);
+  width: min(720px, 100%);
+  height: min(460px, 100%);
   font-family: var(--font-sans);
   color: var(--text-primary);
   overflow: hidden;
