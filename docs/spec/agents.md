@@ -98,8 +98,8 @@ separators; the account as a name, the last seen short), and its Claim as one br
 ancestors then the claimed node (`Growth › CODE › ARLESH › Bugfixes`), with no kind label. It can
 pause, resume, release, lock, unlock and remove an Agent, and lock an account. The Accounts list
 collapses. Every one of those edits is undoable (see [Undo](undo.md)). The status bar's padlock
-shows for any Agent at capacity, and opens this section. The Settings modal has a fixed frame, a
-little larger than before, that scrolls inside rather than growing with a section. Accounts are labels the
+shows for any Agent at capacity, and opens this section. The Settings modal has a fixed frame, about its
+former size, that scrolls inside rather than growing with a section. Accounts are labels the
 agents declare; they are not authenticated against Claude, because no Pro or Max usage API is
 documented (checked 2026-11-07).
 
