@@ -6,6 +6,7 @@ const read = (path: string): string => readFileSync(path, "utf8");
 const tokens = read("src/styles/tokens.css");
 const phoneTopBar = read("src/components/PhoneTopBar/PhoneTopBar.module.css");
 const bottomNav = read("src/components/BottomNav/BottomNav.module.css");
+const app = read("src/App.module.css");
 const bottomSheet = read("src/components/BottomSheet/BottomSheet.module.css");
 
 describe("safe-area variables", () => {
@@ -22,6 +23,13 @@ describe("safe-area variables", () => {
 
   it("leaves no raw env() inset outside the token definitions", () => {
     for (const file of [phoneTopBar, bottomSheet, bottomNav]) expect(file).not.toContain("env(safe-area");
+  });
+});
+
+describe("landscape side insets", () => {
+  it("are padded by the shell, which paints the app background so the padding is not the WebView's white", () => {
+    expect(app).toMatch(/padding-left:\s*var\(--safe-left\)/);
+    expect(app).toMatch(/background:\s*var\(--canvas-bg\)/);
   });
 });
 

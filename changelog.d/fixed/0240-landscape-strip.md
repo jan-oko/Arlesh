@@ -1,0 +1,1 @@
+- **No white strip beside the screen in landscape on Android.** With edge to edge on, the side where the camera cutout or the navigation bar sits showed a white strip, in and out of Full screen. It now shows the app's own background, dark or light.
