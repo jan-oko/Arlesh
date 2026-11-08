@@ -125,7 +125,7 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
 | `GET /events/changes` | The change stream (below). `GET /events/expectations` is the agents' long poll, answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
-| `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
+| `GET /board?now=` | The whole board: every node with its lifecycle, short id and facts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
 | `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check, `GET /{id}/dependency-candidates` (what the quick dependency picker offers) |
@@ -136,7 +136,6 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/flows` | read, create, update, delete, `/start`, `/recurrence` (`GET` too), `/habit-modifications`, `/fork`, `/duplicate`, `/dependencies`; `GET` the list, `/{id}/goals`, `/{id}/tasks`, `/{id}/completion-count`, `/instance-nodes`; `POST /origins` and `/scope-valid-targets` (reads, the body a list of nodes) |
 | `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate`; `GET /flow_goal`, `/flow_task`, `/cycles`, `/dependencies`: every Flow's |
 | `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons`, `POST /scope-containment-conflicts` (the body a Time Scope) and `GET /reparent-conflicts?parent_type=&parent_id=`: what-ifs that write nothing |
-| `/capacity` | The agent capacity lock: `GET`, and `PUT` with `{"at_capacity": …}`. One lock per database file, shared by every route and every client's MCP endpoint |
 | `/undo`, `/redo` | `GET /undo` (what the calling client's next undo and redo would be), `POST /undo`, `POST /redo`: the calling client's own stacks. `null` when there is nothing to take back |
 | `/gestures` | The gesture operations: each gesture the app makes over several commands, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`), and `POST /paste`, `/insert-parent`, `/move-node`, `/plan-tasks`, `/plan-move`, `/save-task`, `/save-goal`, `/save-commitment`, `/save-project`, `/save-wait`, `/save-flow`, `/save-flow-item`, `/new-flow` and `/archive-nodes`, each with the gesture's writes as its body and answering each write's result (see [Client Mode](client-mode.md), *Undo*) |
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
@@ -181,7 +180,7 @@ and start empty with the server, which also clears the journal at startup as the
 ## Live sync: `/events/changes`
 
 `GET /events/changes` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
-a write through any route as any client, the capacity lock, and an agent's write through `/mcp`.
+a write through any route as any client, and an agent's write through `/mcp`.
 The revision is one per database file, shared by every open of it in the process, and it starts at
 0 when the server starts. The stream sends `event: board-changed` with `data: {"revision": n,
 "epoch": e}` when the revision moves past the last one it sent, so writes close together arrive as

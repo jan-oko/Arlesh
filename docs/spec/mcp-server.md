@@ -43,8 +43,7 @@ bound, and `await db.stop_mcp()` (or closing the database) stops it. It is for t
 *Spoken by the Python server*), and the binding stays for its own tests and for any host that wants a
 listener. It binds a loopback address only and refuses any other. An agent's writes there are journaled as source `mcp` from the
 server's client rather than `desktop` (see [Undo](undo.md), *Clients, and a second writer*). The
-board-changed announcement is silent, since there are no windows to tell, and the agent capacity
-lock is the same `agent-capacity.json` the app keeps beside the database. In local mode the app
+board-changed announcement is silent, since there are no windows to tell. In local mode the app
 serves its own endpoint as before; the app's hold on the database keeps the two from running over
 one file.
 
@@ -56,7 +55,7 @@ answers it, through four bindings on a database opened for writing: `db.mcp_tool
 `await db.mcp_call(name, arguments)`. The last two answer `{"result": ...}` or
 `{"error": {"code", "message", "data"}}`, which Python puts in the request's JSON-RPC envelope; it
 reimplements no tool, parameter check, access rule or paging. The calls run on the client's own
-write-open, so write attribution, per-device undo, the shared capacity lock and the revision an
+write-open, so write attribution, per-device undo and the revision an
 agent's write bumps are those of the endpoint above. Settled while building:
 
 - **No connection needed.** `rmcp` builds a tool's request context only inside a running service,
@@ -204,8 +203,7 @@ definition it loads.
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
-| `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
-| `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `report_usage(windows)` — this session's own identity, Claim and account usage. See [Agents](agents.md) |
+| `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage. See [Agents](agents.md) |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
 Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
@@ -431,7 +429,7 @@ the user raise a question (`arlesh_waits.ask`: a spec question, or "PR #n is gre
 merge?"); the Task reads `review` until the user answers, then `on_agent` again, and the agent
 reads the answer with `arlesh_waits.get`. A wait on something non-human (`question: false`, CI)
 leaves it `on_agent`. Finish with `done`, or hand it back unstarted with `todo`. The `start` preset
-still offers `todo` Agentic Tasks to claim; the capacity lock still blocks every one not `done`.
+still offers `todo` Agentic Tasks to claim; an agent at capacity blocks every one of its Claim not `done`.
 
 **Asking for them.** `load` takes an `agentic` query beside `filter` (added to `Arlesh-rz0`,
 2026-09-24): `{}` narrows the board to the Tasks that **read as Agentic** — their own flag or their
@@ -691,73 +689,54 @@ are kept in the `retired_beads_ids` table (resources.md, *Beads id*).
 
 Ruled with the user on 2026-09-30 and revised on 2026-10-01 (`cdd`): "it essentially acts like a
 dependency of agentic tasks. When it's on, these tasks are derived blocked. The rest of the logic
-should follow." The **agent capacity lock** is one app-wide on/off state meaning "agents are at
-capacity". An agent — or whoever runs a fleet of them — sets it with
-`arlesh_capacity.set(at_capacity: true)` when it cannot take on more Agentic work and clears it with
-`at_capacity: false` as soon as there is room; `get` reads it. The user sets and clears it too.
-Both answer `{"at_capacity": bool}`.
+should follow." Revised on 2026-11-07 (Task `7a0`): capacity belongs to an **agent and its
+account**, and on 2026-11-08 the **app-wide lock was removed** — the `agent-capacity.json` file, the
+`arlesh_capacity` tool, `GET`/`PUT /capacity`, the `agent_capacity` and `set_agent_capacity`
+commands, the `agent-capacity-changed` event, the Settings switch and the `at_capacity` parameter
+of the board load. A client that still calls `arlesh_capacity` is answered `tool not found`.
 
-**What it does.** While it is on, every **Agentic Task not yet Done** — To Do, Started or In
-Progress; its own flag or inherited, by the rule the board is drawn by — is **blocked**, with the
-derived reason **Agents at capacity**. Everything blocked already does follows, here and in the
+An agent is **at capacity** while it is locked by hand, its account is locked by hand, or a limit
+window of its account sits at 100% before its reset. The windows are reported with
+`arlesh_agents.report_usage` and kept per account; the state is derived from the reports and `now`
+on every load, so it lifts at the reset by itself. An agent that cannot take on more work locks
+itself with `arlesh_agents.lock` and clears it with `unlock`; the user locks an agent or an account
+in Settings → Agents. See [Agents](agents.md).
+
+**What it does.** Every **Agentic Task not yet Done** — To Do, Started or In Progress; its own flag
+or inherited, by the rule the board is drawn by — inside the **active Claim of an agent at
+capacity** is **blocked**, with the derived reason **Agents at capacity**. Other agents' Tasks and
+the Tasks outside every Claim are not. Everything blocked already does follows, here and in the
 app alike: the snapshot's `block_reasons` section carries the reason (marked
 `"derived": "agent_capacity"`), `arlesh_tasks.get` lists it among the task's block reasons, Start
 drops the task with its subtree, Unblock lists it, and the app shows the stop-sign and refuses to
-start it. **Agentic waits** are not Tasks and are never blocked by it. See
-[*Tasks*](resources.md), *Blockers*.
+start it. **Agentic waits** are not Tasks and are never blocked by it. A paused, shadowed or
+unreachable Claim blocks nothing. See [*Tasks*](resources.md), *Blockers*.
 
 **One derivation.** `capacity::blocks` runs **inside the board load** (`mindmap::load_blocked`)
 and appends the reasons to its `block_reasons` (`derived: "agent_capacity"`), once every status is
 final and **before** a Compound Task's own derived block (`derived: "compound"`) reads "blocked" —
-so a Compound whose open items the lock blocks is blocked too. Every reader of "blocked" loads it
-so: the app's `load_mindmap`, the snapshot, and the board every `arlesh_tasks` / `arlesh_waits` /
-`arlesh_infos` call reads (before the roots cut it, since whether a Task reads as Agentic can come
-from above them). The filters, the snapshot and the app never learn the lock exists; they see a
-block. Neither the lifecycles nor `BoardFilter` change.
+so a Compound whose open items an agent's capacity blocks is blocked too. Every reader of "blocked"
+loads it so: the app's `load_mindmap`, the snapshot, and the board every `arlesh_tasks` /
+`arlesh_waits` / `arlesh_infos` call reads (before the roots cut it, since whether a Task reads as
+Agentic can come from above them). The filters, the snapshot and the app never learn about agents
+here; they see a block. Neither the lifecycles nor `BoardFilter` change.
 
 **Agents may carry on.** `arlesh_tasks.set_status` has never checked blocks and still does not:
-an agent that already holds work may move it along — into In Progress included — while the lock is
-on. Only the app refuses to start a blocked Task, as it does for any block.
+an agent that already holds work may move it along — into In Progress included — while it is at
+capacity. Only the app refuses to start a blocked Task, as it does for any block.
 
-**Per agent and per account** (2026-11-07, Task `7a0`). The lock above is the **master switch**: on, it
-blocks every Agentic Task. Beneath it, an Agent that is **at capacity** blocks the Agentic Tasks
-inside its active Claim, and only those. An Agent is at capacity while it is locked by hand, its
-account is locked by hand, or a limit window of its account sits at 100% before its reset; the
-windows are reported with `arlesh_agents.report_usage` and kept per account. It is derived from the
-reports and `now` on every load, so it lifts at the reset by itself. The reason is the same derived
-one ("Agents at capacity", `derived: "agent_capacity"`). The per-agent and per-account locks are
-set in Settings → Agents, and stored in the database, not in `agent-capacity.json`. See
-[Agents](agents.md).
-
-**Where it lives.** A file in the app's data directory, `agent-capacity.json`, beside the port's
-`mcp.json` and for the same reason: it is operational state about the agents working this board,
-not board data. A row would be journaled, and Ctrl+Z would flip the lock; so there is no
-migration, and setting it is never an undoable step. One `AgentCapacity` in the backend holds it
-for the Tauri commands (`agent_capacity`, `set_agent_capacity`) and every MCP session. It survives
-a restart and starts **off** on a fresh install, or when its file cannot be read — a lock nobody can
-read must not block work.
-
-**Live in every window.** Each change, from the app or the MCP, is announced to **every** window
-twice over, through the per-window `emit_to` / `listenHere` door `board-changed` uses (so nothing in
-`crate::mcp` knows what a window is): as `agent-capacity-changed`, carrying the new state, which the
-Settings switch and the top-bar indicator read; and as an ordinary `board-changed`, so every window
-— the one that flipped it included — takes the same reload any board change gets and re-derives the
-block with it. A window reads the lock once on start and then takes each announcement.
-
-**In the app.** Settings → Agents → *Agent capacity* has the lock's switch, **Agents are at
-capacity**, and **Show agent status in the top bar** (on by default, app-wide; ruled by the user,
-2026-10-01). The lock's explanation sits behind a **?** beside its switch, shown on
-hover and on keyboard focus (the user, reviewing #116), rather than as a paragraph on the page. There is no setting for whether the lock blocks: the lock is the only control.
+**In the app.** Settings → Agents lists each agent with its capacity cause and has the locks;
+**Show agent status in the top bar** (on by default, app-wide; ruled by the user, 2026-10-01) sits
+in the same section.
 
 **The agents' status in the top bar** (ruled by the user, 2026-10-01, from mock 3, "Row under the
 head", with the padlock and no counts). A small **bot head**, in the top bar's icon colour like the
-gear, sits just before the Filter button, with a tiny row of icons under it. With **Show agent status in the top bar** off the head never shows, whatever holds — the lock
-included; it is then set and cleared from Settings alone. With it on, the head shows **only
-while at least one of these holds** — whether or not the MCP endpoint is listening, since the lock
-can be on with the endpoint off and must stay clearable, and the waits and work are facts of the
-board either way:
+gear, sits just before the Filter button, with a tiny row of icons under it. With **Show agent status in the top bar** off the head never shows. With it on, the head shows **only
+while at least one of these holds** — whether or not the MCP endpoint is listening, since the waits
+and work are facts of the board either way:
 
-- the capacity lock is on — an amber **padlock** (`--agent-capacity`);
+- an agent is at capacity, **for any reason** — locked by hand, its account locked, or a plan limit
+  used up until its reset (2026-11-08) — an amber **padlock** (`--agent-capacity`);
 - an Agentic Task reads **Review** — its agent has a question open for the user — a red **!**
   (`--ask`);
 - a pending agentic wait is on something else, CI say — a blue **hourglass** (`--wait`);
@@ -768,26 +747,29 @@ board either way:
 Progress; with the Agentic status model those are Review and On Agent.)
 
 The row shows only what applies, in that order, and **no counts**. The tooltip and the accessible
-name spell out each line with its count — *Agents at capacity: Agentic tasks are blocked. 1 agentic
-task waiting for your review. 2 agent waits. 3 agentic tasks on an agent. Click for details.* A
-click opens a
-small menu with one line per thing that applies: **Clear** on the capacity line, which clears the
-lock, and **Show** on the others — Review opens the List View under Do (where Review leads) with
-the Agentic pill, the waits open it under its Expectations option, and On Agent opens it under Do
-with the Agentic pill and the On Agent pill on. `Escape` or a click outside
+name spell out each line with its count — *2 agents at capacity. 1 agentic task waiting for your
+review. 2 agent waits. 3 agentic tasks on an agent. Click for details.* A click opens a small menu
+with one line per thing that applies: the capacity line has **Open**, which opens Settings on the
+Agents section, scrolled to the agent's row when exactly one agent is held back (the row is
+briefly highlighted); **Show** on the others — Review opens the List View under Do (where Review
+leads) with the Agentic pill, the waits open it under its Expectations option, and On Agent opens
+it under Do with the Agentic pill and the On Agent pill on. `Escape` or a click outside
 closes it. Each glyph is its own component, so the Review and the other waits can be merged into
 one icon by swapping two files for one.
 
-The counts cover the **whole board**, not the tab's subtree. They come from the load every view
-already makes: after each load, `use-mindmap-data` counts them over the whole tree it built
+The task counts cover the **whole board**, not the tab's subtree. They come from the load every
+view already makes: after each load, `use-mindmap-data` counts them over the whole tree it built
 (`agent-activity`) and hands them to an app-wide store the top bar reads — no request of its own.
-Every edit, every other window's change, every MCP write and every lock flip ends in that reload,
-so the row is live; the lock's own state arrives with `agent-capacity-changed` as well.
+The capacity line reads the agents list (`list_agents`), kept fresh on `agents-changed` and
+`board-changed`, and again when the soonest plan limit resets. Every edit, every other window's
+change and every MCP write ends in that reload, so the row is live.
 
 ## What writes
 
-`arlesh_tasks`, `arlesh_waits` and `arlesh_infos` write to the board, and
-`arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; `arlesh_agents` writes the Agent tables (attach, Claim, usage), which are not journaled either; every other tool is annotated
+`arlesh_tasks`, `arlesh_waits` and `arlesh_infos` write to the board, and `arlesh_agents` writes
+the Agent tables (attach, Claim, lock, usage): journaled under source `mcp` like the rest, so off
+every stack, while the user's own Settings edits to them are Gestures on the user's stack (see
+[Undo](undo.md)); every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer

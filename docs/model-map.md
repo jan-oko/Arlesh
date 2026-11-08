@@ -20,7 +20,7 @@ frontend) to `ts:`.
  parent tree              2 Habit occurrences, cooldown blocks       pills               Mindmap, List,
  Flow/Habit templates     3 waits, check tasks                       Rust + TS twins     Plan, Steps, Zen
  overlays                 4 compound status, Review                  shared corpus  ──►  MCP (agents)
- dependencies, reasons    5 blocks: reasons, deps, capacity lock                         roots, private,
+ dependencies, reasons    5 blocks: reasons, deps, capacity                           roots, private,
  statuses, done instants                                                                 Agentic writes
         ▲                                                                                     │
         └──────────── edits write stored rows and overlays only, never a derived value ───────┘
@@ -28,12 +28,11 @@ frontend) to `ts:`.
         └─► undo journal (SQL triggers on every journaled table)
 ```
 
-The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the capacity lock's
-blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
+The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the blocks of the agents at capacity). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
 then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
 `rs:flows/rules/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
 which also draws the waits, then `rs:tasks/rules/archival.rs::inherit` (what lies beneath a hand
-archive reads as archived), then `rs:tasks/rules/review.rs::derive`, then the capacity lock
+archive reads as archived), then `rs:tasks/rules/review.rs::derive`, then the agents' capacity blocks
 (`rs:capacity/rules/blocks.rs`) and the compound block, and every Task's effective Plan last
 (`rs:mindmap/rules/plans.rs`), once every row, Overdue flag and Archival is in. The MCP snapshot reads the same load (`rs:mcp/`).
 
@@ -56,7 +55,7 @@ never stored.
 | **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
 | **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
 | **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. | `rs:agents/rules/usage.rs::cause` |
-| **Capacity block** | capacity lock, Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and either the global lock is on or it lies inside the active Claim of an Agent at capacity. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
+| **Capacity block** | Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and lies inside the active Claim of an Agent at capacity. There is no app-wide lock. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
 | **Habit iteration** | status of its occurrences, compound status, verdicts of its Commitment items, releases of its wait items, clock and miss policy, now | Resolved when every template occurrence is settled: done (a compound one by its derived status), a Commitment item's given a verdict, a wait item's released. Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
@@ -327,14 +326,14 @@ How the presets read them:
 
 ### Derived blocks
 - **Is:** blocks no one writes:
-  - the agent capacity lock, on every Agentic Task not yet Done, and an Agent at capacity, on the Agentic Tasks of its Claim;
+  - an Agent at capacity, on the Agentic Tasks not yet Done of its Claim;
   - a Habit's cooldown;
   - a compound Task whose open sub-items are all blocked.
   
   They gate starting work and never change a status.
 - **Why:** one mechanism, so filters, badges and the MCP need nothing new for each.
 - **Without:** a special filter rule per feature, each one missing a view.
-- **Lives:** `rs:capacity/rules/blocks.rs` (the lock is stored in `agent-capacity.json`), `rs:flows/rules/cooldown.rs` and `rs:tasks/compound.rs`.
+- **Lives:** `rs:capacity/rules/blocks.rs` (capacity itself is derived from the agents' locks and usage reports), `rs:flows/rules/cooldown.rs` and `rs:tasks/compound.rs`.
 - **Spec:** [MCP § Agent capacity](spec/mcp-server.md#agent-capacity), [Habits § Cooldown](spec/habits.md#cooldown), [Filtering Logic](spec/filtering-logic.md).
 
 ## 7. Reading it out

@@ -178,8 +178,7 @@ async with arlesh.Arlesh(backend=arlesh.SqliteBackend("arlesh.db", client="noteb
 - `board.changes()` is an async iterator over the board's changes: the server's `/events` stream
   over HTTP, the process's own write counter over SQLite. It yields the newest revision only, never a
   backlog, and holds a connection only while someone is iterating.
-- Two reads the port lacks are answered by the Python layer: `get_info` from the list of infos, and
-  `board(at_capacity=…)` is refused over HTTP.
+- One read the port lacks is answered by the Python layer: `get_info`, from the list of infos.
 - Operations only a local file has (`serve_mcp`, `stop_mcp`, `reset_undo`, `arlesh.hold`) are
   refused over HTTP with `not_permitted`, `details.reason = "not_in_client_mode"`.
 - `await arlesh.pairing.start(url, name)` asks for a PIN to show, and `await
@@ -396,13 +395,13 @@ locally while it is still queued, and otherwise waits for the lane and undoes on
 
 ## Shared and local state
 
-- **Shared, on the server:** the board, and the **agent capacity lock**, which has its own routes.
+- **Shared, on the server:** the board, and the agents with their Claims and accounts, which have their own routes (`/agents`).
 - **Local to each device:** preferences, and the window and tab session.
 
 ## MCP
 
 In Client mode the app serves **no** MCP endpoint, and Settings → Agents shows no endpoint section;
-the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly. This is
+the MCP roots and the agents there are the server's. Agents talk to the server's `/mcp` directly. This is
 the [HTTP Server](http-api.md)'s *the app serves none*.
 
 **Agents** (2026-11-07, Task `7a0`; see [Agents](agents.md)). `/mcp` no longer takes a device token: every

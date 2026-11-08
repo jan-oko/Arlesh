@@ -11,7 +11,7 @@ The terms (Agent, Claim, Account, connect token, PIN, attach) are in `CONTEXT.md
 An **Agent** is an MCP session that attached. It has a name (unique among Agents; a name taken
 gets `-2`, `-3`), an **account** label (`default` if it gives none), the client's session id and
 at most one **Claim**, plus a manual lock. Agents are rows of `agents`, in the database of the
-app or the server, **not journaled**. They are listed in **Settings → Agents**, apart from the
+app or the server. The `agents` and `agent_accounts` rows are **journaled** (migration 0102): the user's edits in Settings → Agents are undoable Gestures, and an agent's own writes are journaled under source `mcp` and stay off every stack ([Undo](undo.md), *Agents and Claims*); PINs, usage reports and the connect token are not journaled. They are listed in **Settings → Agents**, apart from the
 Devices list: a device is a person's machine with a token; an Agent is a session of an AI client.
 
 ## Attaching
@@ -87,12 +87,19 @@ An Agent is **at capacity** when, at `now`:
 
 This is derived on every load, so it lifts **at the reset** with no timer, across a restart. While
 an Agent is at capacity, the Agentic Tasks inside its **active** Claim read blocked, with the
-derived reason of the global lock ("Agents at capacity"); other Agents' Tasks do not. A paused,
-shadowed or unreachable Claim blocks nothing. The **global lock** ([MCP § Agent
-capacity](mcp-server.md#agent-capacity)) stays as a master switch over everything.
+derived reason "Agents at capacity" (`derived: "agent_capacity"`); other Agents' Tasks do not. A paused,
+shadowed or unreachable Claim blocks nothing. There is **no app-wide lock** any more (removed
+2026-11-08, with `arlesh_capacity`, `GET`/`PUT /capacity` and `agent-capacity.json`): an Agent locks
+itself with `arlesh_agents.lock` / `unlock`, and the user locks an Agent or an account in Settings
+([MCP § Agent capacity](mcp-server.md#agent-capacity)).
 
-Settings → Agents shows each Agent's name, subtree, account, status and usage, and can pause,
-resume, release, lock, unlock and remove an Agent, and lock an account. Accounts are labels the
+Settings → Agents shows each Agent on two lines: `name · state · Account · last seen 2h` (dot
+separators; the account as a name, the last seen short), and its Claim as one breadcrumb,
+ancestors then the claimed node (`Growth › CODE › ARLESH › Bugfixes`), with no kind label. It can
+pause, resume, release, lock, unlock and remove an Agent, and lock an account. The Accounts list
+collapses. Every one of those edits is undoable (see [Undo](undo.md)). The status bar's padlock
+shows for any Agent at capacity, and opens this section. The Settings modal has a fixed frame, a
+little larger than before, that scrolls inside rather than growing with a section. Accounts are labels the
 agents declare; they are not authenticated against Claude, because no Pro or Max usage API is
 documented (checked 2026-11-07).
 

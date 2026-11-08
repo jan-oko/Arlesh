@@ -5,7 +5,7 @@ Status: accepted 2026-11-07 (Task `7a0`), settled with the user in a design sess
 ## Context
 
 Until now the MCP had one set of roots for every session, one global capacity lock with no
-expiry, and no notion of which agent was which. Two agents could write the same subtree, a
+expiry (removed in this ADR, see *Decision*), and no notion of which agent was which. Two agents could write the same subtree, a
 session saw the whole of the user's roots, and on 2026-10-03 every agent hit the usage limit at
 once with nothing to say which of them was blocked or when it would lift. Device tokens, which
 name a *device*, were also the only credential the server's `/mcp` took, so an agent held a
@@ -43,8 +43,7 @@ time for each plan limit window (`$.session.usage()` and the `session.measure` e
 at capacity while any window of its account sits at 100% before its reset, or while it or its
 account is locked by hand. This is *derived* from the last reports and `now`, so it lifts at the
 reset by itself, across a restart, with no timer to miss. At capacity, the agent's claimed Agentic
-Tasks read blocked (the derived reason of the global lock); other agents' do not. The global lock
-stays as a master switch. Accounts are declared labels and are not authenticated against Claude:
+Tasks read blocked (the derived reason "Agents at capacity"); other agents' do not. Accounts are declared labels and are not authenticated against Claude:
 no usage API is documented as of 2026-11-07.
 
 **The doors.**
@@ -59,10 +58,11 @@ no usage API is documented as of 2026-11-07.
   nothing else. **Device tokens stop working on `/mcp`.** The desktop's own loopback endpoint needs
   no connect token.
 
-**Storage.** The tables (migration 0101: `agents`, `agent_pins`, `agent_pin_failures`,
-`agent_accounts`, `agent_account_usage`, `connect_tokens`) are not journaled
-(`undo::EXCLUDED_TABLES`): attaching, claiming or locking is not a board edit, and Ctrl+Z must not
-revoke an Agent or give a Claim back. Secrets are kept as SHA-256 digests. The rules (overlap,
+**Storage.** The tables are migration 0101: `agents`, `agent_pins`, `agent_pin_failures`,
+`agent_accounts`, `agent_account_usage`, `connect_tokens`. `agent_pins`, `agent_pin_failures`,
+`agent_account_usage` and `connect_tokens` are not journaled (`undo::EXCLUDED_TABLES`): operational
+state, not choices to take back. `agents` and `agent_accounts` are journaled from migration 0102
+(next section). Secrets are kept as SHA-256 digests. The rules (overlap,
 shadowing, standing, capacity, PIN lifetime) are pure functions in `agents/rules/` (ADR 0010); the
 persistence and the composite operations are in `agents/store.rs` and `agents/service.rs`; both
 hosts, the app and `arlesh-server`, use them.
@@ -90,6 +90,30 @@ hosts, the app and `arlesh-server`, use them.
 7. **Which agent holds a subtree.** Settings → Agents lists every Agent with its Claim, standing,
    account and usage, beside (and apart from) the Devices list. A "held by" mark on the node's
    antenna tooltip is not part of this decision.
+
+**Undo (decided 2026-11-08, from the user's hand test).** First cut: no agent table was journaled,
+on the reasoning that Ctrl+Z must not revoke an Agent. The user asked for Claim management to be
+undoable instead, so `agents` and `agent_accounts` are journaled by their triggers (migration
+0102, a new migration, since 0101 had run in real databases). Every Settings → Agents action —
+pause, resume, release, lock, remove, account lock — is a command through the ordinary door, so one
+Gesture on the user's stack; Ctrl+Z / Ctrl+Shift+Z reverse and reapply it, and the Settings modal
+carries its own undo binding while it is open (deferring to the field inside an input). Chosen over
+a command journal because the journal is trigger-written row images: two sets of triggers, no new
+mechanism, no inverse per command. An agent's own writes are journaled under source `mcp` and stay
+off every stack. A removed agent's token digest sits only in the session-scoped journal. Undo
+restores the row as it was, which can leave two active Claims overlapping if another agent claimed
+meanwhile; the shadowing rule (older keeps its place, younger sees nothing) tolerates it, so undo
+needs no check. See [Undo](../spec/undo.md), *Agents and Claims*.
+
+**The app-wide capacity lock is removed (2026-11-08).** The `agent-capacity.json` file, the
+`arlesh_capacity` MCP tool, `GET`/`PUT /capacity`, the `agent_capacity` / `set_agent_capacity`
+commands and backend methods, the `agent-capacity-changed` event, the Settings switch and the
+`at_capacity` parameter of the board load are gone. Capacity is per agent and account; an agent
+locks itself with `arlesh_agents.lock` / `unlock`, the user locks an agent or an account in
+Settings. The derived block reason stays (`derived: "agent_capacity"`, "Agents at capacity") but is
+produced only for the Agentic Tasks in the Claim of an agent at capacity. A client calling
+`arlesh_capacity` is answered `tool not found`: the breaking change the user asked for. The status
+bar's padlock shows for any agent at capacity, and opens Settings on the Agents section.
 
 ## Consequences
 
