@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
+import { useDisplayStore } from "@/stores/use-display-store";
+import { useSettingsStore } from "@/stores/use-settings-store";
 import AgentsSection from "./AgentsSection";
 import {
   applyAgentAction, fetchAgents, issueAgentPin, setAgentAccountLocked,
@@ -139,5 +141,39 @@ describe("AgentsSection", () => {
     render(<AgentsSection />);
     fireEvent.click(await screen.findByRole("button", { name: "mcp.agents.getPin" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("too many PINs");
+  });
+
+  it("collapses and expands the accounts", async () => {
+    render(<AgentsSection />);
+    const toggle = await screen.findByRole("button", { name: /mcp\.agents\.accountsHeading/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeInTheDocument();
+  });
+
+  it("turns the top bar's agent status off from its switch", async () => {
+    useDisplayStore.setState({ showAgentStatus: true });
+    render(<AgentsSection />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "mcp.agents.showStatus" }));
+
+    expect(useDisplayStore.getState().showAgentStatus).toBe(false);
+  });
+
+  it("marks the row the status menu pointed at", async () => {
+    useSettingsStore.setState({ isOpen: true, page: "mcp", anchor: "settings-agent-1" });
+    render(<AgentsSection />);
+
+    const row = await screen.findByText("writer");
+    const item = row.closest("li");
+    await vi.waitFor(() => expect(item).toHaveAttribute("data-highlight", "true"));
   });
 });

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Account, AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
 import type { AgentAction } from "@/api/agents";
 import type { McpCatalogueNode } from "@/api/mcp-access";
+import { agentRowId } from "@/utils/agent-anchors";
 import { controlsFor, relativeTime } from "@/utils/agents";
 import { describeRoots } from "@/utils/mcp-roots";
 import styles from "./SettingsModal.module.css";
@@ -52,7 +53,7 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
   };
 
   return (
-    <li className={own.agent}>
+    <li id={agentRowId(agent.id)} className={own.agent}>
       <div className={own.head}>
         <span className={own.name}>{agent.name}</span>
         <span className={own.badge} title={standingNotes[standing]}>

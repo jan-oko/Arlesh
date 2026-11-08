@@ -7,6 +7,7 @@ import { onBoardChanged } from "@/api/board";
 import { getErrorMessage } from "@/api/errors";
 import { fetchMcpAccessCatalogue } from "@/api/mcp-access";
 import type { McpCatalogueNode } from "@/api/mcp-access";
+import { useSettingsReloadStore } from "@/stores/use-settings-reload-store";
 
 const EMPTY: AgentsOverview = { agents: [], accounts: [] };
 const NO_NODES: McpCatalogueNode[] = [];
@@ -37,6 +38,8 @@ export function useAgents(): Agents {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pin, setPin] = useState<IssuedPin | null>(null);
+  // An undo or redo made while Settings is open changes what this page shows.
+  const epoch = useSettingsReloadStore((s) => s.epoch);
 
   const load = useCallback(async (clearError = true) => {
     try {
@@ -63,7 +66,7 @@ export function useAgents(): Agents {
       subscribed = false;
       stops.forEach((stop) => stop());
     };
-  }, [load]);
+  }, [load, epoch]);
 
   const edit = useCallback(async (write: () => Promise<void>) => {
     setError(null);

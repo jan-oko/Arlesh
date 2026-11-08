@@ -4,20 +4,24 @@
   background: rgba(0, 0, 0, 0.4);
   z-index: 150;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 8vh 16px 16px;
-  overflow-y: auto;
+  padding: 16px;
 }
 
+/* A fixed frame, slightly larger than the content usually needs, bounded by the window: a long
+   page scrolls inside it instead of stretching the modal. */
 .modal {
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
   border: 1px solid var(--node-border);
   border-radius: 8px;
-  max-width: 720px;
-  width: 100%;
+  width: min(840px, 100%);
+  height: min(680px, 100%);
   font-family: var(--font-sans);
   color: var(--text-primary);
+  overflow: hidden;
 }
 
 .header {
@@ -51,7 +55,8 @@
 
 .body {
   display: flex;
-  min-height: 320px;
+  flex: 1;
+  min-height: 0;
 }
 
 .tabs {
@@ -61,6 +66,7 @@
   padding: var(--space-3) var(--space-2);
   border-inline-end: 1px solid var(--node-border);
   min-width: 160px;
+  overflow-y: auto;
 }
 
 .tab {
@@ -89,7 +95,30 @@
 .panel {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+/* A narrow window or a phone: the page list becomes a row above the page, scrolling sideways. */
+@media (max-width: 640px) {
+  .body {
+    flex-direction: column;
+  }
+
+  .tabs {
+    flex-direction: row;
+    flex-shrink: 0;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-inline-end: none;
+    border-bottom: 1px solid var(--node-border);
+  }
+
+  .tab {
+    white-space: nowrap;
+  }
 }
 
 .pageTitle {
