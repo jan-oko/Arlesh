@@ -1554,8 +1554,9 @@ class StatusRefusal(StrEnum):
     """
     below_sub_items = "below_sub_items"
     """
-    The press would lower the Task below what its sub-items make it read: it reads at least
-    Started, or In Progress, from them, so the lower status would change nothing.
+    `Alt+Enter` would pause the Task below what its sub-items make it read: it reads at least
+    Started, or In Progress, from them, so the lower status would change nothing. The click and
+    `Enter` cycle never asks: it skips to the floor.
     """
 
 
