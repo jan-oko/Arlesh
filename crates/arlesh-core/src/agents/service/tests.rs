@@ -102,9 +102,9 @@ impl Board {
         view(&mut db, agent).await.unwrap().unwrap()
     }
 
-    async fn blocking(&self, global: bool, now: &str) -> Blocking {
+    async fn blocking(&self, now: &str) -> Blocking {
         let mut db = self.db().await;
-        blocking(&mut db, global, at(now)).await.unwrap()
+        blocking(&mut db, at(now)).await.unwrap()
     }
 
     async fn report(&self, agent: AgentId, kind: &str, percent: f64, resets: &str, now: &str) {
@@ -467,10 +467,9 @@ async fn a_full_window_blocks_only_that_accounts_claims_until_it_resets() {
         .report(work, "five_hour", 100.0, "2026-11-07T14:00:00", NOW)
         .await;
 
-    let during = board.blocking(false, "2026-11-07T12:00:00").await;
+    let during = board.blocking("2026-11-07T12:00:00").await;
     assert_eq!(during.subtrees, vec![node(NodeTable::Goal, 10)]);
-    assert!(!during.global);
-    let after = board.blocking(false, "2026-11-07T14:00:00").await;
+    let after = board.blocking("2026-11-07T14:00:00").await;
     assert!(after.is_none(), "it lifts at the reset by itself");
 }
 
@@ -487,7 +486,7 @@ async fn an_account_below_its_limit_blocks_nothing() {
         .report(work, "five_hour", 99.0, "2026-11-07T14:00:00", NOW)
         .await;
 
-    assert!(board.blocking(false, NOW).await.is_none());
+    assert!(board.blocking(NOW).await.is_none());
 }
 
 #[tokio::test]
@@ -503,17 +502,17 @@ async fn a_manual_lock_on_an_agent_or_its_account_blocks_its_claim() {
         .act(work, AgentAction::Lock { locked: true })
         .await
         .unwrap();
-    assert_eq!(board.blocking(false, NOW).await.subtrees.len(), 1);
+    assert_eq!(board.blocking(NOW).await.subtrees.len(), 1);
     board
         .act(work, AgentAction::Lock { locked: false })
         .await
         .unwrap();
-    assert!(board.blocking(false, NOW).await.is_none());
+    assert!(board.blocking(NOW).await.is_none());
 
     let mut db = board.db().await;
     set_account_locked(&mut db, "work", true).await.unwrap();
     db.commit().await.unwrap();
-    assert_eq!(board.blocking(false, NOW).await.subtrees.len(), 1);
+    assert_eq!(board.blocking(NOW).await.subtrees.len(), 1);
 }
 
 #[tokio::test]
@@ -530,14 +529,7 @@ async fn a_paused_claim_is_not_blocked_because_it_is_not_held() {
         .unwrap();
     board.act(work, AgentAction::Pause).await.unwrap();
 
-    assert!(board.blocking(false, NOW).await.is_none());
-}
-
-#[tokio::test]
-async fn the_global_lock_stays_a_master_switch() {
-    let board = board().await;
-
-    assert!(board.blocking(true, NOW).await.global);
+    assert!(board.blocking(NOW).await.is_none());
 }
 
 #[tokio::test]

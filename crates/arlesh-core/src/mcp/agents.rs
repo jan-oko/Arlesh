@@ -19,6 +19,7 @@ use super::{
     session::Binding,
     ArleshMcp,
 };
+use crate::capacity::blocks::Blocking;
 use crate::{
     access::model::{NodeKey, NodeTable},
     agents::{
@@ -85,7 +86,7 @@ impl ArleshMcp {
         let user_map = crate::access::access_map(db)
             .await
             .map_err(result::failed)?;
-        let board = Board::read_with(db, now, false, user_map)
+        let board = Board::read_with(db, now, Blocking::default(), user_map)
             .await
             .map_err(result::failed)?;
         let table = NodeTable::from_reference(&subtree.node_type);
@@ -300,6 +301,8 @@ impl ArleshMcp {
             AgentsOperation::Pause => self.act(AgentAction::Pause).await,
             AgentsOperation::Resume => self.act(AgentAction::Resume).await,
             AgentsOperation::Release => self.act(AgentAction::Release).await,
+            AgentsOperation::Lock => self.act(AgentAction::Lock { locked: true }).await,
+            AgentsOperation::Unlock => self.act(AgentAction::Lock { locked: false }).await,
             AgentsOperation::ReportUsage { windows } => self.report_usage(windows).await,
         }
     }

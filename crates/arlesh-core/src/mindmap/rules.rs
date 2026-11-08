@@ -158,15 +158,14 @@ fn tree_nodes<'rows>(
 ///
 /// Each kind's list is its **virtual table**: the stored rows with every Habit's occurrences
 /// merged in as ordinary rows, and every stored node hung on an occurrence read as that
-/// occurrence's child. Under the global lock every Agentic Task not yet Done carries the capacity
-/// derived reason, and an agent at capacity blocks its Claim's.
+/// occurrence's child. An agent at capacity blocks its Claim's Agentic Tasks not yet Done with the
+/// derived capacity reason.
 pub fn derive_board(
     sources: BoardSources,
     now: NaiveDateTime,
     horizon: Horizon,
-    blocking: impl Into<crate::capacity::blocks::Blocking>,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
-    let blocking = blocking.into();
     let BoardSources {
         domains,
         stored,
@@ -278,7 +277,7 @@ pub fn derive_board(
         .collect();
     let added = added_edges_in(&derived_edges, &present);
     task_dependencies.extend(added);
-    // The agent capacity lock blocks every Agentic Task not yet Done — before the Compound block
+    // An agent at capacity blocks the Agentic Tasks not yet Done in its Claim — before the Compound block
     // below reads "blocked", so a Compound whose open items the lock blocks is blocked too.
     if !blocking.is_none() {
         let capacity_blocks = crate::capacity::blocks::derive(

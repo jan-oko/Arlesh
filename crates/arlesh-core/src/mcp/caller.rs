@@ -32,14 +32,13 @@ impl ArleshMcp {
         }
     }
 
-    /// What the capacity blocks cover now: the global lock, and the Claims of agents at capacity.
+    /// What the capacity blocks cover now: the Claims of agents at capacity.
     pub(super) async fn blocking<M: SessionMode>(
         &self,
         db: &mut Db<M>,
         now: NaiveDateTime,
     ) -> Result<Blocking, AppError> {
-        let global = self.capacity.get().await.at_capacity;
-        Ok(service::blocking(db, global, now).await?)
+        Ok(service::blocking(db, now).await?)
     }
 
     /// The board as the caller sees it, blocked as the user's own board is.

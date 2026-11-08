@@ -40,18 +40,23 @@ use sources::BoardSources;
 /// seeing an empty Habit.
 #[tracing::instrument(skip(db))]
 pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
-    load_within(db, now, Horizon::default(), false).await
+    load_within(
+        db,
+        now,
+        Horizon::default(),
+        crate::capacity::blocks::Blocking::default(),
+    )
+    .await
 }
 
-/// [`load`], blocked by the agent capacity lock and by the agents at capacity (a `bool` is the
-/// lock alone): every Agentic Task not yet Done that they cover carries its derived reason (see [`crate::capacity::blocks`]). What every reader of
+/// [`load`], blocked by the agents at capacity: every Agentic Task not yet Done that they cover carries its derived reason (see [`crate::capacity::blocks`]). What every reader of
 /// "blocked" loads — the app's board, the MCP's snapshot and lookups; [`load`] is for the readers
 /// that take statuses, rows or lifecycles off the board and never its blocks.
 #[tracing::instrument(skip(db, blocking))]
 pub async fn load_blocked(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
-    blocking: impl Into<crate::capacity::blocks::Blocking>,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
     load_within(db, now, Horizon::default(), blocking).await
 }
@@ -63,7 +68,7 @@ pub async fn load_within(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
     horizon: Horizon,
-    blocking: impl Into<crate::capacity::blocks::Blocking>,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
     let sources = BoardSources::read(db).await?;
     rules::derive_board(sources, now, horizon, blocking)
@@ -78,7 +83,7 @@ pub async fn load_within(
 pub async fn board(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
-    blocking: impl Into<crate::capacity::blocks::Blocking>,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
     let mut load = load_blocked(db, now, blocking).await?;
     let access = match crate::access::access_map(db).await {

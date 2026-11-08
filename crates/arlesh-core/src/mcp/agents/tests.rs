@@ -81,7 +81,6 @@ async fn an_unattached_session_may_call_nothing_but_the_attach_tool() {
             "arlesh_scopes",
             json!({ "operation": "get", "id": { "kind": "day", "date": "2026-11-07" } }),
         ),
-        ("arlesh_capacity", json!({ "operation": "get" })),
         ("arlesh_kb", json!({ "operation": "list_people" })),
         ("arlesh_agents", json!({ "operation": "status" })),
     ] {
@@ -568,4 +567,39 @@ async fn claiming_an_id_that_does_not_name_a_visible_node_is_refused_one_way() {
     assert!(is_error(&missing) && is_error(&wrong_kind));
     assert_eq!(structured(&missing)["kind"], "not_permitted");
     assert_eq!(structured(&wrong_kind)["kind"], "not_permitted");
+}
+
+#[tokio::test]
+async fn an_agent_locks_itself_and_its_claimed_tasks_read_blocked_until_it_unlocks() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach(&session, "writer", 10).await;
+    let blocked = |answer: &Value| structured(answer)["block_reasons"].to_string();
+
+    let locked = call(&session, "arlesh_agents", json!({ "operation": "lock" })).await;
+    let held = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
+    call(&session, "arlesh_agents", json!({ "operation": "unlock" })).await;
+    let freed = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
+
+    assert!(!is_error(&locked), "{locked}");
+    assert_eq!(structured(&locked)["at_capacity"]["kind"], "agent_locked");
+    assert!(blocked(&held).contains("Agents at capacity"), "{held}");
+    assert!(!blocked(&freed).contains("Agents at capacity"), "{freed}");
+}
+
+#[tokio::test]
+async fn the_app_wide_capacity_tool_is_gone() {
+    let (mcp, _pool) = board().await;
+
+    assert!(!mcp.tool_names().contains(&"arlesh_capacity".to_owned()));
 }

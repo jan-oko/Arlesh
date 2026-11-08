@@ -532,19 +532,17 @@ pub async fn overview<M: SessionMode>(
     Ok(AgentsOverview { agents, accounts })
 }
 
-/// What the capacity blocks cover now: the whole board under the global lock, and the Claim of
-/// each agent that is at capacity.
+/// What the capacity blocks cover now: the Claim of each agent that is at capacity.
 ///
 /// Only a Claim that is active and in force counts. A paused Claim is free for another agent, and
 /// a shadowed or unreachable one covers nothing.
 #[tracing::instrument(skip(db))]
 pub async fn blocking<M: SessionMode>(
     db: &mut Db<M>,
-    global: bool,
     now: NaiveDateTime,
 ) -> Result<Blocking, AgentError> {
     if db.agents().all().await?.is_empty() {
-        return Ok(Blocking::from(global));
+        return Ok(Blocking::default());
     }
     let ground = Ground::read(db).await?;
     let accounts = accounts(db).await?;
@@ -559,7 +557,7 @@ pub async fn blocking<M: SessionMode>(
             subtrees.push(claim.root);
         }
     }
-    Ok(Blocking { global, subtrees })
+    Ok(Blocking { subtrees })
 }
 
 /// The Agent whose token this is, when it still exists.

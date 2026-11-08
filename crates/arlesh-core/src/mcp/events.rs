@@ -52,6 +52,7 @@ pub use log::{Reading, WaitLog, WaitLogs};
 use rules::{admitted, WaitState};
 
 use super::{ids::full_id, lookup::Board};
+use crate::capacity::blocks::Blocking;
 use crate::{
     access::model::NodeTable, agents::model::AgentId, database::session::SessionFactory,
     error::AppError,
@@ -342,7 +343,7 @@ async fn claim_nodes(
     let Some(view) = crate::agents::service::view(&mut db, agent).await? else {
         return Ok(std::collections::HashSet::new());
     };
-    let board = Board::read_with(&mut db, now, false, view.map).await?;
+    let board = Board::read_with(&mut db, now, Blocking::default(), view.map).await?;
     Ok(board.names.full_ids())
 }
 
@@ -421,6 +422,6 @@ pub(super) async fn read_waits(
 ) -> Result<BTreeMap<String, WaitState>, AppError> {
     let mut db = factory.begin().await?;
     let now = chrono::Local::now().naive_local();
-    let board = Board::read(&mut db, now, false).await?;
+    let board = Board::read(&mut db, now, Blocking::default()).await?;
     Ok(wait_states(&board, agentic))
 }

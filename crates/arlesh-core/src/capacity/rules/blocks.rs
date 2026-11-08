@@ -1,5 +1,6 @@
-//! The agent capacity lock as a **derived block**: while it is on, every Agentic Task not yet Done
-//! is blocked, by a reason no one wrote and no one can remove but by clearing the lock.
+//! Agent capacity as a **derived block**: an Agentic Task not yet Done inside the Claim of an agent
+//! at capacity is blocked, by a reason no one wrote and no one can remove but by the agent leaving
+//! capacity (its lock cleared, or its account's limit resetting).
 //!
 //! This is the one derivation. The board load runs it ([`crate::mindmap::load_blocked`]) and adds
 //! the reasons to the load's own `block_reasons` — before a Compound Task's own derived block reads
@@ -26,33 +27,19 @@ mod tests;
 /// its own, translated, off [`DerivedBlock::AgentCapacity`].
 pub const AGENT_CAPACITY_REASON: &str = "Agents at capacity";
 
-/// What the capacity blocks cover: the whole board while the global lock is on, and the subtrees
-/// of the agents that are at capacity (each agent's Claim) otherwise.
-///
-/// A `bool` converts to it — `true` is the global lock, `false` blocks nothing — so a caller that
-/// knows only the lock needs no ceremony.
+/// What the capacity blocks cover: the subtrees of the agents that are at capacity (each agent's
+/// Claim).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Blocking {
-    /// The master switch: every Agentic Task not yet Done is blocked.
-    pub global: bool,
     /// Roots whose subtrees' Agentic Tasks not yet Done are blocked: the Claims of agents at
     /// capacity.
     pub subtrees: Vec<NodeKey>,
 }
 
-impl From<bool> for Blocking {
-    fn from(global: bool) -> Self {
-        Self {
-            global,
-            subtrees: Vec::new(),
-        }
-    }
-}
-
 impl Blocking {
     /// Whether nothing is blocked.
     pub fn is_none(&self) -> bool {
-        !self.global && self.subtrees.is_empty()
+        self.subtrees.is_empty()
     }
 
     /// The keys of the subtree roots, spelled as the load's keys are (`task-12`, `domain-1`).
@@ -182,7 +169,7 @@ fn within(links: &HashMap<Key, Link>, key: &str, roots: &std::collections::HashS
 }
 
 /// The Tasks the capacity blocks cover among `rows`: every one that reads as Agentic and is not
-/// Done, and — unless the global lock is on — lies inside the Claim of an agent at capacity.
+/// Done, and lies inside the Claim of an agent at capacity.
 pub fn blocked_tasks(rows: Rows<'_>, blocking: &Blocking) -> Vec<NodeId> {
     if blocking.is_none() {
         return Vec::new();
@@ -193,7 +180,7 @@ pub fn blocked_tasks(rows: Rows<'_>, blocking: &Blocking) -> Vec<NodeId> {
         .iter()
         .filter(|task| !task.status.is_done())
         .filter(|task| reads_agentic(&links, &format!("task-{}", task.id)))
-        .filter(|task| blocking.global || within(&links, &format!("task-{}", task.id), &roots))
+        .filter(|task| within(&links, &format!("task-{}", task.id), &roots))
         .map(|task| task.id.clone())
         .collect()
 }

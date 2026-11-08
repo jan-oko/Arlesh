@@ -59,7 +59,7 @@ impl Board {
     pub async fn read(
         db: &mut Db<Transactional>,
         now: NaiveDateTime,
-        blocking: impl Into<Blocking>,
+        blocking: Blocking,
     ) -> Result<Self, AppError> {
         let map = crate::access::access_map(db).await?;
         Self::read_with(db, now, blocking, map).await
@@ -69,7 +69,7 @@ impl Board {
     pub async fn read_with(
         db: &mut Db<Transactional>,
         now: NaiveDateTime,
-        blocking: impl Into<Blocking>,
+        blocking: Blocking,
         map: AccessMap,
     ) -> Result<Self, AppError> {
         let mut load = crate::mindmap::load_blocked(db, now, blocking).await?;
@@ -206,7 +206,7 @@ pub(super) async fn stored_row(
 ) -> Result<i64, Answer> {
     let text = id.text();
     // Only names are resolved here, and a block changes no name.
-    let board = match Board::read_with(db, now, false, map.clone()).await {
+    let board = match Board::read_with(db, now, Blocking::default(), map.clone()).await {
         Ok(board) => board,
         Err(error) => return Err(result::failed(error)),
     };

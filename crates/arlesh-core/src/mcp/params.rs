@@ -250,20 +250,6 @@ pub enum ScopesOperation {
     },
 }
 
-/// The agent capacity lock: read it, or set it on or off.
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[serde(tag = "operation", rename_all = "snake_case")]
-#[schemars(extend("type" = "object"))]
-pub enum CapacityOperation {
-    /// Whether agents are at capacity just now.
-    Get,
-    /// Sets the lock: `true` when you cannot take on more Agentic work, `false` when there is room.
-    Set {
-        /// `true` — agents are at capacity; `false` — there is room for more work.
-        at_capacity: bool,
-    },
-}
-
 /// One limit window of an account, as a client reports it.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct UsageWindowParam {
@@ -319,6 +305,11 @@ pub enum AgentsOperation {
     Resume,
     /// Lets go of your Claim. You stay attached and see nothing until you claim again.
     Release,
+    /// Locks yourself: your claimed Agentic tasks read blocked ("Agents at capacity") so Start
+    /// offers none, until you unlock. Use it when you cannot take on more Agentic work.
+    Lock,
+    /// Unlocks yourself, as soon as there is room again.
+    Unlock,
     /// Reports how much of the account's plan limits is used, so agents of the account are held
     /// back at the limit and freed at the reset. A host that can read its usage does this on its
     /// own.
