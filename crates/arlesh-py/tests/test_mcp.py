@@ -153,7 +153,7 @@ async def test_the_tool_list_is_the_rust_endpoints(db: arlesh.Database) -> None:
         ("arlesh_tasks", {"operation": "get"}),
         ("arlesh_tasks", {"operation": 7}),
         ("arlesh_waits", {"operation": "release", "id": "nope"}),
-        ("arlesh_capacity", {"at_capacity": "yes"}),
+        ("arlesh_agents", {"operation": "status"}),
         ("arlesh_snapshot", None),
     ],
     ids=[

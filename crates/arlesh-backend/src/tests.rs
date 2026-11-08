@@ -9,7 +9,6 @@ const PORT_FILES: &[&str] = &[
     include_str!("access.rs"),
     include_str!("agents.rs"),
     include_str!("block_reasons.rs"),
-    include_str!("capacity.rs"),
     include_str!("commitments.rs"),
     include_str!("domains.rs"),
     include_str!("expectations.rs"),

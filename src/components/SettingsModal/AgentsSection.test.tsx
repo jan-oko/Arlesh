@@ -77,6 +77,15 @@ describe("AgentsSection", () => {
     expect(within(list).getByText(/Ship/)).toBeInTheDocument();
   });
 
+  it("separates the top line with dots, shows the account as a name and the claim as a path", async () => {
+    render(<AgentsSection />);
+    const list = await screen.findByRole("list", { name: "mcp.agents.list" });
+    expect(within(list).getAllByText("mcp.agents.separator")).toHaveLength(3);
+    expect(within(list).getByText("Work")).toBeInTheDocument();
+    expect(within(list).getByText("Ship")).toBeInTheDocument();
+    expect(within(list).queryByText(/·/)).toBeNull();
+  });
+
   it("names why an agent at capacity is held back", async () => {
     vi.mocked(fetchAgents).mockResolvedValue(overview([summary({
       at_capacity: { kind: "usage_limit", window: "five_hour", resets_at: "2099-01-01T00:00:00" },

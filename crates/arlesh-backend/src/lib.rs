@@ -25,7 +25,6 @@
 pub mod access;
 pub mod agents;
 pub mod block_reasons;
-pub mod capacity;
 pub mod commitments;
 pub mod domains;
 pub mod expectations;
@@ -48,7 +47,6 @@ pub trait Backend:
     access::AccessPort
     + agents::AgentsPort
     + block_reasons::BlockReasonsPort
-    + capacity::CapacityPort
     + commitments::CommitmentsPort
     + domains::DomainsPort
     + expectations::WaitsPort
@@ -67,7 +65,6 @@ impl<T> Backend for T where
     T: access::AccessPort
         + agents::AgentsPort
         + block_reasons::BlockReasonsPort
-        + capacity::CapacityPort
         + commitments::CommitmentsPort
         + domains::DomainsPort
         + expectations::WaitsPort

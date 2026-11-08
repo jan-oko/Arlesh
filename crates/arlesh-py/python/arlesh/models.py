@@ -327,17 +327,6 @@ class CapacityCauseUsageLimit(BaseModel):
     """
 
 
-class CapacityState(BaseModel):
-    """
-    The lock as it is read and written: stored in the file, answered by the commands and the MCP.
-    """
-
-    at_capacity: bool
-    """
-    Whether agents are at capacity. Off when nothing was ever saved.
-    """
-
-
 class ClaimStatus(StrEnum):
     """
     Whether a Claim is held or has been set aside.

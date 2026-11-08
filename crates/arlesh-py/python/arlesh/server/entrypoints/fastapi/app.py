@@ -30,7 +30,6 @@ from arlesh.server.entrypoints.fastapi.revision import (
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
 from arlesh.server.entrypoints.fastapi.routers.agents import AgentAccountsRouter, AgentsRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
-from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
@@ -106,7 +105,6 @@ class AppRouter(APIRouter):
         self.include_router(HealthRouter(version), prefix="/health")
         self.include_router(BoardsRouter(*routed, tag="board"), prefix="/board")
         self.include_router(EventsRouter(*routed, tag="events"), prefix="/events/changes")
-        self.include_router(CapacityRouter(*routed, tag="capacity"), prefix="/capacity")
         self.include_router(McpAccessRouter(*routed, tag="mcp-access"), prefix="/mcp-access")
         self.include_router(UndoRouter(*routed, tag="undo"))
         self.include_router(GesturesRouter(*routed, tag="gestures"), prefix="/gestures")

@@ -29,3 +29,19 @@ export function relativeTime(iso: string, now: Date, locale?: string): string {
   }
   return format.format(seconds, "second");
 }
+
+/** `text` with its first letter upper-cased: an account label as a name. */
+export function capitalised(text: string): string {
+  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+}
+
+/** How long ago `iso` was, judged against `now`, in the shortest form ("2h", "5m", "3d"). */
+export function shortAge(iso: string, now: Date, locale?: string): string {
+  const seconds = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+  const steps: Array<[Intl.NumberFormatOptions["unit"], number]> = [
+    ["day", 86400], ["hour", 3600], ["minute", 60],
+  ];
+  const [unit, size] = steps.find(([, step]) => seconds >= step) ?? ["second", 1];
+  return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" })
+    .format(Math.floor(seconds / size));
+}

@@ -357,12 +357,6 @@
     "set_agent_account_locked": [
       "PUT /agent-accounts/lock"
     ],
-    "agent_capacity": [
-      "GET /capacity"
-    ],
-    "set_agent_capacity": [
-      "PUT /capacity"
-    ],
     "mcp_access_catalogue": [
       "GET /mcp-access/catalogue"
     ],

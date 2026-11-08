@@ -42,7 +42,7 @@ use errors::{raise, NativeError};
 struct NativeDatabase {
     /// Hands out every session a call runs in.
     factory: SessionFactory,
-    /// The database file, for what lives beside it (the agent capacity lock).
+    /// The database file, for what lives beside it (its agents' tables).
     path: Arc<PathBuf>,
     /// The MCP endpoint this database serves, while it serves one.
     serving: Arc<tokio::sync::Mutex<Option<mcp::Serving>>>,

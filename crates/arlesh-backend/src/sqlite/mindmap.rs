@@ -9,9 +9,12 @@ use crate::mindmap::BoardPort;
 #[async_trait::async_trait]
 impl BoardPort for SqliteBackend {
     async fn load_mindmap(&self, now: chrono::NaiveDateTime) -> Result<BoardLoad, WireError> {
-        let at_capacity = self.capacity.get().await.at_capacity;
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
-        let load = mindmap::board(&mut db, now, at_capacity)
+        // The agents at capacity block their Claims' Agentic Tasks, as they do for the MCP.
+        let blocking = arlesh_core::agents::service::blocking(&mut db, now)
+            .await
+            .map_err(WireError::from_error)?;
+        let load = mindmap::board(&mut db, now, blocking)
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;

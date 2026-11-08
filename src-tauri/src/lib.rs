@@ -13,8 +13,8 @@ pub mod windows;
 // before the workspace split, so `crate::tasks` in a command and `arlesh_lib::tasks` in an
 // integration test still name the same thing.
 pub use arlesh_core::{
-    access, agents, block_reasons, board, capacity, database, domains, duplicate, error, filters,
-    flows, infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
+    access, agents, block_reasons, board, database, domains, duplicate, error, filters, flows,
+    infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
 };
 
 use tauri::Manager;
@@ -108,8 +108,6 @@ pub fn run() {
             commands::agents::issue_agent_pin,
             commands::agents::apply_agent_action,
             commands::agents::set_agent_account_locked,
-            commands::capacity::agent_capacity,
-            commands::capacity::set_agent_capacity,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,
@@ -283,16 +281,9 @@ fn setup_standalone(
     // changed, so an agent's write refreshes the windows that are open rather than leaving
     // them showing the old value. A bind failure is recorded in its status, for the
     // settings page to show and retry: an occupied port must not take the windows down.
-    // The agent capacity lock is shared by the endpoint's sessions and the settings
-    // commands, and tells every window when either side changes it.
-    let capacity = capacity::AgentCapacity::open(
-        app_dir.join(capacity::CAPACITY_FILE),
-        commands::capacity::notifier(app.handle()),
-    );
     let endpoint = mcp::endpoint::McpEndpoint::new(
         factory.clone(),
         commands::board::announcer(app.handle()),
-        capacity.clone(),
         app_dir.join(mcp::endpoint::SETTINGS_FILE),
         mcp::endpoint::env_port(),
     );
@@ -306,7 +297,7 @@ fn setup_standalone(
     // Constructing them here is the whole of "session-scoped" — a restart is an empty
     // history, and nothing has to clear them.
     app.manage(backend::AppBackend::new(
-        backend::sqlite::SqliteBackend::new(factory, undo::stacks::UndoStacks::new(), capacity),
+        backend::sqlite::SqliteBackend::new(factory, undo::stacks::UndoStacks::new()),
     ));
     Ok(())
 }

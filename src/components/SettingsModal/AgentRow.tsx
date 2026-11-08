@@ -4,7 +4,7 @@ import type { Account, AgentStanding, AgentSummary, CapacityCause } from "@/api/
 import type { AgentAction } from "@/api/agents";
 import type { McpCatalogueNode } from "@/api/mcp-access";
 import { agentRowId } from "@/utils/agent-anchors";
-import { controlsFor, relativeTime } from "@/utils/agents";
+import { capitalised, controlsFor, relativeTime, shortAge } from "@/utils/agents";
 import { describeRoots } from "@/utils/mcp-roots";
 import styles from "./SettingsModal.module.css";
 import own from "./AgentsSection.module.css";
@@ -55,25 +55,25 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
   return (
     <li id={agentRowId(agent.id)} className={own.agent}>
       <div className={own.head}>
-        <span className={own.name}>{agent.name}</span>
-        <span className={own.badge} title={standingNotes[standing]}>
-          {standingNames[standing]}
-        </span>
-        <span className={own.meta}>{t("settings:mcp.agents.account", { account: agent.account })}</span>
-        <span className={own.meta}>
-          {agent.last_seen_at === null
-            ? t("settings:mcp.agents.neverSeen")
-            : t("settings:mcp.agents.lastSeen", { time: relativeTime(agent.last_seen_at, now) })}
-        </span>
+        {[
+          <span key="name" className={own.name}>{agent.name}</span>,
+          <span key="standing" className={own.badge} title={standingNotes[standing]}>
+            {standingNames[standing]}
+          </span>,
+          <span key="account" className={own.meta}>{capitalised(agent.account)}</span>,
+          <span key="seen" className={own.meta}>
+            {agent.last_seen_at === null
+              ? t("settings:mcp.agents.neverSeen")
+              : t("settings:mcp.agents.lastSeen", { time: shortAge(agent.last_seen_at, now) })}
+          </span>,
+        ].flatMap((segment, index) => index === 0
+          ? [segment]
+          : [<span key={`dot-${segment.key ?? index}`} className={own.meta} aria-hidden="true">{t("settings:mcp.agents.separator")}</span>, segment])}
       </div>
       <div className={own.meta}>
         {claimRow === null || claimRow === undefined
           ? t("settings:mcp.agents.noClaim")
-          : [
-            claimRow.title ?? t("settings:mcp.missing"),
-            claimRow.kind === null ? null : t(`nodeKinds:${claimRow.kind}`),
-            claimRow.path.length > 0 ? claimRow.path.join(" › ") : null,
-          ].filter((part) => part !== null).join(" · ")}
+          : [...claimRow.path, claimRow.title ?? t("settings:mcp.missing")].join(t("settings:mcp.agents.pathSeparator"))}
       </div>
       {standing !== "active" && standing !== "paused" && standing !== "unclaimed" && (
         <div className={own.meta}>{standingNotes[standing]}</div>

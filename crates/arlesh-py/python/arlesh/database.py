@@ -31,7 +31,6 @@ from arlesh.models import (
     AgentAction,
     AgentsOverview,
     BlockReason,
-    CapacityState,
     Commitment,
     CommitmentArchival,
     CreateCommitmentRequest,
@@ -273,14 +272,11 @@ class Database(ABC):
     # ---- Reads --------------------------------------------------------------------------------
 
     @abstractmethod
-    async def board(
-        self, *, now: datetime | None = None, at_capacity: bool | None = None
-    ) -> MindmapLoad:
+    async def board(self, *, now: datetime | None = None) -> MindmapLoad:
         """The whole board as the app draws it: every node of every kind, with its derived
         lifecycle, short id and facts (blocks, inherited values, open question).
 
-        ``now`` defaults to the local clock, ``at_capacity`` to the agent capacity lock beside the
-        database.
+        ``now`` defaults to the local clock. The Agentic Tasks of agents at capacity read blocked.
         """
 
     @abstractmethod
@@ -807,14 +803,6 @@ class Database(ABC):
         """Locks or unlocks a whole account by hand."""
 
     @abstractmethod
-    async def agent_capacity(self) -> CapacityState:
-        """The agent capacity lock, as every open of this file in the process shares it."""
-
-    @abstractmethod
-    async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
-        """Sets the agent capacity lock on or off, and counts it as a change to the board."""
-
-    @abstractmethod
     async def delete_nodes(self, nodes: list[GestureNode]) -> None:
         """Deletes every node in ``nodes``, all or nothing: the app's multi-node delete, as one
         Gesture."""
@@ -1029,10 +1017,8 @@ class Arlesh(Database):
             raise from_native(error) from None
         return answer.validate_json(raw)
 
-    async def board(
-        self, *, now: datetime | None = None, at_capacity: bool | None = None
-    ) -> MindmapLoad:
-        return await self._call(_BOARD, "board", now=now, at_capacity=at_capacity)
+    async def board(self, *, now: datetime | None = None) -> MindmapLoad:
+        return await self._call(_BOARD, "board", now=now)
 
     async def get_task(self, id: int) -> TaskWithBlockers:
         return await self._call(_TASK_WITH_BLOCKERS, "get_task", id=id)
@@ -1522,12 +1508,6 @@ class Arlesh(Database):
     async def set_agent_account_locked(self, label: str, locked: bool) -> None:
         await self._call(_NOTHING, "set_agent_account_locked", label=label, locked=locked)
 
-    async def agent_capacity(self) -> CapacityState:
-        return await self._call(_CAPACITY, "agent_capacity")
-
-    async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
-        return await self._call(_CAPACITY, "set_agent_capacity", at_capacity=at_capacity)
-
     async def delete_nodes(self, nodes: list[GestureNode]) -> None:
         await self._call(_NOTHING, "delete_nodes", nodes=nodes)
 
@@ -1618,7 +1598,6 @@ _TARGETS: TypeAdapter[list[TargetRef]] = TypeAdapter(list[TargetRef])
 _BLOCK_REASONS: TypeAdapter[list[BlockReason]] = TypeAdapter(list[BlockReason])
 _ACCESS_CATALOGUE: TypeAdapter[McpAccessCatalogue] = TypeAdapter(McpAccessCatalogue)
 _EFFECTIVE_ACCESS: TypeAdapter[list[EffectiveAccess]] = TypeAdapter(list[EffectiveAccess])
-_CAPACITY: TypeAdapter[CapacityState] = TypeAdapter(CapacityState)
 _AGENTS: TypeAdapter[AgentsOverview] = TypeAdapter(AgentsOverview)
 _PIN: TypeAdapter[IssuedPin] = TypeAdapter(IssuedPin)
 _SUMMARY_OR_NONE: TypeAdapter[GestureSummary | None] = TypeAdapter(GestureSummary | None)

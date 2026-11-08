@@ -17,14 +17,13 @@ class BoardsRouter(BoardRouter):
         self.get("/task-dependencies")(self._task_dependencies)
         self.get("/block-reasons")(self._block_reasons)
 
-    async def _get(
-        self, now: datetime | None = None, at_capacity: bool | None = None
-    ) -> MindmapLoad:
+    async def _get(self, now: datetime | None = None) -> MindmapLoad:
         """Every node of every kind, with its derived lifecycle, short id and facts.
 
-        ``now`` defaults to the server's clock, ``at_capacity`` to the agent capacity lock.
+        ``now`` defaults to the server's clock. The Agentic Tasks of agents at capacity read
+        blocked.
         """
-        return await self._reader.board(now=now, at_capacity=at_capacity)
+        return await self._reader.board(now=now)
 
     async def _lifecycles(self, now: datetime | None = None) -> list[ItemLifecycle]:
         """Every node's derived lifecycle, at ``now`` (default: the server's clock)."""

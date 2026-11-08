@@ -62,15 +62,12 @@ use crate::errors::{Failure, Raised};
 #[serde(tag = "op", rename_all = "snake_case")]
 pub(crate) enum Request {
     // ---- Reads ------------------------------------------------------------------------------
-    /// The whole board, derived at `now` (default: the local wall clock), blocked by the agent
-    /// capacity lock when `at_capacity` (default: whatever the lock file beside the database says).
+    /// The whole board, derived at `now` (default: the local wall clock), with the Agentic Tasks of
+    /// the agents at capacity blocked.
     Board {
         /// The instant the board is derived at.
         #[serde(default)]
         now: Option<NaiveDateTime>,
-        /// Whether the agents are at capacity.
-        #[serde(default)]
-        at_capacity: Option<bool>,
     },
     /// One stored Task, with what blocks it.
     GetTask {
@@ -712,8 +709,6 @@ pub(crate) enum Request {
         /// Its row id.
         node_id: i64,
     },
-    /// The agent capacity lock as it stands.
-    AgentCapacity,
     /// Every Agent and account, with where each Claim stands and why an agent is at capacity.
     ListAgents,
     /// A one-time PIN to give an agent, so it can attach.
@@ -750,11 +745,6 @@ pub(crate) enum Request {
     Redo,
     /// What this client's next undo and redo would be.
     UndoStatus,
-    /// Sets the agent capacity lock on or off.
-    SetAgentCapacity {
-        /// Whether agents are at capacity.
-        at_capacity: bool,
-    },
 }
 
 impl Request {
@@ -798,7 +788,6 @@ impl Request {
                 | Self::ListAllBlockReasons
                 | Self::McpAccessCatalogue
                 | Self::ListMcpAccess
-                | Self::AgentCapacity
                 | Self::ListAgents
                 | Self::UndoStatus
         )
@@ -836,18 +825,18 @@ pub(crate) async fn run(
         .into());
     }
     if !request.writes() {
-        return Ok(Box::pin(dispatch(factory, path, stacks, request))
+        return Ok(Box::pin(dispatch(factory, stacks, request))
             .await?
             .to_string());
     }
     let shared = crate::shared::for_database(path);
     let _writing = shared.writes.lock().await;
     let answer = match request {
-        Request::Undo | Request::Redo => Box::pin(dispatch(factory, path, stacks, request)).await,
+        Request::Undo | Request::Redo => Box::pin(dispatch(factory, stacks, request)).await,
         // Boxed: `dispatch`'s future is as large as its largest arm, and held inline inside
         // another future it overflowed a runtime worker's stack on the deeper writes.
         request => {
-            let write = Box::pin(dispatch(factory, path, stacks, request));
+            let write = Box::pin(dispatch(factory, stacks, request));
             as_gesture(factory, stacks, write).await
         }
     }?;
@@ -906,34 +895,18 @@ fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 
-/// Whether the agent capacity lock beside the database at `path` is on.
-async fn at_capacity(path: &Path) -> bool {
-    crate::shared::for_database(path)
-        .capacity
-        .get()
-        .await
-        .at_capacity
-}
-
 /// Runs one request.
 async fn dispatch(
     factory: &SessionFactory,
-    path: &Path,
     stacks: &UndoStacks,
     request: Request,
 ) -> Result<Value, WireError> {
     match request {
-        Request::Board {
-            now: at,
-            at_capacity: capacity,
-        } => {
-            let capacity = match capacity {
-                Some(capacity) => capacity,
-                None => at_capacity(path).await,
-            };
+        Request::Board { now: at } => {
             let at = at.unwrap_or_else(now);
             transaction(factory, async |db| {
-                mindmap::board(db, at, capacity).await.wired()
+                let blocking = agents::service::blocking(db, at).await.wired()?;
+                mindmap::board(db, at, blocking).await.wired()
             })
             .await
         }
@@ -1746,7 +1719,6 @@ async fn dispatch(
             })
             .await
         }
-        Request::AgentCapacity => json(crate::shared::for_database(path).capacity.get().await),
         Request::ListAgents => {
             transaction(factory, async |db| {
                 agents::service::overview(db, now()).await.wired()
@@ -1791,12 +1763,5 @@ async fn dispatch(
         Request::Undo => json(arlesh_core::undo::undo(factory, stacks).await.wired()?),
         Request::Redo => json(arlesh_core::undo::redo(factory, stacks).await.wired()?),
         Request::UndoStatus => json(stacks.status()),
-        Request::SetAgentCapacity { at_capacity } => json(
-            crate::shared::for_database(path)
-                .capacity
-                .set(at_capacity)
-                .await
-                .map_err(|error| WireError::internal(error.to_string()))?,
-        ),
     }
 }

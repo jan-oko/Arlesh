@@ -160,14 +160,10 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
     let app = tauri::test::mock_app();
     app.manage(SessionFactory::new(pool.clone()));
     // The Backend port every command calls through: the in-process core over `pool`, with its own
-    // Undo Stacks and the agent capacity lock, off, which `load_mindmap` reads to derive its block.
-    // The lock is managed beside it too, for a test that sets it the way the MCP would.
-    let capacity = arlesh_lib::capacity::AgentCapacity::in_memory();
-    app.manage(capacity.clone());
+    // Undo Stacks.
     app.manage(AppBackend::new(SqliteBackend::new(
         SessionFactory::new(pool.clone()),
         UndoStacks::new(),
-        capacity,
     )));
     // And every host has a window, because a command that announces a board change takes the
     // window that issued it — that is how the other windows are told and this one is not.

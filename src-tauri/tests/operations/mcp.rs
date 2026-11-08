@@ -285,7 +285,6 @@ async fn every_tool_is_registered() {
         mcp.tool_names(),
         vec![
             "arlesh_agents",
-            "arlesh_capacity",
             "arlesh_flows",
             "arlesh_infos",
             "arlesh_kb",
@@ -1146,7 +1145,6 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
             ],
         ),
         ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
-        ("arlesh_capacity", &["get", "set"], &["at_capacity"]),
         (
             "arlesh_agents",
             &[
@@ -1156,6 +1154,8 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "pause",
                 "resume",
                 "release",
+                "lock",
+                "unlock",
                 "report_usage",
             ],
             &[
