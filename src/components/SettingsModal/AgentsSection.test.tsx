@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
+import { useAgentAccountsStore } from "@/stores/use-agent-accounts-store";
 import AgentsSection from "./AgentsSection";
 import {
   applyAgentAction, fetchAgents, issueAgentPin, setAgentAccountLocked,
@@ -59,6 +60,7 @@ function overview(agents: AgentSummary[]): AgentsOverview {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useAgentAccountsStore.setState({ open: false });
   vi.mocked(fetchAgents).mockResolvedValue(overview([summary()]));
 });
 
@@ -125,6 +127,7 @@ describe("AgentsSection", () => {
   });
 
   it("locks an account from its switch", async () => {
+    useAgentAccountsStore.setState({ open: true });
     render(<AgentsSection />);
     fireEvent.click(await screen.findByRole("checkbox", { name: /mcp\.agents\.accountLock/ }));
     expect(setAgentAccountLocked).toHaveBeenCalledWith("work", true);
@@ -152,20 +155,25 @@ describe("AgentsSection", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("too many PINs");
   });
 
-  it("collapses and expands the accounts", async () => {
-    render(<AgentsSection />);
+  it("keeps the accounts closed until opened, and remembers the last state", async () => {
+    const { unmount } = render(<AgentsSection />);
     const toggle = await screen.findByRole("button", { name: /mcp\.agents\.accountsHeading/ });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeInTheDocument();
-
-    fireEvent.click(toggle);
-
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeNull();
 
     fireEvent.click(toggle);
 
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeInTheDocument();
+
+    unmount();
+    render(<AgentsSection />);
+    const again = await screen.findByRole("button", { name: /mcp\.agents\.accountsHeading/ });
+    expect(again).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(again);
+
+    expect(again).toHaveAttribute("aria-expanded", "false");
   });
 
   it("turns the top bar's agent status off from its switch", async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgents } from "@/hooks/use-agents";
+import { useAgentAccountsStore } from "@/stores/use-agent-accounts-store";
 import Switch from "@/components/Switch/Switch";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
@@ -24,7 +25,8 @@ export default function AgentsSection() {
   const { t } = useTranslation("settings");
   const { overview, nodes, isLoading, error, pin, act, lockAccount, requestPin } = useAgents();
   const [copied, setCopied] = useState(false);
-  const [accountsOpen, setAccountsOpen] = useState(true);
+  const accountsOpen = useAgentAccountsStore((state) => state.open);
+  const toggleAccounts = useAgentAccountsStore((state) => state.toggle);
   const showStatus = useDisplayStore((s) => s.showAgentStatus);
   const toggleShowStatus = useDisplayStore((s) => s.toggleShowAgentStatus);
   const anchor = useSettingsStore((s) => s.anchor);
@@ -96,7 +98,7 @@ export default function AgentsSection() {
         type="button"
         aria-expanded={accountsOpen}
         aria-controls={ACCOUNTS_ID}
-        onClick={() => setAccountsOpen((was) => !was)}
+        onClick={toggleAccounts}
       >
         <span aria-hidden="true">{accountsOpen ? OPEN_GLYPH : CLOSED_GLYPH}</span>
         <span className={styles.heading}>{t("mcp.agents.accountsHeading")}</span>
