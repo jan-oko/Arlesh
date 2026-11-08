@@ -1,0 +1,9 @@
+/* Keeps a view's content clear of a display cutout or side bar in landscape, while the shell, the
+   bars and the Mindmap canvas run to the screen edge. A plain column that fills what the bars leave. */
+.sideInset {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-inline: var(--safe-left) var(--safe-right);
+}

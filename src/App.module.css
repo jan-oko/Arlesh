@@ -4,11 +4,9 @@
   width: 100vw;
   height: 100vh;
   box-sizing: border-box;
-  /* Landscape: keep clear of a display cutout or a side navigation bar. */
-  padding-left: var(--safe-left);
-  padding-right: var(--safe-right);
-  /* The padding above is the shell's own, so it shows this, not the WebView's white: without it
-     the cutout side was a light strip in landscape. */
+  /* No side padding: the bars paint to the screen edge and pad their own content, and the Mindmap
+     canvas spans the screen. The background is what shows wherever nothing else paints, instead of
+     the WebView's white. */
   background: var(--canvas-bg);
   overflow: hidden;
 }

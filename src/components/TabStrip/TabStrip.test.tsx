@@ -494,3 +494,27 @@ describe("dragging a tab between windows", () => {
     expect(mockSendTab.mock.calls[0]?.[0]).toBe("board-a");
   });
 });
+
+describe("the strip follows the touch layout, not the width", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubMedia(matching: readonly string[]): void {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: matching.includes(query),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  it("is hidden on a touch-only screen even when wide", () => {
+    stubMedia(["(any-pointer: coarse) and (not (any-pointer: fine))"]);
+    const { container } = render(<TabStrip />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("is shown in a narrow window with a mouse", () => {
+    stubMedia(["(max-width: 699.98px)"]);
+    render(<TabStrip />);
+    expect(screen.getByRole("button", { name: "common:newTab" })).toBeInTheDocument();
+  });
+});

@@ -8,7 +8,8 @@
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;
   align-items: center;
-  padding: 0 var(--space-4);
+  /* The bar's background runs to the screen edge; only its content keeps clear of a side inset. */
+  padding: 0 calc(var(--space-4) + var(--safe-right)) 0 calc(var(--space-4) + var(--safe-left));
   height: 36px;
   flex-shrink: 0;
   background: var(--surface);

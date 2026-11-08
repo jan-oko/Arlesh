@@ -3,7 +3,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-4);
+  padding: var(--space-1) calc(var(--space-4) + var(--safe-right)) var(--space-1) calc(var(--space-4) + var(--safe-left));
   border-bottom: 1px solid var(--node-border);
   background: var(--surface);
 }

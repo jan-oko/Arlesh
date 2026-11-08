@@ -15,7 +15,8 @@ import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useTabTitle } from "@/hooks/use-tab-title";
-import { usePhoneLayout, useShowsActionBar } from "@/hooks/use-media-query";
+import { useTouchLayout } from "@/hooks/use-media-query";
+import styles from "./ActiveTab.module.css";
 import { useTwoFingerPreset } from "@/hooks/use-two-finger-preset";
 
 /**
@@ -30,8 +31,7 @@ import { useTwoFingerPreset } from "@/hooks/use-two-finger-preset";
 export default function ActiveTab() {
   const view = useViewStore((s) => s.view);
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
-  const isPhone = usePhoneLayout();
-  const showsActionBar = useShowsActionBar();
+  const isTouchLayout = useTouchLayout();
   const paletteOpen = usePaletteStore((s) => s.isOpen);
 
   useTabTitle();
@@ -42,18 +42,24 @@ export default function ActiveTab() {
 
   return (
     <>
-      {!isFullscreen && (isPhone ? <PhoneTopBar /> : <TopBar />)}
+      {!isFullscreen && (isTouchLayout ? <PhoneTopBar /> : <TopBar />)}
+      {/* The Mindmap canvas spans the screen and may pan under a cutout; the other views keep their
+          content clear of the side insets. */}
       {view === "mindmap" && <MindmapView />}
-      {view === "list" && <ListView />}
-      {view === "plan" && <PlanView />}
-      {view === "steps" && <StepsView />}
-      {view === "zen" && <ZenView />}
+      {view !== "mindmap" && (
+        <div className={styles.sideInset}>
+          {view === "list" && <ListView />}
+          {view === "plan" && <PlanView />}
+          {view === "steps" && <StepsView />}
+          {view === "zen" && <ZenView />}
+        </div>
+      )}
       {/* Full screen hides these too, leaving only the hot square in the bottom-right corner (tap:
           Open, long-press: the palette) and the three-finger tap, which toggles it back off. */}
-      {(showsActionBar || isPhone) && (isFullscreen
+      {isTouchLayout && (isFullscreen
         ? <TopBarSquare corner />
-        : <BottomChrome showActionBar={showsActionBar} showNav={isPhone} />)}
-      {paletteOpen && <CommandPalette showTabs={!isPhone} />}
+        : <BottomChrome showActionBar showNav />)}
+      {paletteOpen && <CommandPalette showTabs={!isTouchLayout} />}
     </>
   );
 }

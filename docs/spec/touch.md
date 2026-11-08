@@ -16,9 +16,9 @@ this page, this page wins.
 
 | Axis | Detected by | What it switches |
 | --- | --- | --- |
-| **Width** | the window is narrower than **700 px** (`(max-width: 699.98px)`) | the [phone layout](#the-phone-layout) |
+| **Width** | the window is narrower than **700 px** (`(max-width: 699.98px)`) | the sheets and the phone-sized views (never the bars below) |
 | **Touch** | a touchscreen is present (`(any-pointer: coarse)`) | the [gestures](#gestures) |
-| **Touch only** | touch is the only pointer (`(any-pointer: coarse)` and not `(any-pointer: fine)`) | the [action bar](#the-action-bar), even at desktop width |
+| **Touch only** | touch is the only pointer (`(any-pointer: coarse)` and not `(any-pointer: fine)`) | the **touch layout**: the phone top bar, the [action bar](#the-action-bar) and the bottom navigation, and no tab strip, at any width (`useTouchLayout`) |
 
 They are independent: a narrow desktop window gets the phone layout and keeps the mouse; a touch
 laptop at full width keeps the desktop layout and gains the gestures; a phone gets all three.
@@ -26,6 +26,11 @@ Detection is a media query read through a hook (`use-media-query.ts`), so it fol
 resized or a keyboard being docked without a reload. Nothing here depends on Tauri's mobile APIs.
 
 ## The phone layout
+
+**Touch layout, not width, chooses the bars** (user, 2026-11-08, a phone in landscape showed the desktop bar, the tab strip and the action bar at once). The phone top bar, the bottom navigation, the action bar and the corner square are on when touch is the only pointer, and only then; the tab strip and the desktop top bar are on when it is not. A narrow window with a mouse therefore keeps the desktop bars. The sheets and the views' own narrow arrangements below still key on width.
+
+**Edge to edge in landscape.** The shell is not padded at the sides. The bars (top bar, chips, tab strip, action bar, bottom navigation, server banner) paint to the screen edge and pad their own content by the side insets (`--safe-left`, `--safe-right`); the Mindmap canvas spans the whole screen and may pan under a cutout; the other views sit in a wrapper padded by the side insets. Where nothing paints, the shell shows the app background (`--canvas-bg`), never the WebView's white.
+
 
 Below 700 px:
 
@@ -122,7 +127,7 @@ Below 700 px:
     (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the card.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.
 - **Toasts** rise above the action bar rather than covering it.
-- **Tabs are not shown** in the phone layout: the tab strip is hidden and the active tab is the one
+- **Tabs are not shown** in the touch layout: the tab strip is hidden and the active tab is the one
   shown. The tab chords still work from a keyboard. *(Decided in implementation: the grill excluded
   tabs on Android and did not say what a narrow desktop window does with them; hiding the strip is
   the reversible choice.)*
