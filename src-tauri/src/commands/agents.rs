@@ -27,8 +27,8 @@ pub async fn list_agents(backend: State<'_, AppBackend>) -> Result<AgentsOvervie
 
 /// A one-time PIN to give an agent, so it can attach.
 #[tauri::command]
-pub async fn issue_agent_pin(
-    app: tauri::AppHandle,
+pub async fn issue_agent_pin<R: Runtime>(
+    app: tauri::AppHandle<R>,
     backend: State<'_, AppBackend>,
 ) -> Result<IssuedPin, WireError> {
     let pin = backend.issue_agent_pin().await?;
@@ -38,8 +38,8 @@ pub async fn issue_agent_pin(
 
 /// Changes an Agent by hand: pauses, resumes or releases its Claim, locks it, removes it.
 #[tauri::command]
-pub async fn apply_agent_action(
-    app: tauri::AppHandle,
+pub async fn apply_agent_action<R: Runtime>(
+    app: tauri::AppHandle<R>,
     backend: State<'_, AppBackend>,
     id: i64,
     action: AgentAction,
@@ -52,8 +52,8 @@ pub async fn apply_agent_action(
 
 /// Locks or unlocks a whole account by hand.
 #[tauri::command]
-pub async fn set_agent_account_locked(
-    app: tauri::AppHandle,
+pub async fn set_agent_account_locked<R: Runtime>(
+    app: tauri::AppHandle<R>,
     backend: State<'_, AppBackend>,
     label: String,
     locked: bool,
