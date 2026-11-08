@@ -1,4 +1,4 @@
-/* Keeps a view's content clear of a display cutout or side bar in landscape, while the shell, the
+/* Keeps the List, Plan and Steps views' content clear of a display cutout or side bar in landscape, while the shell, the
    bars and the Mindmap canvas run to the screen edge. A plain column that fills what the bars leave. */
 .sideInset {
   display: flex;

@@ -18,7 +18,7 @@ describe("safe-area variables", () => {
   it("pads the phone top bar by the top inset, and keeps the bottom bars and corner square above the bottom one", () => {
     expect(phoneTopBar).toMatch(/padding:\s*var\(--safe-top\)/);
     expect(phoneTopBar).toContain("calc(var(--safe-bottom) + 12px)");
-    expect(bottomNav).toMatch(/padding:\s*0 var\(--safe-right\) var\(--safe-bottom\) var\(--safe-left\)/);
+    expect(bottomNav).toMatch(/padding-bottom:\s*var\(--safe-bottom\)/);
   });
 
   it("leaves no raw env() inset outside the token definitions", () => {
@@ -35,11 +35,14 @@ describe("landscape side insets", () => {
     expect(app).toMatch(/background:\s*var\(--canvas-bg\)/);
   });
 
-  it("are kept clear of by the bars' own content and by the views other than the Mindmap", () => {
-    for (const file of [topBar, phoneTopBar, bottomNav, read("src/components/ActionBar/ActionBar.module.css"), read("src/components/TabStrip/TabStrip.module.css")]) {
-      expect(file).toContain("var(--safe-left)");
-      expect(file).toContain("var(--safe-right)");
+  it("are not padded out of the bars: their buttons spread across the full width, cutout included", () => {
+    for (const file of [topBar, bottomNav, read("src/components/ActionBar/ActionBar.module.css"), read("src/components/TabStrip/TabStrip.module.css")]) {
+      expect(file).not.toContain("--safe-left");
+      expect(file).not.toContain("--safe-right");
     }
+  });
+
+  it("is kept for the List, Plan and Steps views only; the Mindmap and Zen span the screen", () => {
     expect(activeTab).toMatch(/padding-inline:\s*var\(--safe-left\) var\(--safe-right\)/);
   });
 });

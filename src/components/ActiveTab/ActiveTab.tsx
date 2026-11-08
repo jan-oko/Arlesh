@@ -43,15 +43,15 @@ export default function ActiveTab() {
   return (
     <>
       {!isFullscreen && (isTouchLayout ? <PhoneTopBar /> : <TopBar />)}
-      {/* The Mindmap canvas spans the screen and may pan under a cutout; the other views keep their
-          content clear of the side insets. */}
+      {/* The Mindmap canvas and the Zen cards span the screen and may sit under a cutout; the
+          other views keep their content clear of the side insets. */}
       {view === "mindmap" && <MindmapView />}
-      {view !== "mindmap" && (
+      {view === "zen" && <ZenView />}
+      {(view === "list" || view === "plan" || view === "steps") && (
         <div className={styles.sideInset}>
           {view === "list" && <ListView />}
           {view === "plan" && <PlanView />}
           {view === "steps" && <StepsView />}
-          {view === "zen" && <ZenView />}
         </div>
       )}
       {/* Full screen hides these too, leaving only the hot square in the bottom-right corner (tap:

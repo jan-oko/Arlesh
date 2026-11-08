@@ -2,7 +2,7 @@
   display: flex;
   justify-content: space-around;
   flex-shrink: 0;
-  padding: var(--space-1) calc(var(--space-1) + var(--safe-right)) var(--space-1) calc(var(--space-1) + var(--safe-left));
+  padding: var(--space-1) var(--space-1);
   background: var(--surface);
   border-top: 1px solid var(--node-border);
   font-family: var(--font-sans);
