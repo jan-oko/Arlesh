@@ -628,7 +628,8 @@ on 2026-11-06, Task `688`: only its own tests followed it, the mod long-polls).
 - `GET /events/changes`: `board-changed` with the board's revision after every committed write.
   Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*).
 - `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the
-  changes to the waits the MCP can see, as **one JSON answer** (the mod's `$.http.fetch` resolves
+  changes to the waits inside the asking agent's Claim (it needs the agent's token in
+  `X-Arlesh-Agent-Token`, and is refused `401` without one; see [Agents](agents.md)), as **one JSON answer** (the mod's `$.http.fetch` resolves
   only once the body is read); `agentic=true` keeps only the agentic ones. It answers
   `{"revision", "epoch", "changes": [...]}` as soon as a change stamped after `after` exists, else
   with no changes once `wait` seconds have passed (25 by default, 30 at most; `wait=0` answers at

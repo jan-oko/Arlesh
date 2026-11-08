@@ -52,7 +52,10 @@ pub use log::{Reading, WaitLog, WaitLogs};
 use rules::{admitted, WaitState};
 
 use super::{ids::full_id, lookup::Board};
-use crate::{access::model::NodeTable, database::session::SessionFactory, error::AppError};
+use crate::{
+    access::model::NodeTable, agents::model::AgentId, database::session::SessionFactory,
+    error::AppError,
+};
 
 /// The event a `/events/changes` stream sends: the same as the app's window event.
 pub const BOARD_CHANGED: &str = "board-changed";
@@ -76,14 +79,25 @@ pub struct EventStreams {
 struct Served {
     factory: SessionFactory,
     streams: EventStreams,
+    /// Whether the wait stream answers only an attached agent, and only its Claim.
+    scoped: bool,
 }
 
-/// The routes of both streams over `factory`.
-pub fn routes(factory: SessionFactory, streams: EventStreams) -> axum::Router {
+/// The header an agent's own token travels in on the wait stream.
+pub const AGENT_TOKEN_HEADER: &str = "x-arlesh-agent-token";
+
+/// The routes of both streams over `factory`. With `scoped`, the wait stream answers only a
+/// request that carries an agent token (see [`AGENT_TOKEN_HEADER`]), and only the waits inside
+/// that agent's Claim.
+pub fn routes(factory: SessionFactory, streams: EventStreams, scoped: bool) -> axum::Router {
     axum::Router::new()
         .route("/events/changes", get(changes_stream))
         .route("/events/expectations", get(expectations))
-        .with_state(Served { factory, streams })
+        .with_state(Served {
+            factory,
+            streams,
+            scoped,
+        })
 }
 
 /// Every wait `board` shows, keyed by full id; only the agentic ones when `agentic`.
@@ -245,6 +259,10 @@ pub struct ExpectationsQuery {
     pub epoch: Option<String>,
     /// How many seconds a long poll may wait for a change.
     pub wait: Option<u64>,
+    /// The Agent asking, set by the host from its agent token (never from the URL): the answer
+    /// then holds only the waits under a node inside its Claim.
+    #[serde(skip)]
+    pub agent: Option<AgentId>,
 }
 
 /// `GET /events/expectations`: always the long poll. With no `after` it answers at once, telling
@@ -287,6 +305,18 @@ async fn expectations_poll(
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
     guard(&headers)?;
+    let mut query = query;
+    if served.scoped {
+        let token = headers
+            .get(AGENT_TOKEN_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        query.agent = agent_of(&served.factory, token)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::UNAUTHORIZED)
+            .map(Some)?;
+    }
     poll_answer(&served.factory, &served.streams, &query)
         .await
         .map(json_answer)
@@ -294,6 +324,26 @@ async fn expectations_poll(
             tracing::warn!(error = %error, "could not read the waits for a long poll");
             StatusCode::INTERNAL_SERVER_ERROR
         })
+}
+
+/// The Agent an agent token belongs to, if it still exists.
+pub async fn agent_of(factory: &SessionFactory, token: &str) -> Result<Option<AgentId>, AppError> {
+    let mut db = factory.begin().await?;
+    Ok(crate::agents::service::agent_for_token(&mut db, token).await?)
+}
+
+/// The full ids of every node `agent` can see now: what a wait must hang under to be its.
+async fn claim_nodes(
+    factory: &SessionFactory,
+    agent: AgentId,
+) -> Result<std::collections::HashSet<String>, AppError> {
+    let mut db = factory.begin().await?;
+    let now = chrono::Local::now().naive_local();
+    let Some(view) = crate::agents::service::view(&mut db, agent).await? else {
+        return Ok(std::collections::HashSet::new());
+    };
+    let board = Board::read_with(&mut db, now, false, view.map).await?;
+    Ok(board.names.full_ids())
 }
 
 /// The long poll: answers as soon as a change past `after` exists, or empty once `wait` seconds
@@ -325,6 +375,18 @@ pub async fn poll_answer(
             Reading::Stale(revision) => (revision, Vec::new(), true),
             Reading::Events(revision, _) if cursor.is_none() => (revision, Vec::new(), true),
             Reading::Events(revision, stamped) => (revision, stamped, false),
+        };
+        let stamped = match query.agent {
+            Some(agent) if !stamped.is_empty() => {
+                // A wait is the agent's when the node it hangs under is inside its Claim. Judged
+                // by the parent so that a wait that has since been deleted still is.
+                let inside = claim_nodes(factory, agent).await?;
+                stamped
+                    .into_iter()
+                    .filter(|(_, event)| inside.contains(&event.wait.task_id))
+                    .collect()
+            }
+            _ => stamped,
         };
         if reset || !stamped.is_empty() || remaining.is_zero() {
             let changes = stamped

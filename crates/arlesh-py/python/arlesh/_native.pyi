@@ -29,7 +29,12 @@ class NativeDatabase:
         session_id: str | None = None,
     ) -> Awaitable[str]: ...
     def expectations_poll(
-        self, agentic: bool, after: int | None, epoch: str | None, wait: int | None
+        self,
+        agentic: bool,
+        after: int | None,
+        epoch: str | None,
+        wait: int | None,
+        agent_token: str | None = None,
     ) -> Awaitable[str]: ...
     def close(self) -> Awaitable[None]: ...
 

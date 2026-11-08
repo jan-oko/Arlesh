@@ -308,3 +308,49 @@ def test_the_poll_form_needs_the_bearer_token(live: str) -> None:
     refused = httpx.get(f"{live}/events/expectations?wait=0")
 
     assert refused.status_code == 401
+
+
+def test_another_agents_waits_are_not_told_to_an_agent_with_a_different_claim(
+    live: str, agent_board: dict[str, Any], server_db: Path, connect_token: str
+) -> None:
+    admin = agent_board["admin"]
+    elsewhere = httpx.post(
+        f"{live}/domains",
+        json={"title": "Elsewhere", "subtype": "domain", "parent_id": ROOT_ASPECT},
+        headers=admin,
+    ).json()["id"]
+    with sqlite3.connect(server_db) as connection:
+        connection.execute(
+            "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)", (elsewhere,)
+        )
+    other = Agent(live, connect_token)
+    pin = httpx.post(f"{live}/agents/pins", headers=admin).json()["pin"]
+    other.attach(pin, elsewhere)
+    headers = {
+        "Authorization": f"Bearer {connect_token}",
+        "X-Arlesh-Agent-Token": other.agent_token,
+    }
+    cursor = httpx.get(f"{live}/events/expectations?wait=0&agentic=true", headers=headers).json()
+
+    agent_board["agent"].call(
+        "arlesh_waits", operation="ask", task_id=agent_board["task"]["full_id"], title="Mine"
+    )
+    heard = httpx.get(
+        f"{live}/events/expectations?after={cursor['revision']}&epoch={cursor['epoch']}"
+        "&wait=2&agentic=true",
+        headers=headers,
+        timeout=30,
+    ).json()
+
+    assert heard["changes"] == [], heard
+
+
+def test_the_poll_form_refuses_a_connect_token_without_an_agent_token(
+    live: str, agent_board: dict[str, Any]
+) -> None:
+    refused = httpx.get(
+        f"{live}/events/expectations?wait=0",
+        headers={"Authorization": f"Bearer {agent_board['token']}"},
+    )
+
+    assert refused.status_code == 401

@@ -50,7 +50,7 @@ environment variables:
 
 - Records every wait the session passes through `arlesh_waits.ask`, `raise` or `watch`, per session
   (kept in the mod's store for 30 days, so a restart or `claude --resume` still watches them).
-- Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch`, one
+- Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch` (sending the session's agent token, so it hears only of waits inside its Claim; an unattached session does not poll), one
   request at a time: the server answers as soon as a wait changes, else empty after the wait. With
   no cursor, or after the server restarted, it reads the watched waits once
   (`arlesh_waits.get_many`) to catch up on what changed while it was away. If requests time out

@@ -96,6 +96,17 @@ resume, release, lock, unlock and remove an Agent, and lock an account. Accounts
 agents declare; they are not authenticated against Claude, because no Pro or Max usage API is
 documented (checked 2026-11-07).
 
+## Nothing outside the Claim
+
+Under an agent token nothing outside the Claim is visible, on any route or tool. The tools read
+through the agent's view. The wait stream, `GET /events/expectations`, answers only a request that
+carries an agent token (`X-Arlesh-Agent-Token`, beside the connect token on a server) and tells
+that agent only of waits hanging under a node inside its Claim; a wait is judged by the node it
+hangs under, so a deleted wait is still told to the agent whose Claim held it. A request with no
+agent token, or one no agent holds, is refused `401`. A claim by id is refused one way whether the
+id is unknown, ambiguous or of another kind. The one thing an attach or claim tells an agent about
+the others is the name of the agent whose Claim overlaps its own.
+
 ## What is not done
 
 - No heartbeat or expiry on Claims.

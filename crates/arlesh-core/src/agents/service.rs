@@ -562,6 +562,19 @@ pub async fn blocking<M: SessionMode>(
     Ok(Blocking { global, subtrees })
 }
 
+/// The Agent whose token this is, when it still exists.
+#[tracing::instrument(skip_all)]
+pub async fn agent_for_token<M: SessionMode>(
+    db: &mut Db<M>,
+    token: &str,
+) -> Result<Option<AgentId>, AgentError> {
+    Ok(db
+        .agents()
+        .by_token(&secret::digest(token))
+        .await?
+        .map(|agent| agent.id))
+}
+
 /// Issues the server's connect token, replacing the old one, and answers it: shown this once.
 #[tracing::instrument(skip(db))]
 pub async fn issue_connect_token<M: SessionMode>(

@@ -31,6 +31,7 @@ from arlesh.server.entrypoints.fastapi.shutdown import going_down
 from arlesh.server.entrypoints.mcp import jsonrpc
 
 SESSION_HEADER = "Mcp-Session-Id"
+AGENT_TOKEN_HEADER = "X-Arlesh-Agent-Token"
 
 SHUTDOWN_POLL_SECONDS = 0.5
 """How often a waiting long poll looks up to see whether the server is going down."""
@@ -129,6 +130,7 @@ class ExpectationsRouter(APIRouter):
 
     async def _poll(
         self,
+        request: Request,
         agentic: bool = False,
         after: Annotated[int | None, Query(ge=0)] = None,
         epoch: str | None = None,
@@ -145,10 +147,17 @@ class ExpectationsRouter(APIRouter):
         poll again with the ``revision`` it gave. ``{..., changes: [], reset: true}`` means there
         is no cursor to resume from (none, another run's ``epoch``, or one too old): read the
         waits (``arlesh_waits.get_many``), then poll from ``revision``. ``wait=0`` answers
-        without waiting. No history is kept beyond a short log."""
+        without waiting. No history is kept beyond a short log.
+
+        Only the waits inside the asking agent's Claim are answered: the agent's own token
+        (``X-Arlesh-Agent-Token``) says whose Claim, and nothing outside it is told."""
         polling = asyncio.ensure_future(
             self._board.reader.expectations_poll(
-                agentic=agentic, after=after, epoch=epoch, wait=wait
+                agentic=agentic,
+                after=after,
+                epoch=epoch,
+                wait=wait,
+                agent_token=request.headers.get(AGENT_TOKEN_HEADER),
             )
         )
         try:

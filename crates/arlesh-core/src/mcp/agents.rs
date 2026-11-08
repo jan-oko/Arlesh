@@ -97,16 +97,14 @@ impl ArleshMcp {
                     "only a stored node can be claimed, not a Habit occurrence",
                 )),
             },
-            Err(IdRefusal::Unknown) => Err(result::not_permitted(
-                "no node inside the MCP roots has that id, so it cannot be claimed",
-            )),
-            Err(IdRefusal::Ambiguous(_)) => Err(result::refused(
-                "that id matches more than one node: give a longer id",
-            )),
-            Err(IdRefusal::WrongKind(_)) => Err(result::refused(format!(
-                "that id is not a {}",
-                subtree.node_type
-            ))),
+            // One answer for every way an id can fail to name a node of that kind, so a claim
+            // cannot be used to find out what exists, or how many, outside the agent's view.
+            Err(IdRefusal::Unknown | IdRefusal::Ambiguous(_) | IdRefusal::WrongKind(_)) => {
+                Err(result::not_permitted(format!(
+                    "no {} inside the MCP roots has that id, so it cannot be claimed",
+                    subtree.node_type
+                )))
+            }
         }
     }
 

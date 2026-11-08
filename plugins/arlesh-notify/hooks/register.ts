@@ -167,13 +167,23 @@ async function mainCheckout($: Engine, root: string): Promise<string | undefined
   return mainCheckoutOf(dotGit, await readText($, `${gitdir}/commondir`))
 }
 
-/** One quick request (`wait=0`): does the server answer? */
+/** The header the wait stream needs: this session's own agent token, if it has attached. */
+async function agentHeaders($: Engine, connection: ServerEntry): Promise<Record<string, string> | undefined> {
+  const stored = await $.store.get(`agent:${await $.session.id()}`)
+  const token = isRecord(stored) ? text(stored, 'token') : undefined
+  return token === undefined ? undefined : { ...connection.headers, 'X-Arlesh-Agent-Token': token }
+}
+
+/**
+ * One quick request (`wait=0`): does the server answer? The wait stream tells an agent only of
+ * waits inside its Claim, so it answers 401 to a session that has not attached; that is an answer.
+ */
 async function reachable($: Engine, connection: ServerEntry): Promise<boolean> {
   try {
     const answered = await $.http.fetch(pollUrl(originOf(connection.url), undefined, 0), {
-      headers: connection.headers,
+      headers: (await agentHeaders($, connection)) ?? connection.headers,
     })
-    return answered.ok
+    return answered.ok || answered.status === 401
   } catch {
     return false
   }
@@ -201,9 +211,16 @@ async function follow($: Engine): Promise<void> {
         continue
       }
       const connection = server
+      const headers = await agentHeaders($, connection)
+      if (headers === undefined) {
+        // Not attached (yet): the stream tells only an attached agent, and only of its Claim.
+        cursor = undefined
+        await $.clock.sleep(NO_SERVER_RETRY_MS)
+        continue
+      }
       started = await $.clock.now()
       const answered = await $.http.fetch(pollUrl(originOf(connection.url), cursor, wait), {
-        headers: connection.headers,
+        headers,
       })
       if (!answered.ok) throw new Error(`the server answered ${answered.status}`)
       const answer = parsePoll(answered.text)

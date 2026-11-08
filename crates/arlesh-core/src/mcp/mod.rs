@@ -391,7 +391,7 @@ pub fn router(
     let config = StreamableHttpServerConfig::default().enforce_origin_validation();
 
     let handler = handler(factory.clone(), announce, capacity, &streams);
-    let served = events::routes(factory, streams);
+    let served = events::routes(factory, streams, true);
 
     // One handler per `rmcp` session, each with a binding of its own: a session attaches once, and
     // its subagents, which share the connection, are covered by it.

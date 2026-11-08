@@ -436,3 +436,136 @@ async fn the_attach_tool_is_listed_with_every_operation() {
         assert!(schema.contains(operation), "{operation}");
     }
 }
+
+fn streams() -> crate::mcp::events::EventStreams {
+    crate::mcp::events::EventStreams::default()
+}
+
+async fn poll(
+    mcp: &ArleshMcp,
+    streams: &crate::mcp::events::EventStreams,
+    agent: Option<crate::agents::model::AgentId>,
+    after: Option<u64>,
+    epoch: Option<String>,
+) -> Value {
+    let query = crate::mcp::events::ExpectationsQuery {
+        agentic: true,
+        after,
+        epoch,
+        wait: Some(0),
+        agent,
+    };
+    let text = crate::mcp::events::poll_answer(&mcp.factory, streams, &query)
+        .await
+        .unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+#[tokio::test]
+async fn the_wait_stream_tells_an_agent_only_of_waits_inside_its_claim() {
+    let (mcp, _pool) = board().await;
+    let writer = session(&mcp);
+    let reviewer = session(&mcp);
+    let first = attach(&writer, "writer", 10).await;
+    let second = attach(&reviewer, "reviewer", 11).await;
+    let id = |attached: &Value| {
+        crate::agents::model::AgentId(structured(attached)["agent"]["id"].as_i64().unwrap())
+    };
+    let streams = streams();
+    // A cursor of 0 is no cursor: the log starts counting at the first write.
+    streams.feed.bump();
+    let start = poll(&mcp, &streams, Some(id(&first)), None, None).await;
+    let (revision, epoch) = (
+        start["revision"].as_u64().unwrap(),
+        start["epoch"].as_str().unwrap().to_owned(),
+    );
+
+    let asked = call(
+        &writer,
+        "arlesh_waits",
+        json!({ "operation": "ask", "task_id": "100", "title": "Which colour?" }),
+    )
+    .await;
+    assert!(!is_error(&asked), "{asked}");
+    streams.feed.bump();
+
+    let mine = poll(
+        &mcp,
+        &streams,
+        Some(id(&first)),
+        Some(revision),
+        Some(epoch.clone()),
+    )
+    .await;
+    let theirs = poll(
+        &mcp,
+        &streams,
+        Some(id(&second)),
+        Some(revision),
+        Some(epoch),
+    )
+    .await;
+
+    assert_eq!(mine["changes"].as_array().unwrap().len(), 1, "{mine}");
+    assert_eq!(theirs["changes"].as_array().unwrap().len(), 0, "{theirs}");
+}
+
+#[tokio::test]
+async fn an_agent_with_no_claim_is_told_of_no_waits() {
+    let (mcp, _pool) = board().await;
+    let writer = session(&mcp);
+    let idle = session(&mcp);
+    attach(&writer, "writer", 10).await;
+    let pin = pin(&mcp).await;
+    let attached = call(
+        &idle,
+        "arlesh_agents",
+        json!({ "operation": "attach", "pin": pin, "session_id": "idle" }),
+    )
+    .await;
+    let idle_id =
+        crate::agents::model::AgentId(structured(&attached)["agent"]["id"].as_i64().unwrap());
+    let streams = streams();
+    // A cursor of 0 is no cursor: the log starts counting at the first write.
+    streams.feed.bump();
+    let start = poll(&mcp, &streams, Some(idle_id), None, None).await;
+    let (revision, epoch) = (
+        start["revision"].as_u64().unwrap(),
+        start["epoch"].as_str().unwrap().to_owned(),
+    );
+    call(
+        &writer,
+        "arlesh_waits",
+        json!({ "operation": "ask", "task_id": "100", "title": "Q" }),
+    )
+    .await;
+    streams.feed.bump();
+
+    let heard = poll(&mcp, &streams, Some(idle_id), Some(revision), Some(epoch)).await;
+
+    assert_eq!(heard["changes"].as_array().unwrap().len(), 0, "{heard}");
+}
+
+#[tokio::test]
+async fn claiming_an_id_that_does_not_name_a_visible_node_is_refused_one_way() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach(&session, "writer", 10).await;
+
+    let missing = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "claim", "subtree": { "node_type": "goal", "node_id": "999" } }),
+    )
+    .await;
+    let wrong_kind = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "claim", "subtree": { "node_type": "task", "node_id": "10" } }),
+    )
+    .await;
+
+    assert!(is_error(&missing) && is_error(&wrong_kind));
+    assert_eq!(structured(&missing)["kind"], "not_permitted");
+    assert_eq!(structured(&wrong_kind)["kind"], "not_permitted");
+}

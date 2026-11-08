@@ -248,10 +248,12 @@ class Database(ABC):
         after: int | None = None,
         epoch: str | None = None,
         wait: int | None = None,
+        agent_token: str | None = None,
     ) -> dict[str, Any]:
         """The long poll of the agents' wait stream: ``{"revision", "epoch", "changes"}`` as soon
         as a change to a wait past ``after`` exists, or empty once ``wait`` seconds have passed;
-        ``"reset": true`` says there is no cursor to resume from, so read the waits afresh."""
+        ``"reset": true`` says there is no cursor to resume from, so read the waits afresh.
+        With ``agent_token`` the answer holds only the waits inside that agent's Claim."""
 
     @abstractmethod
     async def stop_mcp(self) -> None:
@@ -1001,9 +1003,12 @@ class Arlesh(Database):
         after: int | None = None,
         epoch: str | None = None,
         wait: int | None = None,
+        agent_token: str | None = None,
     ) -> dict[str, Any]:
         try:
-            raw = await self._mcp_native().expectations_poll(agentic, after, epoch, wait)
+            raw = await self._mcp_native().expectations_poll(
+                agentic, after, epoch, wait, agent_token
+            )
         except _native.NativeError as error:
             raise from_native(error) from None
         answer: dict[str, Any] = json.loads(raw)
