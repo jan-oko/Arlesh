@@ -16,7 +16,7 @@ describe("safe-area variables", () => {
   });
 
   it("pads the phone top bar by the top inset, and keeps the bottom bars and corner square above the bottom one", () => {
-    expect(phoneTopBar).toMatch(/padding:\s*var\(--safe-top\)/);
+    expect(phoneTopBar).toMatch(/padding-top:\s*var\(--safe-top\)/);
     expect(phoneTopBar).toContain("calc(var(--safe-bottom) + 12px)");
     expect(bottomNav).toMatch(/padding-bottom:\s*var\(--safe-bottom\)/);
   });
