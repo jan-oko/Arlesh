@@ -168,15 +168,24 @@ fn a_task_is_not_set_done_over_open_sub_items() {
 }
 
 #[test]
-fn a_press_that_cannot_lower_what_the_sub_items_make_it_read_is_refused() {
-    // Reads Started from a child, and Enter on Done would drop it to To Do.
+fn the_cycle_skips_statuses_below_the_floor_and_alt_enter_is_refused_below_it() {
+    // Reads Started from a child: Enter on Done skips To Do and lands on Started.
     assert_eq!(
         after(
             StatusStep::Advance,
             ordinary(TaskStatus::Done),
             sub_items(TaskStatus::Started, 0)
         ),
-        Err(StatusRefusal::BelowSubItems)
+        Ok(ordinary(TaskStatus::Started))
+    );
+    // Reads In Progress from a child: Done goes to In Progress.
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::Done),
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        Ok(ordinary(TaskStatus::InProgress))
     );
     // Reads In Progress from a child, and Alt+Enter would pause it to Started.
     assert_eq!(

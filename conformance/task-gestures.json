@@ -756,8 +756,11 @@
         "open": 0
       },
       "result": {
-        "outcome": "refused",
-        "reason": "below_sub_items"
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
       }
     },
     {
@@ -847,6 +850,25 @@
       "result": {
         "outcome": "refused",
         "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "in_progress",
+        "open": 0
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "in_progress"
+        }
       }
     }
   ],

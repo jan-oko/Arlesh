@@ -4,7 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import { updateTask } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
-import { takesCompound } from "@/utils/compound";
+import { offersCompound, takesCompound } from "@/utils/compound";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -35,6 +35,10 @@ export function useTaskCompound({ findNode, reload, showToast }: Options): Resul
       if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       if (!takesCompound(node)) {
         showToast({ nodeId, message: t("compoundOnDerived") });
+        return;
+      }
+      if (!offersCompound(node)) {
+        showToast({ nodeId, message: t("compoundNeedsSubItems") });
         return;
       }
       const rowId = rowIdOf(node);

@@ -36,7 +36,7 @@ import { useInputCapture } from "@/hooks/use-input-capture";
 import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
-import { takesCompound } from "@/utils/compound";
+import { offersCompound } from "@/utils/compound";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
@@ -467,7 +467,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       )}
       {/* Compound, after Asynchronous and its wait: the status follows the sub-items. A stored
           task's flag, or a Habit occurrence's — a check task keeps a status of its own. */}
-      {takesCompound(node) && (
+      {offersCompound(node) && (
         <div className={styles.label}>
           {t("fieldCompound")}
           <Switch

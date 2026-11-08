@@ -31,8 +31,9 @@ pub enum StatusRefusal {
     /// The press would set the Task Done while a counted sub-item is not: a Task cannot be
     /// finished over open work. Complete or archive what is left.
     OpenSubItems,
-    /// The press would lower the Task below what its sub-items make it read: it reads at least
-    /// Started, or In Progress, from them, so the lower status would change nothing.
+    /// `Alt+Enter` would pause the Task below what its sub-items make it read: it reads at least
+    /// Started, or In Progress, from them, so the lower status would change nothing. The click and
+    /// `Enter` cycle never asks: it skips to the floor.
     BelowSubItems,
 }
 
@@ -94,6 +95,15 @@ pub fn alt_step(current: Status) -> Result<Status, StatusRefusal> {
     }
 }
 
+/// The cycle never offers a status below the floor the sub-items derive: a step that lands under
+/// it lands on the floor itself, so Done goes to Started, not To Do, over a Done sub-item.
+fn lifted_to_floor(next: Status, floor: TaskStatus) -> Status {
+    match next {
+        Status::Ordinary(status) if status.rank() < floor.rank() => Status::Ordinary(floor),
+        other => other,
+    }
+}
+
 /// What `step` writes on a Task whose status is `current`, or why it writes nothing. A Compound
 /// Task has no status of its own to write, whatever the gesture. Any Task is held to its
 /// `sub_items`: it is not set Done over open ones, and an ordinary one is not set below what they
@@ -108,15 +118,17 @@ pub fn status_after(
         return Err(StatusRefusal::Compound);
     }
     let next = match step {
-        StatusStep::Advance => next_status(current),
+        StatusStep::Advance => lifted_to_floor(next_status(current), sub_items.floor),
         StatusStep::Alt => alt_step(current)?,
     };
     if next.is_done() && sub_items.open > 0 {
         return Err(StatusRefusal::OpenSubItems);
     }
-    if let Status::Ordinary(status) = next {
-        if status.rank() < sub_items.floor.rank() {
-            return Err(StatusRefusal::BelowSubItems);
+    if step == StatusStep::Alt {
+        if let Status::Ordinary(status) = next {
+            if status.rank() < sub_items.floor.rank() {
+                return Err(StatusRefusal::BelowSubItems);
+            }
         }
     }
     Ok(next)
