@@ -11,9 +11,10 @@
   background: var(--canvas-bg);
 }
 
-/* Full screen only: the status-bar inset alone, no extra gap above it. */
+/* Full screen only: the cards run up under the status bar and the cutout (user, 2026-11-08), so no
+   top padding at all; the other views keep the status-bar inset. */
 :global(:root[data-fs-bars]) .container {
-  padding-top: var(--peek-pad-top);
+  padding-top: 0;
 }
 
 .strips {

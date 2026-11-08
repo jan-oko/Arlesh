@@ -76,10 +76,8 @@ describe("Full screen's padding for the system bars", () => {
   });
 
   it("is added to the content box of every view but the Mindmap, phone overrides included", () => {
-    for (const css of views) {
-      expect(css).toContain("var(--peek-pad-top)");
-      expect(css).toContain("var(--peek-pad-bottom)");
-    }
+    for (const css of views) expect(css).toContain("var(--peek-pad-bottom)");
+    for (const css of views.slice(0, 3)) expect(css).toContain("var(--peek-pad-top)");
     expect(views[0]).toContain(
       "padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
     );
@@ -110,7 +108,11 @@ describe("The List's sticky headers in full screen", () => {
       /:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: var\(--peek-pad-top\);/,
     );
     expect(list).not.toContain("::before");
-    for (const name of ["Zen", "Steps", "Plan"]) {
+    const zen = read("src/components/ZenView/ZenView.module.css");
+    expect(zen).toMatch(/\.container \{[^}]*padding: var\(--space-4\) var\(--space-4\)/);
+    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: 0;/);
+    expect(zen).not.toContain("--peek-pad-top");
+    for (const name of ["Steps", "Plan"]) {
       const css = read(`src/components/${name}View/${name}View.module.css`);
       expect(css).toMatch(/\.container \{[^}]*padding: var\(--space-[24]\) var\(--space-[24]\)/);
       expect(css).toMatch(
