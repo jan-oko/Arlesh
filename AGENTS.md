@@ -46,6 +46,37 @@ Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no pr
 - If the MCP is unreachable, Arlesh isn't running (it must be open or in the tray): say so and ask the user to start it. Don't guess at the board, and don't fall back to bd.
 - `.beads/` is kept as a read-only archive of the closed bd history. Don't run `bd` to track new work.
 
+### Waiting for the user's answer: notifications
+
+Raising a wait does not by itself wake anyone when it is answered. What an agent does next depends
+on whether its session says **"Arlesh notifications are on in this session"** (the line the
+`arlesh-notify` plugin adds; see [ADR 0013](docs/adr/0013-notifying-agents-when-a-wait-resolves.md)).
+The Arlesh MCP server's instructions carry the protocol and say nothing about whether the plugin is
+there; only that line does.
+
+**If it says so** (the plugin is installed: `/plugin install arlesh-notify --marketplace
+jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh-notify` from a checkout):
+
+- After raising a wait you are blocked on, carry on with other unblocked work. Otherwise end the turn
+  and stay idle; the notification wakes you. A sub-agent reports back and finishes, and its parent
+  session gets the notification.
+- Never poll `arlesh_waits.get` and never sleep. To follow a wait you did not raise, pass its id to
+  `arlesh_waits.watch`.
+- On "Arlesh notification: wait W on Task T changed (…)": read the wait with `arlesh_waits.get` and
+  its Task, then act on the answer as the user's input to that question, within the usual rules.
+  Anything ambiguous means you ask again.
+
+  | The wait is | You |
+  | --- | --- |
+  | released | act on the answer |
+  | reopened | stop any work that depended on it |
+  | gone (archived or deleted) | treat the question as withdrawn, and ask if that is unclear |
+
+**If it does not say so:** still raise the hand-back wait (the board must stay truthful), but do not
+wait on it. Ask the question in the conversation too: to the orchestrator, or to the user if you are
+a top-level session. Then end the turn or report back. The answer comes back through the
+conversation.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

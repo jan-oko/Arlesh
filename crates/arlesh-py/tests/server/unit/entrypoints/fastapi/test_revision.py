@@ -48,7 +48,7 @@ def _app(counter: Counter) -> Starlette:
             Route("/read", read),
             Route("/write", write, methods=["POST"]),
             Route("/big", big),
-            Route("/events", big),
+            Route("/events/changes", big),
         ]
     )
 
@@ -97,7 +97,7 @@ def test_a_big_answer_is_gzipped_when_the_client_accepts_it() -> None:
 def test_the_change_stream_is_never_gzipped() -> None:
     client = TestClient(GzipExceptEventsMiddleware(_app(Counter())))
 
-    response = client.get("/events", headers={"Accept-Encoding": "gzip"})
+    response = client.get("/events/changes", headers={"Accept-Encoding": "gzip"})
 
     assert "content-encoding" not in response.headers
     assert response.text == BIG

@@ -1,0 +1,11 @@
+{
+  "name": "arlesh",
+  "owner": { "name": "Arlesh" },
+  "plugins": [
+    {
+      "name": "arlesh-notify",
+      "source": "./plugins/arlesh-notify",
+      "description": "Wakes a Claude Code session when an Arlesh wait it raised or watches changes."
+    }
+  ]
+}

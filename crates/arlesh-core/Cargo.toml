@@ -16,11 +16,12 @@ thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["net", "rt", "sync"] }
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
+futures-util = { version = "0.3", default-features = false }
 rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
 axum = "0.8.9"
 schemars = { version = "1.2.2", features = ["chrono04"] }
 
 [dev-dependencies]
 arlesh-rules = { path = "../arlesh-rules", features = ["test-support"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "io-util", "net"] }

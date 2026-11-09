@@ -16,6 +16,8 @@ use rmcp::{
 
 use super::{
     access,
+    events::{self, rules::WaitState},
+    ids::IdRefusal,
     lookup::{found, Answer, Board},
     params::{NodeIdParam, WaitsOperation},
     result,
@@ -48,6 +50,16 @@ impl ArleshMcp {
     /// `get` returns one wait as the snapshot's `expectations` carry it — `status`, `question`,
     /// `agentic_note`, `answer` — so you can poll for the user's answer without the snapshot.
     ///
+    /// `watch` takes `ids` of waits you want to hear about. It only validates them (each must be an
+    /// agentic wait you can see) and answers their current states: it changes nothing on the
+    /// board. If your session says Arlesh notifications are on, rely on them: waits you `ask`,
+    /// `raise` or `watch` notify you when they are released, reopened, archived or deleted, so do
+    /// not poll `get` and do not sleep. If it does not say so, do not wait on a wait: nothing will
+    /// wake you, so ask the question where your conversation can carry the answer, too.
+    ///
+    /// `get_many` reads several waits at once (`ids` as full ids, short ids or row ids): each one's
+    /// state, or `gone: true` when it is deleted or out of your sight.
+    ///
     /// Ids are row ids or short ids. A Task you cannot write, or a wait under one, is refused as
     /// `not_permitted`; `get` needs only that you can see the wait.
     #[tool(
@@ -76,6 +88,8 @@ impl ArleshMcp {
 
         let (task_id, title, note, question) = match operation {
             WaitsOperation::Get { id } => return get(&board, &id),
+            WaitsOperation::Watch { ids } => return watch(&board, &ids),
+            WaitsOperation::GetMany { ids } => return get_many(&board, &ids),
             WaitsOperation::Release { id, answer } => {
                 let id = found!(board.resolve(&id, "expectation"));
                 let wait = found!(released_wait(&board, &id));
@@ -152,6 +166,74 @@ fn get(board: &Board, id: &NodeIdParam) -> Answer {
     };
     // The wait's own row, as the snapshot's `expectations` carry it: the same field names.
     result::ok(board.names.stamped(wait, NodeTable::Expectation))
+}
+
+/// One id of `watch` or `get_many`, answered: the wait's state, or that it is gone.
+#[derive(serde::Serialize)]
+struct Watched {
+    /// The id as it was asked for.
+    id: String,
+    /// Whether no visible wait has this id any more.
+    gone: bool,
+    #[serde(flatten)]
+    state: Option<WaitState>,
+}
+
+/// Reads each of `ids` against the board. A wait that no visible node answers to is `gone`, unless
+/// `refuse_gone` — then it is refused, as an id the agent has misread.
+fn watched(board: &Board, ids: &[NodeIdParam], refuse_gone: bool) -> Result<Vec<Watched>, Answer> {
+    let mut answers = Vec::with_capacity(ids.len());
+    for id in ids {
+        let text = id.text();
+        let named = match board.names.resolve_as(&text, Some(NodeTable::Expectation)) {
+            Ok(named) => Some(named),
+            Err(IdRefusal::Unknown) if !refuse_gone => None,
+            Err(IdRefusal::Unknown) => {
+                return Err(result::not_permitted(format!(
+                    "no wait inside the MCP roots has the id {text}"
+                )))
+            }
+            Err(IdRefusal::Ambiguous(candidates)) => {
+                return Err(result::ambiguous(&text, &candidates))
+            }
+            Err(IdRefusal::WrongKind(node)) => {
+                return Err(result::refused(format!(
+                    "{text} is a {} ({}), not a wait",
+                    node.kind, node.title
+                )))
+            }
+        };
+        let wait = named.and_then(|named| {
+            board
+                .load
+                .expectations
+                .iter()
+                .find(|wait| wait.id == named.node_id)
+        });
+        if refuse_gone && wait.is_some_and(|wait| !wait.agentic) {
+            return Err(result::refused(format!(
+                "{text} is not an agentic wait: only the waits an agent raises can be watched"
+            )));
+        }
+        answers.push(Watched {
+            id: text,
+            gone: wait.is_none(),
+            state: wait.map(|wait| events::wait_state(board, wait)),
+        });
+    }
+    Ok(answers)
+}
+
+/// `watch`: validates the ids and answers the waits' current states.
+fn watch(board: &Board, ids: &[NodeIdParam]) -> Answer {
+    let waits = found!(watched(board, ids, true));
+    result::ok(serde_json::json!({ "waits": waits }))
+}
+
+/// `get_many`: the waits' current states, with `gone` for the ones that no longer exist.
+fn get_many(board: &Board, ids: &[NodeIdParam]) -> Answer {
+    let waits = found!(watched(board, ids, false));
+    result::ok(serde_json::json!({ "waits": waits }))
 }
 
 /// The visible agentic wait `id` names — the only kind an agent releases.

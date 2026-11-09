@@ -139,6 +139,12 @@ impl From<i64> for NodeIdParam {
     }
 }
 
+impl From<String> for NodeIdParam {
+    fn from(id: String) -> Self {
+        Self::Short(id)
+    }
+}
+
 /// A reference to a node in the tree, by kind and id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct NodeRef {
@@ -676,6 +682,21 @@ pub enum WaitsOperation {
     Get {
         /// The wait: a row id or a short id.
         id: NodeIdParam,
+    },
+    /// Starts watching waits: checks that each id names an agentic wait you can see, and answers
+    /// each one's current state. It changes nothing on the board. If your session says Arlesh
+    /// notifications are on, you are then notified when a watched wait is released, reopened,
+    /// archived or deleted; waits you ask or raise are watched already. Otherwise it only
+    /// validates the ids.
+    Watch {
+        /// The waits: row ids or short ids.
+        ids: Vec<NodeIdParam>,
+    },
+    /// Several waits' current states in one read: for each id, its status, archived flag and ids,
+    /// or `gone` when no visible wait has that id any more (deleted, or outside what you can see).
+    GetMany {
+        /// The waits: row ids or full or short ids.
+        ids: Vec<NodeIdParam>,
     },
 }
 

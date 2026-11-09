@@ -158,7 +158,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
@@ -566,6 +566,57 @@ reads `on_agent` again; the app refuses a release without an answer, from every 
 agent reads the answer with `get`, or off the snapshot's `expectations`, which carry `question` and
 `answer`. Agentic waits are not drawn in the Zen View's Expectations strip. A wait blocks nothing
 unless a Task depends on it.
+
+## Being told a wait resolved
+
+An agent that raised a wait is **told** when it changes, instead of polling `get`. The decision and
+its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md); this is the
+server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
+which an agent's session may or may not have.
+
+**Two event streams**, Server-Sent Events (and the wait stream's long-poll form, below), on the MCP endpoint's own origin (beside `/mcp` in
+Standalone; behind the client's bearer token in Client mode, by the same proxy), under the same
+rules: a loopback `Host` only, and any request carrying an `Origin` refused.
+
+- `GET /events/changes`: `board-changed` with the board's revision after every committed write.
+  Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*).
+- `GET /events/expectations[?agentic=true]`: `wait-changed` for each change to a wait the MCP can
+  see; `agentic=true` keeps only the agentic ones. The data is
+  `{"change", "wait_id", "short_id", "task_id", "task_short_id", "status", "archived", "question",
+  "deleted", "revision", "epoch"}`. `change` is `created`, `released`, `reopened`, `archived`,
+  `unarchived` or `deleted` (deleted, or no longer inside the roots: indistinguishable by design,
+  as `not_permitted` is). A status change comes before an archival change. **An edit to a pending
+  wait's title or note is no event.** The server keeps no history: the first read is made before
+  the response starts, so a change after the client has the response is always an event, and a
+  client that reconnects reads the waits it follows once (`get_many`) to catch up.
+- `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the same
+  changes as **one JSON answer**, for a client that cannot hold a stream open (the mod's
+  `$.http.fetch` resolves only once the body is read). It answers
+  `{"revision", "epoch", "changes": [<the wait-changed data above>]}` as soon as a change stamped
+  after `after` exists, else with no changes once `wait` seconds have passed (25 by default, 30 at
+  most; `wait=0` answers at once). The client polls again with the `revision` it got, one request at
+  a time. With `after` missing or 0, an `epoch` that is not this run's, or an `after` the server's
+  short log (the last 1000 changes) no longer reaches, it answers
+  `{"revision", "epoch", "changes": [], "reset": true}` at once: read the waits (`get_many`), then
+  poll from that `revision`. The server keeps the log lazily, per filter, and only once a poll asks;
+  the stream is unchanged. Same access rules as the stream.
+
+The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
+writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.
+
+**Two operations on `arlesh_waits`:**
+
+- **`watch(ids)`** starts watching waits: it checks that each id names an agentic wait the MCP can
+  see and answers each one's current state (`wait_id`, `short_id`, `task_id`, `task_short_id`,
+  `status`, `archived`, `question`). It writes nothing. An id that names no visible wait, or a wait
+  that is not agentic, is refused. Whether anyone is *notified* depends on the session, not the
+  server: the instructions say so, and the mod picks the ids off the result.
+- **`get_many(ids)`** reads several waits at once. An id that no visible wait answers to comes back
+  `gone: true` instead of failing.
+
+**What the instructions tell an agent** is protocol only, and says nothing about whether a mod is
+present: what `watch` does, and "if your session says Arlesh notifications are on, rely on them;
+otherwise don't wait on a wait". Whether they are on is the mod's own line at SessionStart.
 
 ## Notes
 

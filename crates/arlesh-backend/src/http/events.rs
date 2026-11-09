@@ -1,4 +1,4 @@
-//! Following the server's change stream (`GET /events`): live sync between devices.
+//! Following the server's change stream (`GET /events/changes`): live sync between devices.
 //!
 //! Each `board-changed` event the server sends is relayed through `announce` — the shell wires it
 //! to the same Tauri event a Standalone write raises — with the revision the event carries, so a
@@ -15,8 +15,8 @@ use crate::revision::BoardRevision;
 /// What the shell is told for each `board-changed`: the revision it carried, if it carried one.
 pub type Announce = Arc<dyn Fn(Option<BoardRevision>) + Send + Sync>;
 
-/// The path of the server's change stream.
-pub const EVENTS_PATH: &str = "/events";
+/// The change stream's route on the server (`conformance/client-mode.json`, `streams`).
+pub const CHANGES_PATH: &str = "/events/changes";
 
 /// The longest wait between two reconnects.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
@@ -182,7 +182,7 @@ async fn stream_once(
     let connection = backend.connection();
     let mut request = backend
         .http
-        .get(format!("{}{EVENTS_PATH}", connection.url))
+        .get(format!("{}{CHANGES_PATH}", connection.url))
         .bearer_auth(&connection.token);
     if let Some(id) = last_event_id.as_deref() {
         request = request.header("Last-Event-ID", id);

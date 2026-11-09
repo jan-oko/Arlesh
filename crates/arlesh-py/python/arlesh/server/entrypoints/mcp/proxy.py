@@ -63,6 +63,15 @@ class McpProxyRouter(APIRouter):
 
     async def _proxy(self, request: Request) -> StreamingResponse:
         upstream = await self._board.mcp_endpoint(self._client_context.get())
+        return await self._forward(request, upstream)
+
+    async def forward_beside(self, request: Request, path: str) -> StreamingResponse:
+        """Proxies ``request`` to ``path`` on the origin of the client's MCP endpoint: the event
+        streams the core serves beside ``/mcp``, on the same listener and so the same client."""
+        upstream = await self._board.mcp_endpoint(self._client_context.get())
+        return await self._forward(request, upstream.removesuffix("/mcp") + path)
+
+    async def _forward(self, request: Request, upstream: str) -> StreamingResponse:
         forwarded = self._http.build_request(
             request.method,
             upstream,
@@ -77,6 +86,40 @@ class McpProxyRouter(APIRouter):
             headers=_pick(answer.headers, RESPONSE_HEADERS),
             background=BackgroundTask(answer.aclose),
         )
+
+
+class ExpectationsProxyRouter(APIRouter):
+    """``GET /events/expectations``: the wait stream the core serves beside ``/mcp``.
+
+    The core is the one place that knows how to read waits the way the MCP sees them, so this is
+    a proxy to it, behind the bearer token, as ``/mcp`` is. ``?agentic=true`` goes through.
+    """
+
+    def __init__(self, mcp: McpProxyRouter) -> None:
+        super().__init__()
+        self._mcp = mcp
+        self.get("", response_class=StreamingResponse)(self._stream)
+
+    async def _stream(
+        self,
+        request: Request,
+        agentic: bool = False,
+        after: int | None = None,
+        epoch: str | None = None,
+        wait: int | None = None,
+    ) -> StreamingResponse:
+        """``wait-changed`` for each change to a wait, as Server-Sent Events: its ids, the Task's,
+        its status, whether it is archived or deleted, and the revision. ``agentic=true`` keeps
+        only the waits an agent raised. No history is kept: read the waits you follow
+        (``arlesh_waits.get_many``) after you connect.
+
+        With ``after`` (the revision heard up to, from the last answer), ``epoch`` or ``wait``
+        (seconds, 25 by default, 30 at most) it is a long poll instead: one JSON answer,
+        ``{revision, epoch, changes}``, as soon as a change past ``after`` exists or once ``wait``
+        has passed. ``{..., changes: [], reset: true}`` means there is no cursor to resume from
+        (none, another run's epoch, or one too old): read the waits, then poll from ``revision``."""
+        del agentic, after, epoch, wait  # forwarded with the rest of the query string
+        return await self._mcp.forward_beside(request, "/events/expectations")
 
 
 def _pick(headers: Mapping[str, str], names: tuple[str, ...]) -> dict[str, str]:

@@ -402,7 +402,7 @@ How the presets read them:
 ### Client mode
 - **Is:** each device runs **Standalone** (its own database file, as the app always has) or as a **Client** of `arlesh-server`.
   - Every Tauri command goes through one **Backend port**: `SqliteBackend` in-process, or `HttpBackend` calling the server's routes, one route per method.
-  - The server's change stream (`/events`) reloads every device's windows as a local write would.
+  - The server's change stream (`/events/changes`) reloads every device's windows as a local write would.
   - Undo is per device: each device's token is its own client.
   - With the server unreachable, the last board stays on screen, read-only; nothing is queued.
   - People and the knowledge base stay Standalone-only.
