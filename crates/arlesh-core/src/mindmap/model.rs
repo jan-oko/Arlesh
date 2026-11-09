@@ -179,6 +179,10 @@ pub struct NodeFacts {
     /// by hand: a Compound Task, or a parent raised to it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub derived_in_progress: bool,
+    /// What a Task's sub-items say about it — the floor they derive and how many are open — when
+    /// they say anything: the editors grey out the statuses it cannot hold from it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_items: Option<crate::tasks::rules::gestures::SubItems>,
     /// Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
     /// Achieved, a wait no longer pending.
     #[serde(skip_serializing_if = "std::ops::Not::not")]

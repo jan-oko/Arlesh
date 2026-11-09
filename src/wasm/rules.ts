@@ -18,6 +18,7 @@ export {
   planRefusal,
   planTriage,
   statusAfter,
+  statusBlock,
   takeOut,
   verdictAfter,
 } from "@/wasm/pkg/arlesh_rules_wasm";

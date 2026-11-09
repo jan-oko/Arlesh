@@ -524,7 +524,16 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
 }
 
 /// The [`SubItems`] of the Task `id` in `rows`, which must be the board as a load served it.
+/// A Task the board does not hold has none.
 pub fn subtree_of(rows: &Rows<'_>, id: &NodeId) -> SubItems {
+    subtrees_of(rows, std::slice::from_ref(id))
+        .remove(id)
+        .unwrap_or_default()
+}
+
+/// The [`SubItems`] of each Task in `ids`, over one reading of the board — what the facts carry per
+/// node, so a load builds the tree once rather than once per Task.
+pub fn subtrees_of(rows: &Rows<'_>, ids: &[NodeId]) -> HashMap<NodeId, SubItems> {
     // Every compound Task is read as served: its status is already its derived one.
     let served: HashSet<NodeId> = rows
         .tasks
@@ -553,14 +562,19 @@ pub fn subtree_of(rows: &Rows<'_>, id: &NodeId) -> SubItems {
         resolved: HashMap::new(),
         visiting: HashSet::new(),
     };
-    let top = (Kind::Task, id.clone());
-    let mut tally = Tally::default();
-    let mut walked = HashSet::from([top.clone()]);
-    evaluation.count_beneath(&top, id, &mut tally, &mut walked);
-    SubItems {
-        floor: tally.floor(),
-        open: tally.open,
-    }
+    ids.iter()
+        .map(|id| {
+            let top = (Kind::Task, id.clone());
+            let mut tally = Tally::default();
+            let mut walked = HashSet::from([top.clone()]);
+            evaluation.count_beneath(&top, id, &mut tally, &mut walked);
+            let items = SubItems {
+                floor: tally.floor(),
+                open: tally.open,
+            };
+            (id.clone(), items)
+        })
+        .collect()
 }
 
 /// The board a load has read so far, which [`settle`](crate::tasks::compound::settle) completes with its waits.

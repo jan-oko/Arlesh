@@ -134,6 +134,37 @@ pub fn status_after(
     Ok(next)
 }
 
+/// Why an editor may not offer a status on a Task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusBlock {
+    /// The Task consists purely of its sub-items: no status is set by hand.
+    Compound,
+    /// The status is below the floor its sub-items derive, so it would change nothing.
+    BelowSubItems,
+    /// Done while a counted sub-item is not.
+    OpenSubItems,
+}
+
+/// Why `status` cannot be chosen on a Task, or `None` when it can: the statuses the editors grey
+/// out. A Compound Task takes none; any Task is refused Done over open sub-items, and an ordinary
+/// one a status below the floor its sub-items derive. The cycle and the editors share it, so
+/// neither offers what the other refuses.
+pub fn status_block(status: Status, compound: bool, sub_items: SubItems) -> Option<StatusBlock> {
+    if compound {
+        return Some(StatusBlock::Compound);
+    }
+    if status.is_done() && sub_items.open > 0 {
+        return Some(StatusBlock::OpenSubItems);
+    }
+    match status {
+        Status::Ordinary(ordinary) if ordinary.rank() < sub_items.floor.rank() => {
+            Some(StatusBlock::BelowSubItems)
+        }
+        _ => None,
+    }
+}
+
 /// How a status write took a Task out of the Backlog, which is said out loud.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]

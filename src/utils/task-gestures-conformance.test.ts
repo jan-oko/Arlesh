@@ -5,8 +5,8 @@ import type { StatusRefusal, StatusStep, VerdictPress } from "@/api/node-gesture
 import type { AgenticStatus, OrdinaryStatus, TaskStatus } from "@/api/tasks";
 import type { Verdict } from "@/api/verdict";
 import { AGENTIC_STATUS, TASK_STATUS, agentic, ordinary } from "@/utils/status-mapping";
-import { NO_SUB_ITEMS, altStep, nextStatus, statusAfter, verdictAfter } from "@/utils/task-gestures";
-import type { StatusPrediction, SubItems } from "@/utils/task-gestures";
+import { NO_SUB_ITEMS, altStep, nextStatus, statusAfter, statusBlock, verdictAfter } from "@/utils/task-gestures";
+import type { StatusBlock, StatusPrediction, SubItems } from "@/utils/task-gestures";
 
 /**
  * The status step, `Alt+Enter`, the Compound refusal and the verdict have two evaluators:
@@ -88,6 +88,19 @@ const verdictCases = list(top.verdict_after, "`verdict_after`").map((value, inde
   };
 });
 
+const BLOCKS: readonly StatusBlock[] = ["compound", "below_sub_items", "open_sub_items"];
+
+const blockCases = list(top.status_block, "`status_block`").map((value, index) => {
+  const raw = record(value, `status_block[${index}]`);
+  if (typeof raw.compound !== "boolean") fail(`status_block[${index}].compound is not a boolean`);
+  return {
+    status: parseStatus(raw.status, `status_block[${index}].status`),
+    compound: raw.compound,
+    subItems: raw.sub_items === undefined ? NO_SUB_ITEMS : parseSubItems(raw.sub_items, `status_block[${index}].sub_items`),
+    block: raw.block === null ? null : oneOf(raw.block, BLOCKS, `status_block[${index}].block`),
+  };
+});
+
 const name = (status: TaskStatus): string => `${status.kind} ${status.status}`;
 
 describe("task gestures conformance corpus", () => {
@@ -107,6 +120,12 @@ describe("task gestures conformance corpus", () => {
     const compound = testCase.compound ? "a Compound" : "a";
     it(`takes ${testCase.step} on ${compound} ${name(testCase.current)} as the corpus says`, () => {
       expect(statusAfter(testCase.step, testCase.current, testCase.compound, testCase.subItems)).toEqual(testCase.result);
+    });
+  }
+
+  for (const testCase of blockCases) {
+    it(`blocks ${name(testCase.status)} as ${testCase.block ?? "nothing"} (compound: ${testCase.compound}, sub-items: ${testCase.subItems.floor}/${testCase.subItems.open})`, () => {
+      expect(statusBlock(testCase.status, testCase.compound, testCase.subItems)).toBe(testCase.block);
     });
   }
 

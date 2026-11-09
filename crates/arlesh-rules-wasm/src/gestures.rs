@@ -2,8 +2,8 @@
 
 use arlesh_rules::tasks::model::{Status, Verdict};
 use arlesh_rules::tasks::rules::gestures::{
-    alt_step, next_status, status_after, verdict_after, StatusRefusal, StatusStep, SubItems,
-    VerdictPress,
+    alt_step, next_status, status_after, status_block, verdict_after, StatusBlock, StatusRefusal,
+    StatusStep, SubItems, VerdictPress,
 };
 use serde::Serialize;
 use tsify::Tsify;
@@ -79,4 +79,20 @@ pub fn verdict_after_js(
     let press: VerdictPress = read(press)?;
     let current: Verdict = read(current)?;
     write(&verdict_after(press, current))
+}
+
+/// `status_block`: why `status` cannot be chosen on a Task, or `null` when it can.
+#[wasm_bindgen(
+    js_name = statusBlock,
+    unchecked_return_type = "\"compound\" | \"below_sub_items\" | \"open_sub_items\" | null"
+)]
+pub fn status_block_js(
+    #[wasm_bindgen(unchecked_param_type = "TaskStatusWire")] status: JsValue,
+    compound: bool,
+    #[wasm_bindgen(unchecked_param_type = "SubItemsWire")] sub_items: JsValue,
+) -> Result<JsValue, JsError> {
+    let status: Status = read(status)?;
+    let sub_items: SubItems = read(sub_items)?;
+    let block: Option<StatusBlock> = status_block(status, compound, sub_items);
+    write(&block)
 }

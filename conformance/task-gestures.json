@@ -17,7 +17,9 @@
     "Task is refused a status below its floor. `verdict_after`: the cycle key and the Kept and Broken",
     "controls, each of which clears the verdict it already reads.",
     "",
-    "A result is `written` with the status it leaves, or `refused` with why nothing is written."
+    "A result is `written` with the status it leaves, or `refused` with why nothing is written.",
+    "",
+    "`status_block`: why an editor may not offer a status on a Task (`compound`, `below_sub_items`, `open_sub_items`), or `null` when it may: the statuses the editors grey out. Compound takes none; Done is blocked over open sub-items; an ordinary status is blocked below the floor."
   ],
   "next_status": [
     {
@@ -917,6 +919,140 @@
       "press": "broken",
       "current": "broken",
       "verdict": "unresolved"
+    }
+  ],
+  "status_block": [
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": false,
+      "block": null
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "block": null
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": true,
+      "block": "compound"
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "compound": true,
+      "sub_items": {
+        "floor": "todo",
+        "open": 0
+      },
+      "block": "compound"
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "started",
+        "open": 0
+      },
+      "block": "below_sub_items"
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "started",
+        "open": 0
+      },
+      "block": null
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "in_progress",
+        "open": 1
+      },
+      "block": "below_sub_items"
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "in_progress",
+        "open": 1
+      },
+      "block": null
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "started",
+        "open": 2
+      },
+      "block": "open_sub_items"
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "started",
+        "open": 0
+      },
+      "block": null
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "in_progress",
+        "open": 1
+      },
+      "block": "open_sub_items"
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "compound": false,
+      "sub_items": {
+        "floor": "in_progress",
+        "open": 1
+      },
+      "block": null
     }
   ]
 }

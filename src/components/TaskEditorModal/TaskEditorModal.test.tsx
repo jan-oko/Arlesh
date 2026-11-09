@@ -260,7 +260,7 @@ describe("TaskEditorModal — the Archived switch under Advanced", () => {
   });
 
   it("offers no Archived switch on a Habit occurrence", async () => {
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }), children: [mkNode({ id: "task-6", rowId: 6 })] })} />);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "advanced" }));
@@ -771,20 +771,29 @@ describe("TaskEditorModal — Compound", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "started" }, compound: false });
   });
 
-  it("hides the switch on a task with no sub-items, and offers it once it has one", () => {
-    const { rerender } = render(<TaskEditorModal {...defaultProps} node={mkNode()} />);
-    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).not.toBeInTheDocument();
-    rerender(<TaskEditorModal {...defaultProps} node={mkNode({ children: [mkNode({ id: "task-6", rowId: 6 })] })} />);
+  it("greys out the statuses its sub-items rule out, saying why", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "started", subItems: { floor: "started", open: 1 } })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: "status:task.todo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "status:task.todo" })).toHaveAttribute("title", "statusBlockBelowSubItems");
+    expect(screen.getByRole("button", { name: "status:task.done" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "status:task.done" })).toHaveAttribute("title", "statusBlockOpenSubItems");
+    expect(screen.getByRole("button", { name: "status:task.in_progress" })).toBeEnabled();
+  });
+
+  it("offers the switch on a task with no sub-items too", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode()} />);
     expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
   });
 
   it("offers the switch on an occurrence of a flow Task item, which may override its item", () => {
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }), children: [mkNode({ id: "task-6", rowId: 6 })] })} />);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
     expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
   });
 
   it("offers the switch on an iteration's root, which reads it from its flow", () => {
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }), children: [mkNode({ id: "task-6", rowId: 6 })] })} />);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }) })} />);
     expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
   });
 });

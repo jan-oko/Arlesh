@@ -1,7 +1,7 @@
 import type { StatusRefusal, StatusStep, VerdictPress } from "@/api/node-gestures";
 import type { TaskStatus } from "@/api/tasks";
 import type { Verdict } from "@/api/verdict";
-import { altStep as wasmAltStep, nextStatus as wasmNextStatus, statusAfter as wasmStatusAfter, verdictAfter as wasmVerdictAfter } from "@/wasm/rules";
+import { altStep as wasmAltStep, nextStatus as wasmNextStatus, statusAfter as wasmStatusAfter, statusBlock as wasmStatusBlock, verdictAfter as wasmVerdictAfter } from "@/wasm/rules";
 import type { SubItemsWire } from "@/wasm/rules";
 
 /**
@@ -52,6 +52,15 @@ export const NO_SUB_ITEMS: SubItems = { floor: "todo", open: 0 };
  * status of its own to write, whatever the gesture; any Task is held to its `subItems`. */
 export function statusAfter(step: StatusStep, current: TaskStatus, compound: boolean, subItems: SubItems = NO_SUB_ITEMS): StatusPrediction {
   return wasmStatusAfter(step, current, compound, subItems);
+}
+
+/** Why a status cannot be chosen on a Task: it consists purely of its sub-items (`compound`), the
+ * status is below the floor they derive, or Done is chosen while a sub-item is open. */
+export type StatusBlock = "compound" | "below_sub_items" | "open_sub_items";
+
+/** Why an editor may not offer `status` on a Task, or `null` when it may: what it greys out. */
+export function statusBlock(status: TaskStatus, compound: boolean, subItems: SubItems = NO_SUB_ITEMS): StatusBlock | null {
+  return wasmStatusBlock(status, compound, subItems);
 }
 
 /**

@@ -18,7 +18,12 @@ use crate::{
             AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, TimeScope,
             Verdict,
         },
-        rules::{plan_inheritance::EffectivePlan, review::is_open_question},
+        rules::{
+            compound::{subtrees_of, Rows},
+            gestures::SubItems,
+            plan_inheritance::EffectivePlan,
+            review::is_open_question,
+        },
     },
 };
 
@@ -458,6 +463,29 @@ fn plan_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
     }
 }
 
+/// Each Task's [`SubItems`](crate::tasks::rules::gestures::SubItems), where its sub-items say
+/// anything: it reads at least Started, or has one open.
+fn sub_items_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
+    let rows = Rows {
+        tasks: &load.tasks,
+        checks: &[],
+        goals: &load.goals,
+        commitments: &load.commitments,
+        expectations: &load.expectations,
+        waits: &[],
+        lifecycles: &load.lifecycles,
+        wait_lifecycles: &[],
+        settled: &HashSet::new(),
+        instants: &HashMap::new(),
+    };
+    let ids: Vec<NodeId> = load.tasks.iter().map(|task| task.id.clone()).collect();
+    for (id, items) in subtrees_of(&rows, &ids) {
+        if items != SubItems::default() {
+            facts.entry(format!("task-{id}")).or_default().sub_items = Some(items);
+        }
+    }
+}
+
 /// Every node's facts on `load`, and what the agents are doing — what the app's load serves
 /// beside the rows. `access` is what the MCP roots make visible, when it could be read.
 pub fn derive(
@@ -505,6 +533,7 @@ pub fn derive(
     for (key, question) in open_questions(load, &lifecycles) {
         facts.entry(key).or_default().open_question = Some(question);
     }
+    sub_items_facts(load, &mut facts);
     for id in &load.derived_in_progress {
         facts
             .entry(format!("task-{id}"))

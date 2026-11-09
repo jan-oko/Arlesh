@@ -299,3 +299,53 @@ fn a_verdict_control_toggles_and_never_moves_straight_to_the_other_verdict() {
         Verdict::Broken
     );
 }
+
+#[test]
+fn an_editor_may_not_offer_what_a_task_cannot_hold() {
+    let blocked = |status, compound, items| status_block(status, compound, items);
+    let none = SubItems::default();
+    assert_eq!(
+        blocked(ordinary(TaskStatus::Done), true, none),
+        Some(StatusBlock::Compound)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Todo),
+            false,
+            sub_items(TaskStatus::Started, 0)
+        ),
+        Some(StatusBlock::BelowSubItems)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Done),
+            false,
+            sub_items(TaskStatus::Started, 1)
+        ),
+        Some(StatusBlock::OpenSubItems)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Started),
+            false,
+            sub_items(TaskStatus::Started, 1)
+        ),
+        None
+    );
+    assert_eq!(
+        blocked(
+            agentic(AgenticStatus::Done),
+            false,
+            sub_items(TaskStatus::InProgress, 1)
+        ),
+        Some(StatusBlock::OpenSubItems)
+    );
+    assert_eq!(
+        blocked(
+            agentic(AgenticStatus::Todo),
+            false,
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        None
+    );
+}

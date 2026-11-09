@@ -29,9 +29,9 @@ function setup(nodes: MindmapNode[]) {
 beforeEach(() => vi.clearAllMocks());
 
 describe("useTaskCompound", () => {
-  it("makes a task consist of its sub-items in one press", async () => {
+  it("makes a task consist purely of its sub-items in one press, children or none", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, reload } = setup([node("task-5", { children: [node("task-6")] })]);
+    const { result, reload } = setup([node("task-5")]);
 
     act(() => { result.current.toggleCompound("task-5"); });
 
@@ -51,20 +51,11 @@ describe("useTaskCompound", () => {
   it("switches an occurrence of a flow Task item, over its item's flag", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const fields = occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 });
-    const { result } = setup([node("task-4", { ...fields, children: [node("task-6")] })]);
+    const { result } = setup([node("task-4", { ...fields })]);
 
     act(() => { result.current.toggleCompound("task-4"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(fields.rowId, { compound: true }));
-  });
-
-  it("turns a task with no sub-items away: there is nothing for it to consist of", () => {
-    const { result, showToast } = setup([node("task-5")]);
-
-    act(() => { result.current.toggleCompound("task-5"); });
-
-    expect(updateTask).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "compoundNeedsSubItems" });
   });
 
   it("turns a check task away out loud: its status is the check itself", () => {

@@ -409,6 +409,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.open_question !== undefined) node.openQuestionId = fact.open_question;
   if (fact.expired === true) node.expired = true;
   if (fact.derived_in_progress === true) node.derivedInProgress = true;
+  if (fact.sub_items !== undefined) node.subItems = fact.sub_items;
   if (fact.met === true) node.met = true;
   if (fact.mcp_visible_via !== undefined) node.mcpVisibleVia = fact.mcp_visible_via;
   if (fact.capabilities !== undefined) node.capabilities = fact.capabilities;
