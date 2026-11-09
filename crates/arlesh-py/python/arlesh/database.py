@@ -26,7 +26,7 @@ from pydantic_core import to_json
 
 from arlesh import _native
 from arlesh.backends import Backend, BoardRevision, NativeHandle, ServerStatus, SqliteBackend
-from arlesh.errors import from_native
+from arlesh.errors import InvalidRequest, from_native
 from arlesh.models import (
     BlockReason,
     CapacityState,
@@ -145,6 +145,10 @@ async def open(
     return await Arlesh(backend=SqliteBackend(path, client=client, force=force)).open()
 
 
+_SqliteNative = _native.NativeDatabase
+"""The native handle of a database file (the class body's ``_native`` property hides the module)."""
+
+
 class Database(ABC):
     """An open Arlesh database: the port every operation on the board goes through.
 
@@ -174,6 +178,53 @@ class Database(ABC):
         writing serves it, since an agent's writes are journaled under this database's client.
         It runs until :meth:`stop_mcp` or :meth:`close`.
         """
+
+    @abstractmethod
+    def mcp_tools(self) -> list[dict[str, Any]]:
+        """Every MCP tool as ``tools/list`` serves it: name, description and input schema.
+
+        For a server that speaks the MCP protocol itself (JSON-RPC) and leaves every tool to the
+        core. Needs a database opened for writing, as :meth:`serve_mcp` does.
+        """
+
+    @abstractmethod
+    async def mcp_instructions(self) -> str:
+        """The instructions an agent is given on connecting: the guide to the tools, then the
+        MCP roots it may see."""
+
+    @abstractmethod
+    async def mcp_initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+        """The answer to an ``initialize`` request with these ``params``, as the core's MCP
+        endpoint gives it: ``{"result": {...}}`` (protocol version, capabilities, server info,
+        instructions) or ``{"error": {"code", "message", "data"}}``."""
+
+    @abstractmethod
+    async def mcp_call(
+        self, name: str, arguments: dict[str, Any] | None, protocol_version: str | None = None
+    ) -> dict[str, Any]:
+        """Runs the MCP tool ``name`` as ``tools/call`` would, on this database's own
+        connection, so a write is journaled under its client and counted as a change.
+
+        ``protocol_version`` is the client's own (its ``MCP-Protocol-Version``); a client older
+        than the first version whose results carry ``resultType``, or naming none, is answered
+        without it, as the connected endpoint does.
+
+        Answers ``{"result": {...}}`` — a tool's failure is a result with ``isError`` — or
+        ``{"error": {"code", "message", "data"}}`` for a protocol error such as an unknown tool.
+        """
+
+    @abstractmethod
+    async def expectations_poll(
+        self,
+        *,
+        agentic: bool = False,
+        after: int | None = None,
+        epoch: str | None = None,
+        wait: int | None = None,
+    ) -> dict[str, Any]:
+        """The long poll of the agents' wait stream: ``{"revision", "epoch", "changes"}`` as soon
+        as a change to a wait past ``after`` exists, or empty once ``wait`` seconds have passed;
+        ``"reset": true`` says there is no cursor to resume from, so read the waits afresh."""
 
     @abstractmethod
     async def stop_mcp(self) -> None:
@@ -847,6 +898,59 @@ class Arlesh(Database):
             return await self._native.serve_mcp(host, port)
         except _native.NativeError as error:
             raise from_native(error) from None
+
+    def _mcp_native(self) -> _SqliteNative:
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            raise InvalidRequest("the MCP is not available in client mode: the server serves it")
+        return native
+
+    def mcp_tools(self) -> list[dict[str, Any]]:
+        try:
+            tools: list[dict[str, Any]] = json.loads(self._mcp_native().mcp_tools())
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        return tools
+
+    async def mcp_instructions(self) -> str:
+        try:
+            instructions: str = await self._mcp_native().mcp_instructions()
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        return instructions
+
+    async def mcp_initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+        try:
+            raw = await self._mcp_native().mcp_initialize(json.dumps(params))
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        answer: dict[str, Any] = json.loads(raw)
+        return answer
+
+    async def mcp_call(
+        self, name: str, arguments: dict[str, Any] | None, protocol_version: str | None = None
+    ) -> dict[str, Any]:
+        try:
+            raw = await self._mcp_native().mcp_call(name, json.dumps(arguments), protocol_version)
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        answer: dict[str, Any] = json.loads(raw)
+        return answer
+
+    async def expectations_poll(
+        self,
+        *,
+        agentic: bool = False,
+        after: int | None = None,
+        epoch: str | None = None,
+        wait: int | None = None,
+    ) -> dict[str, Any]:
+        try:
+            raw = await self._mcp_native().expectations_poll(agentic, after, epoch, wait)
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        answer: dict[str, Any] = json.loads(raw)
+        return answer
 
     async def stop_mcp(self) -> None:
         try:

@@ -40,8 +40,10 @@
 
 mod access;
 mod agentic;
+mod answers;
 mod capacity;
 mod delegation;
+mod detached;
 pub mod endpoint;
 pub mod events;
 mod flows;
@@ -101,6 +103,8 @@ pub struct ArleshMcp {
     /// clock, unless a test fixes it with [`ArleshMcp::with_clock`].
     clock: Clock,
     tool_router: ToolRouter<Self>,
+    /// What a tool call needs of a connection when none is behind it — see [`detached`].
+    detached: Arc<std::sync::OnceLock<detached::Detached>>,
 }
 
 /// A source of the current local time.
@@ -114,6 +118,7 @@ impl ArleshMcp {
     pub fn new(factory: SessionFactory) -> Self {
         Self {
             factory,
+            detached: Arc::default(),
             // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
@@ -213,6 +218,40 @@ impl ArleshMcp {
         format!("{base}\n\n{roots}")
     }
 
+    /// The handshake's answer to `request`, the same one a connected client is given: the
+    /// negotiated protocol version, the capabilities, and the [`instructions`](Self::instructions).
+    ///
+    /// Public so a host that speaks the protocol itself — the Python server — answers `initialize`
+    /// with the Rust server's own words.
+    pub async fn initialize_result(
+        &self,
+        request: &InitializeRequestParams,
+    ) -> Result<InitializeResult, ErrorData> {
+        let mut result = self.negotiate_initialize(request)?;
+        result.instructions = Some(self.instructions().await);
+        Ok(result)
+    }
+
+    /// Runs the tool `name` with `arguments` exactly as a connected client's `tools/call` would,
+    /// and answers what that call answers: a result (a domain failure is a result with
+    /// `is_error`), or a protocol error (an unknown tool).
+    ///
+    /// For a host that speaks the protocol itself. The tools never read the connection they are
+    /// called over, so none is needed — see [`detached`].
+    pub async fn call(
+        &self,
+        name: &str,
+        arguments: Option<rmcp::model::JsonObject>,
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+        let mut request = rmcp::model::CallToolRequestParams::new(name.to_owned());
+        request.arguments = arguments;
+        let context = self
+            .detached
+            .get_or_init(detached::Detached::start)
+            .context();
+        <Self as ServerHandler>::call_tool(self, request, context).await
+    }
+
     async fn roots_instructions(&self) -> Result<String, crate::error::AppError> {
         let mut db = self.factory.connect().await?;
         let nodes = db.access().catalogue().await?;
@@ -244,9 +283,7 @@ impl ServerHandler for ArleshMcp {
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
         context.peer.set_peer_info(request.clone());
-        let mut result = self.negotiate_initialize(&request)?;
-        result.instructions = Some(self.instructions().await);
-        Ok(result)
+        self.initialize_result(&request).await
     }
 }
 
@@ -255,6 +292,28 @@ impl ServerHandler for ArleshMcp {
 /// [`endpoint::McpEndpoint`].
 pub fn port() -> u16 {
     endpoint::env_port().unwrap_or(DEFAULT_PORT)
+}
+
+/// The handler an endpoint serves: tools over `factory`, sharing `capacity`, and counting every
+/// write into the `streams`' feed after the host's own `announce`.
+///
+/// An agent's write is a change to the board, and every device following `/events/changes` has to
+/// hear of it. Public so a host that speaks the protocol itself builds the same handler the
+/// router serves.
+pub fn handler(
+    factory: SessionFactory,
+    announce: Announce,
+    capacity: AgentCapacity,
+    streams: &events::EventStreams,
+) -> ArleshMcp {
+    let feed = streams.feed.clone();
+    let announce: Announce = Arc::new(move |origin: Option<&str>| {
+        announce(origin);
+        feed.bump();
+    });
+    ArleshMcp::new(factory)
+        .announcing(announce)
+        .with_capacity(capacity)
 }
 
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
@@ -273,23 +332,11 @@ pub fn router(
     // Origin at all, which a browser always does and an MCP client never does.
     let config = StreamableHttpServerConfig::default().enforce_origin_validation();
 
-    // An agent's write is a change to the board: the host's own announcement, then the streams'.
-    let feed = streams.feed.clone();
-    let announce: Announce = {
-        let announce = announce.clone();
-        Arc::new(move |origin: Option<&str>| {
-            announce(origin);
-            feed.bump();
-        })
-    };
-    let served = events::routes(factory.clone(), streams);
+    let handler = handler(factory.clone(), announce, capacity, &streams);
+    let served = events::routes(factory, streams);
 
     let service = StreamableHttpService::new(
-        move || {
-            Ok(ArleshMcp::new(factory.clone())
-                .announcing(announce.clone())
-                .with_capacity(capacity.clone()))
-        },
+        move || Ok(handler.clone()),
         Arc::new(LocalSessionManager::default()),
         config,
     );

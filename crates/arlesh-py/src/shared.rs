@@ -14,7 +14,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use arlesh_core::{capacity::AgentCapacity, mcp::events::ChangeFeed};
+use arlesh_core::{
+    capacity::AgentCapacity,
+    mcp::events::{ChangeFeed, EventStreams, WaitLogs},
+};
 
 /// The board's revision: bumped once for every committed write, from any open of the file.
 pub(crate) type Changes = ChangeFeed;
@@ -28,6 +31,20 @@ pub(crate) struct Shared {
     pub(crate) writes: tokio::sync::Mutex<()>,
     /// The board's revision.
     pub(crate) changes: Changes,
+    /// What the long poll of `/events/expectations` answers from, beside the revision.
+    pub(crate) logs: WaitLogs,
+}
+
+impl Shared {
+    /// The streams over this file: its change feed and wait logs. This host hears of every write,
+    /// so the waits are not polled.
+    pub(crate) fn streams(&self) -> EventStreams {
+        EventStreams {
+            feed: self.changes.clone(),
+            poll: None,
+            logs: self.logs.clone(),
+        }
+    }
 }
 
 /// The [`Shared`] state of the database at `path`, made on first use.
@@ -51,6 +68,7 @@ pub(crate) fn for_database(path: &Path) -> Arc<Shared> {
             capacity,
             writes: tokio::sync::Mutex::new(()),
             changes,
+            logs: WaitLogs::default(),
         })
     }))
 }

@@ -293,27 +293,3 @@ async fn a_long_poll_answers_the_moment_a_wait_is_released() {
     assert!(heard["changes"][0]["revision"].as_u64().unwrap() > after);
     let _ = std::fs::remove_dir_all(directory);
 }
-
-#[tokio::test]
-async fn the_wait_stream_tells_of_a_release_the_feed_announced() {
-    let (factory, directory) = scratch().await;
-    let id = raise_a_wait(&directory).await;
-    let feed = ChangeFeed::new();
-    let address = serve(
-        factory.clone(),
-        EventStreams {
-            feed: feed.clone(),
-            ..EventStreams::default()
-        },
-    )
-    .await;
-    let mut stream = request(address, "/events/expectations?agentic=true", "").await;
-    read_until(&mut stream, ": connected").await;
-
-    release(&directory, id).await;
-    feed.bump();
-    let heard = read_until(&mut stream, "\"change\":\"released\"").await;
-
-    assert!(heard.contains("event: wait-changed"), "{heard}");
-    let _ = std::fs::remove_dir_all(directory);
-}
