@@ -44,6 +44,12 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   the only scheme for now (Postgres comes later, through portable SQL). `--db` and
   `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
 
+- **The backup endpoint.** `ARLESH_BACKUP_TOKEN` switches on `GET /backup`, an administrator's
+  route for pulling a consistent snapshot of the database (see *Backup*). Unset, the route does not
+  exist (404). Set it in the container's environment (a compose file's `environment:`, or the NAS
+  app's variables) beside `ARLESH_DATABASE_URL`; there is no deployment guide or compose example in
+  this repository yet, so this is where the variable is recorded.
+
 - **Address.** It listens on `127.0.0.1:4750` by default. `--host` opts in to a LAN or Tailscale
   address.
 - **TLS** is optional, through `--tls-cert` and `--tls-key`, which must be given together.
@@ -52,6 +58,27 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   serves plain HTTP on an address other than loopback.
 - **The database** is opened for writing at startup, and migrated if it is behind. A missing file
   is created. A schema newer than the build is refused.
+
+## Backup: `GET /backup`
+
+The production database lives on the server, so anything that needs a copy of it (the box tool
+seeding a branch from real data, an off-site backup) asks the server.
+
+- **Admin-only, by its own secret.** The route exists only when the server is started with
+  `ARLESH_BACKUP_TOKEN`; without it, 404. The request carries `Authorization: Bearer <that
+  token>`, compared in constant time; missing or wrong is 401 (`WWW-Authenticate: Bearer`). A
+  device's pairing token does **not** open it, and the backup token opens nothing else. It is
+  open without a device token and rate limited per address, like `/pair`. This is a deliberate
+  split: a copy of the database is every Task's content, more than any one device should be
+  able to take.
+- **How the snapshot is taken.** Python's `sqlite3` online backup API over a read-only connection
+  to the configured database file, in a worker thread, 256 pages at a time. It reads where the
+  Rust core would, never writes to the live database, and in WAL mode does not block the
+  server's writers for long. It was chosen over a Rust binding because the bindings expose no
+  backup and the server already owns the file path; over `VACUUM INTO` because that holds a read
+  transaction for the whole copy. The copy goes into a temporary file, is streamed as
+  `application/vnd.sqlite3` with `Content-Disposition: attachment; filename=arlesh-YYYY-MM-DD.db`,
+  and is deleted afterwards. The file is a plain, whole database (not WAL).
 
 ## Tokens and client identity
 
@@ -78,11 +105,9 @@ one, so revoke it first. The table is read on every request, so a revoke takes e
 without a restart.
 
 The table is reached through the bindings, never Python's own `sqlite3`: two copies of SQLite in one
-process do not see each other's locks, and the WAL is corrupted under them. Tokens used to live in
-`<db>.tokens` beside the database. The first time the server or a `token` command runs, that file's
-tokens are moved into the table and the file is renamed `<db>.tokens.imported`, so a token revoked
-later cannot come back from it. Reading the table migrates the database if it is behind, so the
-server reads it at startup only when nothing holds the database (or it was forced).
+process do not see each other's locks, and the WAL is corrupted under them.
+Reading the table migrates the database if it is behind, so the server reads it at startup only
+when nothing holds the database (or it was forced).
 
 **The token decides the client.** The client is the name the undo journal records on every write
 (see [Undo](undo.md), *Clients, and a second writer*), so a request cannot write under another
@@ -142,9 +167,10 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
+| `/push`, `/devices/current/push` | `GET /push` (`enabled`, `project_id`: whether the server has FCM credentials), `PUT /devices/current/push` (body `{"fcm_token"}`: the asking device registers for phone notifications) and `DELETE`. See [Notifications](notifications.md) |
 | `/mcp` | Arlesh's MCP endpoint (below) |
 | `POST /pair`, `POST /pair/poll` | **Open without a token.** A new device asks for a PIN (body `{"name"}`, answers `id`, `pin`, `name`, `expires_at`; rate limited per address) and polls with `{"id", "pin"}` (answers `pending`, or `approved` with the device's `name` and `token`, once). See *Pairing* below |
-| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
+| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`, `push`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
 
 ## Pairing
 
@@ -298,8 +324,7 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     the core only through the `arlesh.Database` port's `mcp_*` and `expectations_poll` calls.
 - **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
-  `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
-  old `<db>.tokens` file once.
+  `token_call`); the tests' fake is the second adapter.
 - **`ports/pairing/`**: `PairingStore` and `DatabasePairingStore` over `pairing_pins`, through the
   same `token_call`. The rules (PIN, lifetime, attempts, names) are `business_logic/pairing.py`,
   over the two ports and a clock, so they are unit-tested with no database.

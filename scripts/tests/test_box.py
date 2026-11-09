@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import http.server
 import importlib.util
 import io
 import json
 import os
+import secrets
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "box.py"
@@ -644,8 +648,8 @@ class LaunchBound(unittest.TestCase):
 
         with mock.patch.object(box, "capture", fake_capture):
             box.launch_android("b", "s:1", ("http://h:1", "tok"))
-        self.assertEqual(calls[0][-3:], ["am", "force-stop", "com.atai.arlesh.box.b"])
-        self.assertIn("--es arlesh_box_token tok", calls[1][-1])
+        self.assertEqual(calls[1][-3:], ["am", "force-stop", "com.atai.arlesh.box.b"])
+        self.assertIn("--es arlesh_box_token tok", calls[2][-1])
 
     def test_unbound_launch_uses_the_launcher_intent(self) -> None:
         calls: list[list[str]] = []
@@ -656,8 +660,8 @@ class LaunchBound(unittest.TestCase):
 
         with mock.patch.object(box, "capture", fake_capture):
             box.launch_android("b", "s:1")
-        self.assertEqual(len(calls), 1)
-        self.assertIn("monkey", calls[0])
+        self.assertEqual(len(calls), 2)
+        self.assertIn("monkey", calls[1])
 
     def test_an_am_error_is_a_failure_without_the_token(self) -> None:
         with (
@@ -672,6 +676,152 @@ class LaunchBound(unittest.TestCase):
         ):
             box.launch_android("b", "s:1", ("http://h:1", "SECRET"))
         self.assertNotIn("SECRET", str(ctx.exception))
+
+
+HASH = "0123456789abcdef"
+
+
+def make_member_artifacts(target: Path, profile: str, name: str, hash_: str) -> Path:
+    """A fake cargo fingerprint and build-script dir for workspace crate `name`."""
+    fingerprint = target / profile / ".fingerprint" / f"{name}-{hash_}"
+    fingerprint.mkdir(parents=True)
+    (fingerprint / "lib-x").write_text("fingerprint")
+    (fingerprint / "invoked.timestamp").write_text("")
+    (target / profile / "build" / f"{name}-{hash_}").mkdir(parents=True)
+    return fingerprint
+
+
+class SharedTargetOwnership(IsolatedEnv):
+    """Worktrees share one cargo target; cargo's fingerprints cannot tell their crates apart."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        self.target.mkdir()
+        self.wt_a, self.wt_b = self.tmp / "a", self.tmp / "b"
+        patcher = mock.patch.object(box, "workspace_members", lambda wt: ["arlesh-core", "arlesh"])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.dependency = make_member_artifacts(self.target, "debug", "serde", HASH)
+
+    @property
+    def core(self) -> Path:
+        return self.target / "debug" / ".fingerprint" / f"arlesh-core-{HASH}"
+
+    def build(self, wt: Path) -> str:
+        """A cargo run: compiles the crate only where no fingerprint says it is fresh."""
+        with box.owned_target(wt, self.target):
+            if not self.core.exists():
+                make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+                (self.core / "lib-x").write_text(f"compiled in {wt.name}")
+            return (self.core / "lib-x").read_text()
+
+    def test_the_first_use_of_a_target_compiles_the_members(self) -> None:
+        make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+        (self.core / "lib-x").write_text("unknown origin")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_the_dependencies_are_never_touched(self) -> None:
+        self.build(self.wt_a)
+        self.build(self.wt_b)
+        self.assertTrue(self.dependency.exists())
+
+    def test_the_same_worktree_building_again_keeps_its_fingerprints(self) -> None:
+        self.build(self.wt_a)
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual((self.core / "lib-x").read_text(), "compiled in a")
+
+    def test_another_worktree_gets_the_members_rebuilt(self) -> None:
+        self.build(self.wt_a)
+        self.assertEqual(self.build(self.wt_b), "compiled in b")
+
+    def test_alternating_worktrees_rebuild_each_time(self) -> None:
+        got = [self.build(wt) for wt in (self.wt_a, self.wt_b, self.wt_a, self.wt_b)]
+        self.assertEqual(got, ["compiled in a", "compiled in b", "compiled in a", "compiled in b"])
+
+    def test_a_build_outside_box_invalidates_the_owner(self) -> None:
+        self.build(self.wt_a)
+        (self.core / "lib-x").write_text("a cargo run in some other worktree")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_a_fresh_check_by_cargo_does_not_invalidate_the_owner(self) -> None:
+        self.build(self.wt_a)
+        (self.core / "invoked.timestamp").write_text("touched")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(box.read_owner(self.target)["worktree"], str(self.wt_a.resolve()))
+        (self.core / "lib-x").write_text("kept")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_a_crate_whose_name_starts_with_a_members_is_left_alone(self) -> None:
+        other = make_member_artifacts(self.target, "debug", "arlesh-core-extra", HASH)
+        self.build(self.wt_a)
+        self.assertTrue(other.exists())
+
+    def test_every_profile_and_target_triple_is_covered(self) -> None:
+        android = make_member_artifacts(self.target, "aarch64-linux-android/release", "arlesh", HASH)
+        self.build(self.wt_a)
+        self.assertFalse(android.exists())
+
+    def test_the_build_scripts_outputs_go_too(self) -> None:
+        script = self.target / "debug" / "build" / f"arlesh-core-{HASH}"
+        script.mkdir(parents=True)
+        with box.owned_target(self.wt_a, self.target):
+            self.assertFalse(script.exists())
+
+    def test_a_failed_build_still_records_who_compiled(self) -> None:
+        with self.assertRaises(RuntimeError), box.owned_target(self.wt_a, self.target):
+            make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+            (self.core / "lib-x").write_text("partial, from a")
+            raise RuntimeError("compile error")
+        self.assertEqual(self.build(self.wt_a), "partial, from a")
+        self.assertEqual(self.build(self.wt_b), "compiled in b")
+
+
+class NotificationGrant(unittest.TestCase):
+    def run_grant(self, out: str, code: int = 0, package: str = "com.atai.arlesh.box.b") -> list[list[str]]:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc(out, code)
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.grant_notifications("s:1", package)
+        return calls
+
+    def test_grants_post_notifications_to_the_box_package(self) -> None:
+        calls = self.run_grant("")
+        self.assertEqual(
+            calls,
+            [["adb", "-s", "s:1", "shell", "pm", "grant", "com.atai.arlesh.box.b",
+              "android.permission.POST_NOTIFICATIONS"]],
+        )
+
+    def test_never_touches_the_release_app(self) -> None:
+        with self.assertRaises(box.BoxError):
+            self.run_grant("", package="com.atai.arlesh")
+
+    def test_an_unknown_permission_is_a_note_not_a_failure(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.run_grant("Exception occurred while executing 'grant':\nUnknown permission: android.permission.POST_NOTIFICATIONS\n")
+        self.assertIn("POST_NOTIFICATIONS", err.getvalue())
+
+    def test_a_nonzero_exit_is_a_note_not_a_failure(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.run_grant("", code=255)
+
+    def test_launch_grants_before_it_starts_the_app(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc()
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.launch_android("b", "s:1")
+        self.assertIn("grant", calls[0])
+        self.assertIn("monkey", calls[1])
 
 
 FAKE_GH = """#!__PY__
@@ -708,13 +858,16 @@ elif args[:2] == ["secret", "set"]:
 FAKE_KEYTOOL = """#!__PY__
 import json, os, sys
 args = sys.argv[1:]
-# Record the argv, and what each `-opt:file PATH` argument points at, as keytool would read it.
-files = {}
+# Record the argv, and what each `-opt:env NAME` argument points at, as keytool would read it.
+envs = {}
 for i, a in enumerate(args):
-    if a.endswith(":file"):
-        files[args[i + 1]] = open(args[i + 1]).read().strip()
+    if a.endswith(":env"):
+        envs[args[i + 1]] = os.environ.get(args[i + 1], "")
 with open(os.environ["FAKE_GH_DIR"] + "/keytool.log", "a") as log:
-    log.write(json.dumps({"argv": args, "files": files}) + "\\n")
+    log.write(json.dumps({"argv": args, "envs": envs}) + "\\n")
+if args[0] == "-list":
+    print("Keystore type: " + os.environ.get("FAKE_KEYTOOL_TYPE", "PKCS12"))
+    sys.exit(0)
 open(args[args.index("-keystore") + 1], "w").write("KEYSTORE:" + " ".join(args))
 """
 
@@ -946,18 +1099,20 @@ class KeystoreInit(CiFixture):
     def secret(self, name: str) -> str:
         return (self.gh_dir / f"secret.{name}.txt").read_text()
 
-    def test_writes_the_files_and_sets_both_secrets(self) -> None:
+    def init(self, force: bool = False) -> None:
         with mock.patch.object(box, "repo_root", lambda: self.wt):
-            box.keystore_init(force=False)
+            box.keystore_init(force=force)
+
+    def test_writes_the_keystore_and_env_line_and_sets_both_secrets(self) -> None:
+        self.init()
         ks = box.box_keystore()
-        pwfile = box.box_password_file()
-        self.assertEqual(pwfile, ks.with_name("box.keystore.password"))
         self.assertTrue(ks.is_file())
         self.assertIn("-alias arlesh-box", ks.read_text())
         self.assertEqual(oct(ks.stat().st_mode & 0o777), "0o600")
-        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
-        password = pwfile.read_text().strip()
-        self.assertGreaterEqual(len(password), 32)
+        env = box.env_file()
+        self.assertEqual(oct(env.stat().st_mode & 0o777), "0o600")
+        pw = box.parse_env_file(env.read_text())[box.BOX_PASSWORD_ENV]
+        self.assertGreaterEqual(len(pw), 32)
         self.assertEqual(
             (self.gh_dir / "secret.args").read_text().splitlines(),
             [
@@ -968,53 +1123,77 @@ class KeystoreInit(CiFixture):
         self.assertEqual(
             base64.b64decode(self.secret("ARLESH_BOX_KEYSTORE_B64")), ks.read_bytes()
         )
-        self.assertEqual(self.secret("ARLESH_BOX_KEYSTORE_PASSWORD"), password)
+        self.assertEqual(self.secret("ARLESH_BOX_KEYSTORE_PASSWORD"), pw)
+        self.assertEqual(list(ks.parent.glob("box.keystore.password")), [])
         self.assertFalse(list(ks.parent.glob("*.new")))
 
-    def test_the_password_is_in_no_argv_and_never_printed(self) -> None:
+    def test_the_value_is_in_no_argv_and_never_printed(self) -> None:
         out = io.StringIO()
-        with (
-            mock.patch.object(box, "repo_root", lambda: self.wt),
-            contextlib.redirect_stdout(out),
-            contextlib.redirect_stderr(out),
-        ):
-            box.keystore_init(force=False)
-        password = box.box_password_file().read_text().strip()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            self.init()
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
         (call,) = self.keytool_calls()
-        self.assertNotIn(password, " ".join(call["argv"]))
-        self.assertIn("-storepass:file", call["argv"])
-        self.assertIn("-keypass:file", call["argv"])
-        self.assertEqual(list(call["files"].values()), [password])
-        self.assertNotIn(password, out.getvalue())
+        self.assertNotIn(pw, " ".join(call["argv"]))
+        self.assertIn("-storepass:env", call["argv"])
+        self.assertIn("-keypass:env", call["argv"])
+        self.assertEqual(call["envs"], {box.BOX_PASSWORD_ENV: pw})
+        self.assertNotIn(pw, out.getvalue())
         for line in self.gh_calls():
-            self.assertNotIn(password, line)
+            self.assertNotIn(pw, line)
+
+    def test_updates_an_existing_line_in_place_and_keeps_the_rest(self) -> None:
+        env = box.env_file()
+        env.parent.mkdir(parents=True)
+        before = f"{box.BOX_PASSWORD_ENV}={secrets.token_urlsafe(18)}"
+        env.write_text(f"FIRST=1\n{before}\nLAST=2\n")
+        env.chmod(0o644)
+        self.init()
+        lines = env.read_text().splitlines()
+        self.assertEqual((lines[0], lines[2]), ("FIRST=1", "LAST=2"))
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[1].startswith(box.BOX_PASSWORD_ENV + "="))
+        self.assertNotEqual(lines[1], before)
+        self.assertEqual(oct(env.stat().st_mode & 0o777), "0o600")
+
+    def test_appends_when_the_variable_is_absent(self) -> None:
+        env = box.env_file()
+        env.parent.mkdir(parents=True)
+        env.write_text("FIRST=1")
+        self.init()
+        lines = env.read_text().splitlines()
+        self.assertEqual(lines[0], "FIRST=1")
+        self.assertTrue(lines[1].startswith(box.BOX_PASSWORD_ENV + "="))
 
     def test_refuses_to_overwrite_without_force(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("old")
-        with mock.patch.object(box, "repo_root", lambda: self.wt):
-            with self.assertRaises(box.BoxError) as ctx:
-                box.keystore_init(force=False)
-            self.assertIn("--force", str(ctx.exception))
-            self.assertEqual(ks.read_text(), "old")
-            self.assertFalse((self.gh_dir / "secret.txt").exists())
-            box.keystore_init(force=True)
+        with self.assertRaises(box.BoxError) as ctx:
+            self.init()
+        self.assertIn("--force", str(ctx.exception))
+        self.assertEqual(ks.read_text(), "old")
+        self.assertFalse((self.gh_dir / "secret.txt").exists())
+        self.init(force=True)
         self.assertNotEqual(ks.read_text(), "old")
 
-    def test_a_failed_upload_keeps_the_old_keystore(self) -> None:
+    def test_a_failed_upload_keeps_the_old_keystore_and_env(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("old")
         self.gh_state(secret_ok=False)
-        with (
-            mock.patch.object(box, "repo_root", lambda: self.wt),
-            self.assertRaises(box.BoxError),
-        ):
-            box.keystore_init(force=True)
+        with self.assertRaises(box.BoxError):
+            self.init(force=True)
         self.assertEqual(ks.read_text(), "old")
-        self.assertFalse(box.box_password_file().exists())
+        self.assertFalse(box.env_file().exists())
         self.assertFalse(list(ks.parent.glob("*.new")))
+
+    def test_replacing_removes_the_old_password_file(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("old")
+        box.legacy_password_file().write_text("x")
+        self.init(force=True)
+        self.assertFalse(box.legacy_password_file().exists())
 
     def test_origin_repo_forms(self) -> None:
         for url in (
@@ -1027,35 +1206,40 @@ class KeystoreInit(CiFixture):
 
 
 class KeystoreRotate(CiFixture):
-    def make_legacy(self) -> Path:
+    def make_keystore(self) -> tuple[Path, str]:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
-        ks.write_text("legacy")
-        return ks
+        ks.write_text("existing")
+        old = secrets.token_urlsafe(18)
+        os.environ[box.BOX_PASSWORD_ENV] = old
+        return ks, old
 
     def rotate(self) -> None:
         with mock.patch.object(box, "repo_root", lambda: self.wt):
             box.keystore_rotate_password()
 
-    def test_changes_both_passwords_with_files_and_sets_both_secrets(self) -> None:
-        ks = self.make_legacy()
-        self.rotate()
-        pwfile = box.box_password_file()
-        password = pwfile.read_text().strip()
-        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
-        store, key = self.keytool_calls()
-        self.assertEqual(store["argv"][0], "-storepasswd")
-        self.assertEqual(key["argv"][0], "-keypasswd")
-        self.assertIn("-alias", key["argv"])
-        for call in (store, key):
+    def check_env_only(self, calls: list[dict[str, Any]], old: str, pw: str) -> None:
+        for call in calls:
             argv = call["argv"]
-            self.assertIn("-new:file", argv)
-            self.assertNotIn(password, " ".join(argv))
+            for value in (old, pw):
+                self.assertNotIn(value, " ".join(argv))
             for plain in ("-storepass", "-keypass", "-new"):
-                self.assertNotIn(plain, argv)  # only the :file forms
-            self.assertIn(password, call["files"].values())
-        self.assertIn(box.legacy_box_password(), store["files"].values())
-        self.assertIn(box.legacy_box_password(), key["files"].values())
+                self.assertNotIn(plain, argv)  # only the :env forms
+
+    def test_a_pkcs12_store_changes_its_one_password_and_sets_both_secrets(
+        self,
+    ) -> None:
+        ks, old = self.make_keystore()
+        self.rotate()
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
+        self.assertNotEqual(pw, old)
+        calls = self.keytool_calls()
+        self.assertEqual([c["argv"][0] for c in calls], ["-list", "-storepasswd"])
+        store = calls[1]
+        self.assertIn("-new:env", store["argv"])
+        self.assertEqual(store["envs"][box.NEW_PASSWORD_ENV], pw)
+        self.assertEqual(store["envs"][box.BOX_PASSWORD_ENV], old)
+        self.check_env_only(calls, old, pw)
         self.assertEqual(
             base64.b64decode(
                 (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_B64.txt").read_text()
@@ -1063,28 +1247,46 @@ class KeystoreRotate(CiFixture):
             ks.read_bytes(),
         )
         self.assertEqual(
-            (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(),
-            password,
+            (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(), pw
         )
         self.assertEqual(len((self.gh_dir / "secret.args").read_text().splitlines()), 2)
 
+    def test_a_jks_store_also_changes_the_key_password(self) -> None:
+        _, old = self.make_keystore()
+        os.environ["FAKE_KEYTOOL_TYPE"] = "jks"
+        try:
+            self.rotate()
+        finally:
+            del os.environ["FAKE_KEYTOOL_TYPE"]
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
+        calls = self.keytool_calls()
+        self.assertEqual(
+            [c["argv"][0] for c in calls], ["-list", "-storepasswd", "-keypasswd"]
+        )
+        key = calls[2]
+        self.assertIn("-alias", key["argv"])
+        self.assertEqual(key["envs"][box.NEW_PASSWORD_ENV], pw)
+        self.assertEqual(key["envs"][box.BOX_PASSWORD_ENV], old)
+        self.check_env_only(calls, old, pw)
+
     def test_a_failed_upload_changes_nothing_locally(self) -> None:
-        ks = self.make_legacy()
+        ks, _ = self.make_keystore()
         self.gh_state(secret_ok=False)
         with self.assertRaises(box.BoxError):
             self.rotate()
-        self.assertEqual(ks.read_text(), "legacy")
-        self.assertFalse(box.box_password_file().exists())
+        self.assertEqual(ks.read_text(), "existing")
+        self.assertFalse(box.env_file().exists())
         self.assertFalse(list(ks.parent.glob("*.new")))
 
-    def test_refuses_when_already_rotated_or_without_a_keystore(self) -> None:
+    def test_needs_a_keystore_and_the_old_value_in_the_environment(self) -> None:
         with self.assertRaises(box.BoxError) as ctx:
             self.rotate()
         self.assertIn("keystore init", str(ctx.exception))
-        self.make_legacy()
-        box.box_password_file().write_text("x")
-        with self.assertRaises(box.BoxError):
+        self.make_keystore()
+        del os.environ[box.BOX_PASSWORD_ENV]
+        with self.assertRaises(box.BoxError) as ctx:
             self.rotate()
+        self.assertIn(box.BOX_PASSWORD_ENV, str(ctx.exception))
         self.assertEqual(self.keytool_calls(), [])
 
     def test_parse(self) -> None:
@@ -1092,55 +1294,96 @@ class KeystoreRotate(CiFixture):
         self.assertEqual((a.fn, a.keystore_cmd), (box.cmd_keystore, "rotate-password"))
 
 
+class KeystoreMigrate(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop(box.BOX_PASSWORD_ENV, None)
+        self.legacy = box.legacy_password_file()
+        self.legacy.parent.mkdir(parents=True)
+        self.value = secrets.token_urlsafe(18)
+        self.legacy.write_text(self.value + "\n")
+
+    def test_moves_the_value_into_box_env_and_deletes_the_file(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            box.keystore_migrate(yes=True)
+        values = box.parse_env_file(box.env_file().read_text())
+        self.assertEqual(values[box.BOX_PASSWORD_ENV], self.value)
+        self.assertEqual(oct(box.env_file().stat().st_mode & 0o777), "0o600")
+        self.assertFalse(self.legacy.exists())
+        self.assertNotIn(self.value, out.getvalue())
+
+    def test_asks_first_and_a_no_changes_nothing(self) -> None:
+        with (
+            mock.patch.object(box, "interactive", lambda: True),
+            mock.patch.object(box, "ask", lambda prompt: "n"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            box.keystore_migrate(yes=False)
+        self.assertTrue(self.legacy.exists())
+        self.assertFalse(box.env_file().exists())
+
+    def test_without_a_terminal_it_needs_yes(self) -> None:
+        with (
+            mock.patch.object(box, "interactive", lambda: False),
+            self.assertRaises(box.BoxError),
+        ):
+            box.keystore_migrate(yes=False)
+        self.assertTrue(self.legacy.exists())
+
+    def test_a_different_value_already_in_the_environment_is_not_replaced(self) -> None:
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
+        with self.assertRaises(box.BoxError):
+            box.keystore_migrate(yes=True)
+        self.assertTrue(self.legacy.exists())
+
+    def test_parse(self) -> None:
+        a = box.parse_args(["keystore", "migrate", "-y"])
+        self.assertEqual(
+            (a.fn, a.keystore_cmd, a.yes), (box.cmd_keystore, "migrate", True)
+        )
+
+
 class SigningSelection(IsolatedEnv):
-    def test_shared_keystore_reads_the_password_file(self) -> None:
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop(box.BOX_PASSWORD_ENV, None)
+
+    def test_the_box_keystore_with_the_variable_set(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
-        box.box_password_file().write_text("pw")
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
         sign = box.choose_signing()
-        self.assertEqual(
-            (sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True)
-        )
-        self.assertEqual(sign.password, ("file", str(box.box_password_file())))
-        self.assertEqual(
-            box.apksigner_pass(sign.password), f"file:{box.box_password_file()}"
-        )
+        self.assertEqual((sign.keystore, sign.alias), (ks, "arlesh-box"))
 
-    def test_a_missing_password_file_says_how_to_fix_it_and_never_falls_back(
-        self,
-    ) -> None:
+    def test_a_missing_variable_says_how_to_fix_it(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
         with self.assertRaises(box.BoxError) as ctx:
             box.choose_signing()
-        self.assertIn("keystore rotate-password", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn(box.BOX_PASSWORD_ENV, message)
+        self.assertIn("box.env", message)
+        self.assertIn("keystore init", message)
+
+    def test_a_leftover_password_file_is_pointed_at_migrate(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("k")
+        box.legacy_password_file().write_text("x")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.choose_signing()
+        self.assertIn("keystore migrate", str(ctx.exception))
+
+    def test_no_keystore_never_falls_back_to_a_debug_one(self) -> None:
+        debug = box.home() / ".android" / "debug.keystore"
+        debug.parent.mkdir(parents=True)
+        debug.write_text("d")
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
+        with self.assertRaises(box.BoxError) as ctx:
+            box.choose_signing()
         self.assertIn("keystore init", str(ctx.exception))
-
-    def test_the_debug_fallback_passes_its_password_by_environment(self) -> None:
-        debug = box.home() / ".android" / "debug.keystore"
-        debug.parent.mkdir(parents=True)
-        debug.write_text("d")
-        with mock.patch.object(box, "note"):
-            sign = box.choose_signing()
-        self.assertEqual(sign.password[0], "env")
-        self.assertEqual(box.apksigner_pass(sign.password), f"env:{sign.password[1]}")
-        self.assertIn(sign.password[1], sign.env)
-        self.assertEqual(
-            box.keytool_pass("-storepass", sign.password)[0], "-storepass:env"
-        )
-
-    def test_debug_keystore_fallback_with_a_notice(self) -> None:
-        debug = box.home() / ".android" / "debug.keystore"
-        debug.parent.mkdir(parents=True)
-        debug.write_text("d")
-        with mock.patch.object(box, "note") as note:
-            sign = box.choose_signing()
-        self.assertEqual(
-            (sign.keystore, sign.alias, sign.shared), (debug, "androiddebugkey", False)
-        )
-        self.assertIn("keystore init", note.call_args.args[0])
 
 
 class InstallMismatch(IsolatedEnv):
@@ -2071,6 +2314,519 @@ class NodeModules(IsolatedEnv):
         self.assertFalse((self.wt / "node_modules" / ".arlesh-lock-stamp").exists())
 
 
+SECRET = secrets.token_urlsafe(
+    18
+)  # made per run: no credential-shaped literal in the repo
+
+
+def make_db(path: Path, titles: list[str], migration: int | None = None) -> None:
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE nodes (id INTEGER PRIMARY KEY, title TEXT)")
+    con.executemany("INSERT INTO nodes (title) VALUES (?)", [(t,) for t in titles])
+    if migration is not None:
+        con.execute("CREATE TABLE _sqlx_migrations (version BIGINT, success BOOLEAN)")
+        con.execute("INSERT INTO _sqlx_migrations VALUES (?, 1)", (migration,))
+    con.commit()
+    con.close()
+
+
+def titles(path: Path) -> list[str]:
+    con = sqlite3.connect(path)
+    try:
+        return [t for (t,) in con.execute("SELECT title FROM nodes ORDER BY id")]
+    finally:
+        con.close()
+
+
+class FakeServer:
+    """A local HTTP server answering GET /backup like arlesh-server does (and recording it)."""
+
+    def __init__(self, snapshot: bytes, token: str = SECRET) -> None:
+        outer = self
+        self.requests: list[tuple[str, str, str | None]] = []
+        self.status_override: int | None = None
+        self.body = snapshot
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                auth = self.headers.get("Authorization")
+                outer.requests.append((self.command, self.path, auth))
+                if outer.status_override is not None:
+                    self.send_response(outer.status_override)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif self.path == "/redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/backup")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif self.path != "/backup":
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif auth != f"Bearer {token}":
+                    self.send_response(401)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/vnd.sqlite3")
+                    self.send_header("Content-Length", str(len(outer.body)))
+                    self.end_headers()
+                    self.wfile.write(outer.body)
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_port}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+
+    def __enter__(self) -> Self:
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class SeedCase(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        for var in (box.SEED_URL_ENV, box.SEED_TOKEN_ENV, "ARLESH_REAL_DB"):
+            os.environ.pop(var, None)
+        box.SEED.local = False
+        box.SEED.snapshot = None
+        self.addCleanup(setattr, box.SEED, "snapshot", None)
+        self.addCleanup(setattr, box.SEED, "local", False)
+        self.snap = self.tmp / "server.db"
+        make_db(self.snap, ["from the server"], migration=105)
+        self.local = self.tmp / "local.db"
+        make_db(self.local, ["from the desktop"])
+        os.environ["ARLESH_REAL_DB"] = str(self.local)
+        self.wt = self.tmp / "wt"
+        (self.wt / "crates" / "arlesh-core" / "migrations").mkdir(parents=True)
+
+    def configure(self, server: FakeServer) -> None:
+        os.environ[box.SEED_URL_ENV] = server.url
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+    def seed(self, name: str = "b") -> Path:
+        dest = self.tmp / f"{name}.db"
+        with contextlib.redirect_stdout(io.StringIO()):
+            box.seed_database(dest, self.wt, name)
+        return dest
+
+
+class SeedConfig(SeedCase):
+    def run_seed(self, *argv: str, stdin: str = "") -> str:
+        out = io.StringIO()
+        with (
+            mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+            contextlib.redirect_stdout(out),
+        ):
+            box.cmd_seed(box.parse_args(["seed", *argv]))
+        return out.getvalue()
+
+    def test_set_puts_both_in_box_env_and_show_never_prints_the_token(self) -> None:
+        said = self.run_seed("set", "https://nas.example:4750/", stdin=SECRET + "\n")
+
+        env = box.env_file()
+        self.assertEqual(stat.S_IMODE(env.stat().st_mode), 0o600)
+        values = box.parse_env_file(env.read_text())
+        self.assertEqual(values[box.SEED_TOKEN_ENV], SECRET)
+        self.assertEqual(values[box.SEED_URL_ENV], "https://nas.example:4750")
+        shown = self.run_seed("show")
+        self.assertIn("https://nas.example:4750", shown)
+        self.assertNotIn(SECRET, shown + said)
+
+    def test_the_token_is_never_an_argument(self) -> None:
+        with self.assertRaises(box.UsageError):
+            box.parse_args(["seed", "set", "https://x", SECRET])
+
+    def test_set_replaces_an_earlier_box_files(self) -> None:
+        older = secrets.token_urlsafe(12)
+        box.seed_url_file().parent.mkdir(parents=True, exist_ok=True)
+        box.seed_url_file().write_text("https://old.example\n")
+        box.seed_token_file().write_text(older + "\n")
+        self.assertEqual(box.seed_token(), (older, "file"))
+
+        self.run_seed("set", "https://new.example", stdin=SECRET)
+
+        self.assertFalse(box.seed_url_file().exists())
+        self.assertFalse(box.seed_token_file().exists())
+        self.assertEqual(
+            box.seed_source(), box.SeedSource("https://new.example", SECRET)
+        )
+
+    def test_an_empty_token_keeps_the_stored_one(self) -> None:
+        self.run_seed("set", "https://a.example", stdin=SECRET)
+        self.run_seed("set", "https://b.example", stdin="")
+
+        self.assertEqual(box.seed_token(), (SECRET, "env"))
+        self.assertEqual(box.seed_url(), ("https://b.example", "env"))
+        values = box.parse_env_file(box.env_file().read_text())
+        self.assertEqual(values[box.SEED_TOKEN_ENV], SECRET)
+
+    def test_the_source_never_shows_the_token(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "https://env.example/"
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+        source = box.seed_source()
+
+        self.assertEqual(source, box.SeedSource("https://env.example", SECRET))
+        self.assertNotIn(SECRET, repr(source))
+
+    def test_a_url_without_a_token_is_refused_when_seeding(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "https://a.example"
+
+        with self.assertRaises(box.BoxError):
+            box.seed_source()
+
+    def test_a_bad_url_is_a_usage_error(self) -> None:
+        with self.assertRaises(box.UsageError):
+            self.run_seed("set", "nas.example", stdin="x")
+
+
+class SeedDownload(SeedCase):
+    def test_it_seeds_from_the_server_with_the_bearer_token(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the server"])
+        self.assertEqual(server.requests, [("GET", "/backup", f"Bearer {SECRET}")])
+
+    def test_both_seeds_of_one_invocation_share_one_download(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            first, second = self.seed("one"), self.seed("two")
+
+        self.assertEqual(len(server.requests), 1)
+        self.assertEqual(titles(first), titles(second))
+
+    def test_the_snapshot_is_cached_in_the_state_dir_and_removed_at_exit(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            with mock.patch.object(box.atexit, "register") as register:
+                self.seed()
+
+        cached = box.SEED.snapshot
+        assert cached is not None
+        self.assertEqual(cached.parent, box.state_dir() / "seed")
+        self.assertEqual(stat.S_IMODE(cached.stat().st_mode), 0o600)
+        register.assert_called_once_with(cached.unlink, missing_ok=True)
+
+    def test_a_wrong_token_dies_with_a_clear_message(self) -> None:
+        with FakeServer(self.snap.read_bytes(), token="other") as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError) as caught:
+                self.seed()
+
+        self.assertIn("token was refused", str(caught.exception))
+        self.assertNotIn(SECRET, str(caught.exception))
+        self.assertFalse((self.tmp / "b.db").exists())
+
+    def test_a_server_without_backup_says_so(self) -> None:
+        with FakeServer(b"") as server:
+            server.status_override = 404
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError) as caught:
+                self.seed()
+
+        self.assertIn("no /backup", str(caught.exception))
+
+    def test_an_unreachable_server_dies_naming_the_way_out(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "http://127.0.0.1:9"
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+        with self.assertRaises(box.BoxError) as caught:
+            self.seed()
+
+        self.assertIn("--local-seed", str(caught.exception))
+
+    def test_an_answer_that_is_not_sqlite_is_refused(self) -> None:
+        with FakeServer(b"<html>not a database</html>") as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.seed()
+
+        self.assertEqual(list((box.state_dir() / "seed").glob("*.part")), [])
+
+    def test_a_redirect_is_not_followed_with_the_token(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            request = box.urllib.request.Request(
+                f"{server.url}/redirect", headers={"Authorization": f"Bearer {SECRET}"}
+            )
+            with self.assertRaises(box.urllib.error.HTTPError):
+                box.urllib.request.build_opener(box._NoRedirect).open(request)
+
+        self.assertEqual([r[1] for r in server.requests], ["/redirect"])
+
+
+class SeedFallbacks(SeedCase):
+    def test_unconfigured_uses_the_local_copy_with_a_note(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(err.getvalue().count("seed is local"), 1)
+
+    def test_local_seed_forces_the_local_copy_even_when_configured(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            box.SEED.local = True
+
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(server.requests, [])
+
+    def test_the_flag_is_on_run_and_server_start(self) -> None:
+        self.assertTrue(box.parse_args(["run", "b", "--local-seed"]).local_seed)
+        self.assertTrue(
+            box.parse_args(["server", "start", "b", "--local-seed"]).local_seed
+        )
+
+    def test_the_local_database_is_never_written(self) -> None:
+        before = self.local.read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.seed()
+
+        self.assertEqual(self.local.read_bytes(), before)
+
+
+def add_credentials(path: Path) -> None:
+    con = sqlite3.connect(path)
+    con.execute(
+        "CREATE TABLE server_tokens (client TEXT PRIMARY KEY, sha256 TEXT, created_at TEXT)"
+    )
+    con.execute("INSERT INTO server_tokens VALUES ('phone', 'abc', 'now')")
+    con.execute("CREATE TABLE pairing_pins (id_sha256 TEXT PRIMARY KEY, pin TEXT)")
+    con.execute("INSERT INTO pairing_pins VALUES ('id', '123456')")
+    con.commit()
+    con.close()
+
+
+def count(path: Path, table: str) -> int:
+    con = sqlite3.connect(path)
+    try:
+        return int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    finally:
+        con.close()
+
+
+class Scrub(SeedCase):
+    def setUp(self) -> None:
+        super().setUp()
+        add_credentials(self.snap)
+        add_credentials(self.local)
+
+    def test_a_server_seed_has_no_tokens_or_pins_but_keeps_data(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            dest = self.seed()
+
+        self.assertEqual(count(dest, "server_tokens"), 0)
+        self.assertEqual(count(dest, "pairing_pins"), 0)
+        self.assertEqual(titles(dest), ["from the server"])
+        self.assertNotIn(b"abc", dest.read_bytes())
+        self.assertFalse(dest.with_name(dest.name + ".seed").exists())
+
+    def test_a_local_seed_is_scrubbed_and_the_source_is_untouched(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            dest = self.seed()
+
+        self.assertEqual(count(dest, "server_tokens"), 0)
+        self.assertEqual(count(dest, "pairing_pins"), 0)
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(count(self.local, "server_tokens"), 1)
+        self.assertEqual(count(self.local, "pairing_pins"), 1)
+
+    def test_a_schema_without_the_tables_is_fine(self) -> None:
+        self.assertEqual(box.scrub_credentials(self.make_plain()), [])
+
+    def make_plain(self) -> Path:
+        plain = self.tmp / "plain.db"
+        make_db(plain, ["x"])
+        return plain
+
+    def test_it_reports_the_tables_it_cleared(self) -> None:
+        self.assertEqual(
+            box.scrub_credentials(self.snap), ["server_tokens", "pairing_pins"]
+        )
+
+    def test_the_cached_snapshot_itself_is_not_the_seed_that_gets_used(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            self.seed()
+
+        self.assertEqual(titles(self.snap), ["from the server"])
+        self.assertEqual(count(self.snap, "server_tokens"), 1)
+
+
+class SchemaCheck(SeedCase):
+    def migrations(self, *numbers: int) -> None:
+        for n in numbers:
+            (
+                self.wt / "crates" / "arlesh-core" / "migrations" / f"{n:04d}_x.sql"
+            ).write_text("")
+
+    def test_a_snapshot_ahead_of_the_branch_warns_plainly(self) -> None:
+        self.migrations(98, 99)
+        err = io.StringIO()
+        with (
+            FakeServer(self.snap.read_bytes()) as server,
+            contextlib.redirect_stderr(err),
+        ):
+            self.configure(server)
+            self.seed()
+
+        self.assertIn("older than the server", err.getvalue())
+        self.assertIn("0105", err.getvalue())
+        self.assertIn("0099", err.getvalue())
+        self.assertIn("refuse", err.getvalue())
+
+    def test_a_branch_at_or_ahead_of_the_snapshot_is_quiet(self) -> None:
+        self.migrations(105, 106)
+        err = io.StringIO()
+        with (
+            FakeServer(self.snap.read_bytes()) as server,
+            contextlib.redirect_stderr(err),
+        ):
+            self.configure(server)
+            self.seed()
+
+        self.assertEqual(err.getvalue(), "")
+
+    def test_versions_are_read_from_the_snapshot_and_the_branch(self) -> None:
+        self.migrations(3, 12)
+
+        self.assertEqual(box.newest_applied_migration(self.snap), 105)
+        self.assertEqual(box.newest_branch_migration(self.wt), 12)
+        self.assertIsNone(box.newest_applied_migration(self.local))
+
+
+class Reseed(SeedCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.db = self.tmp / "servers" / "b" / "data" / "arlesh.db"
+        self.db.parent.mkdir(parents=True)
+        make_db(self.db, ["old branch data"])
+
+    def reseed(
+        self, *extra: str, running: bool = False, answer: str | None = None
+    ) -> None:
+        args = box.parse_args(["reseed", "b", *extra])
+        patches = [
+            mock.patch.object(box, "worktree_path", return_value=self.wt),
+            mock.patch.object(box, "server_db", return_value=self.db),
+            mock.patch.object(box, "instance_db", return_value=self.tmp / "none.db"),
+            mock.patch.object(box, "server_running", return_value=running),
+            mock.patch.object(box, "stop_server"),
+            mock.patch.object(box, "server_start"),
+            mock.patch.object(box, "stop_instance"),
+            mock.patch.object(box, "interactive", return_value=answer is not None),
+            mock.patch.object(box, "ask", return_value=answer or ""),
+        ]
+        with contextlib.ExitStack() as stack:
+            self.mocks = [stack.enter_context(p) for p in patches]
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            box.cmd_reseed(args)
+
+    def test_it_replaces_the_database_and_keeps_the_old_one_as_prev(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.assertEqual(titles(self.db), ["from the server"])
+        self.assertEqual(
+            titles(self.db.with_name("arlesh.db.prev")), ["old branch data"]
+        )
+
+    def test_the_reseeded_database_has_no_credentials(self) -> None:
+        add_credentials(self.snap)
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.assertEqual(count(self.db, "server_tokens"), 0)
+        self.assertEqual(count(self.db, "pairing_pins"), 0)
+        self.assertEqual(titles(self.db), ["from the server"])
+
+    def test_it_restarts_a_server_that_was_running(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y", running=True)
+
+        stop_server, server_start = self.mocks[4], self.mocks[5]
+        stop_server.assert_called_once_with("b")
+        server_start.assert_called_once()
+
+    def test_it_leaves_a_stopped_server_stopped(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.mocks[5].assert_not_called()
+
+    def test_without_y_it_asks_and_no_changes_nothing(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed(answer="n")
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+        self.mocks[4].assert_not_called()
+
+    def test_yes_at_the_prompt_proceeds(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed(answer="y")
+
+        self.assertEqual(titles(self.db), ["from the server"])
+
+    def test_without_a_terminal_and_without_y_it_refuses(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.reseed()
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+
+    def test_a_failed_download_stops_nothing_and_replaces_nothing(self) -> None:
+        with FakeServer(b"") as server:
+            server.status_override = 401
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.reseed("-y", running=True)
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+        self.mocks[4].assert_not_called()
+
+    def test_unconfigured_it_says_what_to_run(self) -> None:
+        with self.assertRaises(box.BoxError) as caught:
+            self.reseed("-y")
+
+        self.assertIn("seed set", str(caught.exception))
+
+
 class EnvFileTests(IsolatedEnv):
     KEYS = ("BOXENV_A", "BOXENV_B", "BOXENV_C")
 
@@ -2146,3 +2902,40 @@ class EnvFileTests(IsolatedEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("keytool"), "needs a JDK's keytool")
+class KeystoreRotateRealKeytool(unittest.TestCase):
+    """The rotation against the real keytool, on a throwaway PKCS12 store (the JDK default)."""
+
+    def run_keytool(self, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["keytool", *args],
+            env={**os.environ, **env},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_a_pkcs12_store_opens_with_the_new_value_only(self) -> None:
+        old, new = secrets.token_urlsafe(18), secrets.token_urlsafe(18)
+        with tempfile.TemporaryDirectory() as tmp:
+            ks = Path(tmp) / "box.keystore"
+            made = self.run_keytool(
+                "-genkeypair", "-keystore", str(ks), "-alias", box.BOX_KEY_ALIAS,
+                "-keyalg", "RSA", "-keysize", "2048", "-validity", "2", "-dname", "CN=box-test",
+                "-storepass:env", "A", "-keypass:env", "A",
+                A=old,
+            )  # fmt: skip
+            self.assertEqual(made.returncode, 0, made.stderr)
+            box.rotate_keystore_password(ks, old, new)
+            opened = self.run_keytool(
+                "-certreq", "-keystore", str(ks), "-alias", box.BOX_KEY_ALIAS,
+                "-storepass:env", "A", "-keypass:env", "A",
+                A=new,
+            )  # fmt: skip
+            self.assertEqual(opened.returncode, 0, opened.stderr)
+            refused = self.run_keytool(
+                "-list", "-keystore", str(ks), "-storepass:env", "A", A=old
+            )
+            self.assertNotEqual(refused.returncode, 0)

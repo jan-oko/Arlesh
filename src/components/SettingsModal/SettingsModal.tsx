@@ -14,15 +14,17 @@ import ExpectationsPage from "./ExpectationsPage";
 import McpAccessPage from "./McpAccessPage";
 import ServerPage from "./ServerPage";
 import DevicesPage from "./DevicesPage";
+import NotificationsPage from "./NotificationsPage";
 import styles from "./SettingsModal.module.css";
 
 /** The modal's pages, in the order the sidebar lists them. */
 export type SettingsPage =
   | "general" | "mindmap" | "list" | "steps" | "plan" | "zen" | "windows" | "expectations" | "mcp"
-  | "server" | "devices";
+  | "server" | "devices" | "notifications";
 
 const PAGES: readonly SettingsPage[] = [
   "general", "mindmap", "list", "steps", "plan", "zen", "windows", "expectations", "mcp", "server", "devices",
+  "notifications",
 ];
 
 const CLOSE_GLYPH = "×";
@@ -91,6 +93,7 @@ export default function SettingsModal({ onClose, onOpenHotkeys, initialPage = "g
     mcp: <McpAccessPage />,
     server: <ServerPage />,
     devices: <DevicesPage />,
+    notifications: <NotificationsPage />,
   };
 
   return (

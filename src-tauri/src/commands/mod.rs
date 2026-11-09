@@ -19,6 +19,7 @@ pub mod knowledge_base;
 pub mod mcp_endpoint;
 pub mod mindmap;
 pub mod node_gestures;
+pub mod push;
 pub mod scopes;
 pub mod tasks;
 /// The tray and close-to-tray are desktop-only; a phone has neither, and `mobile_shell` answers

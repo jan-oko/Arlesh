@@ -21,6 +21,7 @@ mod hold;
 mod http_backend;
 mod mcp;
 mod opening;
+mod push;
 mod request;
 mod rules;
 mod schema;
@@ -292,6 +293,13 @@ fn token_call(py: Python<'_>, path: PathBuf, request: String) -> PyResult<String
         .map_err(raise)
 }
 
+/// Runs one call on `arlesh-server`'s push-notification tables in the database at `path`, and
+/// waits for it. See [`push`].
+#[pyfunction]
+fn push_call(py: Python<'_>, path: PathBuf, request: String) -> PyResult<String> {
+    py.detach(move || push::run(&path, &request)).map_err(raise)
+}
+
 /// The stack each of the bindings' runtime workers gets.
 const WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
 
@@ -326,6 +334,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
     module.add_function(wrap_pyfunction!(token_call, module)?)?;
+    module.add_function(wrap_pyfunction!(push_call, module)?)?;
     module.add_function(wrap_pyfunction!(json_schema, module)?)?;
     module.add("NativeError", module.py().get_type::<NativeError>())?;
     Ok(())

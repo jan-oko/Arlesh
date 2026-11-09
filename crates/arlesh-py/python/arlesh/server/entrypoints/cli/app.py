@@ -15,6 +15,9 @@
     arlesh-server pin approve 123456 --name phone --db ~/arlesh.db
     ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
 
+Push notifications to phones need a Firebase service-account key: ``ARLESH_FCM_CREDENTIALS_FILE``
+(see ``docs/spec/notifications.md``). Without it the server runs and sends none.
+
 Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and so on; see
 :mod:`arlesh.server.config`); a flag given wins.
 """
@@ -34,11 +37,12 @@ from arlesh.server.business_logic.board import Board, OpenAs, TakeHold
 from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.config import Config
 from arlesh.server.entrypoints.fastapi import run
-from arlesh.server.entrypoints.fastapi.app import ArleshServer
+from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.push.database_push_store import DatabasePushStore
+from arlesh.server.ports.push.fcm_sender import CredentialsError, FcmSender, ServiceAccount
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
 PROGRAM = "arlesh-server"
@@ -97,7 +101,6 @@ def serve(
     # Reading the token table opens the database for writing, which would migrate it: only once
     # it is known that this server will be its writer. A held database is refused at startup.
     if config.database.force or _unheld(path):
-        tokens = prepare(path)
         if not tokens.issued():
             typer.echo(
                 f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
@@ -109,6 +112,13 @@ def serve(
             tokens=tokens,
             pairs=DatabasePairingStore(path),
             version=version("arlesh"),
+            pushes=DatabasePushStore(path),
+            sender=_sender(config),
+            backup=(
+                Backup(path, config.backup_token.get_secret_value())
+                if config.backup_token is not None and config.backup_token.get_secret_value()
+                else None
+            ),
         ),
         config.server,
     )
@@ -194,15 +204,6 @@ def holder(path: Path) -> TakeHold:
     return lambda: arlesh.hold(path)
 
 
-def prepare(path: Path) -> DatabaseTokenStore:
-    """The token store in the database at ``path``, with the tokens of an old ``<db>.tokens``
-    file carried over into it. Its first call migrates the database if it is behind."""
-    tokens = DatabaseTokenStore(path)
-    for client in tokens.carry_over(FileTokenStore.beside(path)):
-        typer.echo(f"{PROGRAM}: moved {client}'s token into the database", err=True)
-    return tokens
-
-
 def _unheld(path: Path) -> bool:
     """Whether nothing holds the database at ``path`` right now."""
     try:
@@ -212,8 +213,20 @@ def _unheld(path: Path) -> bool:
     return True
 
 
+def _sender(config: Config) -> FcmSender | None:
+    """The FCM sender the credentials file names, or ``None`` when none is named: pushes are off.
+    A file that cannot be used stops the server, so a mistake is not mistaken for 'off'."""
+    file = config.fcm_credentials_file
+    if file is None:
+        return None
+    try:
+        return FcmSender(ServiceAccount.read(file))
+    except CredentialsError as error:
+        raise typer.BadParameter(f"ARLESH_FCM_CREDENTIALS_FILE: {error}") from None
+
+
 def _tokens(db: Path | None) -> DatabaseTokenStore:
-    return prepare(_config(database={"path": db}).database.path)
+    return DatabaseTokenStore(_config(database={"path": db}).database.path)
 
 
 def _interactive() -> bool:
@@ -223,7 +236,7 @@ def _interactive() -> bool:
 
 def _pairing(db: Path | None) -> Pairing:
     path = _config(database={"path": db}).database.path
-    return Pairing(DatabasePairingStore(path), prepare(path))
+    return Pairing(DatabasePairingStore(path), DatabaseTokenStore(path))
 
 
 def _config(**sections: dict[str, Any]) -> Config:

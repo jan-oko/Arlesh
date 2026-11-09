@@ -10,7 +10,19 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Phone notifications on Android.** The Android app (connected to a server with push set up) registers with Firebase Cloud Messaging and shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, or the agent capacity lock is set or cleared. Tapping one opens its Task. Each event is its own Android notification channel, so you switch each on or off, and set its sound, in Android's notification settings; Settings → Notifications asks for the permission and links there.
+
+- **Phone push notifications (server).** `arlesh-server` can notify a paired phone through Firebase Cloud Messaging when an agent asks a question, a Task becomes Overdue, a task is generated (a Habit occurrence, a wait's check), and when the agent capacity lock is set or cleared. Each event is its own notification channel, so Android's settings switch each on or off.
+  Point the server at a Firebase service-account key with `ARLESH_FCM_CREDENTIALS_FILE` (in a container, a mounted secret); without it the server runs as before and sends nothing. A device registers its push token with `PUT /devices/current/push`. What was sent is remembered per device, so a restart never sends the same notification twice, and revoking a device drops its registration.
+
 - **The server ships as a container image and as wheels.** Every release now publishes `ghcr.io/jan-oko/arlesh-server` (linux/amd64 and linux/arm64, running as a non-root user with its database on a `/data` volume) and Python wheels for linux x86_64 and aarch64, beside the desktop and Android builds. See Running the server in the Client mode spec for a `docker run` and a compose file.
+
+- **`GET /backup` on the server.** Set `ARLESH_BACKUP_TOKEN` in the server's environment (a
+  container's `environment:`, say) and the server streams a consistent snapshot of its SQLite
+  database, with `Authorization: Bearer <that token>`, as `arlesh-YYYY-MM-DD.db`. It is the
+  administrator's, kept apart from the device tokens: a paired device's token does not open it, and
+  without the variable the route does not exist. The snapshot is taken with SQLite's backup API on a
+  read-only connection, so it does not hold up the server's writes or touch the live database.
 
 - **Python: `Arlesh(backend=…)` works against a server.** A script can pick the app's own backend: `arlesh.Arlesh(backend=arlesh.HttpBackend(url, token=token))` talks to an `arlesh-server` as the app's Client mode does (revision stamps, gzip, TLS, the version check, and the last board read-only while the server is away), and `arlesh.SqliteBackend(path, client=…)` opens a local file as before. `async for change in board.changes()` follows the board, and `arlesh.pairing` turns a PIN into a token. `arlesh.open` and `arlesh-server` are unchanged.
 

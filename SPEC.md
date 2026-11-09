@@ -58,6 +58,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | [MCP Server](docs/spec/mcp-server.md) | The read-only endpoint an agent reaches the board through: tools, paging, errors |
 | [HTTP Server](docs/spec/http-api.md) | `arlesh-server`: the board over HTTP for multi-device, with bearer tokens per client, the routes, the error statuses, the hold that keeps one writer per database, and the MCP proxied at `/mcp` |
 | [Client Mode](docs/spec/client-mode.md) | Standalone or Client: the Backend port, REST parity, live sync over SSE, per-device undo, read-only offline, tokens in the keychain, the version handshake |
+| [Notifications](docs/spec/notifications.md) | Phone push through FCM: the five events, the server's per-device record, Android channels, registration, the tap that opens a Task |
 | [Undo](docs/spec/undo.md) | The journal, which gestures are one step, the two stacks, what is deliberately not undoable |
 
 Decisions with a rationale worth keeping live in [`docs/adr/`](docs/adr/) and are referenced from
