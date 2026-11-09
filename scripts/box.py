@@ -486,7 +486,9 @@ def ensure_worktree(branch: str, report: bool = True) -> Path:
     name = dir_name(branch)
     path = worktrees_dir() / name
     root = main_checkout()
-    path = existing_worktree(branch) or path
+    held_at = existing_worktree(branch)
+    if held_at is not None and held_at != path.resolve():  # keep the unresolved spelling when it is the same folder
+        path = held_at
     if path.is_dir():
         held = worktree_branch(path)
         if held != branch:
