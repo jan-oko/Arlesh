@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -227,3 +228,17 @@ async def test_a_write_from_python_never_reaches_the_desktop_undo_stack(
             "SELECT COUNT(*) FROM undo_journal WHERE client = 'desktop'"
         ).fetchone()[0]
     assert desktop == 0
+
+
+async def test_the_board_as_json_leaves_absent_values_out_and_the_model_board_still_reads(
+    db: arlesh.Database, domain_id: int
+) -> None:
+    """``board_json`` is for sending on as it is: no ``null`` members. ``board`` still reads the
+    same board into models, whose nullable fields must be present."""
+    await db.create_task(CreateTaskRequest(title="t", parent_type="domain", parent_id=domain_id))
+
+    sent = json.loads(await db.board_json())
+
+    assert [task["title"] for task in sent["tasks"]] == ["t"]
+    assert "plan" not in sent["tasks"][0]
+    assert [task.title for task in (await db.board()).tasks] == ["t"]
