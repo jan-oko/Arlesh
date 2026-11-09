@@ -213,6 +213,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   **The board alone:** **F11**, or **F** with nothing selected, hides the tab strip and the top bar; press it again to bring them back. Arlesh always reopens with them shown.
 
 ### Changed
+- **Loading the board from a server is faster.** The server sends the board as the core wrote it instead of reading it into models and writing it out again, and compresses it at a lighter level, so the full load answers in roughly half the time.
+
 - **A new node shows at once.** Creating a child or a sibling (`Tab`, `Enter`, the Child button) puts the node on screen the moment you ask, with the same faint pulse until the server answers, so you can type its title, set its status or add a child under it straight away; those go out in order once it exists. If the server refuses the create, the node and anything you added under it go away, with one note saying why. Undoing a create that has not been sent takes it back without a trip to the server. New Flows and Habits still wait for the server.
 - **Planning in the Plan View shows at once.** Planning an item into the scope (a swipe right, or the move-across key) puts it in the planned pane the moment you ask, and taking it out puts it back in the candidates, each with the same faint pulse until the server answers. If the server refuses, the item goes back with one note saying why. When the new Plan would leave Tasks below it outside, the prompt still opens first.
 
