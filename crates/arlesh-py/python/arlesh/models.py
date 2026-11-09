@@ -29,6 +29,71 @@ class Model(RootModel[Any]):
     """
 
 
+class AgentActionPause(BaseModel):
+    """
+    Pauses its Claim.
+    """
+
+    action: Literal["pause"]
+
+
+class AgentActionResume(BaseModel):
+    """
+    Makes its paused Claim active again; refused while another active Claim overlaps.
+    """
+
+    action: Literal["resume"]
+
+
+class AgentActionRelease(BaseModel):
+    """
+    Lets go of its Claim.
+    """
+
+    action: Literal["release"]
+
+
+class AgentActionLock(BaseModel):
+    """
+    Locks (`true`) or unlocks (`false`) the agent.
+    """
+
+    action: Literal["lock"]
+    locked: bool
+    """
+    Whether the lock is on.
+    """
+
+
+class AgentActionRemove(BaseModel):
+    """
+    Removes the Agent; its token stops working.
+    """
+
+    action: Literal["remove"]
+
+
+class AgentAction(
+    RootModel[
+        AgentActionPause
+        | AgentActionResume
+        | AgentActionRelease
+        | AgentActionLock
+        | AgentActionRemove
+    ]
+):
+    root: (
+        AgentActionPause
+        | AgentActionResume
+        | AgentActionRelease
+        | AgentActionLock
+        | AgentActionRemove
+    )
+    """
+    A change the user makes to an Agent by hand.
+    """
+
+
 class AgentActivity(BaseModel):
     """
     What the agents are doing on the whole board, counted.
@@ -45,6 +110,35 @@ class AgentActivity(BaseModel):
     waits: Annotated[int, Field(ge=0)]
     """
     Pending, live agentic waits on something other than the user — CI, say.
+    """
+
+
+class AgentStanding(StrEnum):
+    """
+    Where an Agent's Claim stands among the others.
+    """
+
+    unclaimed = "unclaimed"
+    """
+    It holds no Claim: it sees nothing.
+    """
+    active = "active"
+    """
+    Its Claim is held.
+    """
+    paused = "paused"
+    """
+    Its Claim is paused.
+    """
+    shadowed = "shadowed"
+    """
+    Its Claim is held but now overlaps an older active Claim (a node was moved), so it sees
+    nothing until the overlap is gone.
+    """
+    unreachable = "unreachable"
+    """
+    Its Claim's root left the user's MCP roots, was deleted or went private, so it sees
+    nothing.
     """
 
 
@@ -201,14 +295,51 @@ class Capabilities(BaseModel):
     """
 
 
-class CapacityState(BaseModel):
+class CapacityCauseAgentLocked(BaseModel):
     """
-    The lock as it is read and written: stored in the file, answered by the commands and the MCP.
+    The agent is locked by hand.
     """
 
-    at_capacity: bool
+    kind: Literal["agent_locked"]
+
+
+class CapacityCauseAccountLocked(BaseModel):
     """
-    Whether agents are at capacity. Off when nothing was ever saved.
+    The agent's account is locked by hand.
+    """
+
+    kind: Literal["account_locked"]
+
+
+class CapacityCauseUsageLimit(BaseModel):
+    """
+    A window of the agent's account is at its limit until it resets.
+    """
+
+    kind: Literal["usage_limit"]
+    resets_at: str
+    """
+    When it resets (ISO 8601 local time).
+    """
+    window: str
+    """
+    The window that is full.
+    """
+
+
+class ClaimStatus(StrEnum):
+    """
+    Whether a Claim is held or has been set aside.
+    """
+
+    active = "active"
+    """
+    Held: no other active Claim may cover any node of its subtree.
+    """
+    paused = "paused"
+    """
+    Set aside, by the agent or by hand. The agent keeps its token and reads its subtree, but
+    cannot write it, and another agent may claim the subtree meanwhile.
     """
 
 
@@ -861,6 +992,21 @@ class InstanceType(StrEnum):
     machinery that already exists, rather than a second recurrence engine. Each iteration's
     verdict is a Modification row keyed by (flow item, iteration scope), reusing the
     overridden-status slot; see `docs/adr/0005-commitment-node-kind.md`.
+    """
+
+
+class IssuedPin(BaseModel):
+    """
+    A PIN a signed-in client asked for, to hand to an agent.
+    """
+
+    expires_at: str
+    """
+    When the PIN lapses (ISO 8601 local time).
+    """
+    pin: str
+    """
+    The digits to give the agent.
     """
 
 
@@ -2080,6 +2226,25 @@ class UpdateSpawnedWaitRequest(BaseModel):
     """
 
 
+class UsageWindow(BaseModel):
+    """
+    How much of one limit window an account has used, as an agent reported it.
+    """
+
+    kind: str
+    """
+    Which window: `five_hour`, `seven_day`, whatever the client calls its plan limits.
+    """
+    percent_used: float
+    """
+    How much of it is used, 0 to 100 (more is capped by the rule, not refused).
+    """
+    resets_at: str
+    """
+    When the window resets (ISO 8601 local time). The account is free of this window then.
+    """
+
+
 class Verdict(StrEnum):
     """
     Whether a Commitment was held to. The Commitment kind's answer to a Task's status, and
@@ -2244,6 +2409,25 @@ class WireErrorKind(StrEnum):
     exhaustive with no wildcard arm: a new domain error variant must be
     classified explicitly and will fail to compile until it is, rather
     than silently falling back to this kind.
+    """
+
+
+class Account(BaseModel):
+    """
+    An account the agents work under, with what it has used.
+    """
+
+    label: str
+    """
+    The label agents declare.
+    """
+    locked: bool
+    """
+    A manual lock on every agent of the account.
+    """
+    windows: list[UsageWindow]
+    """
+    The last report of each limit window.
     """
 
 
@@ -4817,6 +5001,26 @@ class UpdateTaskRequest(BaseModel):
     """
 
 
+class Claim(BaseModel):
+    """
+    A subtree an Agent holds: its whole view of the board.
+    """
+
+    claimed_at: str
+    """
+    When the Claim was made (ISO 8601 local time): of two Claims that come to overlap, the
+    older keeps its place.
+    """
+    root: NodeKey
+    """
+    The subtree's root. A stored node, inside the user's MCP roots.
+    """
+    status: ClaimStatus
+    """
+    Whether the Claim is held or paused.
+    """
+
+
 class Commitment(BaseModel):
     """
     A commitment row as returned from the database.
@@ -5497,6 +5701,85 @@ class StepEntry(
     """
 
 
+class Agent(BaseModel):
+    """
+    An Agent: a session of an AI client, attached with a PIN.
+    """
+
+    account: str
+    """
+    The label of the account it works under; usage is kept per account.
+    """
+    claim: Claim | None
+    """
+    Its Claim, if it holds one.
+    """
+    created_at: str
+    """
+    When it first attached.
+    """
+    id: int
+    """
+    The Agent's identity.
+    """
+    last_seen_at: str | None
+    """
+    When a session last used its token or attached with it.
+    """
+    locked: bool
+    """
+    A manual lock: its claimed Agentic Tasks read blocked while it is on.
+    """
+    name: str
+    """
+    What Settings → Agents calls it. Unique.
+    """
+    session_uuid: str
+    """
+    The client's session id, as it last attached with it.
+    """
+
+
+class AgentSummary(BaseModel):
+    """
+    One Agent as Settings → Agents lists it: the Agent, where its Claim stands, and whether it is
+    at capacity.
+    """
+
+    agent: Agent
+    """
+    The Agent.
+    """
+    at_capacity: (
+        CapacityCauseAgentLocked
+        | CapacityCauseAccountLocked
+        | CapacityCauseUsageLimit
+        | None
+    )
+    """
+    Why its Agentic Tasks read blocked, when they do.
+    """
+    standing: AgentStanding
+    """
+    Where its Claim stands.
+    """
+
+
+class AgentsOverview(BaseModel):
+    """
+    Every Agent and account, as Settings → Agents lists them.
+    """
+
+    accounts: list[Account]
+    """
+    The accounts they work under, with usage.
+    """
+    agents: list[AgentSummary]
+    """
+    The Agents, oldest first.
+    """
+
+
 class DuplicatedGoal(BaseModel):
     """
     A duplicate command's answer: the copy's root, and what the copy left behind.
@@ -5513,6 +5796,7 @@ class DuplicatedGoal(BaseModel):
 
 
 # The tagged unions, by the names the Rust types have.
+CapacityCause: TypeAlias = CapacityCauseAgentLocked | CapacityCauseAccountLocked | CapacityCauseUsageLimit
 Dependency: TypeAlias = DependencyTask | DependencyGoal | DependencyExpectation
 FlowHabitResult: TypeAlias = FlowHabitResultLoaded | FlowHabitResultFailed
 Origin: TypeAlias = OriginManual | OriginHabit | OriginCheck | OriginSpawnedWait | OriginDelegationWait

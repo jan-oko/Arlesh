@@ -19,16 +19,17 @@ class BoardsRouter(BoardRouter):
         self.get("/task-dependencies")(self._task_dependencies)
         self.get("/block-reasons")(self._block_reasons)
 
-    async def _get(self, now: datetime | None = None, at_capacity: bool | None = None) -> Response:
+    async def _get(self, now: datetime | None = None) -> Response:
         """Every node of every kind, with its derived lifecycle, short id and facts.
 
-        ``now`` defaults to the server's clock, ``at_capacity`` to the agent capacity lock.
+        ``now`` defaults to the server's clock. The Agentic Tasks of agents at capacity read
+        blocked.
 
         The answer is the core's JSON as it is: reading 1.6 MB into models and writing it out again
         took as long as the core's own work. ``response_model`` stays for the OpenAPI schema only,
         since a returned :class:`Response` is sent without it.
         """
-        body = await self._reader.board_json(now=now, at_capacity=at_capacity)
+        body = await self._reader.board_json(now=now)
         return Response(content=body, media_type="application/json")
 
     async def _lifecycles(self, now: datetime | None = None) -> list[ItemLifecycle]:

@@ -327,6 +327,64 @@ pub(super) fn roots_instructions(
     )
 }
 
+/// What a connection over a session is told of itself: how to attach when it has not, and — once
+/// it has — who it is and the Claim that is its whole view.
+pub(super) fn agent_instructions(
+    nodes: &[CatalogueNode],
+    view: Option<&crate::agents::service::AgentView>,
+) -> String {
+    let Some(view) = view else {
+        return "NOT ATTACHED. This session sees nothing and may call only arlesh_agents with \
+                operation attach. Ask the user for a one-time PIN (Settings › Agents in the \
+                desktop app), then attach with your session_id, the PIN, a name, your account \
+                label and the subtree you were asked to work. Keep the agent token the answer \
+                gives: attach with it (token instead of pin) after the server restarts or the \
+                session is resumed. A host with the arlesh-notify mod attaches for you."
+            .to_string();
+    };
+    let by_key: HashMap<NodeKey, &CatalogueNode> =
+        nodes.iter().map(|node| (node.key(), node)).collect();
+    let who = format!(
+        "YOU ARE AGENT {} (account {}).",
+        view.agent.name, view.agent.account
+    );
+    let claim = view.agent.claim.as_ref().and_then(|claim| {
+        by_key.get(&claim.root).map(|node| {
+            format!(
+                "{} ({} {})",
+                short_path(node, &by_key),
+                display_kind(node),
+                node.node_id
+            )
+        })
+    });
+    let standing = match (view.standing, claim) {
+        (crate::agents::model::AgentStanding::Active, Some(claim)) => format!(
+            "Your CLAIM is {claim}, and it is your whole view: you read and write only inside \
+             it, as if it were your own MCP root, and nothing outside it exists for you (a \
+             request naming a node outside it is refused as not_permitted). Inside it, Agentic \
+             tasks are writable; everything else is read-only. Pause it with arlesh_agents.pause \
+             to let another agent claim it; release it with release."
+        ),
+        (crate::agents::model::AgentStanding::Paused, Some(claim)) => format!(
+            "Your CLAIM {claim} is PAUSED: you may read it but write nothing, and another agent \
+             may claim it. arlesh_agents.resume takes it back if nobody has."
+        ),
+        (crate::agents::model::AgentStanding::Shadowed, Some(claim)) => format!(
+            "Your CLAIM {claim} now overlaps an older active claim (a node was moved), so you see \
+             nothing until the overlap is gone."
+        ),
+        (crate::agents::model::AgentStanding::Unreachable, Some(claim)) => format!(
+            "Your CLAIM {claim} is no longer inside the user's MCP roots, so you see nothing. \
+             Ask the user to open it again, or claim another subtree."
+        ),
+        _ => "You hold no CLAIM, so you see nothing yet. Claim a subtree with arlesh_agents.claim \
+              (a node_type and node_id the user named)."
+            .to_string(),
+    };
+    format!("{who} {standing}")
+}
+
 /// A node's title, preceded by its nearest ancestors' — outermost first, at most
 /// [`PATH_SEGMENTS`] in all, with `…` standing in for the rest.
 fn short_path(node: &CatalogueNode, by_key: &HashMap<NodeKey, &CatalogueNode>) -> String {

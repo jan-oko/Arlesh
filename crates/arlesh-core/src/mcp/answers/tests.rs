@@ -83,8 +83,12 @@ async fn arguments_that_are_not_an_object_are_invalid_params() {
 async fn a_second_call_reuses_the_idle_connection() {
     let (mcp, directory) = handler().await;
 
-    let first = mcp.answer_call("arlesh_capacity", json!({}), None).await;
-    let second = mcp.answer_call("arlesh_capacity", json!({}), None).await;
+    let first = mcp
+        .answer_call("arlesh_kb", json!({ "operation": "list_people" }), None)
+        .await;
+    let second = mcp
+        .answer_call("arlesh_kb", json!({ "operation": "list_people" }), None)
+        .await;
 
     assert!(first.get("result").is_some() && second.get("result").is_some());
     let _ = std::fs::remove_dir_all(directory);
@@ -126,7 +130,10 @@ async fn result_type_is_sent_only_to_a_client_new_enough_to_expect_it() {
     let (mcp, directory) = handler().await;
     let call = |version: Option<&'static str>| {
         let mcp = mcp.clone();
-        async move { mcp.answer_call("arlesh_capacity", json!({}), version).await }
+        async move {
+            mcp.answer_call("arlesh_kb", json!({ "operation": "list_people" }), version)
+                .await
+        }
     };
 
     let legacy = call(Some("2025-03-26")).await;

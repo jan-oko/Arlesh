@@ -24,7 +24,7 @@ use super::{
     events::{ChangeFeed, EventStreams},
     router, DEFAULT_PORT, PORT_ENV_VAR,
 };
-use crate::{board::Announce, capacity::AgentCapacity, database::session::SessionFactory};
+use crate::{board::Announce, database::session::SessionFactory};
 
 /// How often the wait stream reads the waits again in the app, which hears of an agent's writes
 /// but not of the windows'.
@@ -138,7 +138,6 @@ pub struct McpEndpoint {
 struct Inner {
     factory: SessionFactory,
     announce: Announce,
-    capacity: AgentCapacity,
     /// The event streams beside `/mcp`; one feed for the app's life, whatever the listener does.
     streams: EventStreams,
     settings: PathBuf,
@@ -156,11 +155,10 @@ struct Running {
 impl McpEndpoint {
     /// An endpoint over `factory` whose port setting lives at `settings`, overridden by
     /// `env_override` when set (the app passes [`env_port`]). Every session it serves shares
-    /// `capacity`, the agent capacity lock. Nothing is bound until [`McpEndpoint::restart`].
+    /// Nothing is bound until [`McpEndpoint::restart`].
     pub fn new(
         factory: SessionFactory,
         announce: Announce,
-        capacity: AgentCapacity,
         settings: PathBuf,
         env_override: Option<u16>,
     ) -> Self {
@@ -170,7 +168,6 @@ impl McpEndpoint {
             inner: Arc::new(Inner {
                 factory,
                 announce,
-                capacity,
                 streams: EventStreams {
                     feed: ChangeFeed::new(),
                     // The app's windows write without announcing here, so the waits are re-read.
@@ -228,12 +225,13 @@ impl McpEndpoint {
         match TcpListener::bind(address).await {
             Ok(listener) => {
                 tracing::info!(%address, "MCP endpoint listening at /mcp");
+                let door = super::door::router(local_pin_issuer(self.inner.factory.clone()));
                 let app = router(
                     self.inner.factory.clone(),
                     self.inner.announce.clone(),
-                    self.inner.capacity.clone(),
                     self.inner.streams.clone(),
-                );
+                )
+                .merge(door);
                 running.server = Some(tokio::spawn(async move {
                     if let Err(error) = axum::serve(listener, app).await {
                         tracing::error!(error = %error, "MCP endpoint stopped");
@@ -266,4 +264,25 @@ impl McpEndpoint {
         write_port_setting(&self.inner.settings, port)?;
         Ok(self.restart().await)
     }
+}
+
+/// The PIN door's issuer over the local database: a PIN from the core, committed.
+fn local_pin_issuer(factory: SessionFactory) -> super::door::PinIssuer {
+    Arc::new(move || {
+        let factory = factory.clone();
+        Box::pin(async move {
+            let mut db = factory
+                .begin()
+                .await
+                .map_err(crate::error::WireError::from_error)?;
+            let pin =
+                crate::agents::service::issue_pin(&mut db, chrono::Local::now().naive_local())
+                    .await
+                    .map_err(crate::error::WireError::from_error)?;
+            db.commit()
+                .await
+                .map_err(crate::error::WireError::from_error)?;
+            Ok(pin)
+        })
+    })
 }

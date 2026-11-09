@@ -231,7 +231,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   </div>
   <div class="graph-wrap">
     <div class="diagram graph-scroll">
-      <svg id="dgraph" viewBox="0 0 1260 758" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
+      <svg id="dgraph" viewBox="0 0 1260 810" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
     </div>
     <div class="hint" id="dhint" aria-live="polite">
       <p class="hint-title">Pick a box</p>
@@ -429,7 +429,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>You remember the order yourself, and Start offers things out of turn.</dd>
       <dt>Lives</dt><dd class="where">tasks/mod.rs · mindmap/rules/facts.rs · src/utils/blocked-by.ts</dd></dl></article>
     <article class="card"><h3>Derived blocks</h3>
-      <p class="is">Blocks no one writes: the agent capacity lock on every unfinished Agentic Task, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
+      <p class="is">Blocks no one writes: an Agent at capacity, on the unfinished Agentic Tasks of its Claim, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
       <dl><dt>Why</dt><dd>One mechanism, so filters, badges and the MCP need nothing new for each.</dd>
       <dt>Without</dt><dd>A special filter rule per feature, each one missing a view.</dd>
       <dt>Lives</dt><dd class="where">capacity/rules/blocks.rs · flows/rules/cooldown.rs · tasks/compound.rs</dd></dl></article>
@@ -469,8 +469,13 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dl><dt>Why</dt><dd>A clean, bounded context for an agent, on the same derived board you see.</dd>
       <dt>Without</dt><dd>Agents read everything, or a separate copy that disagrees.</dd>
       <dt>Lives</dt><dd class="where">mcp/ · access/ · capacity/</dd></dl></article>
+    <article class="card"><h3>Agents and Claims</h3>
+      <p class="is">An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset.</p>
+      <dl><dt>Why</dt><dd>Several agents can work one board without overlapping, each in a bounded context, and one agent reaching its plan limit blocks only its own work.</dd>
+      <dt>Without</dt><dd>Every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one.</dd>
+      <dt>Lives</dt><dd class="where">agents/ · mcp/agents.rs · migration 0101 · ADR 0018</dd></dl></article>
     <article class="card"><h3>The server</h3>
-      <p class="is"><code>arlesh-server</code> serves the board over HTTP, as the first step toward multi-device. It runs the core through the Python bindings and adds no rules of its own. Every request carries a bearer token, which names the client the journal records. It serves the MCP at <code>/mcp</code> too, and holds the database while it runs, as the app does: it will not start while the app or another server holds it, unless forced.</p>
+      <p class="is"><code>arlesh-server</code> serves the board over HTTP, as the first step toward multi-device. It runs the core through the Python bindings and adds no rules of its own. Every request carries a bearer token, which names the client the journal records. It serves the MCP at <code>/mcp</code> too, behind its own connect token, and holds the database while it runs, as the app does: it will not start while the app or another server holds it, unless forced.</p>
       <dl><dt>Why</dt><dd>One copy of the board, reachable from more than one device, with one writer.</dd>
       <dt>Without</dt><dd>The board lives only inside the running app on one machine.</dd>
       <dt>Lives</dt><dd class="where">crates/arlesh-py/python/arlesh/server · arlesh[server]</dd></dl></article>
@@ -546,7 +551,9 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree.", "resources.md#tasks"],
     ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
     ["question", "Agent question waits", 0, 11, "in", "Pending, live agentic waits raised as questions under a Task.", "mcp-server.md#agentic-waits"],
-    ["lock", "Capacity lock", 0, 12, "in", "One app-wide switch meaning agents are at capacity, set from the app or the MCP.", "mcp-server.md#agent-capacity"],
+    ["claim", "Agent Claims", 0, 21, "in", "Each attached Agent's Claim: a subtree, active or paused. Only one active Claim may cover any node.", "agents.md#claims"],
+    ["usage", "Account usage, locks", 0, 22, "in", "The last report of each plan limit window per account, and the manual locks on agents and accounts.", "agents.md#capacity-per-account"],
+    ["agentcap", "Agent at capacity", 1, 22, "dv", "Locked by hand, its account locked, or a window of its account at 100% before its reset. Lifts at the reset by itself.", "agents.md#capacity-per-account"],
     ["clock", "Clock, miss policy", 0, 13, "in", "Window (Archive, Overdue or Owed) or Interval. Decides what a missed iteration becomes and its default due.", "habits.md#clocks"],
     ["cool", "Cooldown", 0, 14, "in", "N units a Window Habit rests after an iteration is done.", "habits.md#cooldown"],
     ["verdict", "Verdict, its window", 0, 15, "in", "A Commitment's Kept, Broken or Unresolved, and how long past its window an answer is still owed.", "resources.md#commitments"],
@@ -566,7 +573,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["resolution", "Resolution", 2, 1.5, "dv", "How a passed window settled an item: Completed if it was done, Missed if unfinished under Archive. Nothing under Keep Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["compound", "Compound status", 2, 9, "dv", "Done when every counted sub-item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived sub-items are not counted, except those archived by finishing.", "resources.md#tasks"],
     ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question beneath it. Never stored; answering returns it to On Agent.", "resources.md#agentic-statuses"],
-    ["capblock", "Capacity block", 2, 12.3, "dv", "While the lock is on, every Task that reads as Agentic and is not Done carries the derived reason Agents at capacity.", "mcp-server.md#agent-capacity"],
+    ["capblock", "Capacity block", 2, 12.3, "dv", "While an Agent is at capacity, every Task in its active Claim that reads as Agentic and is not Done carries the derived reason Agents at capacity. There is no app-wide lock.", "mcp-server.md#agent-capacity"],
 
     ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, a released wait whose window has passed, or set by hand), or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["compblock", "Compound block", 3, 9.6, "dv", "A Compound Task is blocked when every one of its open counted items is blocked. A pending wait or an Unresolved Commitment keeps it unblocked.", "resources.md#tasks"],
@@ -592,7 +599,8 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["timing", "resolution"], ["status", "resolution"], ["exit", "resolution"],
     ["subs", "compound"], ["archived", "compound", true],
     ["agentic", "review"], ["status", "review"], ["question", "review"],
-    ["lock", "capblock"], ["agentic", "capblock"], ["status", "capblock"],
+    ["agentic", "capblock"], ["status", "capblock"],
+    ["usage", "agentcap"], ["now", "agentcap"], ["agentcap", "capblock"], ["claim", "capblock"],
     ["backlog", "archived"], ["gstatus", "archived"], ["status", "archived"], ["resolution", "archived"],
     ["expired", "archived"], ["verdict", "archived"], ["timing", "archived"], ["iter", "archived"],
     ["compound", "compblock"], ["blocked", "compblock", true],

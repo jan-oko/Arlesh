@@ -86,11 +86,20 @@ async fn release(directory: &Path, id: i64) {
         .unwrap();
 }
 
-/// Serves the routes on a free port.
+/// Serves the routes, unscoped, on a free port.
 async fn serve(factory: SessionFactory, streams: EventStreams) -> std::net::SocketAddr {
+    serve_with(factory, streams, false).await
+}
+
+/// Serves the routes on a free port.
+async fn serve_with(
+    factory: SessionFactory,
+    streams: EventStreams,
+    scoped: bool,
+) -> std::net::SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
-    let app = routes(factory, streams);
+    let app = routes(factory, streams, scoped);
     tokio::spawn(async move { axum::serve(listener, app).await });
     address
 }
@@ -291,5 +300,28 @@ async fn a_long_poll_answers_the_moment_a_wait_is_released() {
     assert_eq!(heard["changes"][0]["change"], "released", "{heard}");
     assert_eq!(heard["changes"][0]["deleted"], false);
     assert!(heard["changes"][0]["revision"].as_u64().unwrap() > after);
+    let _ = std::fs::remove_dir_all(directory);
+}
+
+#[tokio::test]
+async fn a_scoped_wait_stream_answers_no_one_without_an_agent_token() {
+    let (factory, directory) = scratch().await;
+    let address = serve_with(factory, EventStreams::default(), true).await;
+
+    let refused = answer(address, "/events/expectations?wait=0").await;
+    let unknown = {
+        let mut stream = request(
+            address,
+            "/events/expectations?wait=0",
+            "X-Arlesh-Agent-Token: nope\r\nConnection: close\r\n",
+        )
+        .await;
+        let mut heard = String::new();
+        stream.read_to_string(&mut heard).await.unwrap();
+        heard
+    };
+
+    assert!(refused.starts_with("HTTP/1.1 401"), "{refused}");
+    assert!(unknown.starts_with("HTTP/1.1 401"), "{unknown}");
     let _ = std::fs::remove_dir_all(directory);
 }

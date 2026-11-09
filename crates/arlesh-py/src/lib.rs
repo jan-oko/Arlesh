@@ -43,7 +43,7 @@ use errors::{raise, NativeError};
 struct NativeDatabase {
     /// Hands out every session a call runs in.
     factory: SessionFactory,
-    /// The database file, for what lives beside it (the agent capacity lock).
+    /// The database file, for what lives beside it (its agents' tables).
     path: Arc<PathBuf>,
     /// The MCP endpoint this database serves, while it serves one.
     serving: Arc<tokio::sync::Mutex<Option<mcp::Serving>>>,
@@ -59,6 +59,15 @@ impl NativeDatabase {
     /// The MCP handler, or the refusal of a read-only database.
     fn mcp(&self) -> PyResult<ArleshMcp> {
         self.mcp.clone().ok_or_else(|| raise(mcp::read_only()))
+    }
+
+    /// The MCP handler for the session `session_id`: bound to the Agent that session attached as.
+    /// A request with no session, or one this process does not know, is an unattached one.
+    fn mcp_for(&self, session_id: Option<&str>) -> PyResult<ArleshMcp> {
+        let binding = session_id
+            .and_then(|id| shared::for_database(&self.path).sessions.get(id))
+            .unwrap_or_default();
+        Ok(self.mcp()?.for_session(binding))
     }
 }
 
@@ -95,7 +104,10 @@ impl NativeDatabase {
 
     /// What the long poll of `GET /events/expectations` answers, as JSON: `{revision, epoch,
     /// changes}`, waiting up to `wait` seconds for a change past `after`.
-    #[pyo3(signature = (agentic, after, epoch, wait))]
+    ///
+    /// `agent_token` is the asking agent's own token: the answer then holds only the waits inside
+    /// its Claim. A token that is no agent's is refused.
+    #[pyo3(signature = (agentic, after, epoch, wait, agent_token=None))]
     fn expectations_poll<'py>(
         &self,
         py: Python<'py>,
@@ -103,20 +115,60 @@ impl NativeDatabase {
         after: Option<u64>,
         epoch: Option<String>,
         wait: Option<u64>,
+        agent_token: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
         let streams = shared::for_database(&self.path).streams();
-        let query = ExpectationsQuery {
+        let mut query = ExpectationsQuery {
             agentic,
             after,
             epoch,
             wait,
+            agent: None,
         };
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            if let Some(token) = agent_token {
+                query.agent = Some(
+                    arlesh_core::mcp::events::agent_of(&factory, &token)
+                        .await
+                        .map_err(|error| raise(arlesh_core::error::WireError::from_error(error)))?
+                        .ok_or_else(|| {
+                            raise(arlesh_core::error::WireError::not_permitted(
+                                "that is not an agent token",
+                            ))
+                        })?,
+                );
+            }
             arlesh_core::mcp::events::poll_answer(&factory, &streams, &query)
                 .await
                 .map_err(|error| raise(arlesh_core::error::WireError::from_error(error)))
         })
+    }
+
+    /// Opens an MCP session and answers its id, which the client sends with every later request.
+    fn mcp_open_session(&self) -> PyResult<String> {
+        shared::for_database(&self.path)
+            .sessions
+            .open()
+            .map_err(|error| {
+                raise(errors::Failure::new(
+                    arlesh_core::error::WireErrorKind::Internal,
+                    error.to_string(),
+                ))
+            })
+    }
+
+    /// Whether `session_id` is a session this process opened and has not forgotten.
+    fn mcp_has_session(&self, session_id: &str) -> bool {
+        shared::for_database(&self.path)
+            .sessions
+            .get(session_id)
+            .is_some()
+    }
+
+    /// Forgets an MCP session. Answers whether there was one.
+    fn mcp_close_session(&self, session_id: &str) -> bool {
+        shared::for_database(&self.path).sessions.close(session_id)
     }
 
     /// Every tool as `tools/list` serves it, as a JSON array.
@@ -137,8 +189,14 @@ impl NativeDatabase {
 
     /// The answer to `initialize` for these `params` (JSON), as `{"result": ...}` or
     /// `{"error": ...}`.
-    fn mcp_initialize<'py>(&self, py: Python<'py>, params: String) -> PyResult<Bound<'py, PyAny>> {
-        let mcp = self.mcp()?;
+    #[pyo3(signature = (params, session_id=None))]
+    fn mcp_initialize<'py>(
+        &self,
+        py: Python<'py>,
+        params: String,
+        session_id: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let mcp = self.mcp_for(session_id.as_deref())?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let params = parse(&params)?;
             Ok(mcp.answer_initialize(params).await.to_string())
@@ -149,15 +207,16 @@ impl NativeDatabase {
     /// `{"result": ...}` or `{"error": ...}`; `protocol_version` is the client's own, from the
     /// request, which decides whether the result names its `resultType`. Runs on this database's own connection, so a write
     /// is journaled under its client.
-    #[pyo3(signature = (name, arguments, protocol_version))]
+    #[pyo3(signature = (name, arguments, protocol_version, session_id=None))]
     fn mcp_call<'py>(
         &self,
         py: Python<'py>,
         name: String,
         arguments: String,
         protocol_version: Option<String>,
+        session_id: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let mcp = self.mcp()?;
+        let mcp = self.mcp_for(session_id.as_deref())?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let arguments = parse(&arguments)?;
             Ok(mcp

@@ -1,7 +1,10 @@
 import { useId, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { useSettingsUndo } from "@/hooks/use-settings-undo";
+import type { SettingsPage } from "@/stores/use-settings-store";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import GeneralPage from "./GeneralPage";
 import MindmapPage from "./MindmapPage";
@@ -17,10 +20,7 @@ import DevicesPage from "./DevicesPage";
 import NotificationsPage from "./NotificationsPage";
 import styles from "./SettingsModal.module.css";
 
-/** The modal's pages, in the order the sidebar lists them. */
-export type SettingsPage =
-  | "general" | "mindmap" | "list" | "steps" | "plan" | "zen" | "windows" | "expectations" | "mcp"
-  | "server" | "devices" | "notifications";
+export type { SettingsPage };
 
 const PAGES: readonly SettingsPage[] = [
   "general", "mindmap", "list", "steps", "plan", "zen", "windows", "expectations", "mcp", "server", "devices",
@@ -45,12 +45,19 @@ interface Props {
  * page like MCP access (now *Agents*). Here every page is always reachable, and the settings themselves are the
  * same stores they always were — this is where they are shown, not how they are kept.
  *
+ * The modal is a fixed frame, a little larger than the content it usually holds and bounded by the
+ * window, and each page scrolls inside it: a long page does not stretch the modal.
+ *
+ * Undo and redo work while it is open (see {@link useSettingsUndo}): what the pages change is
+ * journaled like any board edit.
+ *
  * Keyboard: focus starts on the current page's tab and stays inside the modal; ↑/↓ (and Home/End)
  * move between pages; Escape or the × closes. A nested dialog — the MCP page's node search — takes
  * Escape first, so one press closes one thing.
  */
 export default function SettingsModal({ onClose, onOpenHotkeys, initialPage = "general" }: Props) {
   useInputCapture();
+  const { toast, dismissToast } = useSettingsUndo();
   const { t } = useTranslation("settings");
   const [page, setPage] = useState<SettingsPage>(initialPage);
   const trap = useFocusTrap<HTMLDivElement>();
@@ -139,6 +146,7 @@ export default function SettingsModal({ onClose, onOpenHotkeys, initialPage = "g
           </section>
         </div>
       </div>
+      <AnchoredToast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

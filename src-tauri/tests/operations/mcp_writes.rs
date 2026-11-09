@@ -1245,6 +1245,7 @@ mod agent_waits {
                 poll: Some(std::time::Duration::from_millis(100)),
                 ..EventStreams::default()
             },
+            false,
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

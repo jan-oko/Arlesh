@@ -205,6 +205,88 @@ fn goal_request(parent_type: &str, parent_id: i64, title: &str) -> CreateGoalReq
 }
 
 // ---------------------------------------------------------------------------------------------
+// Claim management is journaled.
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn pausing_a_claim_from_settings_is_one_gesture_that_undo_and_redo_reverse() {
+    use arlesh_lib::agents::model::{AgentAction, AgentId, ClaimStatus};
+    use arlesh_lib::agents::service;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    sqlx::query("INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)")
+        .bind(project_id)
+        .execute(&pool)
+        .await
+        .expect("open the project to the MCP");
+    let now = chrono::Local::now().naive_local();
+    let agent = {
+        let factory = arlesh_lib::database::session::SessionFactory::new(pool.clone());
+        let mut db = factory.begin().await.expect("begin");
+        let pin = service::issue_pin(&mut db, now).await.expect("pin");
+        db.commit().await.expect("commit");
+        let attached = service::attach(
+            &factory,
+            now,
+            service::AttachRequest {
+                credential: service::Credential::Pin(pin.pin),
+                session_uuid: "session".to_owned(),
+                name: Some("writer".to_owned()),
+                account: None,
+            },
+        )
+        .await
+        .expect("attach");
+        let mut db = factory.begin().await.expect("begin");
+        service::claim(
+            &mut db,
+            attached.agent.id,
+            arlesh_lib::access::model::NodeKey::new(
+                arlesh_lib::access::model::NodeTable::Domain,
+                project_id,
+            ),
+            now,
+        )
+        .await
+        .expect("claim");
+        db.commit().await.expect("commit");
+        attached.agent.id
+    };
+    let status = |pool: SqlitePool, agent: AgentId| async move {
+        let paused: bool = sqlx::query_scalar("SELECT claim_paused FROM agents WHERE id = ?")
+            .bind(agent.0)
+            .fetch_one(&pool)
+            .await
+            .expect("read the claim");
+        if paused {
+            ClaimStatus::Paused
+        } else {
+            ClaimStatus::Active
+        }
+    };
+
+    open_gesture(&app).await;
+    arlesh_lib::commands::agents::apply_agent_action(
+        app.handle().clone(),
+        app.state(),
+        agent.0,
+        AgentAction::Pause,
+    )
+    .await
+    .expect("pause");
+    close_gesture(&app).await;
+    assert_eq!(status(pool.clone(), agent).await, ClaimStatus::Paused);
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(status(pool.clone(), agent).await, ClaimStatus::Active);
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(status(pool.clone(), agent).await, ClaimStatus::Paused);
+}
+
+// ---------------------------------------------------------------------------------------------
 // One gesture, reversed and reapplied.
 // ---------------------------------------------------------------------------------------------
 

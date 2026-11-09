@@ -13,6 +13,7 @@ from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.entrypoints.fastapi.routers.backup import MEDIA_TYPE
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
@@ -37,6 +38,7 @@ def backup_server(server_db: Path, tokens: DatabaseTokenStore) -> Iterator[TestC
         board=Board(opener(database), holder(database), force=False),
         tokens=tokens,
         pairs=DatabasePairingStore(database),
+        connect=ConnectTokens(database),
         version="test",
         backup=Backup(database, SECRET),
     )

@@ -39,7 +39,9 @@ whole-database snapshots and `sqlite3session` changesets, and says why neither i
 
 **Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
 the code that regenerates them. The exclusion list is part of the design rather than an
-optimisation, and today it is exactly the journal's own two tables. (Scopes are not rows at all;
+optimisation, and today it is the journal's own two tables, the server's device tokens and pairing
+PINs, and the operational state of the agents — their PINs and failed PINs, the accounts' usage
+reports and the connect token (`undo::EXCLUDED_TABLES`). (Scopes are not rows at all;
 see [*Scopes are derived*](time-scopes.md).) Everything else on the board is journaled, including the link and dependency tables that a
 foreign-key cascade removes without any command naming them.
 
@@ -161,6 +163,33 @@ lists them without being told twice, and they are suppressed exactly as every ot
 is — inside a text field, where Ctrl+Z means the field undo the browser already gives, and behind
 any modal or inline editor, through the same input-capture registry. `Ctrl+Y` is a hidden alias of
 the redo binding: dispatchable, but not a second cheat-sheet row.
+
+## Agents and Claims
+
+Claim management is undoable (the user, hand-testing #196, 2026-11-08). The `agents` and
+`agent_accounts` tables are **journaled** (migration 0102), so every change the user makes in
+Settings → Agents — pausing, resuming or releasing a Claim, locking or unlocking an agent or an
+account, removing an agent — goes through the ordinary command door, is one Gesture on the user's
+stack, and Ctrl+Z / Ctrl+Shift+Z reverse and reapply it. The Settings modal holds the keyboard, so
+it carries its own undo binding (the same Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y) that is active while
+it is open and defers to the browser's own undo inside an input, a textarea or an editable field.
+After an undo or redo the Agents section reads again.
+
+*Why rows rather than a command.* The journal is trigger-written row images, so putting the two
+tables in it costs two sets of triggers and no new mechanism; a per-command inverse is the
+obligation ADR 0006 turned down. A removed agent comes back with its row, and its token digest
+sits in the session-scoped journal only (it is truncated at launch), never in a new place.
+
+*What stays out.* PINs, failed PINs, usage reports and the connect token are operational state, not
+choices to take back, and stay excluded.
+
+*Agents' own writes.* An agent's attach, claim, lock and usage report are journaled under source
+`mcp` like its board writes, and stay off every stack (below).
+
+*Overlap after an undo.* Undo restores the row as it was, which can leave two active Claims
+overlapping when another agent claimed the subtree meanwhile. The Claim rules already tolerate it:
+the older Claim keeps its place and the younger is shadowed until the overlap goes
+([Agents](agents.md)), so undo needs no check of its own.
 
 ## Sources, and not undoing undo
 

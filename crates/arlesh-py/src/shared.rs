@@ -1,5 +1,5 @@
-//! What every open of one database file in this process shares: the agent capacity lock and the
-//! change feed.
+//! What every open of one database file in this process shares: the change feed and the MCP
+//! sessions.
 //!
 //! The server opens the same file several times — a read-only open for the reads, and one
 //! write-open per client — and each client's write-open serves that client's MCP endpoint. They
@@ -14,18 +14,16 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use arlesh_core::{
-    capacity::AgentCapacity,
-    mcp::events::{ChangeFeed, EventStreams, WaitLogs},
+use arlesh_core::mcp::{
+    events::{ChangeFeed, EventStreams, WaitLogs},
+    session::Sessions,
 };
 
 /// The board's revision: bumped once for every committed write, from any open of the file.
 pub(crate) type Changes = ChangeFeed;
 
-/// The capacity lock and the change feed of one database file.
+/// The change feed, wait logs and MCP sessions of one database file.
 pub(crate) struct Shared {
-    /// The agent capacity lock, kept beside the database as the app keeps it.
-    pub(crate) capacity: AgentCapacity,
     /// Held across every write's Gesture — open, write, close — so two clients' writes never
     /// share the one ambient Gesture the journal stamps from. See [`crate::request::run`].
     pub(crate) writes: tokio::sync::Mutex<()>,
@@ -33,6 +31,9 @@ pub(crate) struct Shared {
     pub(crate) changes: Changes,
     /// What the long poll of `/events/expectations` answers from, beside the revision.
     pub(crate) logs: WaitLogs,
+    /// The MCP sessions of this file, by the id `/mcp` issued: each is bound to an Agent once it
+    /// attaches. In memory only, so a restart forgets them and the clients attach again.
+    pub(crate) sessions: Sessions,
 }
 
 impl Shared {
@@ -58,17 +59,11 @@ pub(crate) fn for_database(path: &Path) -> Arc<Shared> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     Arc::clone(entries.entry(key).or_insert_with(|| {
         let changes = Changes::new();
-        let notified = changes.clone();
-        let capacity = AgentCapacity::open(
-            crate::mcp::capacity_file(path),
-            // The lock is part of the board as drawn, so a change to it is a change to the board.
-            Arc::new(move |_state| notified.bump()),
-        );
         Arc::new(Shared {
-            capacity,
             writes: tokio::sync::Mutex::new(()),
             changes,
             logs: WaitLogs::default(),
+            sessions: Sessions::default(),
         })
     }))
 }

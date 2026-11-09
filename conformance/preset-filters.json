@@ -1828,7 +1828,7 @@
     },
     {
       "name": "agents at capacity: start drops every agentic task not done, with its subtree",
-      "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
+      "spec": "agents.md, Capacity per account — while an agent is at capacity, every Agentic Task not yet Done in its Claim is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
       "filter": {
         "preset": "start"
       },

@@ -1,5 +1,5 @@
 """The routes the desktop app's Client mode needs beyond the writes: the board's lists and
-what-ifs, the Flow reads, the shared capacity lock and MCP roots, ``/health`` and
+what-ifs, the Flow reads, the agents and MCP roots, ``/health`` and
 ``/events/changes``."""
 
 from __future__ import annotations
@@ -149,16 +149,17 @@ def test_infos_list(server: TestClient, create: Create, domain: int, new_task: N
     assert [listed["id"] for listed in server.get("/infos").json()] == [info]
 
 
-def test_the_capacity_lock_is_set_and_read_back(
-    server: TestClient, domain: int, new_task: NewTask
-) -> None:
-    assert server.get("/capacity").json() == {"at_capacity": False}
+def test_an_account_lock_is_set_and_listed(server: TestClient) -> None:
+    assert server.get("/agents").json() == {"agents": [], "accounts": []}
 
-    answered = server.put("/capacity", json={"at_capacity": True})
+    locked = server.put("/agent-accounts/lock", json={"label": "work", "locked": True})
 
-    assert answered.json() == {"at_capacity": True}
-    assert server.get("/capacity").json() == {"at_capacity": True}
-    server.put("/capacity", json={"at_capacity": False})
+    assert locked.status_code == 204
+    assert server.get("/agents").json()["accounts"] == [
+        {"label": "work", "locked": True, "windows": []}
+    ]
+    server.put("/agent-accounts/lock", json={"label": "work", "locked": False})
+    assert server.get("/agents").json()["accounts"][0]["locked"] is False
 
 
 def test_mcp_roots_are_added_listed_and_removed(server: TestClient, domain: int) -> None:

@@ -40,33 +40,38 @@ use sources::BoardSources;
 /// seeing an empty Habit.
 #[tracing::instrument(skip(db))]
 pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
-    load_within(db, now, Horizon::default(), false).await
+    load_within(
+        db,
+        now,
+        Horizon::default(),
+        crate::capacity::blocks::Blocking::default(),
+    )
+    .await
 }
 
-/// [`load`], blocked by the agent capacity lock when `at_capacity`: every Agentic Task not yet
-/// Done carries its derived reason (see [`crate::capacity::blocks`]). What every reader of
+/// [`load`], blocked by the agents at capacity: every Agentic Task not yet Done that they cover carries its derived reason (see [`crate::capacity::blocks`]). What every reader of
 /// "blocked" loads — the app's board, the MCP's snapshot and lookups; [`load`] is for the readers
 /// that take statuses, rows or lifecycles off the board and never its blocks.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip(db, blocking))]
 pub async fn load_blocked(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
-    at_capacity: bool,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
-    load_within(db, now, Horizon::default(), at_capacity).await
+    load_within(db, now, Horizon::default(), blocking).await
 }
 
 /// [`load`], deriving the Habits' future occurrences as far as `horizon` names — the Plan View
-/// filling a month that has not begun — and blocked by the agent capacity lock when `at_capacity`.
-#[tracing::instrument(skip(db))]
+/// filling a month that has not begun — and blocked as [`load_blocked`] is.
+#[tracing::instrument(skip(db, blocking))]
 pub async fn load_within(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
     horizon: Horizon,
-    at_capacity: bool,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
     let sources = BoardSources::read(db).await?;
-    rules::derive_board(sources, now, horizon, at_capacity)
+    rules::derive_board(sources, now, horizon, blocking)
 }
 
 /// The **whole board** a host shows, at wall-clock `now`: [`load_blocked`], plus what is derived
@@ -74,13 +79,13 @@ pub async fn load_within(
 ///
 /// Which nodes the MCP can see is a badge, not the board, so a failure to read the access grants
 /// still loads: the facts are then derived without it.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(skip(db, blocking))]
 pub async fn board(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
-    at_capacity: bool,
+    blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
-    let mut load = load_blocked(db, now, at_capacity).await?;
+    let mut load = load_blocked(db, now, blocking).await?;
     let access = match crate::access::access_map(db).await {
         Ok(map) => Some(map.effective()),
         Err(error) => {

@@ -1,6 +1,21 @@
 import { expect, test } from 'claude-code/testing'
 
 import { KEEP_MS, forget, prune, remember, revive, type Entry } from './book'
+import {
+  agentName,
+  attachArguments,
+  attachedFrom,
+  contextBlock,
+  doorPort,
+  doorUrl,
+  isLoopback,
+  isNotAttached,
+  parseClaim,
+  parsePin,
+  reportedFrom,
+  shouldReport,
+  usageWindows,
+} from './attach'
 import { expandVariables, mainCheckoutOf, originOf, pickServer, projectServers } from './config'
 import { nextWait, parsePoll, pollUrl } from './poll'
 import { currentFrom, currentFromChange, waitsFrom } from './results'
@@ -213,4 +228,91 @@ test('a change for a deleted wait is gone, and one without ids is ignored', () =
   expect(currentFromChange(change)).toEqual({ waitId: 'w', state: null })
   expect(currentFromChange({})).toBeUndefined()
   expect(currentFromChange(undefined)).toBeUndefined()
+})
+
+test('the PIN door is the local endpoint itself, else the desktop app on its loopback port', () => {
+  expect(isLoopback('http://127.0.0.1:4747/mcp')).toBe(true)
+  expect(isLoopback('http://localhost:4747')).toBe(true)
+  expect(isLoopback('https://board.example.org')).toBe(false)
+  expect(doorUrl('http://127.0.0.1:4747', undefined)).toBe('http://127.0.0.1:4747/agents/pin')
+  expect(doorUrl('https://board.example.org', undefined)).toBe('http://127.0.0.1:4747/agents/pin')
+  expect(doorUrl('https://board.example.org', 4800)).toBe('http://127.0.0.1:4800/agents/pin')
+  expect(doorPort('4800')).toBe(4800)
+  expect(doorPort('nope')).toBeUndefined()
+  expect(doorPort('70000')).toBeUndefined()
+})
+
+test('a door answers a PIN, and anything else is none', () => {
+  expect(parsePin('{"pin":"12345678","expires_at":"2026-11-07T10:05:00"}')).toBe('12345678')
+  expect(parsePin('{"error":1}')).toBeUndefined()
+  expect(parsePin('<html>')).toBeUndefined()
+})
+
+test('ARLESH_CLAIM names a node by type and id', () => {
+  expect(parseClaim('project:ARL')).toEqual({ node_type: 'project', node_id: 'ARL' })
+  expect(parseClaim('goal:9a1')).toEqual({ node_type: 'goal', node_id: '9a1' })
+  expect(parseClaim('ARL')).toBeUndefined()
+  expect(parseClaim(':x')).toBeUndefined()
+  expect(parseClaim(undefined)).toBeUndefined()
+})
+
+test('the agent is named after the project directory and the start of the session id', () => {
+  expect(agentName('/work/My Project/', 'ab12-cd34')).toBe('My-Project-ab12')
+  expect(agentName('/', 'zz')).toBe('session-zz')
+})
+
+test('a PIN attach names the agent, a token attach only the session and the token', () => {
+  const subtree = { node_type: 'project', node_id: 'ARL' }
+  expect(attachArguments({ sessionId: 's', pin: '1', name: 'n', account: 'a', subtree })).toEqual({
+    operation: 'attach', session_id: 's', pin: '1', name: 'n', account: 'a', subtree,
+  })
+  expect(attachArguments({ sessionId: 's', token: 't', name: 'n', account: 'a', subtree })).toEqual({
+    operation: 'attach', session_id: 's', token: 't',
+  })
+})
+
+test('an attach answer gives the name, the token and the claim', () => {
+  const answer = {
+    structuredContent: {
+      agent: { name: 'arl-ab12', claim: { root: { node_kind: 'goal', node_id: 10 }, status: 'active' } },
+      token: 'abc',
+      claim_refused: 'overlaps',
+    },
+  }
+  expect(attachedFrom(answer)).toEqual({ name: 'arl-ab12', token: 'abc', claim: 'goal 10', claimRefused: 'overlaps' })
+  expect(attachedFrom({ isError: true, content: [] })).toBeUndefined()
+})
+
+test('only the not-attached refusal triggers a new attach', () => {
+  const refusal = { kind: 'not_permitted', message: 'this session is not attached: call arlesh_agents.attach' }
+  expect(isNotAttached(JSON.stringify(refusal))).toBe(true)
+  expect(isNotAttached({ structuredContent: refusal })).toBe(true)
+  expect(isNotAttached(JSON.stringify({ kind: 'not_permitted', message: 'outside the roots' }))).toBe(false)
+  expect(isNotAttached('{"ok":1}')).toBe(false)
+})
+
+test('usage is reported when a percent moves a whole point, a window changes, or five minutes pass', () => {
+  const limits = [{ kind: 'five_hour', percentUsed: 40, resetsAt: '2026-11-07T14:00:00Z' }]
+  const before = reportedFrom(limits, 0)
+
+  expect(usageWindows(limits)).toEqual([{ kind: 'five_hour', percent_used: 40, resets_at: '2026-11-07T14:00:00Z' }])
+  expect(shouldReport(undefined, limits, 0)).toBe(true)
+  expect(shouldReport(before, limits, 1000)).toBe(false)
+  expect(shouldReport(before, [{ ...limits[0]!, percentUsed: 40.5 }], 1000)).toBe(false)
+  expect(shouldReport(before, [{ ...limits[0]!, percentUsed: 41 }], 1000)).toBe(true)
+  expect(shouldReport(before, limits, 5 * 60 * 1000)).toBe(true)
+  expect(shouldReport(before, [...limits, { kind: 'seven_day', percentUsed: 1, resetsAt: 'x' }], 1000)).toBe(true)
+  expect(shouldReport(undefined, [{ kind: 'five_hour', percentUsed: 5 }], 0)).toBe(false)
+})
+
+test('the context block says whether the session is attached and how a claim works, briefly', () => {
+  const attached = contextBlock({ kind: 'attached', name: 'arl-ab12', claim: 'goal 10', automatic: true })
+  expect(attached).toContain('attached automatically as arl-ab12, claim: goal 10')
+  expect(attached).toContain('arlesh_agents.claim')
+  expect(attached).toContain('whole view')
+  expect(attached.length).toBeLessThan(500)
+  expect(contextBlock({ kind: 'attached', name: 'n', claim: undefined, automatic: true })).toContain('no claim yet')
+  const waiting = contextBlock({ kind: 'unattached', reason: 'no PIN door answered' })
+  expect(waiting).toContain('Settings → Agents')
+  expect(waiting).toContain('arlesh_agents.attach')
 })

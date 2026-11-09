@@ -24,8 +24,8 @@ import { parsePersistedTab } from "@/stores/tab-persistence";
  * move does. See `utils/tab-drag`.
  *
  * All three are wrapped here rather than called from a hook, so `@tauri-apps/api/event` has one door
- * the way `invoke` has one in `src/api/gesture.ts`. Another domain's event (the agent capacity lock,
- * `src/api/agent-capacity.ts`) comes through the same door, {@link listenHere}.
+ * the way `invoke` has one in `src/api/gesture.ts`. Another domain's event (the agents' change,
+ * `src/api/agents.ts`) comes through the same door, {@link listenHere}.
  */
 
 /** The backend's event name. Must match `BOARD_CHANGED` in `src-tauri/src/board.rs`. */

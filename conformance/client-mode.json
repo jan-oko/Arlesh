@@ -345,11 +345,17 @@
     "duplicate_flow_item": [
       "POST /flow-items/{item_type}/{id}/duplicate"
     ],
-    "agent_capacity": [
-      "GET /capacity"
+    "list_agents": [
+      "GET /agents"
     ],
-    "set_agent_capacity": [
-      "PUT /capacity"
+    "issue_agent_pin": [
+      "POST /agents/pins"
+    ],
+    "apply_agent_action": [
+      "POST /agents/{id}/action"
+    ],
+    "set_agent_account_locked": [
+      "PUT /agent-accounts/lock"
     ],
     "mcp_access_catalogue": [
       "GET /mcp-access/catalogue"

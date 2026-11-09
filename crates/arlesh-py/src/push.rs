@@ -2,7 +2,7 @@
 //! table is (see [`crate::tokens`] for why a second copy of SQLite must not touch the file).
 //!
 //! The rules are the core's (`arlesh_core::push::rules`); a call here gathers what they need — the
-//! derived board at `now`, the agent capacity lock, the devices and what each was told — runs them
+//! derived board at `now`, the agents at capacity, the devices and what each was told — runs them
 //! and writes what the caller asks. The server sends nothing from here: it asks what is owed
 //! (`plan`), sends it, and records what the push service accepted (`record`).
 
@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 use crate::{
     errors::{Failure, Raised},
-    request::{at_capacity, now},
+    request::now,
     tokens::factory_for,
 };
 
@@ -58,7 +58,7 @@ pub(crate) fn run(path: &Path, request: &str) -> Result<String, Raised> {
     let answer = runtime.block_on(async {
         let factory = factory_for(path).await?;
         let mut db = factory.begin().await.map_err(WireError::from_error)?;
-        let answer = dispatch(&mut db, path, request).await?;
+        let answer = dispatch(&mut db, request).await?;
         db.commit().await.map_err(WireError::from_error)?;
         Ok::<Value, Raised>(answer)
     })?;
@@ -67,7 +67,6 @@ pub(crate) fn run(path: &Path, request: &str) -> Result<String, Raised> {
 
 async fn dispatch(
     db: &mut arlesh_core::database::session::Db<arlesh_core::database::session::Transactional>,
-    path: &Path,
     request: Request,
 ) -> Result<Value, WireError> {
     Ok(match request {
@@ -76,11 +75,9 @@ async fn dispatch(
             fcm_token,
             now: at,
         } => {
-            let capacity = at_capacity(path).await;
-            let new =
-                push::register_device(db, &client, &fcm_token, at.unwrap_or_else(now), capacity)
-                    .await
-                    .map_err(WireError::from_error)?;
+            let new = push::register_device(db, &client, &fcm_token, at.unwrap_or_else(now))
+                .await
+                .map_err(WireError::from_error)?;
             json!(new)
         }
         Request::Unregister { client } => json!(db
@@ -90,8 +87,7 @@ async fn dispatch(
             .map_err(WireError::from_error)?),
         Request::Devices => json!(db.push().devices().await.map_err(WireError::from_error)?),
         Request::Plan { now: at } => {
-            let capacity = at_capacity(path).await;
-            json!(push::plan_all(db, at.unwrap_or_else(now), capacity)
+            json!(push::plan_all(db, at.unwrap_or_else(now))
                 .await
                 .map_err(WireError::from_error)?)
         }

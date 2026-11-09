@@ -1,5 +1,6 @@
-//! The agent capacity lock as a **derived block**: while it is on, every Agentic Task not yet Done
-//! is blocked, by a reason no one wrote and no one can remove but by clearing the lock.
+//! Agent capacity as a **derived block**: an Agentic Task not yet Done inside the Claim of an agent
+//! at capacity is blocked, by a reason no one wrote and no one can remove but by the agent leaving
+//! capacity (its lock cleared, or its account's limit resetting).
 //!
 //! This is the one derivation. The board load runs it ([`crate::mindmap::load_blocked`]) and adds
 //! the reasons to the load's own `block_reasons` — before a Compound Task's own derived block reads
@@ -11,6 +12,7 @@
 use std::collections::HashMap;
 
 use crate::{
+    access::model::NodeKey,
     block_reasons::model::{BlockReason, DerivedBlock},
     domains::model::Domain,
     mindmap::model::MindmapLoad,
@@ -24,6 +26,30 @@ mod tests;
 /// The reason's text, for a reader that has no words of its own for it — an agent. The app draws
 /// its own, translated, off [`DerivedBlock::AgentCapacity`].
 pub const AGENT_CAPACITY_REASON: &str = "Agents at capacity";
+
+/// What the capacity blocks cover: the subtrees of the agents that are at capacity (each agent's
+/// Claim).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Blocking {
+    /// Roots whose subtrees' Agentic Tasks not yet Done are blocked: the Claims of agents at
+    /// capacity.
+    pub subtrees: Vec<NodeKey>,
+}
+
+impl Blocking {
+    /// Whether nothing is blocked.
+    pub fn is_none(&self) -> bool {
+        self.subtrees.is_empty()
+    }
+
+    /// The keys of the subtree roots, spelled as the load's keys are (`task-12`, `domain-1`).
+    fn subtree_keys(&self) -> std::collections::HashSet<Key> {
+        self.subtrees
+            .iter()
+            .map(|root| format!("{}-{}", root.node_kind.as_str(), root.node_id))
+            .collect()
+    }
+}
 
 /// A node on the load, keyed the way the frontend keys it: `task-12`, `goal-3`, `domain-1`.
 type Key = String;
@@ -126,13 +152,35 @@ fn reads_agentic(links: &HashMap<Key, Link>, key: &str) -> bool {
     false
 }
 
-/// The Tasks the lock blocks among `rows`: every one that reads as Agentic and is not Done.
-pub fn blocked_tasks(rows: Rows<'_>) -> Vec<NodeId> {
+/// Whether the node at `key` is at or below one of `roots`.
+fn within(links: &HashMap<Key, Link>, key: &str, roots: &std::collections::HashSet<Key>) -> bool {
+    let mut cursor = Some(key);
+    // A parent chain is a tree; the bound only stops a corrupt board from looping forever.
+    for _ in 0..=links.len() {
+        let Some(current) = cursor else {
+            return false;
+        };
+        if roots.contains(current) {
+            return true;
+        }
+        cursor = links.get(current).and_then(|link| link.parent.as_deref());
+    }
+    false
+}
+
+/// The Tasks the capacity blocks cover among `rows`: every one that reads as Agentic and is not
+/// Done, and lies inside the Claim of an agent at capacity.
+pub fn blocked_tasks(rows: Rows<'_>, blocking: &Blocking) -> Vec<NodeId> {
+    if blocking.is_none() {
+        return Vec::new();
+    }
     let links = links(rows);
+    let roots = blocking.subtree_keys();
     rows.tasks
         .iter()
         .filter(|task| !task.status.is_done())
         .filter(|task| reads_agentic(&links, &format!("task-{}", task.id)))
+        .filter(|task| within(&links, &format!("task-{}", task.id), &roots))
         .map(|task| task.id.clone())
         .collect()
 }
@@ -140,8 +188,8 @@ pub fn blocked_tasks(rows: Rows<'_>) -> Vec<NodeId> {
 /// The lock's block: one derived reason per Task it blocks among `rows`, numbered on after the
 /// Task's own reasons in `existing`. The board load adds these before anything else reads
 /// "blocked" — a Compound Task's own derived block included.
-pub fn derive(rows: Rows<'_>, existing: &[BlockReason]) -> Vec<BlockReason> {
-    blocked_tasks(rows)
+pub fn derive(rows: Rows<'_>, existing: &[BlockReason], blocking: &Blocking) -> Vec<BlockReason> {
+    blocked_tasks(rows, blocking)
         .into_iter()
         .map(|id| {
             let own = existing
@@ -160,12 +208,12 @@ pub fn derive(rows: Rows<'_>, existing: &[BlockReason]) -> Vec<BlockReason> {
         .collect()
 }
 
-/// Adds the lock's block to a finished `load` when `at_capacity`. Nothing, when the lock is off.
-/// The board load itself derives it through [`derive`]; this is for a load already in hand.
-pub fn apply(load: &mut MindmapLoad, at_capacity: bool) {
-    if !at_capacity {
+/// Adds the capacity blocks to a finished `load`. Nothing, when nothing is blocked.
+/// The board load itself derives them through [`derive`]; this is for a load already in hand.
+pub fn apply(load: &mut MindmapLoad, blocking: &Blocking) {
+    if blocking.is_none() {
         return;
     }
-    let reasons = derive(Rows::of(load), &load.block_reasons);
+    let reasons = derive(Rows::of(load), &load.block_reasons, blocking);
     load.block_reasons.extend(reasons);
 }

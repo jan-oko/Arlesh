@@ -31,9 +31,9 @@ from arlesh.server.entrypoints.fastapi.revision import (
     RevisionHeadersMiddleware,
 )
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
+from arlesh.server.entrypoints.fastapi.routers.agents import AgentAccountsRouter, AgentsRouter
 from arlesh.server.entrypoints.fastapi.routers.backup import BackupRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
-from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
@@ -51,11 +51,16 @@ from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, Scopes
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.undo import UndoRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
-from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
+from arlesh.server.entrypoints.fastapi.security_scheme import (
+    MCP_CLIENT,
+    BearerTokenSecurityScheme,
+    ConnectTokenSecurityScheme,
+)
 from arlesh.server.entrypoints.mcp.router import ExpectationsRouter, McpRouter
 from arlesh.server.ports.pairing.pairing_store import PairingStore
 from arlesh.server.ports.push.push_sender import PushSender
 from arlesh.server.ports.push.push_store import PushStore
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -80,14 +85,18 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **Every answer** carries `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the board's revision (the
   one `/events/changes` sends) and the run of the server it counts in. Answers over 1 KB are
   gzipped when the client accepts it; the event streams never are.
+* **`/mcp`** is Arlesh's MCP endpoint (Streamable HTTP with sessions: `initialize` answers an
+  `Mcp-Session-Id`; `POST` a JSON-RPC message with it, get JSON). It takes the **connect token**
+  (`arlesh-server connect-token`), not a device token. A session is unattached until its agent
+  attaches with a one-time PIN (`POST /agents/pins`, signed in), and then sees only its Claim.
+* **`/agents`** lists the agents and accounts, issues PINs and changes an agent by hand (pause,
+  resume, release, lock, remove), behind a device token.
 * **`PUT /devices/current/push`** registers the asking device's FCM token, so the server can
-  notify it (an agent's question, a Task Overdue, a task generated, the capacity lock set or
-  cleared); **`DELETE`** drops it, and revoking the device does. **`GET /push`** says whether the
+  notify it (an agent's question, a Task Overdue, a task generated, an agent put at capacity or
+  freed); **`DELETE`** drops it, and revoking the device does. **`GET /push`** says whether the
   server has FCM credentials. Without them nothing is sent.
 * **`GET /backup`** exists only when the server has `ARLESH_BACKUP_TOKEN`: a consistent SQLite
   snapshot, for the administrator, behind that secret (a device's token does not open it).
-* **`/mcp`** is Arlesh's MCP endpoint (Streamable HTTP, stateless: `POST` a JSON-RPC message, get
-  JSON), behind the same token: an agent's writes there are journaled under the token's client.
 """
 
 
@@ -118,8 +127,6 @@ class AppRouter(APIRouter):
         self.include_router(HealthRouter(version), prefix="/health")
         self.include_router(BoardsRouter(*routed, tag="board"), prefix="/board")
         self.include_router(EventsRouter(*routed, tag="events"), prefix="/events/changes")
-        self.include_router(ExpectationsRouter(board), prefix="/events/expectations")
-        self.include_router(CapacityRouter(*routed, tag="capacity"), prefix="/capacity")
         self.include_router(McpAccessRouter(*routed, tag="mcp-access"), prefix="/mcp-access")
         self.include_router(UndoRouter(*routed, tag="undo"))
         self.include_router(GesturesRouter(*routed, tag="gestures"), prefix="/gestures")
@@ -134,7 +141,8 @@ class AppRouter(APIRouter):
         self.include_router(NodesRouter(*routed, tag="nodes"), prefix="/nodes")
         self.include_router(ScopesRouter(), prefix="/scopes")
         self.include_router(RulesRouter(), prefix="/rules")
-        self.include_router(McpRouter(board, client_context), prefix="/mcp")
+        self.include_router(AgentsRouter(*routed, tag="agents"), prefix="/agents")
+        self.include_router(AgentAccountsRouter(*routed, tag="agents"), prefix="/agent-accounts")
         self.include_router(DevicesRouter(tokens, pairing, client_context, pushes))
         if notifier is not None:
             self.include_router(PushRouter(notifier, client_context))
@@ -153,6 +161,7 @@ class ArleshServer(FastAPI):
         board: Board,
         tokens: TokenStore,
         pairs: PairingStore,
+        connect: ConnectTokens,
         version: str,
         pushes: PushStore | None = None,
         sender: PushSender | None = None,
@@ -172,6 +181,16 @@ class ArleshServer(FastAPI):
         pairing = Pairing(pairs, tokens)
         # The one route open without a token: how a device without one gets one.
         self.include_router(PairRouter(pairing), prefix="/pair")
+        # Behind the connect token, not a device token: what the agents' sessions connect with.
+        connected = ConnectTokenSecurityScheme(connect)
+        self.include_router(
+            McpRouter(board, MCP_CLIENT, dependencies=[Depends(connected.validate_connect)]),
+            prefix="/mcp",
+        )
+        self.include_router(
+            ExpectationsRouter(board, dependencies=[Depends(connected.validate_attached)]),
+            prefix="/events/expectations",
+        )
         # Open without a device token, behind its own secret; absent without one.
         if backup is not None:
             self.include_router(BackupRouter(backup.database, backup.token), prefix="/backup")

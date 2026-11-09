@@ -78,7 +78,8 @@ test('the poll loop survives the configuration failing to read, and recovers', a
       value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: true }) },
     }
   })
-  on('store.get', () => ({ value: undefined }))
+  // An attached session: the wait stream needs its agent token.
+  on('store.get', () => ({ value: { token: 'placeholder' } }))
   on('session.id', () => ({ value: 's1' }))
 
   await $.session.start({ cwd: '/r', surface: null, isInteractive: false })
