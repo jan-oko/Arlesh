@@ -12,6 +12,10 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ### Added
 - **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.
 
+- **Agents, Claims and capacity per account.** An MCP session now attaches as an agent with a one-time PIN (from Settings -> Agents, or automatically with the arlesh-notify mod) and sees only the subtree it claims; no two agents can hold overlapping active Claims. A Claim lasts until released and can be paused so another agent can take the subtree. Usage is tracked per account: when an account's plan limit is used up only its agents' claimed work reads blocked, and it frees itself at the reset. Agents can also be locked by hand, singly or per account, and Settings -> Agents lists them apart from your devices.
+  On a server, MCP sessions now connect with one connect token (`arlesh-server connect-token issue`) instead of a device token.
+  Changing a Claim or a lock in Settings -> Agents (pause, resume, release, lock, remove) is undoable with Ctrl+Z, and Ctrl+Z works while Settings is open. The status bar's padlock shows whenever any agent is at capacity and opens Settings on that agent.
+
 - **Phone notifications on Android.** The Android app (connected to a server with push set up) registers with Firebase Cloud Messaging and shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, or the agent capacity lock is set or cleared. Tapping one opens its Task. Each event is its own Android notification channel, so you switch each on or off, and set its sound, in Android's notification settings; Settings → Notifications asks for the permission and links there.
 
 - **Phone push notifications (server).** `arlesh-server` can notify a paired phone through Firebase Cloud Messaging when an agent asks a question, a Task becomes Overdue, a task is generated (a Habit occurrence, a wait's check), and when the agent capacity lock is set or cleared. Each event is its own notification channel, so Android's settings switch each on or off.
@@ -316,6 +320,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **Shortcuts no longer fire with extra modifiers held.** A shortcut needs exactly the modifiers it names: **Ctrl+E** no longer opens the editor, **Ctrl+Shift+C/X/V** no longer cut, copy or paste, and **Shift+Tab** no longer creates a child.
 
 ### Removed
+- **The app-wide capacity lock.** The "Agents are at capacity" switch, the `arlesh_capacity` MCP tool and `PUT /capacity` are gone: capacity now belongs to each agent and its account. An agent can lock itself with `arlesh_agents` (`lock` and `unlock`); you can lock an agent or a whole account in Settings -> Agents; and an account whose plan limit is used up blocks only its own agents' claimed work, freeing itself at the reset. An MCP client that still calls `arlesh_capacity` gets "tool not found".
+
 - **The server indicator on the desktop top bar.** The mode (This device or Server, with a dot for reachability) is no longer drawn there; Settings > Server shows it, and the banner still appears when the server cannot be reached.
 
 - **The red exclamation badge for Overdue items.** The amber border alone marks them.
