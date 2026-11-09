@@ -68,6 +68,11 @@ pub(crate) enum Request {
         /// The instant the board is derived at.
         #[serde(default)]
         now: Option<NaiveDateTime>,
+        /// Leave out every object member that is `null`, for a caller that sends the answer on
+        /// as JSON (`GET /board`) rather than reading it into the Python models, which require
+        /// their nullable fields to be present.
+        #[serde(default)]
+        without_nulls: bool,
     },
     /// One stored Task, with what blocks it.
     GetTask {
@@ -879,6 +884,23 @@ fn json(value: impl Serialize) -> Result<Value, WireError> {
     serde_json::to_value(value).map_err(|error| WireError::internal(error.to_string()))
 }
 
+/// `value` with every object member that is `null` left out, so an absent value is absent on the
+/// wire as it is in the models that read it (a `null` for a `bool` or a `Vec` is a failure to the
+/// core, where a missing field is its default). Array items stay, so positions hold.
+pub(crate) fn without_nulls(value: Value) -> Value {
+    match value {
+        Value::Object(members) => Value::Object(
+            members
+                .into_iter()
+                .filter(|(_, member)| !member.is_null())
+                .map(|(name, member)| (name, without_nulls(member)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
+        other => other,
+    }
+}
+
 /// Runs `operation` in one transaction, committing it when it succeeds, and answers its result.
 async fn transaction<T: Serialize>(
     factory: &SessionFactory,
@@ -902,13 +924,17 @@ async fn dispatch(
     request: Request,
 ) -> Result<Value, WireError> {
     match request {
-        Request::Board { now: at } => {
+        Request::Board {
+            now: at,
+            without_nulls: bare,
+        } => {
             let at = at.unwrap_or_else(now);
             transaction(factory, async |db| {
                 let blocking = agents::service::blocking(db, at).await.wired()?;
                 mindmap::board(db, at, blocking).await.wired()
             })
             .await
+            .map(|board| if bare { without_nulls(board) } else { board })
         }
         Request::GetTask { id } => {
             transaction(factory, async |db| {

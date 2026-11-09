@@ -37,11 +37,20 @@ pub(crate) struct Answer {
 
 /// Runs `request` against `backend`.
 pub(crate) async fn run(backend: &dyn Backend, request: Request) -> Result<Answer, WireError> {
-    if let Request::Board { now: at } = request {
+    if let Request::Board {
+        now: at,
+        without_nulls,
+    } = request
+    {
         let load = backend.load_mindmap(at.unwrap_or_else(now)).await?;
         let revision = load.revision.clone();
+        let board = json(load.into_load())?;
         return Ok(Answer {
-            value: json(load.into_load())?,
+            value: if without_nulls {
+                crate::request::without_nulls(board)
+            } else {
+                board
+            },
             revision,
         });
     }
