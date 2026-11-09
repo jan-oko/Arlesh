@@ -299,6 +299,7 @@ class DeviceResolution(IsolatedEnv):
             'case "$*" in\n'
             '  "mdns services") echo "List of discovered mdns services"; '
             'printf "%s\\n" "$FAKE_MDNS" ;;\n'
+            '  "connect "*) printf "%s\\n" "${FAKE_CONNECT:-connected to $2}" ;;\n'
             "  *get-state*) echo device ;;\n"
             "  *get-serialno*) echo SERIAL0002 ;;\n"
             "esac\n"
@@ -342,9 +343,64 @@ class DeviceResolution(IsolatedEnv):
         os.environ["FAKE_MDNS"] = ""
         self.assertEqual(self.resolve("10.0.0.5:5555", ip="10.0.0.5"), "10.0.0.5:5555")
 
+    def test_a_handshake_failure_says_re_pair_with_the_steps(self) -> None:
+        os.environ["FAKE_CONNECT"] = "failed to connect to 192.0.2.11:33691"
+        with self.assertRaises(box.BoxError) as ctx:
+            self.resolve("phone", ip="192.0.2.11")
+        said = str(ctx.exception)
+        self.assertIn("rejected this computer's key", said)
+        self.assertIn("adb pair 192.0.2.11:<pairing port> <code>", said)
+        self.assertIn("Pair device with pairing code", said)
+        self.assertNotIn("Could not reach", said)
+
+    def test_a_refused_connection_keeps_the_generic_message(self) -> None:
+        os.environ["FAKE_CONNECT"] = "failed to connect to '192.0.2.11:33691': Connection refused"
+        with self.assertRaises(box.BoxError) as ctx:
+            self.resolve("phone", ip="192.0.2.11")
+        self.assertIn("Could not reach", str(ctx.exception))
+
+    def test_a_good_connection_is_unaffected(self) -> None:
+        os.environ["FAKE_CONNECT"] = "connected to 192.0.2.11:33691"
+        self.assertEqual(self.resolve("phone", ip="192.0.2.11"), "192.0.2.11:33691")
+
     def test_serial_parsed_from_the_service_name(self) -> None:
         e = box.MdnsEntry("adb-SERIAL0002-xYz1Qw", "1.2.3.4", "1")
         self.assertEqual(e.hardware_serial, "SERIAL0002")
+
+
+class ConnectOutcome(unittest.TestCase):
+    def classify(self, output: str, log_text: str | None = None) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "adb.log"
+            if log_text is not None:
+                log.write_text(log_text)
+            return box.classify_connect(output, log)
+
+    def test_connected(self) -> None:
+        self.assertEqual(self.classify("connected to 192.168.68.111:37000\n"), box.CONNECTED)
+        self.assertEqual(self.classify("already connected to 192.168.68.111:37000\n"), box.CONNECTED)
+
+    def test_a_closed_port_is_refused(self) -> None:
+        out = "failed to connect to '192.168.68.111:37000': Connection refused\n"
+        self.assertEqual(self.classify(out), box.REFUSED)
+
+    def test_a_failure_with_no_reason_is_a_rejected_key(self) -> None:
+        self.assertEqual(self.classify("failed to connect to 192.168.68.111:37000\n"), box.REJECTED)
+        self.assertEqual(self.classify("failed to connect to '192.168.68.111:37000'\n"), box.REJECTED)
+
+    def test_a_failure_with_a_socket_reason_is_not_a_rejected_key(self) -> None:
+        out = "failed to connect to '192.168.68.111:37000': Connection timed out\n"
+        self.assertEqual(self.classify(out, "tls_connection.cpp Handshake failed"), box.UNREACHABLE)
+
+    def test_the_log_is_only_a_fallback_for_an_unexplained_failure(self) -> None:
+        text = "unable to connect to 192.168.68.111:37000: something new\n"
+        self.assertEqual(self.classify(text, "tls_connection.cpp: Handshake failed in SSL_accept"), box.REJECTED)
+        self.assertEqual(self.classify(text, "nothing relevant"), box.UNREACHABLE)
+        self.assertEqual(self.classify(text), box.UNREACHABLE)  # no log at all
+
+    def test_only_the_tail_of_a_large_log_counts(self) -> None:
+        log_text = "Handshake failed\n" + "x" * 40000
+        self.assertEqual(self.classify("failed to connect to h: odd\n", log_text), box.UNREACHABLE)
 
 
 class OriginFixture(IsolatedEnv):
@@ -445,6 +501,40 @@ class Worktrees(OriginFixture):
         with mock.patch.object(box, "note") as note:
             box.ensure_worktree("feature")
         note.assert_not_called()
+
+
+class WorktreeByBranch(OriginFixture):
+    """A worktree made by hand under a folder name that is not the branch's `dir_name`."""
+
+    def test_a_branch_held_by_a_differently_named_folder_is_reused(self) -> None:
+        folder = box.worktrees_dir() / "fix-274"
+        git(self.main, "worktree", "add", "-q", "-b", "feature", str(folder), "origin/feature")
+        self.assertEqual(box.ensure_worktree("feature").resolve(), folder.resolve())
+        self.assertEqual(box.all_names(), ["fix-274"])
+
+    def test_the_instance_name_still_finds_that_worktree(self) -> None:
+        folder = box.worktrees_dir() / "fix-274"
+        git(self.main, "worktree", "add", "-q", "-b", "feature", str(folder), "origin/feature")
+        self.assertEqual(box.worktree_path("feature").resolve(), folder.resolve())
+
+    def test_a_slash_branch_in_a_differently_named_folder_is_reused(self) -> None:
+        folder = box.worktrees_dir() / "round"
+        git(self.main, "worktree", "add", "-q", "-b", "qa/2026-11-round", str(folder), "origin/qa/2026-11-round")
+        self.assertEqual(box.ensure_worktree("qa/2026-11-round").resolve(), folder.resolve())
+
+    def test_a_branch_checked_out_in_the_main_checkout_is_an_error_naming_where(self) -> None:
+        with self.assertRaises(box.BoxError) as ctx:
+            box.ensure_worktree("master")
+        self.assertIn("already checked out at", str(ctx.exception))
+        self.assertIn("outside .claude/worktrees", str(ctx.exception))
+
+    def test_an_unknown_name_is_still_no_worktree(self) -> None:
+        with self.assertRaises(box.BoxError):
+            box.worktree_path("ghost")
+
+    def test_porcelain_parsing_skips_detached_worktrees(self) -> None:
+        text = "worktree /r\nHEAD a\nbranch refs/heads/dev\n\nworktree /r/w\nHEAD b\ndetached\n"
+        self.assertEqual(box.parse_worktree_list(text), {"dev": Path("/r")})
 
 
 class Patching(IsolatedEnv):
@@ -691,66 +781,119 @@ def make_member_artifacts(target: Path, profile: str, name: str, hash_: str) -> 
     return fingerprint
 
 
+CORE = box.Crate("arlesh-core", "crates/arlesh-core")
+APP = box.Crate("arlesh", "src-tauri", ("arlesh-core",))
+
+
 class SharedTargetOwnership(IsolatedEnv):
-    """Worktrees share one cargo target; cargo's fingerprints cannot tell their crates apart."""
+    """Worktrees share one cargo target; cargo's fingerprints cannot tell their crates apart, so
+    each crate's records are kept only when built from this tree's content key."""
 
     def setUp(self) -> None:
         super().setUp()
         self.target = self.tmp / "target"
         self.target.mkdir()
         self.wt_a, self.wt_b = self.tmp / "a", self.tmp / "b"
-        patcher = mock.patch.object(box, "workspace_members", lambda wt: ["arlesh-core", "arlesh"])
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        # What each worktree's crates hash to; a test changes these to change a worktree's content.
+        self.keys: dict[str, dict[str, str | None]] = {
+            "a": {"arlesh-core": "core-1", "arlesh": "app-a"},
+            "b": {"arlesh-core": "core-1", "arlesh": "app-b"},
+        }
+        self.shared = {"a": "shared-1", "b": "shared-1"}
+        for patcher in (
+            mock.patch.object(box, "workspace_crates", lambda wt: {c.name: c for c in (CORE, APP)}),
+            mock.patch.object(box, "content_keys", lambda wt, crates, unkeyed=(): dict(self.keys[wt.name])),
+            mock.patch.object(box, "shared_inputs_key", lambda wt: self.shared[wt.name]),
+            mock.patch.object(box, "note"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.dependency = make_member_artifacts(self.target, "debug", "serde", HASH)
+
+    def fingerprint(self, name: str) -> Path:
+        return self.target / "debug" / ".fingerprint" / f"{name}-{HASH}"
 
     @property
     def core(self) -> Path:
-        return self.target / "debug" / ".fingerprint" / f"arlesh-core-{HASH}"
+        return self.fingerprint("arlesh-core")
 
-    def build(self, wt: Path) -> str:
-        """A cargo run: compiles the crate only where no fingerprint says it is fresh."""
+    def build(self, wt: Path) -> dict[str, str]:
+        """A cargo run: compiles a crate only where no fingerprint says it is fresh."""
         with box.owned_target(wt, self.target):
-            if not self.core.exists():
-                make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
-                (self.core / "lib-x").write_text(f"compiled in {wt.name}")
-            return (self.core / "lib-x").read_text()
+            for name in ("arlesh-core", "arlesh"):
+                if not self.fingerprint(name).exists():
+                    make_member_artifacts(self.target, "debug", name, HASH)
+                    (self.fingerprint(name) / "lib-x").write_text(f"compiled in {wt.name}")
+            return {n: (self.fingerprint(n) / "lib-x").read_text() for n in ("arlesh-core", "arlesh")}
 
     def test_the_first_use_of_a_target_compiles_the_members(self) -> None:
         make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
         (self.core / "lib-x").write_text("unknown origin")
-        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(self.build(self.wt_a)["arlesh-core"], "compiled in a")
 
     def test_the_dependencies_are_never_touched(self) -> None:
         self.build(self.wt_a)
         self.build(self.wt_b)
         self.assertTrue(self.dependency.exists())
 
-    def test_the_same_worktree_building_again_keeps_its_fingerprints(self) -> None:
+    def test_the_same_worktree_building_again_keeps_every_crate(self) -> None:
         self.build(self.wt_a)
-        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(self.build(self.wt_a), {"arlesh-core": "compiled in a", "arlesh": "compiled in a"})
+
+    def test_another_worktree_with_the_same_content_keeps_the_crate_and_rebuilds_the_one_that_differs(self) -> None:
+        self.build(self.wt_a)
+        self.assertEqual(self.build(self.wt_b), {"arlesh-core": "compiled in a", "arlesh": "compiled in b"})
+
+    def test_alternating_worktrees_rebuild_only_what_differs_each_time(self) -> None:
+        got = [self.build(wt)["arlesh"] for wt in (self.wt_a, self.wt_b, self.wt_a, self.wt_b)]
+        self.assertEqual(got, ["compiled in a", "compiled in b", "compiled in a", "compiled in b"])
         self.assertEqual((self.core / "lib-x").read_text(), "compiled in a")
 
-    def test_another_worktree_gets_the_members_rebuilt(self) -> None:
+    def test_a_crate_whose_content_differs_is_rebuilt(self) -> None:
         self.build(self.wt_a)
-        self.assertEqual(self.build(self.wt_b), "compiled in b")
+        self.keys["b"]["arlesh-core"] = "core-2"
+        self.assertEqual(self.build(self.wt_b)["arlesh-core"], "compiled in b")
 
-    def test_alternating_worktrees_rebuild_each_time(self) -> None:
-        got = [self.build(wt) for wt in (self.wt_a, self.wt_b, self.wt_a, self.wt_b)]
-        self.assertEqual(got, ["compiled in a", "compiled in b", "compiled in a", "compiled in b"])
+    def test_a_different_shared_input_drops_every_crate(self) -> None:
+        self.build(self.wt_a)
+        self.shared["b"] = "shared-2"
+        self.assertEqual(self.build(self.wt_b), {"arlesh-core": "compiled in b", "arlesh": "compiled in b"})
 
-    def test_a_build_outside_box_invalidates_the_owner(self) -> None:
+    def test_a_crate_that_cannot_be_keyed_is_rebuilt_every_time(self) -> None:
+        self.keys["a"]["arlesh"] = None
+        self.build(self.wt_a)
+        (self.fingerprint("arlesh") / "lib-x").write_text("stale")
+        self.assertEqual(self.build(self.wt_a), {"arlesh-core": "compiled in a", "arlesh": "compiled in a"})
+        self.assertNotIn("arlesh", box.read_owner(self.target)["crates"])
+
+    def test_a_crate_cargo_did_not_build_keeps_its_old_key(self) -> None:
+        self.build(self.wt_a)
+        with box.owned_target(self.wt_b, self.target):  # builds nothing
+            pass
+        self.assertEqual(box.read_owner(self.target)["crates"]["arlesh-core"]["key"], "core-1")
+        self.assertNotIn("arlesh", box.read_owner(self.target)["crates"])  # dropped, not rebuilt
+
+    def test_records_written_under_another_key_are_not_adopted(self) -> None:
+        self.build(self.wt_a)
+        self.keys["b"]["arlesh-core"] = "core-2"
+        self.build(self.wt_b)
+        self.assertEqual(self.build(self.wt_a)["arlesh-core"], "compiled in a")
+
+    def test_a_build_outside_box_invalidates_that_crate(self) -> None:
         self.build(self.wt_a)
         (self.core / "lib-x").write_text("a cargo run in some other worktree")
-        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(self.build(self.wt_a)["arlesh-core"], "compiled in a")
 
-    def test_a_fresh_check_by_cargo_does_not_invalidate_the_owner(self) -> None:
+    def test_a_fresh_check_by_cargo_does_not_invalidate(self) -> None:
         self.build(self.wt_a)
         (self.core / "invoked.timestamp").write_text("touched")
-        self.assertEqual(self.build(self.wt_a), "compiled in a")
-        self.assertEqual(box.read_owner(self.target)["worktree"], str(self.wt_a.resolve()))
-        (self.core / "lib-x").write_text("kept")
-        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(self.build(self.wt_a)["arlesh-core"], "compiled in a")
+        self.assertEqual(box.read_owner(self.target)["crates"]["arlesh-core"]["key"], "core-1")
+
+    def test_a_record_in_the_old_format_drops_everything(self) -> None:
+        self.build(self.wt_a)
+        (self.target / box.OWNER_FILE).write_text(json.dumps({"worktree": str(self.wt_a), "signature": "x"}))
+        self.assertEqual(self.build(self.wt_a), {"arlesh-core": "compiled in a", "arlesh": "compiled in a"})
 
     def test_a_crate_whose_name_starts_with_a_members_is_left_alone(self) -> None:
         other = make_member_artifacts(self.target, "debug", "arlesh-core-extra", HASH)
@@ -768,13 +911,149 @@ class SharedTargetOwnership(IsolatedEnv):
         with box.owned_target(self.wt_a, self.target):
             self.assertFalse(script.exists())
 
-    def test_a_failed_build_still_records_who_compiled(self) -> None:
+    def test_a_failed_build_still_records_what_cargo_wrote(self) -> None:
         with self.assertRaises(RuntimeError), box.owned_target(self.wt_a, self.target):
             make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
             (self.core / "lib-x").write_text("partial, from a")
             raise RuntimeError("compile error")
-        self.assertEqual(self.build(self.wt_a), "partial, from a")
-        self.assertEqual(self.build(self.wt_b), "compiled in b")
+        self.assertEqual(self.build(self.wt_a)["arlesh-core"], "partial, from a")
+        self.keys["b"]["arlesh-core"] = "core-2"
+        self.assertEqual(self.build(self.wt_b)["arlesh-core"], "compiled in b")
+
+
+class ContentKeys(unittest.TestCase):
+    """The content key of a crate, on a real git repository."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.wt = Path(self._tmp.name).resolve()
+        git(self.wt, "init", "-q")
+        self.write("crates/lib/src/lib.rs", "pub fn f() {}\n")
+        self.write("crates/app/src/main.rs", "fn main() {}\n")
+        self.write("shared/data.txt", "one\n")
+        self.write("Cargo.toml", "[workspace]\n")
+        self.write("Cargo.lock", "lock 1\n")
+        self.commit()
+        self.crates = {
+            "lib": box.Crate("lib", "crates/lib"),
+            "app": box.Crate("app", "crates/app", ("lib",)),
+        }
+
+    def write(self, rel: str, text: str) -> None:
+        path = self.wt / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def commit(self) -> None:
+        git(self.wt, "add", "-A")
+        git(self.wt, "commit", "-qm", "c")
+
+    def keys(self, unkeyed: tuple[str, ...] = ()) -> dict[str, str | None]:
+        return box.content_keys(self.wt, self.crates, unkeyed)
+
+    def changes(self, edit: Any) -> set[str]:
+        before = self.keys()
+        edit()
+        after = self.keys()
+        return {n for n in before if before[n] != after[n]}
+
+    def test_the_same_tree_has_the_same_keys(self) -> None:
+        self.assertEqual(self.keys(), self.keys())
+
+    def test_two_worktrees_with_the_same_content_have_the_same_key(self) -> None:
+        other = self.wt.parent / (self.wt.name + "-b")
+        git(self.wt, "worktree", "add", "-q", str(other), "-b", "other")
+        self.addCleanup(shutil.rmtree, other, True)
+        self.assertEqual(box.content_keys(other, self.crates), self.keys())
+
+    def test_an_uncommitted_edit_changes_that_crate_and_its_dependents_only(self) -> None:
+        self.assertEqual(self.changes(lambda: self.write("crates/lib/src/lib.rs", "pub fn g() {}\n")), {"lib", "app"})
+        self.assertEqual(self.changes(lambda: self.write("crates/app/src/main.rs", "fn main() { }\n")), {"app"})
+
+    def test_a_new_untracked_file_changes_the_key(self) -> None:
+        self.assertEqual(self.changes(lambda: self.write("crates/app/src/new.rs", "x\n")), {"app"})
+
+    def test_a_commit_of_an_edit_already_hashed_is_a_change_only_for_its_crate(self) -> None:
+        self.write("README.md", "docs\n")
+        self.assertEqual(self.changes(self.commit), set())
+
+    def test_a_change_outside_every_crate_changes_no_crate_key(self) -> None:
+        self.assertEqual(self.changes(lambda: self.write("docs/spec.md", "x\n")), set())
+
+    def test_include_str_from_outside_the_crate_is_part_of_the_key(self) -> None:
+        self.write("crates/lib/src/lib.rs", 'const D: &str = include_str!("../../../shared/data.txt");\n')
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("shared/data.txt", "two\n")), {"lib", "app"})
+
+    def test_include_bytes_through_the_manifest_dir_is_part_of_the_key(self) -> None:
+        self.write(
+            "crates/app/src/main.rs",
+            'const D: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../shared/data.txt"));\n',
+        )
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("shared/data.txt", "two\n")), {"app"})
+
+    def test_a_macro_inside_test_code_is_not_part_of_the_key(self) -> None:
+        self.write("crates/app/src/tests.rs", 'const D: &str = include_str!("../../../shared/data.txt");\n')
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("shared/data.txt", "two\n")), set())
+
+    def test_a_macro_path_inside_the_crate_adds_nothing(self) -> None:
+        self.write("crates/lib/src/lib.rs", 'const D: &str = include_str!("data.txt");\n')
+        self.write("crates/lib/src/data.txt", "in\n")
+        self.commit()
+        self.assertIsNotNone(self.keys()["lib"])
+
+    def test_a_symlink_out_of_the_crate_hashes_its_target(self) -> None:
+        (self.wt / "crates/app/migrations").symlink_to("../../shared")
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("shared/data.txt", "two\n")), {"app"})
+
+    def test_sqlx_migrate_through_a_symlink_is_part_of_the_key(self) -> None:
+        self.write("crates/app/src/main.rs", 'static M: Migrator = sqlx::migrate!("./migrations");\n')
+        (self.wt / "crates/app/migrations").symlink_to("../../shared")
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("shared/new.sql", "select 1;\n")), {"app"})
+
+    def test_a_path_that_is_not_a_literal_makes_the_crate_unkeyable(self) -> None:
+        self.write("crates/lib/src/lib.rs", 'include!(concat!(env!("OUT_DIR"), "/gen.rs"));\n')
+        self.commit()
+        keys = self.keys()
+        self.assertIsNone(keys["lib"])
+        self.assertIsNone(keys["app"])  # a crate above an unkeyable one cannot be keyed either
+
+    def test_an_unclosed_macro_makes_the_crate_unkeyable(self) -> None:
+        self.write("crates/lib/src/lib.rs", 'include_str!("a.txt"\n')
+        self.commit()
+        self.assertIsNone(self.keys()["lib"])
+
+    def test_a_tauri_crates_frontend_dist_is_part_of_the_key(self) -> None:
+        self.write("crates/app/tauri.conf.json", json.dumps({"build": {"frontendDist": "../../dist"}}))
+        self.commit()
+        self.assertEqual(self.changes(lambda: self.write("dist/index.html", "<p>x")), {"app"})
+
+    def test_an_unkeyed_directory_is_never_keyed(self) -> None:
+        self.assertEqual(self.keys(("crates/app",))["app"], None)
+        self.assertIsNotNone(self.keys(("crates/app",))["lib"])
+
+    def test_every_shared_input_changes_the_shared_key(self) -> None:
+        before = box.shared_inputs_key(self.wt)
+        self.assertEqual(box.shared_inputs_key(self.wt), before)
+        for rel in ("Cargo.lock", "Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml"):
+            self.write(rel, "changed\n")
+            after = box.shared_inputs_key(self.wt)
+            self.assertNotEqual(after, before, rel)
+            before = after
+
+    def test_the_workspace_crates_come_from_cargo_metadata(self) -> None:
+        meta = {"packages": [
+            {"name": "lib", "manifest_path": str(self.wt / "crates/lib/Cargo.toml"), "dependencies": []},
+            {"name": "app", "manifest_path": str(self.wt / "crates/app/Cargo.toml"), "dependencies": [
+                {"name": "lib", "path": "/x"}, {"name": "serde"}, {"name": "lib2", "path": "/y", "kind": "dev"}]},
+        ]}  # fmt: skip
+        with mock.patch.object(box, "capture", return_value=FakeProc(json.dumps(meta))):
+            self.assertEqual(box.workspace_crates(self.wt), self.crates)
 
 
 class NotificationGrant(unittest.TestCase):
