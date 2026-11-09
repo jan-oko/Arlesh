@@ -58,9 +58,9 @@ from arlesh.server.entrypoints.fastapi.security_scheme import (
 )
 from arlesh.server.entrypoints.mcp.router import ExpectationsRouter, McpRouter
 from arlesh.server.ports.pairing.pairing_store import PairingStore
-from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.push.push_sender import PushSender
 from arlesh.server.ports.push.push_store import PushStore
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\

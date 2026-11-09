@@ -42,9 +42,9 @@ from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
-from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.push.database_push_store import DatabasePushStore
 from arlesh.server.ports.push.fcm_sender import CredentialsError, FcmSender, ServiceAccount
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
@@ -167,7 +167,7 @@ def issue_connect_token(db: Db = None) -> None:
     once, and is shown this once. Put it in the MCP configuration's Authorization header
     (`Bearer <token>`); agents then attach with a PIN."""
     path = _config(database={"path": db}).database.path
-    prepare(path)
+    _tokens(db)
     typer.echo(ConnectTokens(path).issue())
 
 
@@ -175,7 +175,7 @@ def issue_connect_token(db: Db = None) -> None:
 def connect_token_info(db: Db = None) -> None:
     """When the connect token was issued and last used."""
     path = _config(database={"path": db}).database.path
-    prepare(path)
+    _tokens(db)
     info = ConnectTokens(path).info()
     if info is None:
         typer.echo(f"{PROGRAM}: no connect token: run `{PROGRAM} connect-token issue`", err=True)
@@ -188,7 +188,7 @@ def connect_token_info(db: Db = None) -> None:
 def revoke_connect_token(db: Db = None) -> None:
     """Removes the connect token: no session can connect until a new one is issued."""
     path = _config(database={"path": db}).database.path
-    prepare(path)
+    _tokens(db)
     if not ConnectTokens(path).revoke():
         _fail(RuntimeError("there is no connect token"))
 

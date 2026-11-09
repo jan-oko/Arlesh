@@ -21,9 +21,9 @@ from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
-from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.push.database_push_store import DatabasePushStore
 from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
