@@ -22,6 +22,8 @@ from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
+from arlesh.server.ports.push.database_push_store import DatabasePushStore
+from arlesh.server.ports.push.push_sender import PushSender
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
@@ -76,7 +78,9 @@ def connect_token(server_db: Path, tokens: DatabaseTokenStore) -> str:
 def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
     """Builds the server over the test's database, as ``arlesh-server`` does."""
 
-    def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
+    def build(
+        *, force: bool = False, path: Path | None = None, sender: PushSender | None = None
+    ) -> ArleshServer:
         database = path if path is not None else server_db
         return ArleshServer(
             board=Board(opener(database), holder(database), force=force),
@@ -84,6 +88,8 @@ def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
             pairs=DatabasePairingStore(database),
             connect=ConnectTokens(database),
             version="test",
+            pushes=DatabasePushStore(database),
+            sender=sender,
         )
 
     return build

@@ -92,3 +92,51 @@ test('the poll loop survives the configuration failing to read, and recovers', a
   expect(rootCalls).toBeGreaterThan(2)
   expect(fetches).toBeGreaterThan(0)
 })
+
+test('a failing catch-up backs off and warns once, instead of polling every second', async ($, on) => {
+  const clock = mock.clock(on)
+  let fetches = 0
+  const warnings: string[] = []
+  const watched = { waitId: 'w-full', shortId: 'w1', taskShortId: '9a1', status: 'pending', archived: false, seenAt: 0 }
+  on('session.start', () => ({ cwd: '/r' }))
+  on('session.root', () => ({ value: '/r' }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('fs.read', (_, e) =>
+    e.path === '/r/.mcp.json'
+      ? { value: JSON.stringify({ mcpServers: { arlesh: { url: 'http://127.0.0.1:4747/mcp' } } }) }
+      : (() => {
+          throw new Error('no such file')
+        })(),
+  )
+  let finished = false
+  on('http.fetch', async () => {
+    // The mod's loop outlives the test: from here the server holds each poll, as it does.
+    if (finished) await clock.sleep(25_000)
+    fetches += 1
+    return {
+      value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: true }) },
+    }
+  })
+  on('store.get', () => ({ value: finished ? {} : { 'w-full': watched } }))
+  on('session.id', () => ({ value: 's1' }))
+  // No handler for `mcp.call`: the catch-up call fails, as it does when the session's MCP
+  // connection has dropped.
+  on('ui.log', (_, e) => {
+    if (e.to !== 'debug') warnings.push(e.text)
+    return { value: undefined }
+  })
+
+  await $.session.start({ cwd: '/r', surface: null, isInteractive: false })
+  for (let second = 0; second < 60; second += 1) {
+    await clock.advance(1_000)
+    await clock.settle()
+  }
+
+  const polled = fetches
+  finished = true
+  await clock.advance(31_000)
+  await clock.settle()
+  expect(polled).toBeGreaterThan(3)
+  expect(polled).toBeLessThan(10)
+  expect(warnings).toEqual(['cannot reach Arlesh; notifications are paused and it keeps trying.'])
+})

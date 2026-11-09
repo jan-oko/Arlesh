@@ -92,7 +92,7 @@ pub(crate) fn run(path: &Path, request: &str) -> Result<String, Raised> {
     Ok(answer.to_string())
 }
 
-async fn factory_for(path: &Path) -> Result<SessionFactory, Raised> {
+pub(crate) async fn factory_for(path: &Path) -> Result<SessionFactory, Raised> {
     static OPENS: OnceLock<Mutex<HashMap<PathBuf, SessionFactory>>> = OnceLock::new();
     let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let mut opens = OPENS.get_or_init(Mutex::default).lock().await;

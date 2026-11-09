@@ -891,7 +891,7 @@ async fn transaction<T: Serialize>(
 }
 
 /// The local wall clock, as every write the app makes reads it.
-fn now() -> NaiveDateTime {
+pub(crate) fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 

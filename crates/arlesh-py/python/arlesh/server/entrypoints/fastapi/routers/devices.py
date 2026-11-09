@@ -3,6 +3,7 @@ and approve a device that is showing a PIN."""
 
 from __future__ import annotations
 
+import asyncio
 from contextvars import ContextVar
 from datetime import datetime
 
@@ -14,6 +15,7 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
     ERROR_RESPONSES,
 )
 from arlesh.server.entrypoints.fastapi.routers.base import WireRoute
+from arlesh.server.ports.push.push_store import PushStore
 from arlesh.server.ports.tokens.token_store import TokenStore, UnknownClient
 
 
@@ -26,6 +28,8 @@ class Device(BaseModel):
     """When it last used its token (to the minute), or absent if it has not since this was kept."""
     current: bool
     """Whether this is the device asking: the one that cannot be revoked."""
+    push: bool = False
+    """Whether it is registered to be sent push notifications."""
 
 
 class WaitingDevice(BaseModel):
@@ -55,12 +59,17 @@ class DevicesRouter(APIRouter):
     """``/devices`` (behind the token) and ``/pairings`` (the same)."""
 
     def __init__(
-        self, tokens: TokenStore, pairing: Pairing, client_context: ContextVar[str]
+        self,
+        tokens: TokenStore,
+        pairing: Pairing,
+        client_context: ContextVar[str],
+        pushes: PushStore | None = None,
     ) -> None:
         super().__init__(tags=["devices"], responses=ERROR_RESPONSES, route_class=WireRoute)
         self._tokens = tokens
         self._pairing = pairing
         self._client = client_context
+        self._pushes = pushes
         self.get("/devices")(self._list)
         self.delete("/devices/{name}", status_code=204)(self._revoke)
         self.get("/pairings/{pin}")(self._waiting)
@@ -69,12 +78,18 @@ class DevicesRouter(APIRouter):
     async def _list(self) -> list[Device]:
         """Every device holding a token."""
         current = self._client.get()
+        pushing = (
+            {device.client for device in await asyncio.to_thread(self._pushes.devices)}
+            if self._pushes is not None
+            else set()
+        )
         return [
             Device(
                 name=issued.client,
                 created_at=issued.created,
                 last_seen_at=issued.last_seen,
                 current=issued.client == current,
+                push=issued.client in pushing,
             )
             for issued in self._tokens.issued()
         ]

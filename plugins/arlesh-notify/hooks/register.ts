@@ -129,7 +129,7 @@ export const register: Register = (on) => {
         await saveBook($, book)
       })
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not record a wait: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`could not record a wait: ${String(error)}`, { to: 'debug' })
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -225,22 +225,24 @@ async function follow($: Engine): Promise<void> {
       if (!answered.ok) throw new Error(`the server answered ${answered.status}`)
       const answer = parsePoll(answered.text)
       if (answer === undefined) throw new Error('the server answered something else than a poll')
-      backoff = BACKOFF_FIRST_MS
-      failures = 0
       if (answer.reset || cursor === undefined || cursor.epoch !== answer.epoch) {
         await serially(() => catchUp($, connection))
       } else if (answer.changes.length > 0) {
         await serially(() => apply($, answer.changes))
       }
+      // Only now is the round a success: a failed catch-up leaves the cursor unset, and must
+      // back off and count like a failed poll, not reset both and poll again at once.
+      backoff = BACKOFF_FIRST_MS
+      failures = 0
       cursor = { revision: answer.revision, epoch: answer.epoch }
     } catch (error) {
       failures += 1
       try {
         wait = nextWait(wait, error, started === 0 ? Infinity : (await $.clock.now()) - started)
-        $.ui.log(`arlesh-notify: the poll failed: ${String(error)}`, { to: 'debug' })
+        $.ui.log(`the poll failed: ${String(error)}`, { to: 'debug' })
         if (failures === SURFACE_AFTER) {
           $.ui.log(
-            'arlesh-notify: cannot reach Arlesh; notifications are paused and it keeps trying.',
+            'cannot reach Arlesh; notifications are paused and it keeps trying.',
           )
         }
         server = undefined // read the configuration again: the URL or token may have changed
@@ -300,7 +302,7 @@ async function deliver($: Engine, entry: Entry, change: Change): Promise<void> {
       await $.session.send({ to: { agentId: target.agentId }, text: message })
       return
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not message the agent: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`could not message the agent: ${String(error)}`, { to: 'debug' })
     }
   }
   submit($, message, SUBMIT_TRIES)

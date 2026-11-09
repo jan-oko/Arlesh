@@ -13,7 +13,8 @@
     "mcp": "Agents",
     "zen": "Zen",
     "server": "Server",
-    "devices": "Devices"
+    "devices": "Devices",
+    "notifications": "Notifications"
   },
   "planCandidates": "Candidates pane",
   "planPlanned": "Planned pane",

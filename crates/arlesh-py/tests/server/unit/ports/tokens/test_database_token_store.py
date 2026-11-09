@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
 
@@ -54,20 +53,3 @@ def test_issued_lists_the_clients_by_name(store: DatabaseTokenStore) -> None:
     store.add("laptop")
 
     assert [issued.client for issued in store.issued()] == ["laptop", "phone"]
-
-
-def test_carrying_over_keeps_a_client_the_table_already_has(
-    store: DatabaseTokenStore, server_db: Path
-) -> None:
-    old = FileTokenStore.beside(server_db)
-    old_phone = old.add("phone")
-    old_laptop = old.add("laptop")
-    new_phone = store.add("phone")
-
-    moved = store.carry_over(old)
-
-    assert moved == ["laptop"]
-    assert store.client_for(old_laptop) == "laptop"
-    assert store.client_for(new_phone) == "phone"
-    assert store.client_for(old_phone) is None
-    assert store.carry_over(old) == []

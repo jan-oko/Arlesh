@@ -3,7 +3,7 @@ import { create } from "zustand";
 /** The Settings modal's pages, in the order its sidebar lists them. */
 export type SettingsPage =
   | "general" | "mindmap" | "list" | "steps" | "plan" | "zen" | "windows" | "expectations" | "mcp"
-  | "server" | "devices";
+  | "server" | "devices" | "notifications";
 
 /**
  * Whether the Settings modal is open, on which page, and the element it should scroll to.

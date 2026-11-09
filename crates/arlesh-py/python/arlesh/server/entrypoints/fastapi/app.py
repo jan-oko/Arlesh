@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from pathlib import Path
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -10,6 +12,7 @@ from starlette.exceptions import HTTPException
 
 from arlesh import ArleshError
 from arlesh.server.business_logic.board import Board
+from arlesh.server.business_logic.notifier import Notifier
 from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     handle_authentication_failure,
@@ -29,6 +32,7 @@ from arlesh.server.entrypoints.fastapi.revision import (
 )
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
 from arlesh.server.entrypoints.fastapi.routers.agents import AgentAccountsRouter, AgentsRouter
+from arlesh.server.entrypoints.fastapi.routers.backup import BackupRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
@@ -42,6 +46,7 @@ from arlesh.server.entrypoints.fastapi.routers.health import HealthRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.pair import PairRouter
+from arlesh.server.entrypoints.fastapi.routers.push import PushRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.undo import UndoRouter
@@ -54,6 +59,8 @@ from arlesh.server.entrypoints.fastapi.security_scheme import (
 from arlesh.server.entrypoints.mcp.router import ExpectationsRouter, McpRouter
 from arlesh.server.ports.pairing.pairing_store import PairingStore
 from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
+from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.push.push_store import PushStore
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -84,7 +91,20 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
   attaches with a one-time PIN (`POST /agents/pins`, signed in), and then sees only its Claim.
 * **`/agents`** lists the agents and accounts, issues PINs and changes an agent by hand (pause,
   resume, release, lock, remove), behind a device token.
+* **`PUT /devices/current/push`** registers the asking device's FCM token, so the server can
+  notify it (an agent's question, a Task Overdue, a task generated, an agent put at capacity or
+  freed); **`DELETE`** drops it, and revoking the device does. **`GET /push`** says whether the
+  server has FCM credentials. Without them nothing is sent.
+* **`GET /backup`** exists only when the server has `ARLESH_BACKUP_TOKEN`: a consistent SQLite
+  snapshot, for the administrator, behind that secret (a device's token does not open it).
 """
+
+
+class Backup(NamedTuple):
+    """``GET /backup``'s settings: the database to snapshot and the admin secret that guards it."""
+
+    database: Path
+    token: str
 
 
 class AppRouter(APIRouter):
@@ -99,6 +119,8 @@ class AppRouter(APIRouter):
         tokens: TokenStore,
         pairing: Pairing,
         version: str,
+        pushes: PushStore | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
         routed = (board, client_context)
@@ -121,7 +143,9 @@ class AppRouter(APIRouter):
         self.include_router(RulesRouter(), prefix="/rules")
         self.include_router(AgentsRouter(*routed, tag="agents"), prefix="/agents")
         self.include_router(AgentAccountsRouter(*routed, tag="agents"), prefix="/agent-accounts")
-        self.include_router(DevicesRouter(tokens, pairing, client_context))
+        self.include_router(DevicesRouter(tokens, pairing, client_context, pushes))
+        if notifier is not None:
+            self.include_router(PushRouter(notifier, client_context))
 
 
 class ArleshServer(FastAPI):
@@ -139,13 +163,20 @@ class ArleshServer(FastAPI):
         pairs: PairingStore,
         connect: ConnectTokens,
         version: str,
+        pushes: PushStore | None = None,
+        sender: PushSender | None = None,
+        backup: Backup | None = None,
     ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
+        notifier = (
+            Notifier(board=board, store=pushes, sender=sender) if pushes is not None else None
+        )
+        self.notifier = notifier
         super().__init__(
             title="Arlesh",
             description=DESCRIPTION,
             version=version,
-            lifespan=lifespan(board),
+            lifespan=lifespan(board, notifier=notifier),
         )
         pairing = Pairing(pairs, tokens)
         # The one route open without a token: how a device without one gets one.
@@ -160,6 +191,9 @@ class ArleshServer(FastAPI):
             ExpectationsRouter(board, dependencies=[Depends(connected.validate_attached)]),
             prefix="/events/expectations",
         )
+        # Open without a device token, behind its own secret; absent without one.
+        if backup is not None:
+            self.include_router(BackupRouter(backup.database, backup.token), prefix="/backup")
         self.include_router(
             AppRouter(
                 board=board,
@@ -168,6 +202,8 @@ class ArleshServer(FastAPI):
                 tokens=tokens,
                 pairing=pairing,
                 version=version,
+                pushes=pushes,
+                notifier=notifier,
             )
         )
         self.add_middleware(RequestLoggingMiddleware)
