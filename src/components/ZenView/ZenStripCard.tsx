@@ -28,6 +28,7 @@ export default function ZenStripCard({ node, renderGlyph, isSelected, isFocusExe
   const style: CSSProperties & Record<`--${string}`, string> = { ...aspectWashStyle(node.color) };
   return (
     <div
+      data-cutout-row=""
       className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
       data-pending={node.pending === true ? "" : undefined}

@@ -98,6 +98,7 @@ export default function StepCard({
       <div
         className={`${className} ${styles.board}`}
         data-step-card="board"
+        data-cutout-row=""
         aria-current={isSelected ? "true" : undefined}
         onClick={onSelect}
       >

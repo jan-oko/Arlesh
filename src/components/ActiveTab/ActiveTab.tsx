@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useRowCutoutClearance } from "@/hooks/use-cutout-clearance";
 import TopBar from "@/components/TopBar/TopBar";
 import PhoneTopBar from "@/components/PhoneTopBar/PhoneTopBar";
 import TopBarSquare from "@/components/PhoneTopBar/TopBarSquare";
@@ -33,6 +34,8 @@ export default function ActiveTab() {
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
   const isTouchLayout = useTouchLayout();
   const paletteOpen = usePaletteStore((s) => s.isOpen);
+  const viewsRef = useRef<HTMLDivElement>(null);
+  useRowCutoutClearance(viewsRef, view);
 
   useTabTitle();
   useGlobalHotkeys();
@@ -43,15 +46,16 @@ export default function ActiveTab() {
   return (
     <>
       {!isFullscreen && (isTouchLayout ? <PhoneTopBar /> : <TopBar />)}
-      {/* The Mindmap canvas and the Zen cards span the screen and may sit under a cutout; the
-          other views keep their content clear of the side insets. */}
+      {/* Every view spans the screen, under a cutout and the side bars. The Mindmap canvas is panned
+          and needs nothing; in the others a row or card that the camera overlaps keeps its content
+          clear of it (`data-cutout-row`, `use-cutout-clearance.ts`). */}
       {view === "mindmap" && <MindmapView />}
-      {view === "zen" && <ZenView />}
-      {(view === "list" || view === "plan" || view === "steps") && (
-        <div className={styles.sideInset}>
+      {view !== "mindmap" && (
+        <div ref={viewsRef} className={styles.views}>
           {view === "list" && <ListView />}
           {view === "plan" && <PlanView />}
           {view === "steps" && <StepsView />}
+          {view === "zen" && <ZenView />}
         </div>
       )}
       {/* Full screen hides these too, leaving only the hot square in the bottom-right corner (tap:

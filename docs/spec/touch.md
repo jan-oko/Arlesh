@@ -29,7 +29,20 @@ resized or a keyboard being docked without a reload. Nothing here depends on Tau
 
 **Touch layout, not width, chooses the bars** (user, 2026-11-08, a phone in landscape showed the desktop bar, the tab strip and the action bar at once). The phone top bar, the bottom navigation, the action bar and the corner square are on when touch is the only pointer, and only then; the tab strip and the desktop top bar are on when it is not. A narrow window with a mouse therefore keeps the desktop bars. The sheets and the views' own narrow arrangements below still key on width.
 
-**Edge to edge in landscape** (user, 2026-11-08). The shell is not padded at the sides. The bars (top bar, chips, tab strip, action bar, bottom navigation, server banner) paint to the screen edge **and lay their buttons out across the full width, so a button may sit in the cutout or status area**; only the top and bottom insets pad them. The Mindmap canvas and the Zen cards span the whole screen too, and in **Full screen** (portrait as well) the Zen cards also run up under the status bar and the cutout: Zen takes no top inset there, where the other views keep it. The List, Plan and Steps views sit in a wrapper padded by the side insets, so their rows keep clear of a cutout. Where nothing paints, the shell shows the app background (`--canvas-bg`), never the WebView's white.
+**Edge to edge, by the device's real shape** (user, 2026-11-08 and 09). The shell is not padded at the sides, and every view runs to the screen's edges. The activity pushes the shape into the page (`MainActivity.pushInsets`, the same mechanism as the insets, re-pushed on every inset change such as a rotation or Full screen, and followed by a window event `arlesh-insets`):
+
+- `--corner-tl|tr|br|bl`: the display's rounded-corner radii, in CSS px (Android 12+; 0 where unknown, and the page's own 16px guess where there is no bridge).
+- `--cutout-<left|top|right|bottom>-start|end|depth`: what the display cutout (camera hole) covers along that side: the span it covers (`start` to `end`, from the top for the left and right sides, from the left for the top and bottom) and how far it reaches in, in CSS px (API 28+, from `DisplayCutout.getBoundingRects()`; all 0 with no cutout, and in the *Standard* system-bars mode, where the activity pads the window itself).
+
+The layout then keeps clear of only what is actually in the way:
+
+- **Bars** (phone top bar, filter chips, action bar, bottom navigation) paint to the edge and spread their buttons across the full width. The phone top bar's ends are padded by the corner radii (`--corner-tl`, `--corner-tr`) and the bottom navigation's by the bottom ones, and a bar the camera overlaps is padded by the camera's depth on that side (`--clear-left|right|top|bottom`, written by `use-cutout-clearance.ts` from the bands and the bar's own position; padding by `max(its own, clearance)`, so with no cutout nothing changes).
+- **List, Plan and Steps** have no whole-side padding. Each row or card (`data-cutout-row`) is measured as it scrolls and pads its own content clear of the camera only while it overlaps the camera's span. The *side* system bar of a three-button navigation in landscape is not kept clear of by these views.
+- **Mindmap**: the canvas spans the whole screen and may pan under a cutout.
+- **Zen**, in **Full screen** (portrait too): the cards fill nearly the whole screen, up under the status bar, the cutout and the side bars. The grid area is clipped by the device's corner radii less a 2px margin (`--zen-edge`), so the outer corners run just inside the screen's curve; the bottom keeps the gesture bar's inset and has a small radius of its own. A card's content stays clear of the camera and, in Full screen, of the rounded corners (a corner counts as a band 0.3 of its radius deep), by the same `--clear-*` padding. Outside Full screen Zen sits under the bars as before.
+- A phone with no cutout and no corner radii behaves as before: every clearance is 0.
+
+Where nothing paints, the shell shows the app background (`--canvas-bg`), never the WebView's white.
 
 
 Below 700 px:

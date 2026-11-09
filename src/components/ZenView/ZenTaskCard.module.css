@@ -13,7 +13,8 @@
   gap: calc(var(--zen-padding, 6px) / 3);
   box-sizing: border-box;
   overflow: hidden;
-  padding: var(--zen-padding, 6px);
+  /* Its content keeps clear of the camera and, in Full screen, of the rounded corner it sits in. */
+  padding: max(var(--zen-padding, 6px), var(--clear-top, 0px)) max(var(--zen-padding, 6px), var(--clear-right, 0px)) max(var(--zen-padding, 6px), var(--clear-bottom, 0px)) max(var(--zen-padding, 6px), var(--clear-left, 0px));
   border: 1px solid var(--node-border);
   border-radius: 10px;
   cursor: pointer;

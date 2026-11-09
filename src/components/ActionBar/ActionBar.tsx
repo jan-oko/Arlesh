@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useCutoutClearance } from "@/hooks/use-cutout-clearance";
 import { useTranslation } from "react-i18next";
 import ActionIcon from "@/components/ActionIcon/ActionIcon";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
@@ -42,6 +43,8 @@ export default function ActionBar() {
   const view = useViewStore((s) => s.view);
   const kinds = useSelectionSurfaceStore((s) => s.kinds);
   const tables = useCommandSurfaceStore((s) => s.tables);
+  const barRef = useRef<HTMLElement>(null);
+  useCutoutClearance(barRef);
   // Read so the bar re-asks its slots whenever a view re-renders: a guard reads the latest context.
   useCommandSurfaceStore((s) => s.revision);
   const openPalette = usePaletteStore((s) => s.open);
@@ -103,7 +106,7 @@ export default function ActionBar() {
 
   return (
     <>
-      <nav className={styles.bar} aria-label={t("actionBarLabel")}>
+      <nav ref={barRef} className={styles.bar} aria-label={t("actionBarLabel")}>
         {slots.map((drawn) => (
           <button
             key={drawn.slot.key}

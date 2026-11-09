@@ -3,7 +3,8 @@
   flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--node-border);
-  padding-bottom: var(--safe-bottom);
+  /* The bottom edge: its ends keep clear of the screen's rounded corners, and of a camera on a side. */
+  padding: 0 max(var(--corner-br), var(--clear-right, 0px)) var(--safe-bottom) max(var(--corner-bl), var(--clear-left, 0px));
   font-family: var(--font-sans);
 }
 

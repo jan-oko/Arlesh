@@ -18,7 +18,7 @@ describe("safe-area variables", () => {
   it("pads the phone top bar by the top inset, and keeps the bottom bars and corner square above the bottom one", () => {
     expect(phoneTopBar).toMatch(/padding-top:\s*var\(--safe-top\)/);
     expect(phoneTopBar).toContain("calc(var(--safe-bottom) + 12px)");
-    expect(bottomNav).toMatch(/padding-bottom:\s*var\(--safe-bottom\)/);
+    expect(bottomNav).toMatch(/var\(--safe-bottom\) max\(/);
   });
 
   it("leaves no raw env() inset outside the token definitions", () => {
@@ -42,8 +42,18 @@ describe("landscape side insets", () => {
     }
   });
 
-  it("is kept for the List, Plan and Steps views only; the Mindmap and Zen span the screen", () => {
-    expect(activeTab).toMatch(/padding-inline:\s*var\(--safe-left\) var\(--safe-right\)/);
+  it("has no whole-side padding for any view: each reaches the edge, and only a row the camera overlaps pads itself", () => {
+    expect(activeTab).toMatch(/\.views \{/);
+    expect(activeTab).not.toMatch(/padding\s*:/);
+    for (const file of ["ListView/TaskRow", "ListView/PathHeaderRow", "PlanView/PlanTaskCard", "StepsView/StepCard"]) {
+      expect(read(`src/components/${file}.module.css`)).toContain("var(--clear-left, 0px)");
+    }
+  });
+
+  it("keeps the bars' ends clear of the corner's radius and of the camera, and nothing else", () => {
+    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), var\(--corner-tl\), var\(--clear-left, 0px\)\)/);
+    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), var\(--corner-tr\), var\(--clear-right, 0px\)\)/);
+    expect(bottomNav).toMatch(/max\(var\(--corner-br\), var\(--clear-right, 0px\)\) var\(--safe-bottom\) max\(var\(--corner-bl\), var\(--clear-left, 0px\)\)/);
   });
 });
 
@@ -110,7 +120,8 @@ describe("The List's sticky headers in full screen", () => {
     expect(list).not.toContain("::before");
     const zen = read("src/components/ZenView/ZenView.module.css");
     expect(zen).toMatch(/\.container \{[^}]*padding: var\(--space-4\) var\(--space-4\)/);
-    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: 0;/);
+    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{\s*--zen-edge: 2px;\s*padding: var\(--zen-edge\) var\(--zen-edge\) calc\(var\(--zen-edge\) \+ var\(--peek-pad-bottom\)\);/);
+    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.gridArea \{\s*border-radius:\s*max\(0px, calc\(var\(--corner-tl\) - var\(--zen-edge\)\)\)/);
     expect(zen).not.toContain("--peek-pad-top");
     for (const name of ["Steps", "Plan"]) {
       const css = read(`src/components/${name}View/${name}View.module.css`);

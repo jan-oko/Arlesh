@@ -105,6 +105,7 @@ export default function ZenTaskCard({
 
   return (
     <div
+      data-cutout-row=""
       className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}${fitsContent ? ` ${styles.cardFits}` : ""}`}
       data-row-id={node.id}
       data-pending={node.pending === true ? "" : undefined}
