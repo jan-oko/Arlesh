@@ -1,6 +1,8 @@
 # ADR 0018: agents, subtree Claims and capacity per account
 
 Status: accepted 2026-11-07 (Task `7a0`), settled with the user in a design session.
+Subagents are no longer covered by their session's attach alone: see
+[ADR 0019](0019-child-agents-and-sub-claims.md) (child Agents, 2026-11-13).
 
 ## Context
 
