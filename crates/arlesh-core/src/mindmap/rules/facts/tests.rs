@@ -225,7 +225,7 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     assert_eq!(facts["task-11"].open_question, Some(2.into()));
     assert_eq!(
         facts["task-11"].open_questions,
-        vec![2.into(), 1.into()],
+        vec![NodeId::from(2), NodeId::from(1)],
         "every open one, in position order"
     );
     assert_eq!(
