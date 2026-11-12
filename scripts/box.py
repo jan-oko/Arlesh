@@ -119,6 +119,10 @@ prefix and a pair of single or double quotes around the value are accepted; `$HO
 leading `~` in the value are expanded. A variable already set in the real environment wins over the
 file. A malformed line stops box and names its line number, never its value. Typical keys:
 ARLESH_BOX_FIREBASE_PROJECT, ARLESH_FCM_CREDENTIALS_FILE, ARLESH_BACKUP_TOKEN, ARLESH_BOX_SEED_URL.
+Speed: `gh auth status` is not run up front (a failing `gh` call is diagnosed afterwards); the Firebase
+access token comes from gcloud only when a call needs one and is cached in $XDG_STATE_HOME/arlesh/box/
+firebase-token.json (mode 600, 45 minutes, never printed); a candidate adb address gets a 1 s TCP
+connect before `adb connect`, so an unreachable phone costs about a second.
 Firebase, per branch: with ARLESH_BOX_FIREBASE_PROJECT set and gcloud application-default
 credentials, the package is registered as an Android app and its config written as a gitignored
 google-services.json; --no-firebase turns it off.
