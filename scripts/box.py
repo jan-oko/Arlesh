@@ -3256,12 +3256,21 @@ def ci_cached_apk(branch: str, sha: str) -> Path:
 
 
 def gh_unavailable() -> str | None:
-    """Why the gh CLI cannot be used, or None."""
+    """Why the gh CLI cannot be used without running it, or None.
+
+    It does not ask `gh auth status` up front (a network round trip on every command): a caller
+    runs the real gh call and, only when that fails, asks `gh_failure_reason`.
+    """
     if shutil.which("gh") is None:
         return "the gh CLI is not on PATH"
+    return None
+
+
+def gh_failure_reason(exc: BoxError) -> str:
+    """Why a gh call failed: not logged in, if `gh auth status` says so, else gh's own message."""
     if capture(["gh", "auth", "status"]).returncode != 0:
         return "gh is not authenticated (run `gh auth login`)"
-    return None
+    return str(exc)
 
 
 def ci_blocker(wt: Path, branch: str) -> str | None:
@@ -3415,9 +3424,10 @@ def pick_ci_build(wt: Path, mode: str) -> Path | None:
     try:
         run = find_ci_run(wt, branch, sha)
     except BoxError as exc:
+        reason = gh_failure_reason(exc)
         if mode == CI:
-            raise
-        note(f"building locally: {exc}")
+            raise die(f"--ci needs gh: {reason}.") from exc
+        note(f"building locally: {reason}")
         return None
     if run is None:
         if mode != CI:
@@ -3963,7 +3973,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         try:
             prs = open_prs()
         except BoxError as exc:
-            blocker = str(exc)
+            blocker = gh_failure_reason(exc)
     if prs is None:
         if getattr(args, "json", False):
             print(json.dumps({"gh": False, "reason": blocker,
@@ -4251,7 +4261,12 @@ def cmd_prune(args: argparse.Namespace) -> None:
     blocker = gh_unavailable()
     plan: PrunePlan | None = None
     if blocker is None:
-        plan = plan_prune(open_prs())
+        try:
+            prs = open_prs()
+        except BoxError as exc:
+            blocker = gh_failure_reason(exc)
+    if blocker is None:
+        plan = plan_prune(prs)
         print_prune_plan(plan)
     else:
         note(f"Not pruning worktrees: open PRs unavailable ({blocker}).")

@@ -1113,6 +1113,9 @@ def save():
     json.dump(state, open(d + "/state.json", "w"))
 if args[:2] == ["auth", "status"]:
     sys.exit(0 if state.get("auth", True) else 1)
+if not state.get("auth", True):
+    print("gh: not logged in", file=sys.stderr)
+    sys.exit(1)
 if args[:2] == ["run", "list"]:
     print(json.dumps(state["runs"]))
 elif args[:1] == ["api"]:
@@ -2269,6 +2272,9 @@ d = os.environ["FAKE_GH_DIR"]
 a = sys.argv[1:]
 if a[:2] == ["auth", "status"]:
     sys.exit(0 if os.path.exists(d + "/authed") else 1)
+if not os.path.exists(d + "/authed"):
+    print("gh: not logged in", file=sys.stderr)
+    sys.exit(1)
 if a[:2] == ["pr", "list"]:
     state = a[a.index("--state") + 1]
     data = json.load(open(d + "/" + state + ".json"))
@@ -2404,6 +2410,31 @@ class ListOpenPrs(OpenPrFixture):
         self.assertEqual(row["desktop"], "fresh")
         self.assertEqual(row["installed"], {"pixel": "stale"})
         self.assertEqual(row["pr"]["number"], 100)
+
+    def gh_calls(self) -> list[str]:
+        return (self.gh_dir / "calls.log").read_text().splitlines() if (self.gh_dir / "calls.log").exists() else []
+
+    def test_a_working_gh_is_never_asked_for_auth_status(self) -> None:
+        os.environ["FAKE_GH_CALLS"] = str(self.gh_dir / "calls.log")
+        calls: list[list[str]] = []
+        real = box.capture
+
+        def spy(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return real(cmd, cwd=cwd)
+
+        with mock.patch.object(box, "capture", spy):
+            self.run_box("list", "--json")
+            self.run_box("prune", "--dry-run")
+        gh = [c[1:3] for c in calls if c[0] == "gh"]
+        self.assertIn(["pr", "list"], gh)
+        self.assertNotIn(["auth", "status"], gh)
+
+    def test_a_failing_gh_is_diagnosed_after_the_failure(self) -> None:
+        (self.gh_dir / "authed").unlink()
+        code, _, err = self.run_box("prune", "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertIn("gh is not authenticated", err)
 
     def test_without_gh_falls_back_to_the_worktrees(self) -> None:
         (self.gh_dir / "authed").unlink()
