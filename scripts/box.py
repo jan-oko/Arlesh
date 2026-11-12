@@ -2491,6 +2491,7 @@ ADB_TLS = "_adb-tls-connect._tcp"
 ADB_TIMEOUT = (
     8  # seconds for one `adb connect` / `get-state` on a device that may be unreachable
 )
+PROBE_TIMEOUT = 1.0  # seconds for the TCP connect that precedes `adb connect`
 MAX_PORT_GUESSES = 3  # discovered ports tried against a tailnet address
 
 
@@ -2714,12 +2715,32 @@ def classify_connect(output: str, log: Path | None = None) -> str:
     return UNREACHABLE
 
 
+def probe_failure(addr: str, timeout: float = PROBE_TIMEOUT) -> str | None:
+    """REFUSED or UNREACHABLE when a plain TCP connect to `host:port` fails, None when it is accepted.
+
+    A dead address costs `timeout` here instead of `ADB_TIMEOUT` inside `adb connect`. The
+    connection is closed at once; nothing is sent.
+    """
+    host, _, port = addr.rpartition(":")
+    try:
+        with socket.create_connection((host.strip("[]"), int(port)), timeout=timeout):
+            return None
+    except ConnectionRefusedError:
+        return REFUSED
+    except (OSError, ValueError):
+        return UNREACHABLE
+
+
 def adb_connect(addr: str) -> str:
-    """`adb connect` then `get-state`, each bounded: a dead address must not stall the run.
+    """A TCP probe, then `adb connect` and `get-state`, each bounded: a dead address must not stall.
 
     Returns CONNECTED, or why not: REFUSED (port closed or wrong), REJECTED (the phone's TLS
-    handshake failed: it does not trust this computer's key) or UNREACHABLE.
+    handshake failed: it does not trust this computer's key) or UNREACHABLE. Only an address that
+    accepts a TCP connection is handed to adb, so an unreachable phone costs about a second.
     """
+    failed = probe_failure(addr)
+    if failed:
+        return failed
     try:
         connect = subprocess.run(
             ["adb", "connect", addr],

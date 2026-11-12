@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import shutil
+import socket
 import sqlite3
 import stat
 import subprocess
@@ -307,6 +308,9 @@ class DeviceResolution(IsolatedEnv):
         adb.chmod(adb.stat().st_mode | stat.S_IXUSR)
         os.environ["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
         os.environ["FAKE_MDNS"] = MDNS_LINE
+        probe = mock.patch.object(box, "probe_failure", return_value=None)  # the addresses are fictional
+        probe.start()
+        self.addCleanup(probe.stop)
 
     def resolve(
         self, host: str, adb_serial: str | None = None, ip: str | None = None
@@ -366,6 +370,48 @@ class DeviceResolution(IsolatedEnv):
     def test_serial_parsed_from_the_service_name(self) -> None:
         e = box.MdnsEntry("adb-SERIAL0002-xYz1Qw", "1.2.3.4", "1")
         self.assertEqual(e.hardware_serial, "SERIAL0002")
+
+
+class TcpProbe(unittest.TestCase):
+    def test_an_accepting_port_passes(self) -> None:
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen()
+            self.assertIsNone(box.probe_failure(f"127.0.0.1:{server.getsockname()[1]}"))
+
+    def test_a_closed_port_is_refused(self) -> None:
+        with socket.socket() as spare:
+            spare.bind(("127.0.0.1", 0))
+            port = spare.getsockname()[1]
+        self.assertEqual(box.probe_failure(f"127.0.0.1:{port}"), box.REFUSED)
+
+    def test_a_silent_address_is_unreachable_after_the_probe_timeout_only(self) -> None:
+        with mock.patch.object(box.socket, "create_connection", side_effect=TimeoutError) as connect:
+            self.assertEqual(box.probe_failure("192.0.2.1:5555", 0.2), box.UNREACHABLE)
+        connect.assert_called_once_with(("192.0.2.1", 5555), timeout=0.2)
+
+    def test_adb_is_not_run_for_an_address_that_fails_the_probe(self) -> None:
+        with (
+            mock.patch.object(box, "probe_failure", return_value=box.UNREACHABLE),
+            mock.patch.object(box.subprocess, "run") as run,
+        ):
+            self.assertEqual(box.adb_connect("192.0.2.1:5555"), box.UNREACHABLE)
+        run.assert_not_called()
+
+    def test_the_probe_is_about_a_second_not_the_adb_timeout(self) -> None:
+        self.assertLessEqual(box.PROBE_TIMEOUT, 1.0)
+        self.assertLess(box.PROBE_TIMEOUT, box.ADB_TIMEOUT)
+
+    def test_an_accepted_address_still_gets_adb_connect_and_its_classification(self) -> None:
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            out = "failed to connect to 192.0.2.1:5555\n" if cmd[1] == "connect" else ""
+            return subprocess.CompletedProcess(cmd, 0, out, "")
+
+        with (
+            mock.patch.object(box, "probe_failure", return_value=None),
+            mock.patch.object(box.subprocess, "run", fake_run),
+        ):
+            self.assertEqual(box.adb_connect("192.0.2.1:5555"), box.REJECTED)
 
 
 class ConnectOutcome(unittest.TestCase):
