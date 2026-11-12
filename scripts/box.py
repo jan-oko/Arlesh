@@ -34,7 +34,10 @@ no open PR, never the main checkout, `dev`, `master`, the current directory's wo
 uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
 device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
 is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
-Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
+It also stops each running box server (`server start`) whose branch has no open PR and that is not
+`dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
+and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
+are pruned.
 
 `list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
 worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
@@ -45,7 +48,10 @@ no open PR, never the main checkout, `dev`, `master`, the current directory's wo
 uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
 device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
 is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
-Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
+It also stops each running box server (`server start`) whose branch has no open PR and that is not
+`dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
+and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
+are pruned.
 
 A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
 (`run`, `server start|token|pin`); an existing one is used as-is, found by the branch it holds
@@ -4088,6 +4094,7 @@ class PrunePlan:
         default_factory=list
     )  # (dir, branch, fate)
     kept: list[tuple[str, str]] = field(default_factory=list)  # (dir, reason)
+    servers: list[str] = field(default_factory=list)  # running servers to stop, no worktree removal
 
 
 def kept_reason(name: str, branch: str) -> str | None:
@@ -4129,6 +4136,13 @@ def branch_fate(branch: str) -> str | None:
     return "its PR was merged" if pr_merged(branch) else None
 
 
+def servers_without_pr(open_branches: set[str], removed: set[str]) -> list[str]:
+    """Running box servers whose branch has no open PR, other than the long-lived branches' and
+    those of worktrees `prune` removes anyway (removing a worktree stops its server)."""
+    spared = {dir_name(b) for b in (*open_branches, *LONG_LIVED)} | removed
+    return [n for n in server_names([]) if n not in spared and server_running(n)]
+
+
 def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
     plan = PrunePlan()
     open_branches = {str(pr.get("headRefName")) for pr in prs}
@@ -4141,6 +4155,7 @@ def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
         else:
             fate = branch_fate(branch)
             plan.remove.append((name, branch, fate or ""))
+    plan.servers = servers_without_pr(open_branches, {n for n, _, _ in plan.remove})
     return plan
 
 
@@ -4151,10 +4166,12 @@ def print_prune_plan(plan: PrunePlan) -> None:
             "  stop its server and app, drop its Firebase app and device installs, git worktree remove"
         )
         print(f"  local branch: {'delete (' + fate + ')' if fate else 'keep (not merged)'}")  # fmt: skip
+    for name in plan.servers:
+        print(f"stop server {name}: no open PR")
     for name, reason in plan.kept:
         print(f"kept: {name}: {reason}")
-    if not plan.remove and not plan.kept:
-        print("no worktrees without an open PR.")
+    if not plan.remove and not plan.kept and not plan.servers:
+        print("no worktrees or servers without an open PR.")
 
 
 def remove_worktree(name: str, branch: str, fate: str) -> None:
@@ -4253,6 +4270,8 @@ def cmd_prune(args: argparse.Namespace) -> None:
     if plan:
         for name, branch, fate in plan.remove:
             remove_worktree(name, branch, fate)
+        for name in plan.servers:
+            stop_server(name)
     prune_packages(args, True)
 
 

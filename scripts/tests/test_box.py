@@ -2434,6 +2434,48 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertEqual(self.adb_log().count("uninstall"), 0)
 
+    def running_servers(self, *names: str) -> list[str]:
+        """Pretend these servers are running and record which ones are stopped."""
+        for name in (*names, "pr-with-wt", "dev"):
+            box.server_dir(name).mkdir(parents=True, exist_ok=True)
+        stopped: list[str] = []
+        for patcher in (
+            mock.patch.object(box, "server_running", lambda n: n in (*names, "pr-with-wt", "dev")),
+            mock.patch.object(box, "stop_server", stopped.append),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return stopped
+
+    def test_a_running_server_without_a_pr_is_planned_and_a_dry_run_stops_nothing(self) -> None:
+        stopped = self.running_servers("dirty", "ghost")
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn("stop server dirty: no open PR", out)  # its worktree is kept, the server is not
+        self.assertIn("stop server ghost: no open PR", out)  # its worktree is gone
+        self.assertNotIn("stop server pr-with-wt", out)
+        self.assertNotIn("stop server dev", out)
+        self.assertEqual(stopped, [])
+
+    def test_yes_stops_those_servers_and_a_removed_worktrees_server_is_not_listed_twice(self) -> None:
+        stopped = self.running_servers("dirty", "ghost", "merged-ff")
+        code, out, _ = self.run_box("prune", "-y")
+        self.assertEqual(code, 0)
+        self.assertNotIn("stop server merged-ff", out)
+        self.assertEqual(sorted(stopped), ["dirty", "ghost", "merged-ff"])  # merged-ff via its worktree
+        self.assertEqual(stopped.count("merged-ff"), 1)
+
+    def test_the_prompt_covers_the_servers(self) -> None:
+        stopped = self.running_servers("dirty")
+        code, _, _, asked = self.prompt(True, "n")
+        self.assertEqual((code, len(asked), stopped), (0, 1, []))
+        self.prompt(True, "y")
+        self.assertEqual(stopped, ["dirty"])
+
+    def test_a_server_that_is_not_running_is_left_alone(self) -> None:
+        box.server_dir("ghost").mkdir(parents=True)
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertNotIn("stop server ghost", out)
+
     def prompt(self, tty: bool, answer: str = "") -> tuple[int, str, str, list[str]]:
         asked: list[str] = []
 
