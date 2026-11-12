@@ -1,0 +1,1 @@
+- **A Task's Info notes come back with it over the MCP.** `arlesh_tasks.get` now returns the Infos directly under a Task as `infos`, and each Task in the snapshot carries an `info_count`, so an agent reads the details you wrote as notes before working the Task. Private Infos stay hidden.

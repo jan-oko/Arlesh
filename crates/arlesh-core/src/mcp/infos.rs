@@ -10,12 +10,56 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, lookup::found, params::InfosOperation, result, result::attempt, ArleshMcp};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+
+use super::{
+    access, ids::NodeNames, lookup::found, params::InfosOperation, result, result::attempt,
+    ArleshMcp,
+};
 use crate::{
     access::model::{AccessLevel, NodeTable},
-    infos::model::CreateInfoRequest,
+    infos::model::{CreateInfoRequest, Info},
+    mindmap::model::MindmapLoad,
+    nodes::id::NodeId,
     undo::model::WriteSource,
 };
+
+/// The Infos hanging directly under the Task `task`, in board order.
+///
+/// `load` is a board already cut to what the MCP may see, so a private Info, or one outside the
+/// roots, is not among them. Infos under the Task's sub-items are not either.
+pub(super) fn directly_under<'load>(load: &'load MindmapLoad, task: &NodeId) -> Vec<&'load Info> {
+    let mut found: Vec<&Info> = load
+        .infos
+        .iter()
+        .filter(|info| info.parent_type == "task" && &info.parent_id == task)
+        .collect();
+    found.sort_by_key(|info| (info.position, info.id));
+    found
+}
+
+/// How many Infos hang directly under each Task of `load`, by Task id; a Task with none is absent.
+pub(super) fn counts_by_task(load: &MindmapLoad) -> HashMap<NodeId, usize> {
+    let mut counts = HashMap::new();
+    for info in load.infos.iter().filter(|info| info.parent_type == "task") {
+        *counts.entry(info.parent_id.clone()).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Infos as `arlesh_tasks.get` returns them: ids, `body` and `details`.
+pub(super) fn as_read(infos: &[&Info], names: &NodeNames) -> Value {
+    infos
+        .iter()
+        .map(|info| {
+            names.stamped(
+                json!({ "id": info.id, "body": info.body, "details": info.details }),
+                NodeTable::Info,
+            )
+        })
+        .collect()
+}
 
 #[tool_router(router = infos_router, vis = "pub(super)")]
 impl ArleshMcp {
