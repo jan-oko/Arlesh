@@ -48,6 +48,27 @@ environment variables:
   every five minutes otherwise, so the server holds back the agents of an account at its limit and
   frees them at the reset.
 
+- **Registers each subagent as a child agent** of the session's agent, when the session is
+  attached. When a subagent starts (`SubagentStart`), the mod calls `arlesh_agents.register_child`
+  with the subagent's description as its name and Claude Code's agent id as its `client_id`, keeps
+  the **sub-token** it answers (per session, 30 days), and adds to the subagent's starting context
+  who it is, its `sub_token`, and that it should claim the Task its brief names with
+  `arlesh_agents.claim`. The child shows in Settings → Agents nested under the session's agent,
+  with its Task as its Claim. Every Arlesh call a subagent makes without a `sub_token` gets its own
+  filled in, so it acts on its sub-Claim only; the session's own calls carry none and act on its
+  whole Claim.
+  - When the subagent **stops**, the mod pauses its Claim (`arlesh_agents.pause` with the
+    sub-token): the child reads Paused, still naming its Task. When it is **resumed**, the mod
+    resumes the Claim. Nothing is asked of the orchestrating agent.
+  - The child is removed by Arlesh when its Task is set Done or the session's agent is removed;
+    the mod then forgets it.
+  - A subagent started by a subagent is not registered: it gets the sub-token of the subagent that
+    started it. Teammates and workflow agents are not registered.
+  - In the terminal, the subagent's `Agent(…)` row gets one dim line under it,
+    `Arlesh · <Task short id and title> · Active` (or `Paused`). Claude Code's list of background
+    tasks cannot be changed by a mod and shows nothing of it.
+  - When the session is not attached, or Arlesh is not running, nothing is registered and the
+    subagent is told nothing: its Arlesh calls behave as the session's would.
 - Records every wait the session passes through `arlesh_waits.ask`, `raise` or `watch`, per session
   (kept in the mod's store for 30 days, so a restart or `claude --resume` still watches them).
 - Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch` (sending the session's agent token, so it hears only of waits inside its Claim; an unattached session does not poll), one
