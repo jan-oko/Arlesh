@@ -2861,8 +2861,42 @@ def install_reason(serial: str, device: str, branch: str, stamp: str) -> str | N
 # ---- Android: Firebase ----------------------------------------------------------------------------
 
 
+TOKEN_TTL_SECONDS = 45 * 60  # gcloud's application-default tokens last an hour; reuse for less
+
+
+def token_cache_file() -> Path:
+    return state_dir() / "firebase-token.json"
+
+
+def read_cached_token(now: float | None = None) -> str:
+    """The cached access token while it is still valid, else ''. Never printed or logged."""
+    try:
+        data = json.loads(token_cache_file().read_text())
+        token, expires = data["token"], float(data["expires"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    ok = isinstance(token, str) and expires > (time.time() if now is None else now)
+    return token if ok else ""
+
+
+def write_cached_token(token: str, now: float | None = None) -> None:
+    """Keep the token with its expiry, readable by this user only (created 0600, never widened)."""
+    path = token_cache_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    expires = (time.time() if now is None else now) + TOKEN_TTL_SECONDS
+    tmp = path.with_name(path.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps({"token": token, "expires": expires}))
+    os.replace(tmp, path)
+
+
 class Firebase:
-    """Per-branch Android apps in the ARLESH_BOX_FIREBASE_PROJECT project, via the REST API."""
+    """Per-branch Android apps in the ARLESH_BOX_FIREBASE_PROJECT project, via the REST API.
+
+    The project comes from the environment alone (box never asks gcloud for it). The access token
+    is fetched with gcloud only when a call needs one, and reused from the state dir until it expires.
+    """
 
     def __init__(self) -> None:
         self.project = os.environ.get("ARLESH_BOX_FIREBASE_PROJECT", "")
@@ -2877,8 +2911,13 @@ class Firebase:
         if not shutil.which("gcloud"):
             note("firebase: gcloud is not installed, skipping.")
             return False
+        self.token = read_cached_token()
+        if self.token:
+            return True
         got = capture(["gcloud", "auth", "application-default", "print-access-token"])
         self.token = got.stdout.strip() if got.returncode == 0 else ""
+        if self.token:
+            write_cached_token(self.token)
         if not self.token:
             note(
                 "firebase: no application-default credentials (gcloud auth application-default login), skipping."
@@ -2887,7 +2926,7 @@ class Firebase:
         return True
 
     def call(
-        self, method: str, path: str, body: dict[str, Any] | None = None
+        self, method: str, path: str, body: dict[str, Any] | None = None, retried: bool = False
     ) -> dict[str, Any]:
         req = urllib.request.Request(
             f"{FIREBASE_API}/{path}",
@@ -2903,6 +2942,11 @@ class Firebase:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 payload = json.loads(resp.read() or b"{}")
         except urllib.error.HTTPError as exc:
+            if exc.code == 401 and not retried:
+                token_cache_file().unlink(missing_ok=True)  # an expired cached token: ask gcloud again
+                self.token = ""
+                if self.ready():
+                    return self.call(method, path, body, retried=True)
             self.fail(method, path, exc)
         except (OSError, urllib.error.URLError) as exc:
             raise die(f"firebase: request to {path} failed: {exc}") from exc

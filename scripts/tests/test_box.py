@@ -20,6 +20,8 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Self
@@ -370,6 +372,78 @@ class DeviceResolution(IsolatedEnv):
     def test_serial_parsed_from_the_service_name(self) -> None:
         e = box.MdnsEntry("adb-SERIAL0002-xYz1Qw", "1.2.3.4", "1")
         self.assertEqual(e.hardware_serial, "SERIAL0002")
+
+
+class FirebaseToken(IsolatedEnv):
+    """gcloud is asked for an access token only when none is cached, and only when a call needs one."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.log = self.tmp / "gcloud.log"
+        fake_bin(self.tmp, "gcloud", f'echo "$*" >> {self.log}\necho tok-from-gcloud')
+        os.environ["PATH"] = f"{self.tmp / 'bin'}{os.pathsep}{os.environ['PATH']}"
+        os.environ["ARLESH_BOX_FIREBASE_PROJECT"] = "proj"
+        self.addCleanup(os.environ.pop, "ARLESH_BOX_FIREBASE_PROJECT", None)
+
+    def gcloud_calls(self) -> list[str]:
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def test_constructing_or_listing_nothing_never_runs_gcloud(self) -> None:
+        box.Firebase()
+        self.assertEqual(self.gcloud_calls(), [])
+
+    def test_the_first_use_asks_gcloud_once_and_only_for_the_token(self) -> None:
+        self.assertTrue(box.Firebase().ready())
+        self.assertEqual(self.gcloud_calls(), ["auth application-default print-access-token"])
+
+    def test_a_second_instance_reuses_the_cached_token(self) -> None:
+        box.Firebase().ready()
+        second = box.Firebase()
+        self.assertTrue(second.ready())
+        self.assertEqual(second.token, "tok-from-gcloud")
+        self.assertEqual(len(self.gcloud_calls()), 1)
+
+    def test_an_expired_token_is_fetched_again(self) -> None:
+        box.write_cached_token("old", now=time.time() - box.TOKEN_TTL_SECONDS - 1)
+        self.assertEqual(box.read_cached_token(), "")
+        self.assertTrue(box.Firebase().ready())
+        self.assertEqual(len(self.gcloud_calls()), 1)
+
+    def test_the_cache_file_is_private_and_holds_an_expiry(self) -> None:
+        box.write_cached_token("secret-token", now=1000.0)
+        path = box.token_cache_file()
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertEqual(json.loads(path.read_text())["expires"], 1000.0 + box.TOKEN_TTL_SECONDS)
+        self.assertEqual(box.read_cached_token(now=1001.0), "secret-token")
+
+    def test_the_token_is_never_printed(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            box.Firebase().ready()
+        self.assertNotIn("tok-from-gcloud", out.getvalue())
+
+    def test_without_a_project_gcloud_is_not_asked(self) -> None:
+        os.environ.pop("ARLESH_BOX_FIREBASE_PROJECT")
+        with mock.patch.object(box, "note"):
+            self.assertFalse(box.Firebase().ready())
+        self.assertEqual(self.gcloud_calls(), [])
+
+    def test_a_rejected_cached_token_is_replaced_once(self) -> None:
+        box.write_cached_token("stale")
+        seen: list[str] = []
+
+        def fake_urlopen(req, timeout=0):  # type: ignore[no-untyped-def]
+            seen.append(req.get_header("Authorization"))
+            if len(seen) == 1:
+                raise urllib.error.HTTPError(req.full_url, 401, "no", {}, io.BytesIO(b"{}"))
+            return io.BytesIO(b"{}")
+
+        fb = box.Firebase()
+        fb.ready()
+        with mock.patch.object(box.urllib.request, "urlopen", fake_urlopen):
+            fb.call("GET", "projects/proj/androidApps")
+        self.assertEqual(seen, ["Bearer stale", "Bearer tok-from-gcloud"])
+        self.assertEqual(box.read_cached_token(), "tok-from-gcloud")
 
 
 class TcpProbe(unittest.TestCase):
@@ -2110,6 +2184,9 @@ class WirelessDevices(IsolatedEnv):
             FAKE_AVAHI=AVAHI,
             FAKE_UP="",
         )
+        probe = mock.patch.object(box, "probe_failure", return_value=None)  # fictional addresses
+        probe.start()
+        self.addCleanup(probe.stop)
 
     def resolve(
         self, host: str | None, ip: str | None, serial: str | None = None, **more: str
