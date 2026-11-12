@@ -300,8 +300,8 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>An agent's work reads as yours, and fills Do and Zen with things you are not doing.</dd>
       <dt>Lives</dt><dd class="where">tasks/model.rs · tasks/rules/gestures.rs · src/utils/status-mapping.ts</dd></dl></article>
     <article class="card"><h3>Review</h3>
-      <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
-      <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
+      <p class="is">Never set: an On Agent Task with an open agent question or review beneath it. Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent.</p>
+      <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait itself: the Task shows it and is where you answer.</dd>
       <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts</dd></dl></article>
     <article class="card"><h3>Compound</h3>
@@ -465,7 +465,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Five boards to keep in step.</dd>
       <dt>Lives</dt><dd class="where">src/components/*View · docs/spec/*-view.md</dd></dl></article>
     <article class="card"><h3>The MCP</h3>
-      <p class="is">Agents' door to the board. They see only inside the roots you open, never what is private, and write only Agentic Tasks. They hand work back by asking a question.</p>
+      <p class="is">Agents' door to the board. They see only inside the roots you open, never what is private, and write only Agentic Tasks. They hand work back by asking a question or raising a review.</p>
       <dl><dt>Why</dt><dd>A clean, bounded context for an agent, on the same derived board you see.</dd>
       <dt>Without</dt><dd>Agents read everything, or a separate copy that disagrees.</dd>
       <dt>Lives</dt><dd class="where">mcp/ · access/ · capacity/</dd></dl></article>
@@ -550,7 +550,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["status", "Status", 0, 8, "in", "Where the work stands, in the ordinary model (To Do, In Progress, Started, Done) or the Agentic one (To Do, On Agent, Doing, Done). Dashed arrows from here read a dependency target's status.", "resources.md#tasks"],
     ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree. Any Task with items beneath it reads them.", "resources.md#tasks"],
     ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
-    ["question", "Agent question waits", 0, 11, "in", "Pending, live agentic waits raised as questions under a Task.", "mcp-server.md#agentic-waits"],
+    ["question", "Agent waits: questions and reviews", 0, 11, "in", "Pending, live agentic waits under a Task: questions, and reviews (a summary, links and hand tests, answered with a verdict). The app draws none of them; the Task shows them.", "mcp-server.md#agentic-waits"],
     ["claim", "Agent Claims", 0, 21, "in", "Each attached Agent's Claim: a subtree, active or paused. Only one active Claim may cover any node.", "agents.md#claims"],
     ["usage", "Account usage, locks", 0, 22, "in", "The last report of each plan limit window per account, and the manual locks on agents and accounts.", "agents.md#capacity-per-account"],
     ["agentcap", "Agent at capacity", 1, 22, "dv", "Locked by hand, its account locked, or a window of its account at 100% before its reset. Lifts at the reset by itself.", "agents.md#capacity-per-account"],
@@ -572,7 +572,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
 
     ["resolution", "Resolution", 2, 1.5, "dv", "How a passed window settled an item: Completed if it was done, Missed if unfinished under Archive. Nothing under Keep Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["compound", "Compound status", 2, 9, "dv", "Done when every counted sub-item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived sub-items are not counted, except those archived by finishing. A Task that is not Compound reads the same as a floor under its own status (never Done by itself); a Compound Task that reads as Agentic shows Doing, Review or On Agent by who holds its items.", "resources.md#tasks"],
-    ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question beneath it. Never stored; answering returns it to On Agent.", "resources.md#agentic-statuses"],
+    ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question or review beneath it. Never stored; answering (an answer, or a review's verdict) returns it to On Agent.", "resources.md#agentic-statuses"],
     ["capblock", "Capacity block", 2, 12.3, "dv", "While an Agent is at capacity, every Task in its active Claim that reads as Agentic and is not Done carries the derived reason Agents at capacity. There is no app-wide lock.", "mcp-server.md#agent-capacity"],
 
     ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, a released wait whose window has passed, or set by hand), or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],

@@ -601,6 +601,73 @@ class ExpectationStatus(StrEnum):
     """
 
 
+class ReviewLink(BaseModel):
+    """
+    A link a review carries: a PR, a doc, a build. Arlesh stores it and never follows it.
+    """
+
+    label: str
+    """
+    What the link is, in a word or two ("PR #12", "Design doc").
+    """
+    url: str
+    """
+    Where it points.
+    """
+
+
+class ReviewVerdict(StrEnum):
+    """
+    The user's answer to a review. Stored as a value; `Approved` on a review with a PR link is the
+    user's explicit word to merge it.
+    """
+
+    approved = "approved"
+    """
+    Accepted — and, with a PR link, merge it.
+    """
+    changes_requested = "changes_requested"
+    """
+    Not accepted: the agent fixes what the note says, then raises a new review.
+    """
+
+
+class Review(BaseModel):
+    """
+    A review as an Expectation carries it: the agent's [`ReviewDetails`], and the user's verdict
+    once given.
+    """
+
+    hand_tests: list[str] | None = None
+    """
+    What the user can try by hand.
+    """
+    links: list[ReviewLink] | None = None
+    """
+    Links to what changed.
+    """
+    verdict: ReviewVerdict | None = None
+    """
+    The user's verdict; absent while the review is open.
+    """
+
+
+class ReviewDetails(BaseModel):
+    """
+    What the agent hands over with a review, written when it raises it.
+    """
+
+    hand_tests: list[str] | None = None
+    """
+    What the user can try by hand. Shown as a list, read only: nothing is ticked or stored per
+    item.
+    """
+    links: list[ReviewLink] | None = None
+    """
+    Links to what changed: a PR, a doc, a build. Possibly none.
+    """
+
+
 class FirstCheck(BaseModel):
     """
     When a wait item's first check falls in each occurrence's window: the start of the
@@ -2149,6 +2216,11 @@ class UpdateExpectationRequest(BaseModel):
     """
     New title (if provided).
     """
+    verdict: ReviewVerdict | None = None
+    """
+    The user's verdict on a review (None leaves it unchanged). Only a review takes one, and
+    releasing a review needs one, given here or already stored.
+    """
 
 
 class UpdateGoalRequest(BaseModel):
@@ -2737,6 +2809,11 @@ class CreateExpectationRequest(BaseModel):
     question: bool | None = None
     """
     Whether an agentic wait is a question for the user. Omitted, it is.
+    """
+    review: ReviewDetails | None = None
+    """
+    Makes the wait an agentic **review** with these details; the wait is then a question
+    (`question` is ignored) and agentic.
     """
     time_scope: TimeScope | None = None
     """
@@ -5233,6 +5310,14 @@ class Expectation(BaseModel):
     on something non-human, like CI. A question wait is released only with an [`answer`]
     (`Self::answer`). Meaningless on a wait that is not agentic.
     """
+    review: Review | None = None
+    """
+    Present on an agentic **review** — the agent's hand-back of finished work — and absent on a
+    question and on a wait on something else. A review is a question too ([`Self::question`] is
+    true), so it makes its Task read Review; what tells it apart is this. Its title and
+    summary are [`Self::title`] and [`Self::agentic_note`], and the user's note is
+    [`Self::answer`].
+    """
     status: ExpectationStatus
     """
     Pending or Released.
@@ -5408,6 +5493,11 @@ class NodeFacts(BaseModel):
     open_question: int | str | None = None
     """
     The open agentic question beneath a Task — the wait that makes it read Review.
+    """
+    open_questions: list[int | str] | None = None
+    """
+    Every open agentic question or review beneath a Task, in position order — the app draws
+    them on the Task, never as nodes of their own. [`Self::open_question`] is the first.
     """
     plan_conflict: PlanConflict | None = None
     """

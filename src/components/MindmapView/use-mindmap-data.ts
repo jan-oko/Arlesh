@@ -406,7 +406,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
     node.planSource = { nodeId: fact.plan_source, shortId: fact.plan_source_short_id ?? null };
   }
   if (fact.plan_conflict !== undefined) node.planConflict = fact.plan_conflict;
-  if (fact.open_question !== undefined) node.openQuestionId = fact.open_question;
+  if (fact.open_questions !== undefined) node.openQuestionIds = fact.open_questions;
   if (fact.expired === true) node.expired = true;
   if (fact.derived_in_progress === true) node.derivedInProgress = true;
   if (fact.sub_items !== undefined) node.subItems = fact.sub_items;
@@ -611,6 +611,7 @@ export function buildTree(
             note: expectation.agentic_note ?? null,
             question: expectation.question !== false,
             answer: expectation.answer ?? null,
+            ...(expectation.review !== undefined ? { review: expectation.review } : {}),
           },
         }
         : {}),
@@ -818,7 +819,12 @@ export function buildTree(
   for (const expectation of expectations) {
     const node = nodeMap.get(expectationNodeId(expectation.id));
     if (node === undefined) continue;
-    nodeMap.get(contentParentKey(expectation.parent_type, expectation.parent_id))?.children.push(node);
+    const parent = nodeMap.get(contentParentKey(expectation.parent_type, expectation.parent_id));
+    if (parent === undefined) continue;
+    // An agentic wait is never drawn as a node: the Task it hangs under shows its open question or
+    // review, so it is held beside the tree rather than in it.
+    if (node.agentWaiting !== undefined) parent.agentWaits = [...(parent.agentWaits ?? []), node];
+    else parent.children.push(node);
   }
 
   // Wire info nodes to their parents
@@ -842,6 +848,7 @@ export function buildTree(
   // rather than being grouped by entity type.
   for (const node of nodeMap.values()) {
     node.children.sort((a, b) => a.position - b.position);
+    node.agentWaits?.sort((a, b) => a.position - b.position);
   }
 
   const aspectNodes = domains

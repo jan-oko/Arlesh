@@ -47,8 +47,6 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import ZenStrip from "./ZenStrip";
 import ZenTaskCard from "./ZenTaskCard";
-import { isReview } from "@/utils/status-mapping";
-import { openQuestion } from "@/utils/open-question";
 import styles from "./ZenView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useViewGestures } from "@/hooks/use-view-gestures";
@@ -324,7 +322,6 @@ export default function ZenView() {
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onCycleStatus={onCycleStatus}
-                question={isReview(row.node.taskStatus) ? openQuestion(row.node) : undefined}
                 onAnswer={nodeEditor.onAnswer}
               />
             ))}

@@ -1,0 +1,1 @@
+- **Agent waits are not drawn.** The waits an agent raises (a question, a review, or a wait on something else like CI) no longer appear as nodes or rows in the Mindmap, the List View, Start, Do or Zen; waits you made yourself still do. A Task reading Review shows the open question or review itself, on its card and in its editor, and you answer it there.

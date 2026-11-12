@@ -595,13 +595,13 @@ describe("TaskEditorModal — the Agentic status model", () => {
     };
     const onAnswer = vi.fn().mockResolvedValue(true);
     // The board names the open question (the load's `open_question` fact); the editor draws it.
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { children: [question], openQuestionId: 9 })} onAnswer={onAnswer} />);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [9] })} onAnswer={onAnswer} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "agentAnswer" }), { target: { value: "Yes, merge." } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "agentAnswer" }), { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, "Yes, merge."));
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, { answer: "Yes, merge." }));
   });
 
   it("converts the status shown when the flag changes the model", async () => {

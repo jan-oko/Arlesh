@@ -75,3 +75,40 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list {
+  margin: 0;
+  padding-inline-start: 1.2em;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.secondary {
+  font-family: var(--font-sans);
+  font-size: inherit;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--node-radius);
+  border: 1px solid var(--node-border);
+  background: var(--node-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.waits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+}

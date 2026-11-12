@@ -10,7 +10,8 @@ import StatusStepButton from "@/components/StatusStepButton/StatusStepButton";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import { AGENTIC_STATUS, TASK_STATUS, isReview, taskStatusOf } from "@/utils/status-mapping";
 import type { MindmapNode } from "@/utils/tree-layout";
-import AnswerField from "@/components/AnswerField/AnswerField";
+import OpenWaits from "@/components/AnswerField/OpenWaits";
+import type { WaitReply } from "@/hooks/use-answer-question";
 import { useTranslation } from "react-i18next";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 import { isOverdue } from "@/utils/overdue";
@@ -41,9 +42,8 @@ interface Props {
   onCancelTitleEdit: () => void;
   /** A tap on the status icon steps the status, as the cycle key does. */
   onCycleStatus: (nodeId: string) => void;
-  /** On a **Review** card: the agent's open question, answered from the card. */
-  question?: MindmapNode | undefined;
-  onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
+  /** On a **Review** card: answers one of the agent's open waits, from the card. */
+  onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
 }
 
 /**
@@ -59,12 +59,12 @@ interface Props {
  *
  * A click selects, a double click opens the editor; a tap on the status icon steps the status (the
  * cycle key's action) and does neither. On the phone the card is as tall as its content. `R` swaps the title for an inline input, as a List row does. A **Review** card — an
- * Agentic Task whose agent has a question open — draws the question with a field to answer it in,
+ * Agentic Task whose agent has a question or review open — draws the question with a field to answer it in,
  * and its Review glyph whether or not badges are shown.
  */
 export default function ZenTaskCard({
   row, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
-  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, question, onAnswer,
+  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, onAnswer,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -144,9 +144,7 @@ export default function ZenTaskCard({
           ))}
         </span>
       )}
-      {review && question !== undefined && onAnswer !== undefined && (
-        <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} compact />
-      )}
+      {review && onAnswer !== undefined && <OpenWaits task={node} onAnswer={onAnswer} compact />}
       {(showBadges || review || fitsContent) && (
         <span className={styles.badges}>
           {showsStatusIcon && (

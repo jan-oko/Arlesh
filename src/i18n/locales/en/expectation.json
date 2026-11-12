@@ -29,5 +29,14 @@
   "agentAnswer": "Your answer",
   "agentAnswerHint": "Needed before the wait can be released",
   "answerHint": "Answer the agent — Ctrl+Enter sends",
-  "answerSend": "Send"
+  "answerSend": "Send",
+  "reviewLinks": "Links",
+  "reviewHandTests": "Try by hand",
+  "reviewNoteLabel": "Your note",
+  "reviewNoteHint": "A note for the agent (optional) — Ctrl+Enter requests changes",
+  "reviewApprove": "Approve",
+  "reviewApproveMerge": "Approve and merge",
+  "reviewRequestChanges": "Request changes",
+  "reviewKind": "Review",
+  "openWaits": "Waiting on you"
 }
