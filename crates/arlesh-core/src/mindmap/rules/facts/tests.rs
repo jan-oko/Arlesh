@@ -224,6 +224,11 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     let (facts, activity) = derive(&load, None);
     assert_eq!(facts["task-11"].open_question, Some(2.into()));
     assert_eq!(
+        facts["task-11"].open_questions,
+        vec![2.into(), 1.into()],
+        "every open one, in position order"
+    );
+    assert_eq!(
         activity.waits, 1,
         "a pending agentic wait that is not a question"
     );
