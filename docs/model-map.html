@@ -470,10 +470,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Agents read everything, or a separate copy that disagrees.</dd>
       <dt>Lives</dt><dd class="where">mcp/ · access/ · capacity/</dd></dl></article>
     <article class="card"><h3>Agents and Claims</h3>
-      <p class="is">An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset.</p>
+      <p class="is">An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset. A subagent is a Child Agent of the session's Agent, told apart by the sub-token on its calls: its sub-Claim lies inside the parent's Claim and is no overlap with it, its standing and capacity follow the parent, and it goes when its parent goes or its Task is set Done.</p>
       <dl><dt>Why</dt><dd>Several agents can work one board without overlapping, each in a bounded context, and one agent reaching its plan limit blocks only its own work.</dd>
       <dt>Without</dt><dd>Every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one.</dd>
-      <dt>Lives</dt><dd class="where">agents/ · mcp/agents.rs · migration 0101 · ADR 0018</dd></dl></article>
+      <dt>Lives</dt><dd class="where">agents/ · mcp/agents.rs · mcp/mod.rs call_tool (sub_token) · migrations 0101, 0102, 0105, 0106 · plugins/arlesh-notify · ADR 0018, 0019</dd></dl></article>
     <article class="card"><h3>The server</h3>
       <p class="is"><code>arlesh-server</code> serves the board over HTTP, as the first step toward multi-device. It runs the core through the Python bindings and adds no rules of its own. Every request carries a bearer token, which names the client the journal records. It serves the MCP at <code>/mcp</code> too, behind its own connect token, and holds the database while it runs, as the app does: it will not start while the app or another server holds it, unless forced.</p>
       <dl><dt>Why</dt><dd>One copy of the board, reachable from more than one device, with one writer.</dd>
@@ -551,9 +551,9 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree. Any Task with items beneath it reads them.", "resources.md#tasks"],
     ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
     ["question", "Agent question waits", 0, 11, "in", "Pending, live agentic waits raised as questions under a Task.", "mcp-server.md#agentic-waits"],
-    ["claim", "Agent Claims", 0, 21, "in", "Each attached Agent's Claim: a subtree, active or paused. Only one active Claim may cover any node.", "agents.md#claims"],
+    ["claim", "Agent Claims", 0, 21, "in", "Each attached Agent's Claim: a subtree, active or paused. Only one active Claim may cover any node, except a Child Agent's sub-Claim inside its parent's Claim.", "agents.md#claims"],
     ["usage", "Account usage, locks", 0, 22, "in", "The last report of each plan limit window per account, and the manual locks on agents and accounts.", "agents.md#capacity-per-account"],
-    ["agentcap", "Agent at capacity", 1, 22, "dv", "Locked by hand, its account locked, or a window of its account at 100% before its reset. Lifts at the reset by itself.", "agents.md#capacity-per-account"],
+    ["agentcap", "Agent at capacity", 1, 22, "dv", "Locked by hand, its account locked, or a window of its account at 100% before its reset. Lifts at the reset by itself. A Child Agent follows its parent.", "agents.md#capacity-per-account"],
     ["clock", "Clock, miss policy", 0, 13, "in", "Window (Archive, Overdue or Owed) or Interval. Decides what a missed iteration becomes and its default due.", "habits.md#clocks"],
     ["cool", "Cooldown", 0, 14, "in", "N units a Window Habit rests after an iteration is done.", "habits.md#cooldown"],
     ["verdict", "Verdict, its window", 0, 15, "in", "A Commitment's Kept, Broken or Unresolved, and how long past its window an answer is still owed.", "resources.md#commitments"],
