@@ -211,6 +211,7 @@ pub fn derive_waits_in(
             agentic_note: None,
             question: false,
             answer: None,
+            review: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: NodeId::Stored(task_id),
             }),
@@ -300,6 +301,7 @@ fn delegation_wait(task: &Task) -> Expectation {
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Origin::DelegationWait(WaitOrigin {
             task_id: task.id.clone(),
         }),
@@ -392,6 +394,7 @@ impl WaitRows {
             agentic_note: None,
             question: false,
             answer: None,
+            review: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: task.id.clone(),
             }),

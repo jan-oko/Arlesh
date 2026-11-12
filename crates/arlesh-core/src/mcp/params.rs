@@ -723,17 +723,41 @@ pub enum WaitsOperation {
         #[serde(default = "question_by_default")]
         question: bool,
     },
+    /// Raises a **review** under an Agentic Task the MCP can write: the agent hands finished work
+    /// back for the user's verdict. The Task reads Review until the user answers (or you release
+    /// the review with the verdict they gave you).
+    RaiseReview {
+        /// The Agentic Task the agent worked, which the review hangs under.
+        task_id: NodeIdParam,
+        /// What is up for review, as the review's title.
+        title: String,
+        /// What changed, in full.
+        summary: String,
+        /// Links to the work: a PR, a doc, a build. A PR link makes the user's approval their word
+        /// to merge it. Arlesh stores the links and never follows them.
+        #[serde(default)]
+        links: Vec<model::ReviewLink>,
+        /// What the user can try by hand, one entry each. Shown read only.
+        #[serde(default)]
+        hand_tests: Vec<String>,
+    },
     /// Releases an agentic wait under an Agentic Task the MCP can write. A question wait needs
     /// `answer` — the one the agent got, from the user in its own session — and is refused
-    /// without one; a wait that is not a question needs none.
+    /// without one; a review needs `verdict` (and may carry the user's note as `answer`) — the
+    /// ones the user gave in your own session, never your own; a wait that is neither needs
+    /// nothing.
     Release {
         /// The wait: a row id or a short id.
         id: NodeIdParam,
-        /// The answer, for a question wait.
+        /// The answer, for a question wait; the user's note, for a review.
         #[serde(default)]
         answer: Option<String>,
+        /// The user's verdict, for a review: `approved` or `changes_requested`.
+        #[serde(default)]
+        verdict: Option<model::ReviewVerdict>,
     },
-    /// One wait's status, question flag, note and answer — a cheap poll for the user's answer.
+    /// One wait's status, kind, note and answer (and a review's links, hand tests and verdict) — a
+    /// cheap poll for the user's answer.
     Get {
         /// The wait: a row id or a short id.
         id: NodeIdParam,

@@ -311,8 +311,16 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
         .retain(|task| keeps(&format!("task-{}", task.id)));
     load.commitments
         .retain(|commitment| keeps(&format!("commitment-{}", commitment.id)));
-    load.expectations
-        .retain(|expectation| keeps(&format!("expectation-{}", expectation.id)));
+    // An agentic wait is not drawn by any view, so no filter keeps it as a row; it travels with the
+    // Task it hangs under, which is what an agent reading the payload expects of it.
+    load.expectations.retain(|expectation| {
+        keeps(&format!("expectation-{}", expectation.id))
+            || (expectation.agentic
+                && keeps(&content_parent_id(
+                    &expectation.parent_type,
+                    &expectation.parent_id,
+                )))
+    });
     load.infos
         .retain(|info| keeps(&format!("info-{}", info.id)));
 

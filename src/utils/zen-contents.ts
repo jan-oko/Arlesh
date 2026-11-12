@@ -63,15 +63,6 @@ function reviewFirst(grid: FocusFilteredRows<TaskListRow>): FocusFilteredRows<Ta
 }
 
 /**
- * The Expectations strip without the waits an agent raised: a question is drawn on its Review card,
- * and a wait on something else (CI, say) is the agent's own business. The strip carries the waits on
- * people. Both stay in the tree views, under their Task.
- */
-function withoutAgenticWaits(strip: FocusFilteredRows<ExpectationListRow>): FocusFilteredRows<ExpectationListRow> {
-  return { rows: strip.rows.filter((row) => row.node.agentWaiting === undefined), exemptedIds: strip.exemptedIds };
-}
-
-/**
  * The grid less every card `drops` names, under the focus exemption: the focused card stays, reported
  * as exempted, until the selection leaves it.
  */
@@ -186,9 +177,9 @@ export function zenContents(
       ? filterCommitmentListWithFocus(source.commitments, underDo, doFilter, focusedId)
       : none(),
     expectations: options.expectations
-      ? withoutAgenticWaits(filterExpectationListWithFocus(
+      ? filterExpectationListWithFocus(
         source.expectations, sharedUnder(shared, "start"), listFilterUnder("start", options.agentic), focusedId,
-      ))
+      )
       : none(),
   };
 }

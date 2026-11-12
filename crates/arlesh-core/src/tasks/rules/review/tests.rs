@@ -48,6 +48,7 @@ fn wait(under: i64, question: bool) -> Expectation {
         agentic_note: None,
         question,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }

@@ -28,7 +28,8 @@ use crate::{
     access::model::{AccessLevel, NodeTable},
     nodes::id::NodeId,
     tasks::model::{
-        CreateExpectationRequest, Expectation, ExpectationStatus, UpdateExpectationRequest,
+        CreateExpectationRequest, Expectation, ExpectationStatus, ReviewDetails,
+        UpdateExpectationRequest,
     },
     undo::model::WriteSource,
 };
@@ -42,13 +43,26 @@ impl ArleshMcp {
     /// non-human, like CI. `ask` is `raise` as a question. The note carries the question, or what
     /// is being waited on.
     ///
+    /// `raise_review` hands finished work back for a verdict: a `title`, a `summary` of what
+    /// changed, optional `links` (each a `label` and a `url`: a PR, a doc, a build) and optional
+    /// `hand_tests` (a list of what the user can try by hand). It is a question of its own kind:
+    /// the Task reads Review until the user answers. A PR link makes their approval their word to
+    /// merge it; Arlesh never talks to GitHub.
+    ///
     /// `release` releases an agentic wait under a Task you can write. A question wait needs an
     /// `answer` — ask the user yourself if you can, and record what they said — and is refused
-    /// without one; a non-question wait needs none. The user can release either from the app, a
-    /// question only with an answer too.
+    /// without one; a review needs the user's `verdict` (`approved` or `changes_requested`),
+    /// with their note as `answer` — only what the user told you in your session, never your own
+    /// verdict; a non-question wait needs none. The user can release any of them from the app, a
+    /// question only with an answer and a review only with a verdict.
     ///
     /// `get` returns one wait as the snapshot's `expectations` carry it — `status`, `question`,
-    /// `agentic_note`, `answer` — so you can poll for the user's answer without the snapshot.
+    /// `agentic_note`, `answer`, and for a review the `review` object (`links`, `hand_tests` and,
+    /// once the user has answered, `verdict`) — so you can poll for the user's answer without the
+    /// snapshot. A wait is a review when `review` is present, a question when `question` is true
+    /// without it, and a wait on something else when `question` is false. After `verdict:
+    /// approved` merge the PR and set the Task Done; after `changes_requested` fix what the note
+    /// says and raise a new review.
     ///
     /// `watch` takes `ids` of waits you want to hear about. It only validates them (each must be an
     /// agentic wait you can see) and answers their current states: it changes nothing on the
@@ -85,11 +99,15 @@ impl ArleshMcp {
         let now = self.now();
         let board = attempt!(self.board(&mut db, now).await);
 
-        let (task_id, title, note, question) = match operation {
+        let (task_id, title, note, question, review) = match operation {
             WaitsOperation::Get { id } => return get(&board, &id),
             WaitsOperation::Watch { ids } => return watch(&board, &ids),
             WaitsOperation::GetMany { ids } => return get_many(&board, &ids),
-            WaitsOperation::Release { id, answer } => {
+            WaitsOperation::Release {
+                id,
+                answer,
+                verdict,
+            } => {
                 let id = found!(board.resolve(&id, "expectation"));
                 let wait = found!(released_wait(&board, &id));
                 if !attempt!(board.writes_task(&mut db, &wait.parent_id, now).await) {
@@ -103,6 +121,7 @@ impl ArleshMcp {
                         UpdateExpectationRequest {
                             status: Some(ExpectationStatus::Released),
                             answer: answer.map(Some),
+                            verdict,
                             ..Default::default()
                         },
                         now,
@@ -118,13 +137,26 @@ impl ArleshMcp {
                 task_id,
                 title,
                 note,
-            } => (task_id, title, note, true),
+            } => (task_id, title, note, true, None),
+            WaitsOperation::RaiseReview {
+                task_id,
+                title,
+                summary,
+                links,
+                hand_tests,
+            } => (
+                task_id,
+                title,
+                Some(summary),
+                true,
+                Some(ReviewDetails { links, hand_tests }),
+            ),
             WaitsOperation::Raise {
                 task_id,
                 title,
                 note,
                 question,
-            } => (task_id, title, note, question),
+            } => (task_id, title, note, question, None),
         };
 
         let task_id = found!(board.resolve(&task_id, "task"));
@@ -142,6 +174,7 @@ impl ArleshMcp {
                 agentic: true,
                 agentic_note: note,
                 question: Some(question),
+                review,
                 ..Default::default()
             },
             now,

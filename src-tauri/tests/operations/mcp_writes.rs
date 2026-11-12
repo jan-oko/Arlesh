@@ -539,6 +539,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
         &mcp.waits(Parameters(params::WaitsOperation::Release {
             id: question.into(),
             answer: Some("Merged".to_string()),
+            verdict: None,
         }))
         .await
         .expect("the waits tool returned no result"),
@@ -1071,6 +1072,7 @@ mod agent_waits {
         params::WaitsOperation::Release {
             id: id.into(),
             answer: answer.map(str::to_string),
+            verdict: None,
         }
     }
 
@@ -1086,6 +1088,75 @@ mod agent_waits {
 
         assert_eq!(succeeded(&released)["status"], "released");
         assert_eq!(get(&mcp, id).await["status"], "released");
+    }
+
+    async fn raised_review(pool: &sqlx::SqlitePool, mcp: &ArleshMcp, task: i64) -> i64 {
+        helpers::make_agentic(pool, task).await;
+        let review = waits(
+            mcp,
+            params::WaitsOperation::RaiseReview {
+                task_id: task.into(),
+                title: "Review #12".into(),
+                summary: "Adds the thing".into(),
+                links: vec![arlesh_lib::tasks::model::ReviewLink {
+                    label: "PR #12".into(),
+                    url: "https://example.test/pull/12".into(),
+                }],
+                hand_tests: vec!["Open the board".into(), "Press Enter".into()],
+            },
+        )
+        .await;
+        succeeded(&review)["id"].as_i64().expect("a stored wait")
+    }
+
+    #[tokio::test]
+    async fn a_review_is_raised_with_links_and_hand_tests_and_read_back_with_the_verdict() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        let id = raised_review(&pool, &mcp, board.inside_task).await;
+
+        let open = get(&mcp, id).await;
+        assert_eq!(open["question"], true, "a review asks the user");
+        assert_eq!(open["agentic_note"], "Adds the thing");
+        assert_eq!(open["review"]["links"][0]["label"], "PR #12");
+        assert_eq!(open["review"]["hand_tests"][1], "Press Enter");
+        assert!(open["review"].get("verdict").is_none(), "no verdict yet");
+
+        let bare = waits(&mcp, release(id, Some("looks fine"))).await;
+        assert_eq!(refused(&bare), "invalid_request", "a review needs a verdict");
+
+        let released = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: id.into(),
+                answer: Some("Fix the label".into()),
+                verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::ChangesRequested),
+            },
+        )
+        .await;
+        assert_eq!(succeeded(&released)["status"], "released");
+
+        let answered = get(&mcp, id).await;
+        assert_eq!(answered["review"]["verdict"], "changes_requested");
+        assert_eq!(answered["answer"], "Fix the label");
+    }
+
+    #[tokio::test]
+    async fn a_verdict_is_refused_on_a_question() {
+        let (_pool, _app, mcp, id) = raised(true).await;
+
+        let refusal = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: id.into(),
+                answer: Some("Blue".into()),
+                verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::Approved),
+            },
+        )
+        .await;
+
+        assert_eq!(refused(&refusal), "invalid_request");
     }
 
     #[tokio::test]
@@ -1380,6 +1451,7 @@ mod agent_waits {
             params::WaitsOperation::Release {
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
+                verdict: None,
             },
         )
         .await;
@@ -1417,6 +1489,7 @@ mod agent_waits {
             params::WaitsOperation::Release {
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
+                verdict: None,
             },
         )
         .await;
@@ -1657,6 +1730,7 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
         .waits(Parameters(params::WaitsOperation::Release {
             id: by_string(),
             answer: None,
+            verdict: None,
         }))
         .await
         .expect("the waits tool returned no result");

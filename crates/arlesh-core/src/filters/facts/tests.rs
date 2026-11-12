@@ -374,6 +374,7 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }

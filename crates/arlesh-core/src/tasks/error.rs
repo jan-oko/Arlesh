@@ -83,6 +83,13 @@ pub enum TaskError {
     /// closes the question, so a release without one would lose it.
     #[error("this wait is a question; write the answer before releasing it")]
     AgenticAnswerMissing,
+    /// A review — an agent handing back finished work — was released with no verdict. Only the
+    /// user's verdict closes it, so a release without one would lose the answer.
+    #[error("this wait is a review; give a verdict (approved or changes_requested) before releasing it")]
+    AgenticVerdictMissing,
+    /// A verdict was written to a wait that is not a review.
+    #[error("only a review takes a verdict")]
+    VerdictOnNonReview,
     /// A status was written to a Task that **consists of its sub-items**: its status is derived
     /// from its subtree, so there is nothing for a manual write to set. Refused out loud; the
     /// answer is to change the sub-items, or to switch compound off.

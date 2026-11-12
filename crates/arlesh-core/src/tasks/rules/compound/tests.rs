@@ -101,6 +101,7 @@ pub(super) fn wait(id: i64, parent: (&str, i64), status: ExpectationStatus) -> E
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Origin::Manual,
     }
 }

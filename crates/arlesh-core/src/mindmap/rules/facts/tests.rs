@@ -97,6 +97,7 @@ fn wait_row(id: i64, task: i64, position: i64, agentic: bool, question: bool) ->
         agentic_note: None,
         question,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }
