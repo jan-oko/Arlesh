@@ -126,7 +126,10 @@ impl From<ExpectationRow> for Expectation {
             agentic_note: row.agentic_note,
             question: row.agentic_question,
             answer: row.agentic_answer,
-            review: review_from_columns(row.agentic_review.as_deref(), row.agentic_verdict.as_deref()),
+            review: review_from_columns(
+                row.agentic_review.as_deref(),
+                row.agentic_verdict.as_deref(),
+            ),
             origin: crate::nodes::origin::Origin::Manual,
         }
     }
@@ -324,7 +327,11 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&request.agentic_note)
         // A review is a question: it asks the user, and is released only with their word.
         .bind(request.review.is_some() || request.question.unwrap_or(true))
-        .bind(request.review.map(|details| review_document(&Review::raised(details))))
+        .bind(
+            request
+                .review
+                .map(|details| review_document(&Review::raised(details))),
+        )
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -518,7 +525,13 @@ impl<'session> ExpectationOperator<'session> {
         .bind(write.question)
         .bind(&write.answer)
         .bind(write.review.as_ref().map(review_document))
-        .bind(write.review.as_ref().and_then(|review| review.verdict).map(|verdict| verdict.as_str()))
+        .bind(
+            write
+                .review
+                .as_ref()
+                .and_then(|review| review.verdict)
+                .map(|verdict| verdict.as_str()),
+        )
         // Released keeps the instant it was first released; pending again clears it.
         .bind(write.status.as_str())
         .bind(instant_column(now()))

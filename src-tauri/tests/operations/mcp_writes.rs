@@ -1124,7 +1124,11 @@ mod agent_waits {
         assert!(open["review"].get("verdict").is_none(), "no verdict yet");
 
         let bare = waits(&mcp, release(id, Some("looks fine"))).await;
-        assert_eq!(refused(&bare), "invalid_request", "a review needs a verdict");
+        assert_eq!(
+            refused(&bare),
+            "invalid_request",
+            "a review needs a verdict"
+        );
 
         let released = waits(
             &mcp,

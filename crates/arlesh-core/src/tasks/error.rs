@@ -85,7 +85,9 @@ pub enum TaskError {
     AgenticAnswerMissing,
     /// A review — an agent handing back finished work — was released with no verdict. Only the
     /// user's verdict closes it, so a release without one would lose the answer.
-    #[error("this wait is a review; give a verdict (approved or changes_requested) before releasing it")]
+    #[error(
+        "this wait is a review; give a verdict (approved or changes_requested) before releasing it"
+    )]
     AgenticVerdictMissing,
     /// A verdict was written to a wait that is not a review.
     #[error("only a review takes a verdict")]
