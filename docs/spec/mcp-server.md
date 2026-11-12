@@ -508,6 +508,12 @@ filter, as `pills.agentic`; see *Filtering a read*.)
   derived status, as the snapshot does.
 - **`set_status`** on a compound Task is refused as `invalid_request` — its status follows its
   sub-items; change them, or switch compound off.
+- **`set_status` `done`** is refused as `invalid_request` while a counted sub-item of the Task is not
+  Done — a Backlogged child, a pending wait or an Unresolved Commitment included — with the number
+  open (see [*A parent reads what its sub-items say*](resources.md#parent-status)). An Agentic
+  Task's status is **not derived** from its sub-items, but this rule holds for it: complete or
+  archive what is left first. A Compound Task that reads as Agentic shows On Agent or Review as its
+  items say ([*Compound with Agentic items*](resources.md#compound-agentic)).
 - **`set_status`** is a **compare-and-set**: it names the status the agent last saw (`expected`)
   and the one to set. The session holds SQLite's single writer lock from before the compare until
   the write commits, so the two are one step: if the Task's status is no longer `expected`, the

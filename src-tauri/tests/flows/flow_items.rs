@@ -276,30 +276,18 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
     let now = at("2026-01-05T20:00:00");
     let factory = helpers::session_factory(&pool);
 
-    let mut db = factory.begin().await.unwrap();
-    for id in [
-        occurrence(TemplateKind::FlowRoot, flow, day),
-        occurrence(TemplateKind::FlowTask, step, day),
-    ] {
-        write::update_task(
-            &mut db,
-            &id,
-            UpdateTaskRequest {
-                status: Some(Status::Ordinary(TaskStatus::Done)),
-                ..Default::default()
-            },
-            now,
-        )
-        .await
-        .unwrap();
-    }
-    db.commit().await.unwrap();
+    let done = || UpdateTaskRequest {
+        status: Some(Status::Ordinary(TaskStatus::Done)),
+        ..Default::default()
+    };
     let status = |iterations: Vec<arlesh_lib::flows::model::HabitIteration>| {
         iterations
             .into_iter()
             .find(|iteration| iteration.anchor_scope_id == day)
             .map(|iteration| iteration.status)
     };
+    let root = occurrence(TemplateKind::FlowRoot, flow, day);
+    let step_id = occurrence(TemplateKind::FlowTask, step, day);
     let mut db = factory.begin().await.unwrap();
     let open = generate_habit_iterations(&mut db, FlowId(flow), now)
         .await
@@ -309,6 +297,13 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
         Some(IterationStatus::Active),
         "the wait and the verdict are owed"
     );
+    // Nothing is done over what is still open: the step has its wait, the root its wait and verdict.
+    assert!(write::update_task(&mut db, &step_id, done(), now)
+        .await
+        .is_err());
+    assert!(write::update_task(&mut db, &root, done(), now)
+        .await
+        .is_err());
 
     write::update_expectation(
         &mut db,
@@ -321,6 +316,15 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
     )
     .await
     .unwrap();
+    write::update_task(&mut db, &step_id, done(), now)
+        .await
+        .unwrap();
+    assert!(
+        write::update_task(&mut db, &root, done(), now)
+            .await
+            .is_err(),
+        "the verdict is still owed"
+    );
     let still = generate_habit_iterations(&mut db, FlowId(flow), now)
         .await
         .unwrap();
@@ -341,6 +345,9 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
     )
     .await
     .unwrap();
+    write::update_task(&mut db, &root, done(), now)
+        .await
+        .unwrap();
     let settled = generate_habit_iterations(&mut db, FlowId(flow), now)
         .await
         .unwrap();

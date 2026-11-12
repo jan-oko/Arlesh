@@ -6,6 +6,7 @@ import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
+import type { SubItemsWire } from "@/wasm/rules";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -313,6 +314,13 @@ export interface MindmapNode {
    * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
    * status glyph draws its outer ring dashed while it is on. */
   compound?: boolean;
+  /** Present on a Task that reads In Progress (Doing) only from its sub-items, not from a status
+   * held by hand (a Compound Task, or a parent raised to it). The Zen View hides its card while the
+   * item beneath it that is being worked on is drawn. */
+  derivedInProgress?: boolean;
+  /** What the Task's sub-items say about it, when they say anything — the status they make it read
+   * at least and how many are open. The editors grey out the statuses it cannot hold from it. */
+  subItems?: SubItemsWire;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

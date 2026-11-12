@@ -54,6 +54,16 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
+    /// How far along the status is, for comparing two: To Do, then Started, In Progress, Done.
+    pub const fn rank(&self) -> u8 {
+        match self {
+            Self::Todo => 0,
+            Self::Started => 1,
+            Self::InProgress => 2,
+            Self::Done => 3,
+        }
+    }
+
     /// Returns the database string representation.
     pub fn as_str(&self) -> &'static str {
         match self {

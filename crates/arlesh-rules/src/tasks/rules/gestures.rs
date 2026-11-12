@@ -28,6 +28,35 @@ pub enum StatusRefusal {
     /// `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     /// only Doing work can be handed back.
     AltEnterAgenticNotDoing,
+    /// The press would set the Task Done while a counted sub-item is not: a Task cannot be
+    /// finished over open work. Complete or archive what is left.
+    OpenSubItems,
+    /// `Alt+Enter` would pause the Task below what its sub-items make it read: it reads at least
+    /// Started, or In Progress, from them, so the lower status would change nothing. The click and
+    /// `Enter` cycle never asks: it skips to the floor.
+    BelowSubItems,
+}
+
+/// What a Task's sub-items say about a status press on it: the part of its subtree the status
+/// gestures depend on. The backend reads it off the board, whole subtree counted by Compound's
+/// rule; a caller that cannot read it passes the default, which constrains nothing, and the
+/// backend still decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SubItems {
+    /// What the sub-items make the Task read at least: To Do, Started or In Progress. Never Done.
+    pub floor: TaskStatus,
+    /// How many counted sub-items are not Done: Backlogged ones, pending waits and Unresolved
+    /// Commitments included. A Task cannot be set Done while any is.
+    pub open: usize,
+}
+
+impl Default for SubItems {
+    fn default() -> Self {
+        Self {
+            floor: TaskStatus::Todo,
+            open: 0,
+        }
+    }
 }
 
 /// The status one step of the click/`Enter` cycle moves a Task to, in the model it holds.
@@ -66,19 +95,73 @@ pub fn alt_step(current: Status) -> Result<Status, StatusRefusal> {
     }
 }
 
+/// The cycle never offers a status below the floor the sub-items derive: a step that lands under
+/// it lands on the floor itself, so Done goes to Started, not To Do, over a Done sub-item.
+fn lifted_to_floor(next: Status, floor: TaskStatus) -> Status {
+    match next {
+        Status::Ordinary(status) if status.rank() < floor.rank() => Status::Ordinary(floor),
+        other => other,
+    }
+}
+
 /// What `step` writes on a Task whose status is `current`, or why it writes nothing. A Compound
-/// Task has no status of its own to write, whatever the gesture.
+/// Task has no status of its own to write, whatever the gesture. Any Task is held to its
+/// `sub_items`: it is not set Done over open ones, and an ordinary one is not set below what they
+/// make it read.
 pub fn status_after(
     step: StatusStep,
     current: Status,
     compound: bool,
+    sub_items: SubItems,
 ) -> Result<Status, StatusRefusal> {
     if compound {
         return Err(StatusRefusal::Compound);
     }
-    match step {
-        StatusStep::Advance => Ok(next_status(current)),
-        StatusStep::Alt => alt_step(current),
+    let next = match step {
+        StatusStep::Advance => lifted_to_floor(next_status(current), sub_items.floor),
+        StatusStep::Alt => alt_step(current)?,
+    };
+    if next.is_done() && sub_items.open > 0 {
+        return Err(StatusRefusal::OpenSubItems);
+    }
+    if step == StatusStep::Alt {
+        if let Status::Ordinary(status) = next {
+            if status.rank() < sub_items.floor.rank() {
+                return Err(StatusRefusal::BelowSubItems);
+            }
+        }
+    }
+    Ok(next)
+}
+
+/// Why an editor may not offer a status on a Task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusBlock {
+    /// The Task consists purely of its sub-items: no status is set by hand.
+    Compound,
+    /// The status is below the floor its sub-items derive, so it would change nothing.
+    BelowSubItems,
+    /// Done while a counted sub-item is not.
+    OpenSubItems,
+}
+
+/// Why `status` cannot be chosen on a Task, or `None` when it can: the statuses the editors grey
+/// out. A Compound Task takes none; any Task is refused Done over open sub-items, and an ordinary
+/// one a status below the floor its sub-items derive. The cycle and the editors share it, so
+/// neither offers what the other refuses.
+pub fn status_block(status: Status, compound: bool, sub_items: SubItems) -> Option<StatusBlock> {
+    if compound {
+        return Some(StatusBlock::Compound);
+    }
+    if status.is_done() && sub_items.open > 0 {
+        return Some(StatusBlock::OpenSubItems);
+    }
+    match status {
+        Status::Ordinary(ordinary) if ordinary.rank() < sub_items.floor.rank() => {
+            Some(StatusBlock::BelowSubItems)
+        }
+        _ => None,
     }
 }
 

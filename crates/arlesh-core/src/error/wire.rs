@@ -318,9 +318,10 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         TaskError::AgenticSpecMissing
         | TaskError::AgenticWaitOutsideAgenticTask
         | TaskError::AgenticAnswerMissing => WireErrorKind::InvalidRequest,
-        // Change the sub-items, or switch compound off; an iteration root or a check task
+        // Change the sub-items, finish or archive what is open, or switch compound off; an iteration root or a check task
         // carries no flag.
         TaskError::CompoundStatus(_)
+        | TaskError::OpenSubItems { .. }
         | TaskError::CompoundOccurrenceStatus
         | TaskError::CompoundOnDerived
         | TaskError::ArchiveOnDerived => WireErrorKind::InvalidRequest,

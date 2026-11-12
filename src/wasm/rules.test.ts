@@ -18,7 +18,8 @@ import {
 describe("the rules module", () => {
   it("steps a status and predicts a press", () => {
     expect(nextStatus({ kind: "ordinary", status: "todo" })).toEqual({ kind: "ordinary", status: "in_progress" });
-    expect(statusAfter("advance", { kind: "ordinary", status: "done" }, true)).toEqual({ outcome: "refused", reason: "compound" });
+    expect(statusAfter("advance", { kind: "ordinary", status: "done" }, true, { floor: "todo", open: 0 })).toEqual({ outcome: "refused", reason: "compound" });
+    expect(statusAfter("advance", { kind: "ordinary", status: "in_progress" }, false, { floor: "in_progress", open: 1 })).toEqual({ outcome: "refused", reason: "open_sub_items" });
     expect(altStep({ kind: "agentic", status: "todo" })).toEqual({ outcome: "refused", reason: "alt_enter_agentic_not_doing" });
   });
 

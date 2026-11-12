@@ -29,7 +29,7 @@ function setup(nodes: MindmapNode[]) {
 beforeEach(() => vi.clearAllMocks());
 
 describe("useTaskCompound", () => {
-  it("makes a task consist of its sub-items in one press", async () => {
+  it("makes a task consist purely of its sub-items in one press, children or none", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const { result, reload } = setup([node("task-5")]);
 

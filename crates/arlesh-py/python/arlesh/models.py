@@ -1693,6 +1693,17 @@ class StatusRefusal(StrEnum):
     `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     only Doing work can be handed back.
     """
+    open_sub_items = "open_sub_items"
+    """
+    The press would set the Task Done while a counted sub-item is not: a Task cannot be
+    finished over open work. Complete or archive what is left.
+    """
+    below_sub_items = "below_sub_items"
+    """
+    `Alt+Enter` would pause the Task below what its sub-items make it read: it reads at least
+    Started, or In Progress, from them, so the lower status would change nothing. The click and
+    `Enter` cycle never asks: it skips to the floor.
+    """
 
 
 class StatusStep(StrEnum):
@@ -3793,70 +3804,6 @@ class IterationScope(BaseModel):
     """
 
 
-class NodeFacts(BaseModel):
-    """
-    What the board says about one node beyond its own row. Every field is left off the wire at
-    its default.
-    """
-
-    capabilities: Capabilities | None = None
-    """
-    What the row may be done to, when its origin turns anything off — a Habit occurrence, a
-    derived wait ([`crate::nodes::rules::capabilities`]). Absent, everything is allowed.
-    """
-    dependency_blocks: list[DependencyBlock] | None = None
-    """
-    The dependencies a Task is blocked by, in edge order.
-    """
-    expired: bool | None = None
-    """
-    Whether a Commitment's Verdict Window ran out before anything was recorded.
-    """
-    inherited_agentic: bool | None = None
-    """
-    Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
-    own: the nearest flag above it, else not.
-    """
-    inherited_plan: TimeScope | None = None
-    """
-    The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
-    Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
-    and what an own Plan must sit inside.
-    """
-    inherited_time_scope: TimeScope | None = None
-    """
-    The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
-    own to replace it.
-    """
-    mcp_visible_via: str | None = None
-    """
-    The title of the MCP root the node is seen through, when the MCP can see it.
-    """
-    met: bool | None = None
-    """
-    Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
-    Achieved, a wait no longer pending.
-    """
-    open_question: int | str | None = None
-    """
-    The open agentic question beneath a Task — the wait that makes it read Review.
-    """
-    plan_conflict: PlanConflict | None = None
-    """
-    The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
-    can leave; the guard never lets a write leave one.
-    """
-    plan_source: str | None = None
-    """
-    The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
-    or, for a node whose inherited Plan came to nothing, the node it would have come from.
-    """
-    plan_source_short_id: str | None = None
-    """
-    [`Self::plan_source`]'s short id, when the board has one for it.
-    """
-
-
 class NodeKey(BaseModel):
     """
     One stored node: its table and its row id there.
@@ -4546,6 +4493,25 @@ class StepEntrySetFlowDependency(BaseModel):
     present: bool
     """
     Add, or remove.
+    """
+
+
+class SubItems(BaseModel):
+    """
+    What a Task's sub-items say about a status press on it: the part of its subtree the status
+    gestures depend on. The backend reads it off the board, whole subtree counted by Compound's
+    rule; a caller that cannot read it passes the default, which constrains nothing, and the
+    backend still decides.
+    """
+
+    floor: TaskStatus
+    """
+    What the sub-items make the Task read at least: To Do, Started or In Progress. Never Done.
+    """
+    open: Annotated[int, Field(ge=0)]
+    """
+    How many counted sub-items are not Done: Backlogged ones, pending waits and Unresolved
+    Commitments included. A Task cannot be set Done while any is.
     """
 
 
@@ -5390,106 +5356,77 @@ class McpAccessCatalogue(BaseModel):
     """
 
 
-class MindmapLoad(BaseModel):
+class NodeFacts(BaseModel):
     """
-    Everything one mindmap render reads, gathered in a single command round trip.
-
-    Each field is exactly what the equivalent single-resource command returns; this type adds no
-    derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
-    `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
+    What the board says about one node beyond its own row. Every field is left off the wire at
+    its default.
     """
 
-    agent_activity: AgentActivity | None = None
+    capabilities: Capabilities | None = None
     """
-    What the agents are doing on the whole board. Filled by the app's load only.
+    What the row may be done to, when its origin turns anything off — a Habit occurrence, a
+    derived wait ([`crate::nodes::rules::capabilities`]). Absent, everything is allowed.
     """
-    block_reasons: list[BlockReason]
+    dependency_blocks: list[DependencyBlock] | None = None
     """
-    Every block reason across tasks and goals — as `list_all_block_reasons`.
+    The dependencies a Task is blocked by, in edge order.
     """
-    commitments: list[Commitment]
+    derived_in_progress: bool | None = None
     """
-    Every commitment, stored and derived — the Commitment virtual table.
+    Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    by hand: a Compound Task, or a parent raised to it.
     """
-    domains: list[Domain]
+    expired: bool | None = None
     """
-    Aspects, projects, domains and tags — as `list_domains(None)`.
+    Whether a Commitment's Verdict Window ran out before anything was recorded.
     """
-    expectations: list[Expectation]
+    inherited_agentic: bool | None = None
     """
-    Every expectation, stored and derived — the Expectation virtual table: a Task's spawned
-    wait and a delegated Task's wait are rows here, told apart by their `origin`. A wait's
-    check tasks are rows of `tasks`.
+    Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
+    own: the nearest flag above it, else not.
     """
-    facts: dict[str, NodeFacts] | None = None
+    inherited_plan: TimeScope | None = None
     """
-    What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
-    which of its dependencies block it, what it inherits, its open question, whether it has
-    expired. Filled by the app's load only, as [`Self::short_ids`] is.
+    The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
+    Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
+    and what an own Plan must sit inside.
     """
-    flow_commitments: list[FlowCommitment]
+    inherited_time_scope: TimeScope | None = None
     """
-    Every flow's Commitment items.
+    The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
+    own to replace it.
     """
-    flow_cycles: list[FlowItemCycle]
+    mcp_visible_via: str | None = None
     """
-    Every flow's cycle pairs — as `list_all_flow_cycles`.
+    The title of the MCP root the node is seen through, when the MCP can see it.
     """
-    flow_dependencies: list[FlowDependency]
+    met: bool | None = None
     """
-    Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.
+    Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
+    Achieved, a wait no longer pending.
     """
-    flow_expectations: list[FlowExpectation]
+    open_question: int | str | None = None
     """
-    Every flow's wait items.
+    The open agentic question beneath a Task — the wait that makes it read Review.
     """
-    flow_goals: list[FlowGoal]
+    plan_conflict: PlanConflict | None = None
     """
-    Every flow's goal items — as `list_all_flow_goals`.
+    The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
+    can leave; the guard never lets a write leave one.
     """
-    flow_instance_nodes: list[TargetRef]
+    plan_source: str | None = None
     """
-    Every real node materialised by a started flow — as `list_flow_instance_nodes`.
+    The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
+    or, for a node whose inherited Plan came to nothing, the node it would have come from.
     """
-    flow_tasks: list[FlowTask]
+    plan_source_short_id: str | None = None
     """
-    Every flow's task items — as `list_all_flow_tasks`.
+    [`Self::plan_source`]'s short id, when the board has one for it.
     """
-    flows: list[Flow]
+    sub_items: SubItems | None = None
     """
-    Every flow — as `list_flows`.
-    """
-    goals: list[Goal]
-    """
-    Every goal, stored and derived — the Goal virtual table.
-    """
-    habits: list[FlowHabitEntry]
-    """
-    One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
-    """
-    infos: list[Info]
-    """
-    Every info node — as `list_infos`.
-    """
-    lifecycles: list[ItemLifecycle]
-    """
-    Every task's, goal's and commitment's derived lifecycle at `now`, derived rows included.
-    """
-    short_ids: dict[str, str] | None = None
-    """
-    Each Task's, Goal's, Commitment's and wait's **short id** on the whole board, keyed as the
-    board keys a node (`task-12`): what the app names a dependency it is blocked by with.
-    Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
-    off the wire, everywhere else — the MCP names nodes among those it can see.
-    """
-    task_dependencies: list[TaskDependencyEdge]
-    """
-    Every task dependency edge — as `list_all_task_dependencies`.
-    """
-    tasks: list[Task]
-    """
-    Every task, stored and derived — the Task virtual table. A Habit occurrence is one of
-    these like any other, told apart only by its `origin`.
+    What a Task's sub-items say about it — the floor they derive and how many are open — when
+    they say anything: the editors grey out the statuses it cannot hold from it.
     """
 
 
@@ -5792,6 +5729,109 @@ class DuplicatedGoal(BaseModel):
     left_behind: list[LeftBehindChild]
     """
     The rows hung on Habit occurrences the copy could not carry, for the paste to name.
+    """
+
+
+class MindmapLoad(BaseModel):
+    """
+    Everything one mindmap render reads, gathered in a single command round trip.
+
+    Each field is exactly what the equivalent single-resource command returns; this type adds no
+    derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
+    `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
+    """
+
+    agent_activity: AgentActivity | None = None
+    """
+    What the agents are doing on the whole board. Filled by the app's load only.
+    """
+    block_reasons: list[BlockReason]
+    """
+    Every block reason across tasks and goals — as `list_all_block_reasons`.
+    """
+    commitments: list[Commitment]
+    """
+    Every commitment, stored and derived — the Commitment virtual table.
+    """
+    domains: list[Domain]
+    """
+    Aspects, projects, domains and tags — as `list_domains(None)`.
+    """
+    expectations: list[Expectation]
+    """
+    Every expectation, stored and derived — the Expectation virtual table: a Task's spawned
+    wait and a delegated Task's wait are rows here, told apart by their `origin`. A wait's
+    check tasks are rows of `tasks`.
+    """
+    facts: dict[str, NodeFacts] | None = None
+    """
+    What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
+    which of its dependencies block it, what it inherits, its open question, whether it has
+    expired. Filled by the app's load only, as [`Self::short_ids`] is.
+    """
+    flow_commitments: list[FlowCommitment]
+    """
+    Every flow's Commitment items.
+    """
+    flow_cycles: list[FlowItemCycle]
+    """
+    Every flow's cycle pairs — as `list_all_flow_cycles`.
+    """
+    flow_dependencies: list[FlowDependency]
+    """
+    Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.
+    """
+    flow_expectations: list[FlowExpectation]
+    """
+    Every flow's wait items.
+    """
+    flow_goals: list[FlowGoal]
+    """
+    Every flow's goal items — as `list_all_flow_goals`.
+    """
+    flow_instance_nodes: list[TargetRef]
+    """
+    Every real node materialised by a started flow — as `list_flow_instance_nodes`.
+    """
+    flow_tasks: list[FlowTask]
+    """
+    Every flow's task items — as `list_all_flow_tasks`.
+    """
+    flows: list[Flow]
+    """
+    Every flow — as `list_flows`.
+    """
+    goals: list[Goal]
+    """
+    Every goal, stored and derived — the Goal virtual table.
+    """
+    habits: list[FlowHabitEntry]
+    """
+    One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
+    """
+    infos: list[Info]
+    """
+    Every info node — as `list_infos`.
+    """
+    lifecycles: list[ItemLifecycle]
+    """
+    Every task's, goal's and commitment's derived lifecycle at `now`, derived rows included.
+    """
+    short_ids: dict[str, str] | None = None
+    """
+    Each Task's, Goal's, Commitment's and wait's **short id** on the whole board, keyed as the
+    board keys a node (`task-12`): what the app names a dependency it is blocked by with.
+    Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
+    off the wire, everywhere else — the MCP names nodes among those it can see.
+    """
+    task_dependencies: list[TaskDependencyEdge]
+    """
+    Every task dependency edge — as `list_all_task_dependencies`.
+    """
+    tasks: list[Task]
+    """
+    Every task, stored and derived — the Task virtual table. A Habit occurrence is one of
+    these like any other, told apart only by its `origin`.
     """
 
 
