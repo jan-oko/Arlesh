@@ -50,6 +50,14 @@ pub struct FlowHabitEntry {
     pub result: FlowHabitResult,
 }
 
+/// Writes a map with its keys in order, so the same board is always the same text.
+fn sorted_by_key<V: Serialize, S: serde::Serializer>(
+    map: &std::collections::HashMap<String, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_map(map.iter().collect::<std::collections::BTreeMap<_, _>>())
+}
+
 /// Everything one mindmap render reads, gathered in a single command round trip.
 ///
 /// Each field is exactly what the equivalent single-resource command returns; this type adds no
@@ -101,12 +109,18 @@ pub struct MindmapLoad {
     /// board keys a node (`task-12`): what the app names a dependency it is blocked by with.
     /// Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
     /// off the wire, everywhere else — the MCP names nodes among those it can see.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub short_ids: std::collections::HashMap<String, String>,
     /// What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
     /// which of its dependencies block it, what it inherits, its open question, whether it has
     /// expired. Filled by the app's load only, as [`Self::short_ids`] is.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub facts: std::collections::HashMap<String, NodeFacts>,
     /// What the agents are doing on the whole board. Filled by the app's load only.
     #[serde(skip_serializing_if = "Option::is_none")]
