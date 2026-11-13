@@ -253,9 +253,13 @@ fn agents_kind(error: &AgentError) -> WireErrorKind {
         | AgentError::TokenInvalid
         | AgentError::NotAttached
         | AgentError::OutsideRoots(_)
+        | AgentError::OutsideParentClaim(_)
+        | AgentError::SubTokenInvalid
         | AgentError::Overlaps { .. } => WireErrorKind::NotPermitted,
         AgentError::NotFound(_) => WireErrorKind::NotFound,
-        AgentError::NoClaim(_) | AgentError::Invalid(_) => WireErrorKind::InvalidRequest,
+        AgentError::NoClaim(_) | AgentError::Invalid(_) | AgentError::NotForChild(_) => {
+            WireErrorKind::InvalidRequest
+        }
         AgentError::Entropy(_) | AgentError::Corrupt(_) => WireErrorKind::Internal,
         AgentError::Access(inner) => access_kind(inner),
         AgentError::Database(_) => WireErrorKind::Database,

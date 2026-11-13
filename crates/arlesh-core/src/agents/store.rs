@@ -46,11 +46,12 @@ impl<'session> AgentOperator<'session> {
         row.map(Agent::try_from).transpose()
     }
 
-    /// The Agent whose token has the digest `sha256`, if any.
+    /// The Agent whose token has the digest `sha256`, if any. A child's sub-token is not an agent
+    /// token, so it never matches here.
     #[tracing::instrument(skip_all)]
     pub async fn by_token(&mut self, sha256: &str) -> Result<Option<Agent>, AgentError> {
         let row: Option<AgentRow> = sqlx::query_as(&format!(
-            "SELECT {AGENT_COLUMNS} FROM agents WHERE token_sha256 = ?"
+            "SELECT {AGENT_COLUMNS} FROM agents WHERE token_sha256 = ? AND parent_id IS NULL"
         ))
         .bind(sha256)
         .fetch_optional(&mut *self.connection)
@@ -81,6 +82,80 @@ impl<'session> AgentOperator<'session> {
         .fetch_one(&mut *self.connection)
         .await?;
         Ok(AgentId(id))
+    }
+
+    /// Records a new child Agent of `parent`, holding no Claim. `client_id` is the client's id for
+    /// the subagent; `token_sha256` is its sub-token's digest.
+    #[tracing::instrument(skip(self, token_sha256))]
+    pub async fn insert_child(
+        &mut self,
+        parent: AgentId,
+        name: &str,
+        account: &str,
+        client_id: &str,
+        token_sha256: &str,
+        now: &str,
+    ) -> Result<AgentId, AgentError> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO agents (name, account, session_uuid, token_sha256, created_at, \
+             last_seen_at, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        )
+        .bind(name)
+        .bind(account)
+        .bind(client_id)
+        .bind(token_sha256)
+        .bind(now)
+        .bind(now)
+        .bind(parent.0)
+        .fetch_one(&mut *self.connection)
+        .await?;
+        Ok(AgentId(id))
+    }
+
+    /// The child of `parent` registered for the client's subagent `client_id`, if any.
+    #[tracing::instrument(skip(self))]
+    pub async fn child_by_client(
+        &mut self,
+        parent: AgentId,
+        client_id: &str,
+    ) -> Result<Option<Agent>, AgentError> {
+        let row: Option<AgentRow> = sqlx::query_as(&format!(
+            "SELECT {AGENT_COLUMNS} FROM agents WHERE parent_id = ? AND session_uuid = ?"
+        ))
+        .bind(parent.0)
+        .bind(client_id)
+        .fetch_optional(&mut *self.connection)
+        .await?;
+        row.map(Agent::try_from).transpose()
+    }
+
+    /// The child of `parent` whose sub-token has the digest `sha256`, if any.
+    #[tracing::instrument(skip_all)]
+    pub async fn child_by_token(
+        &mut self,
+        parent: AgentId,
+        sha256: &str,
+    ) -> Result<Option<Agent>, AgentError> {
+        let row: Option<AgentRow> = sqlx::query_as(&format!(
+            "SELECT {AGENT_COLUMNS} FROM agents WHERE parent_id = ? AND token_sha256 = ?"
+        ))
+        .bind(parent.0)
+        .bind(sha256)
+        .fetch_optional(&mut *self.connection)
+        .await?;
+        row.map(Agent::try_from).transpose()
+    }
+
+    /// The children of `parent`, oldest first.
+    #[tracing::instrument(skip(self))]
+    pub async fn children(&mut self, parent: AgentId) -> Result<Vec<Agent>, AgentError> {
+        let rows: Vec<AgentRow> = sqlx::query_as(&format!(
+            "SELECT {AGENT_COLUMNS} FROM agents WHERE parent_id = ? ORDER BY id"
+        ))
+        .bind(parent.0)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        rows.into_iter().map(Agent::try_from).collect()
     }
 
     /// Notes that a session attached with the Agent's token (or just attached it): its session
