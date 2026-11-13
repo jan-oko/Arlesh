@@ -48,6 +48,24 @@ pub(super) fn flatten_tool(tool: &mut Tool) {
     }
 }
 
+/// Adds to `tool`'s input schema the optional `sub_token` every tool takes: a subagent given a
+/// sub-token passes it to run the call as its own child agent. Never required.
+pub(super) fn add_sub_token(tool: &mut Tool) {
+    let mut schema = (*tool.input_schema).clone();
+    let property = serde_json::json!({
+        "type": "string",
+        "description": "Only for a subagent given a sub-token: the call runs as your child agent \
+                        and sees only its sub-Claim. Leave it out to act as the session's agent.",
+    });
+    let properties = schema
+        .entry("properties")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if let Value::Object(properties) = properties {
+        properties.insert(super::SUB_TOKEN.into(), property);
+    }
+    tool.input_schema = Arc::new(schema);
+}
+
 /// Removes every `"default": null` in `schema`, at any depth.
 fn drop_null_defaults(schema: &mut Value) {
     match schema {

@@ -310,6 +310,15 @@ pub enum AgentsOperation {
     Lock,
     /// Unlocks yourself, as soon as there is room again.
     Unlock,
+    /// Registers a subagent of this session as a child agent and answers its `sub_token`, once.
+    /// The child may claim only inside your Claim, and sees only what it claims. Registering the
+    /// same `client_id` again answers the same child, without a token.
+    RegisterChild {
+        /// What to call it, e.g. the subagent's description; made unique.
+        name: String,
+        /// Your client's id for the subagent (Claude Code's agent id).
+        client_id: String,
+    },
     /// Reports how much of the account's plan limits is used, so agents of the account are held
     /// back at the limit and freed at the reset. A host that can read its usage does this on its
     /// own.

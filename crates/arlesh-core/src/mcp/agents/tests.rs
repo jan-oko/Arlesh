@@ -603,3 +603,279 @@ async fn the_app_wide_capacity_tool_is_gone() {
 
     assert!(!mcp.tool_names().contains(&"arlesh_capacity".to_owned()));
 }
+
+// Child agents and the per-call `sub_token` (Task 077, ADR 0019).
+
+/// Attaches as an agent holding the whole Arlesh project (domain 902).
+async fn attach_on_project(mcp: &ArleshMcp, name: &str) -> Value {
+    let pin = pin(mcp).await;
+    call(
+        mcp,
+        "arlesh_agents",
+        json!({
+            "operation": "attach",
+            "pin": pin,
+            "session_id": format!("session-{name}"),
+            "name": name,
+            "account": "work",
+            "subtree": { "node_type": "domain", "node_id": "902" },
+        }),
+    )
+    .await
+}
+
+/// Registers a child of `session`'s agent: its sub-token.
+async fn register(session: &ArleshMcp, client_id: &str) -> String {
+    let answer = call(
+        session,
+        "arlesh_agents",
+        json!({ "operation": "register_child", "name": "helper", "client_id": client_id }),
+    )
+    .await;
+    structured(&answer)["sub_token"]
+        .as_str()
+        .expect("a sub-token")
+        .to_owned()
+}
+
+async fn child_claims(session: &ArleshMcp, sub_token: &str, node_type: &str, id: &str) -> Value {
+    call(
+        session,
+        "arlesh_agents",
+        json!({
+            "operation": "claim",
+            "subtree": { "node_type": node_type, "node_id": id },
+            "sub_token": sub_token,
+        }),
+    )
+    .await
+}
+
+fn task_titles(answer: &Value) -> Vec<&str> {
+    let mut titles: Vec<&str> = structured(answer)["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|task| task["title"].as_str())
+        .collect();
+    titles.sort_unstable();
+    titles
+}
+
+#[tokio::test]
+async fn every_tool_lists_the_optional_sub_token() {
+    let (mcp, _pool) = board().await;
+
+    for tool in mcp.tools() {
+        let schema = &*tool.input_schema;
+        assert_eq!(
+            schema["properties"]["sub_token"]["type"], "string",
+            "{}",
+            tool.name
+        );
+        let required = schema["required"].as_array().cloned().unwrap_or_default();
+        assert!(
+            !required.iter().any(|field| field == "sub_token"),
+            "{}",
+            tool.name
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_child_sees_only_its_sub_claim_and_the_parent_all_of_its_claim() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    let claimed = child_claims(&session, &token, "task", "100").await;
+    assert!(!is_error(&claimed), "{claimed}");
+    assert_eq!(
+        structured(&claimed)["claim_name"]
+            .as_str()
+            .map(|name| name.ends_with("Docs")),
+        Some(true),
+        "{claimed}"
+    );
+
+    let args = |extra: Value| {
+        let mut base = json!({ "operation": "load", "sections": ["tasks"] });
+        base.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        base
+    };
+    let child = call(
+        &session,
+        "arlesh_snapshot",
+        args(json!({ "sub_token": token })),
+    )
+    .await;
+    let parent = call(&session, "arlesh_snapshot", args(json!({}))).await;
+
+    assert_eq!(task_titles(&child), ["Docs"], "{child}");
+    assert_eq!(task_titles(&parent), ["Announce", "Docs"], "{parent}");
+}
+
+#[tokio::test]
+async fn a_childs_write_outside_its_sub_claim_is_refused_and_the_parents_is_not() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+    let update = |extra: Value| {
+        let mut base = json!({ "operation": "update", "id": "101", "title": "Renamed" });
+        base.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        base
+    };
+
+    let as_child = call(
+        &session,
+        "arlesh_tasks",
+        update(json!({ "sub_token": token })),
+    )
+    .await;
+    let as_parent = call(&session, "arlesh_tasks", update(json!({}))).await;
+
+    assert!(is_error(&as_child), "{as_child}");
+    assert_eq!(structured(&as_child)["kind"], "not_permitted");
+    assert!(!is_error(&as_parent), "{as_parent}");
+}
+
+#[tokio::test]
+async fn a_child_cannot_claim_outside_its_parents_claim() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach(&session, "orchestrator", 10).await;
+    let token = register(&session, "sub-1").await;
+
+    let outside = child_claims(&session, &token, "goal", "11").await;
+    let inside = child_claims(&session, &token, "task", "100").await;
+
+    assert_eq!(structured(&outside)["kind"], "not_permitted", "{outside}");
+    assert!(!is_error(&inside), "{inside}");
+}
+
+#[tokio::test]
+async fn a_sub_token_of_another_sessions_child_is_refused() {
+    let (mcp, _pool) = board().await;
+    let first = session(&mcp);
+    let second = session(&mcp);
+    attach(&first, "one", 10).await;
+    attach(&second, "two", 11).await;
+    let token = register(&first, "sub-1").await;
+
+    let answer = child_claims(&second, &token, "task", "101").await;
+
+    assert_eq!(structured(&answer)["kind"], "not_permitted", "{answer}");
+}
+
+#[tokio::test]
+async fn a_sub_token_that_is_not_a_string_or_has_no_session_is_refused() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+
+    let not_a_string = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": 7 }),
+    )
+    .await;
+    let in_process = call(
+        &ArleshMcp::new(mcp.factory.clone()),
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": "x" }),
+    )
+    .await;
+
+    assert_eq!(
+        structured(&not_a_string)["kind"],
+        "invalid_request",
+        "{not_a_string}"
+    );
+    assert_eq!(
+        structured(&in_process)["kind"],
+        "invalid_request",
+        "{in_process}"
+    );
+}
+
+#[tokio::test]
+async fn a_child_pauses_and_resumes_its_own_claim_with_its_sub_token() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+    let act = |operation: &str| json!({ "operation": operation, "sub_token": token });
+
+    let paused = call(&session, "arlesh_agents", act("pause")).await;
+    let parent = call(&session, "arlesh_agents", json!({ "operation": "status" })).await;
+    let resumed = call(&session, "arlesh_agents", act("resume")).await;
+
+    assert_eq!(structured(&paused)["standing"], "paused", "{paused}");
+    assert_eq!(
+        structured(&parent)["standing"],
+        "active",
+        "the parent is not paused"
+    );
+    assert_eq!(structured(&resumed)["standing"], "active", "{resumed}");
+}
+
+#[tokio::test]
+async fn a_child_cannot_attach_lock_register_or_report_usage() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+
+    for operation in [
+        json!({ "operation": "lock" }),
+        json!({ "operation": "unlock" }),
+        json!({ "operation": "register_child", "name": "x", "client_id": "y" }),
+        json!({ "operation": "report_usage", "windows": [] }),
+        json!({ "operation": "attach", "session_id": "s", "pin": "1" }),
+    ] {
+        let mut arguments = operation.clone();
+        arguments["sub_token"] = json!(token);
+        let answer = call(&session, "arlesh_agents", arguments).await;
+        assert_eq!(
+            structured(&answer)["kind"],
+            "invalid_request",
+            "{operation}: {answer}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn registering_needs_an_attached_session_and_answers_the_token_only_once() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    let register_call =
+        json!({ "operation": "register_child", "name": "helper", "client_id": "sub-1" });
+
+    let unattached = call(&session, "arlesh_agents", register_call.clone()).await;
+    attach_on_project(&session, "orchestrator").await;
+    let first = call(&session, "arlesh_agents", register_call.clone()).await;
+    let second = call(&session, "arlesh_agents", register_call).await;
+
+    assert_eq!(
+        structured(&unattached)["kind"],
+        "not_permitted",
+        "{unattached}"
+    );
+    assert!(structured(&first)["sub_token"].is_string(), "{first}");
+    assert!(structured(&second).get("sub_token").is_none(), "{second}");
+    assert_eq!(
+        structured(&first)["agent"]["id"],
+        structured(&second)["agent"]["id"]
+    );
+    assert!(
+        structured(&first).get("claim_name").is_none(),
+        "nothing is claimed yet"
+    );
+}
