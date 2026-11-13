@@ -584,6 +584,11 @@ underneath a running app is noticed. A route the server lacks answers 404 with `
 "unknown_route"`, which the window shows as a refusal of that one action rather than a failure of
 the board.
 
+Changed nodes (ADR 0020) did not bump it: they are additive both ways. An app that knows only
+revisions reloads on each `board-changed` and ignores `board-head`; an app on a server without
+`GET /board/current` gets `unknown_route`, loads `/board?now=` instead, with no sequence or hash, and
+then treats every event as a signal to reload.
+
 ## Data
 
 There is no sync between a device's local database and a server. A device switched to Client keeps

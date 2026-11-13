@@ -150,7 +150,8 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
 | `GET /events/changes` | The change stream (below). `GET /events/expectations` is the agents' long poll, answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
-| `GET /board?now=` | The whole board: every node with its lifecycle, short id and facts |
+| `GET /board/current` | The latest **publication** as it is: the board's JSON, nulls included, with `X-Arlesh-Seq`, `X-Arlesh-Revision` (the publication's), `X-Arlesh-Hash` and `X-Arlesh-Board-Now`. Derives nothing. The app's full load (see *Live sync*) |
+| `GET /board?now=` | The whole board derived afresh at `now` (default: the server's clock): every node with its lifecycle, short id and facts. For agents and scripts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
 | `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check, `GET /{id}/dependency-candidates` (what the quick dependency picker offers) |
@@ -205,15 +206,39 @@ and start empty with the server, which also clears the journal at startup as the
 
 ## Live sync: `/events/changes`
 
-`GET /events/changes` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
-a write through any route as any client, and an agent's write through `/mcp`.
-The revision is one per database file, shared by every open of it in the process, and it starts at
-0 when the server starts. The stream sends `event: board-changed` with `data: {"revision": n,
-"epoch": e}` when the revision moves past the last one it sent, so writes close together arrive as
-one event. Each event's id is `<epoch>:<revision>`, the epoch naming this run of the server. A
-client reconnecting with `Last-Event-ID` is sent one event at once if it missed anything: the
-revision moved past its own, or the server restarted. A comment goes out every 15 s of silence, so
-a proxy keeps the stream open.
+*Task `2d9`, [ADR 0020](../adr/0020-changed-nodes-and-board-hash.md).*
+
+Every committed write bumps the board's **revision**: a write through any route as any client, undo
+and redo, and an agent's write through `/mcp`. The revision is one per database file, shared by
+every open of it in the process, and it starts at 0 when the server starts; the **epoch** names
+this run of the server.
+
+**The publisher.** The server runs one publisher per database file (in the bindings' per-file
+state, beside the revision). When the revision moves, and once a minute (half a second past it), it
+reads the revision, derives the board at the server's clock in one read transaction (as `/board`
+does), compares it with the board it last published by value, and makes a **publication**: the
+next **sequence number** (`seq`, one per publication within the epoch), the revision it read, the
+instant it derived at, the [board hash](client-mode.md#the-board-hash) and the changed entries. A
+tick that changes nothing publishes nothing. Writes that land during a derive are taken by the next
+one. The revision is read before the derive begins and bumped only after a write commits, so a
+publication holds at least the writes its revision counts. The publisher keeps only the latest
+publication and the last 64 change events (at most 4 MiB); a restart starts afresh in a new epoch.
+
+**The stream.** `GET /events/changes` is a Server-Sent Events stream of two events:
+
+- `board-changed`, one per publication, with id `<epoch>:<seq>` and data `{epoch, seq, revision,
+  now, hash, changes}` ([Client Mode](client-mode.md#live-sync) describes `changes`), or `{epoch,
+  seq, revision, now, hash, reload: true}` when the changes would exceed 256 KiB or cannot be
+  replayed.
+- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums}` (`sums`: the hash per
+  collection), sent once on connecting and after every 15 s of silence, in place of a keepalive
+  comment, so a proxy keeps the stream open and a client can check its board for free.
+
+A client reconnecting with `Last-Event-ID: <epoch>:<seq>` of this epoch is sent the events after
+`seq` at once, from the 64 kept; when they are not all kept, or the id is another epoch's or cannot
+be read, it is sent one `reload` event at the latest publication. A client that reads only
+`revision` and `epoch` from the data, as apps before changed nodes did, treats each event as a
+signal to reload, as before.
 
 ## Revision on every answer, and gzip
 
@@ -223,7 +248,10 @@ stream sends, so a client holding a copy of the board can tell whether the next 
 a write landing mid-read can make the copy look older than it is and never newer: a client reloads
 once too often, never once too few. A **write** carries the revision after it committed. The
 headers are used rather than a body envelope so no response shape changes. The board's own body
-(`/board`) is unchanged.
+(`/board`) is unchanged. `GET /board/current` is the exception to the read rule: its
+`X-Arlesh-Revision` is the revision of the publication it answers, which can be behind the
+revision as it stood, since that publication may not hold the newest write yet; it also carries
+`X-Arlesh-Seq`, `X-Arlesh-Hash` and `X-Arlesh-Board-Now`.
 
 Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. The event streams never are: a
 compressor holds a stream back until it has enough to compress, and an event must arrive as it
@@ -300,7 +328,7 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
   on itself and would stamp every device's writes as its own client.
   See [Client Mode](client-mode.md#the-backend-crate-and-python).
 - **`business_logic/board.py`**: the `Board` holds which open database a request reads and writes
-  through. It takes the hold, keeps one write-open per client, and serves each client's MCP
+  through, and names the epoch (the bindings' change feed's, which the publisher stamps too). It takes the hold, keeps one write-open per client, and serves each client's MCP
   endpoint from that client's write-open. It is handed an `open_as(client)` answering the
   package's port, and a `take_hold()`.
 - **`entrypoints/`**, the ways in:

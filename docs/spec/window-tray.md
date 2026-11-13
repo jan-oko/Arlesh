@@ -61,49 +61,51 @@ Every mutation used to end in a reload **in the window that issued it**, which w
 while there was one window. A second window onto the same database would never hear about the
 first's edits, and two views of one board that silently disagree are worse than one view.
 
-So a committed change announces itself, and every other window **reloads** — the same reload that
-already runs after a local edit, not a second refresh path invented for this. The Mindmap loads in
-a single request, so it is cheap enough to do unconditionally. Rejected: per-window polling, which
-needs no backend change but is either laggy or wasteful and keeps re-reading an idle board; and no
-sync at all, which is free to build and produces two windows onto one database that quietly
-disagree.
+So a committed change announces itself to **every** window, the one that made it included, and
+since Task `2d9` ([ADR 0020](../adr/0020-changed-nodes-and-board-hash.md)) the announcement
+**carries the changed nodes**: after a write, the backend's publisher derives the board, compares
+it with the last one it published, and the event holds only the entries that differ, with a
+sequence number and the board hash. Each window applies it to the board it holds; none reloads,
+and the window that wrote waits for its write's revision instead of reloading (*Live sync* in
+[Client Mode](client-mode.md#live-sync), which both modes follow). Rejected before: per-window
+polling, which is either laggy or wasteful; and no sync at all, which leaves two windows onto one
+database quietly disagreeing.
 
-The event carries **no payload**. It is a signal to reload, not a diff: a payload would be a second
-description of the change living beside the change itself, free to drift from it, where a bare
-signal cannot be wrong about anything.
+The event used to carry **no payload**, on the argument that a payload would be a second
+description of the change, written beside the change and free to drift from it. The changed nodes
+are not that: they are not written by the command but found by comparing two derived boards, so
+they cannot disagree with what the command did, and the board hash checks every window against
+the publisher. The cost the bare signal paid instead, a 1.6 MB board read by every window after
+every write, is what changed the answer.
 
-**It is emitted at the Gesture boundary, after the commit — derived from the Undo Journal rather
-than written into each command.** The obvious reading of "every mutating command announces" is a
-line at the end of all 83 of them, and that is the obligation [ADR
+**A write is recorded at the Gesture boundary, after the commit — derived from the Undo Journal
+rather than written into each command.** The obvious reading of "every mutating command announces"
+is a line at the end of all 83 of them, and that is the obligation [ADR
 0006](../adr/0006-undo-via-a-trigger-written-row-journal.md) already refused for undo, for the same
 reason: an obligation met 83 times and again by every command written afterwards is one that will
 eventually be forgotten, silently, by the command least likely to be tested for it. The journal
 those commands already write is asked instead — a Gesture closes, the backend asks whether it wrote
-anything, and announces when it did. A command that wrote nothing to the journal wrote nothing to
-the board, and the test that fails for any table whose writes are not journaled already exists. The
-per-command obligation is gone rather than restated.
+anything, and records a write for the publisher when it did. A command that wrote nothing to the
+journal wrote nothing to the board, and the test that fails for any table whose writes are not
+journaled already exists. The publisher also derives once a minute, so a write recorded nowhere
+would still show within a minute.
 
 It asks the journal a slightly different question from the one undo asks. Undo wants the **user's**
 writes, because Ctrl+Z is a history of the user; the other windows want **anybody's**, because a
 window showing a node an agent has just relabelled is wrong regardless of who relabelled it. So an
-agent's write announces without ever entering the Undo Stack.
+agent's write is published without ever entering the Undo Stack.
 
-Two writes the journal cannot see announce themselves directly. **Undo and redo** suppress
+Some writes the journal cannot see record themselves directly. **Undo and redo** suppress
 journalling for the length of their own transaction — reversing a change must not become a change
-to reverse — so the two commands that make one say so. And an **MCP write** does not go through the
-Gesture protocol at all; the endpoint gets a way to announce of its own, which also fixes something
-that was already wrong: an agent's write used to leave an open window showing the old
-value.
+to reverse — so the backend records them when they apply. An **MCP write** does not go through the
+Gesture protocol at all; the endpoint is handed the backend's way to record one. And the few writes
+to what the board reads but the journal does not hold (the MCP roots, the agents' Claims and the
+capacity lock) record themselves in the backend that makes them.
 
 **Every window listens for events addressed to itself, by its own label.** Tauri's `listen` with
 no target hears every event whatever window it was sent to, so without the label an announcement
-sent once to each other window reached every window once per other window — each change reloaded
-every window, the one that made it included, N−1 times — and a tab handed to one window was adopted
-by all of them. The same holds for the tab hand-over and the drag claim.
-
-**The window that made the change is not told.** It reloads on the way back from its own command,
-which is the path this reuses; telling it as well would buy a second identical read of the board for
-every edit.
+sent once to each window reached every window once per window, and a tab handed to one window was
+adopted by all of them. The same holds for the tab hand-over and the drag claim.
 
 ## Session restore
 

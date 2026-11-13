@@ -162,6 +162,28 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
+## Live sync
+
+How the board travels from where it is derived to the windows that draw it ([Client Mode](docs/spec/client-mode.md#live-sync), [ADR 0020](docs/adr/0020-changed-nodes-and-board-hash.md)). Transport terms, not concepts of the board.
+
+**Revision** — How many writes the board's host has committed in this run of it. Bumped after every committed write (undo, redo and an agent's write included), never by time passing. Every server answer carries it (`X-Arlesh-Revision`).
+
+**Epoch** — The name of one run of the host (the server, or the app in Standalone). Revisions and sequences start again in a new one, so they are compared only within one epoch, and a new epoch always means a full load.
+
+**Publication** — One derived board the **publisher** has given out: the board as derived at one instant (its `now`), with its **sequence**, the **revision** it holds at least, and its **board hash**. The publisher makes one after every burst of writes and when a minute's tick changes the board. `GET /board/current` and `load_mindmap` answer the latest.
+
+**Sequence** (`seq`) — The number of a publication within its epoch, one per publication. A window applies an event only when its `seq` is the next one; any other gap means a full load.
+
+**Changed nodes** — What a `board-changed` event carries: the board's **entries** (a row, a group of one owner's block reasons or one Task's dependency edges, or a map entry, each with a key) that differ from the previous publication, set or deleted. A move is the moved row set again; there is no move operation.
+
+**Board hash** — The sum, wrapping at 2^32, of every entry's digest (FNV-1a 32 of the collection, the key and the entry's compact JSON). Covers the derived board as published, compared only at the same sequence, so time passing is never divergence.
+
+**Head** — The latest publication's epoch, sequence, revision, hash and per-collection sums, which a window checks its board against periodically and when idle.
+
+**Settle** — What a window does after a write instead of reloading: it waits until its board has reached the revision the write reached (the backend's **fence**), then carries on.
+
+---
+
 ## Not built yet
 
 Specced, and deliberately kept, but not in the app today. Nothing above depends on them.
