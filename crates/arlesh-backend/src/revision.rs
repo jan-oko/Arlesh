@@ -11,12 +11,21 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use arlesh_core::mindmap::model::MindmapLoad;
+use arlesh_core::mindmap::{model::MindmapLoad, publisher::ChangeEvent};
+use serde_json::value::RawValue;
+
+pub use arlesh_core::mindmap::publisher::BoardHead;
 
 /// The header the server puts the revision in.
 pub const REVISION_HEADER: &str = "x-arlesh-revision";
 /// The header the server puts the epoch in.
 pub const EPOCH_HEADER: &str = "x-arlesh-epoch";
+/// The header `GET /board/current` puts the publication's sequence number in.
+pub const SEQ_HEADER: &str = "x-arlesh-seq";
+/// The header `GET /board/current` puts the board hash in.
+pub const HASH_HEADER: &str = "x-arlesh-hash";
+/// The header `GET /board/current` puts the instant the board was derived at in.
+pub const BOARD_NOW_HEADER: &str = "x-arlesh-board-now";
 
 /// A point in the server's history of the board: how many writes it had committed, in one run of
 /// the server.
@@ -83,6 +92,78 @@ impl Deref for BoardLoad {
 impl DerefMut for BoardLoad {
     fn deref_mut(&mut self) -> &mut MindmapLoad {
         &mut self.load
+    }
+}
+
+/// The board as a window takes it in for the first time or after a gap: the latest publication.
+///
+/// `load` is the board's JSON exactly as the producer wrote it, never read into the app's own
+/// structs, because the client's board hash is taken over that text (ADR 0020, decision 4). The
+/// rest says which publication it is; every part is absent for a server that predates changed
+/// nodes, and the window then treats each event as a reload.
+#[derive(Debug, Clone, Serialize)]
+pub struct CurrentBoard {
+    /// The board's JSON.
+    pub load: Box<RawValue>,
+    /// The run and revision the publication holds at least.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<BoardRevision>,
+    /// The publication's number within its run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    /// The instant the board was derived at: what "now" means on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub now: Option<String>,
+    /// The board hash the publication carries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<u32>,
+}
+
+/// One `board-changed` event, as the windows are told it.
+///
+/// `changes` is the changed entries as raw JSON, passed on as the producer wrote it. An event with
+/// no `seq` (an older server's: just `revision` and `epoch`) is one the window answers by
+/// reloading; `reload` says the same of a publication too large, or too far back, to send.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardChange {
+    /// The run of the producer the event belongs to.
+    pub epoch: String,
+    /// The publication the event brings a window to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    /// The writes the publication's board holds at least.
+    pub revision: u64,
+    /// The instant the board was derived at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub now: Option<String>,
+    /// The board hash after the event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<u32>,
+    /// The changed entries, by collection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<Box<RawValue>>,
+    /// Whether the window must load the whole board instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reload: bool,
+}
+
+impl BoardChange {
+    /// An event read from its JSON, as a stream sent it or the publisher made it.
+    pub fn parse(data: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(data)
+    }
+
+    /// An event the publisher made.
+    pub fn from_event(event: &ChangeEvent) -> Result<Self, serde_json::Error> {
+        Self::parse(&event.data)
+    }
+
+    /// The stamp the event carries.
+    pub fn stamp(&self) -> BoardRevision {
+        BoardRevision {
+            epoch: self.epoch.clone(),
+            revision: self.revision,
+        }
     }
 }
 

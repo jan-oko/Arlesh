@@ -19,7 +19,7 @@ http = ["dep:reqwest", "dep:rustls"]
 [dependencies]
 arlesh-core = { path = "../arlesh-core" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 # `Backend` is used as `dyn Backend`, so its async methods are boxed.
 async-trait = "0.1"
 tracing = "0.1"
