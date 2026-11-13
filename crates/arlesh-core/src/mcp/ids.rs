@@ -71,7 +71,7 @@ pub(super) struct Named {
     /// Its nearest ancestors the MCP can see, outermost first: `Growth › CODE › ARLESH`.
     pub path: String,
     #[serde(skip)]
-    table: NodeTable,
+    pub(super) table: NodeTable,
     #[serde(skip)]
     hex: String,
 }

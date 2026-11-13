@@ -146,6 +146,25 @@ impl<'session> AgentOperator<'session> {
         row.map(Agent::try_from).transpose()
     }
 
+    /// Replaces the digest of a child's sub-token, so the old token stops working.
+    #[tracing::instrument(skip_all)]
+    pub async fn set_child_token(
+        &mut self,
+        id: AgentId,
+        token_sha256: &str,
+        now: &str,
+    ) -> Result<(), AgentError> {
+        sqlx::query(
+            "UPDATE agents SET token_sha256 = ?, last_seen_at = ? WHERE id = ? AND parent_id IS NOT NULL",
+        )
+        .bind(token_sha256)
+        .bind(now)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
     /// The children of `parent`, oldest first.
     #[tracing::instrument(skip(self))]
     pub async fn children(&mut self, parent: AgentId) -> Result<Vec<Agent>, AgentError> {

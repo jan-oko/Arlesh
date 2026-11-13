@@ -16,6 +16,7 @@ const identity = (over: Record<string, unknown> = {}) => ({
 /** An attached session with an Arlesh server, and a fake that answers `arlesh_agents`. */
 function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = {}, pause: () => Answer = () => ok(identity({ standing: 'paused' }))) {
   const calls: Call[] = []
+  const intercept: { answer?: (args: Record<string, unknown>) => Answer | undefined } = {}
   clock = mock.clock(on)
   on('session.root', () => ({ value: '/r' }))
   on('session.cwd', () => ({ value: '/r' }))
@@ -41,6 +42,8 @@ function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = 
   on('classic.SubagentStart', () => ({}))
   on('mcp.call', (_, e) => {
     calls.push({ tool: e.tool, args: e.args })
+    const special = intercept.answer?.(e.args)
+    if (special !== undefined) return special
     switch (e.args['operation']) {
       case 'attach':
         return ok(identity({ agent: { id: 7, name: 'orchestrator' } }))
@@ -52,7 +55,7 @@ function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = 
         return ok(identity({ standing: 'active', claim_name: '077 Subagents' }))
     }
   })
-  return { calls, stored }
+  return { calls, stored, intercept }
 }
 
 const subagent = (id: string, over: Partial<AgentInfo> = {}): AgentInfo => ({
@@ -127,7 +130,7 @@ test('a pause the server refuses as a removed child drops the record', async ($,
   expect(stored['children:s1']).toEqual({})
 })
 
-test('a subagent\'s Arlesh call without a sub_token reaches the server with one, the session\'s does not', async ($, on) => {
+test('a subagent\'s Arlesh call reaches the server with its own sub_token, whatever it passed; the session\'s carries none', async ($, on) => {
   session(on, [subagent('a1')])
   const seen: Array<Record<string, unknown>> = []
   on('tool.call', (_, e) => {
@@ -141,7 +144,7 @@ test('a subagent\'s Arlesh call without a sub_token reaches the server with one,
   await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
   await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1', sub_token: 'own' })
 
-  expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', undefined, 'own'])
+  expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', undefined, 'q3H'])
 })
 
 test('a subagent started by a subagent is not registered and gets its ancestor\'s sub-token', async ($, on) => {
@@ -189,4 +192,47 @@ test('the subagent\'s Agent row gets a line naming its Task and whether its clai
   const other = await $.ui.mount({ ...row, requestId: 'tu2', props: { ...props, tool: 'Bash', tool_use_id: 'tu2' } })
   expect(await other.find({ type: 'Text', text: /Arlesh/ })).toBeUndefined()
   await other.unmount()
+})
+
+test('a subagent still known resumes and is not registered again, so its token is not rotated', async ($, on) => {
+  const { calls } = session(on, [subagent('a1')])
+  await attach($)
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  expect(calls.filter((call) => call.args['operation'] === 'register_child')).toHaveLength(1)
+})
+
+test('a subagent whose record was lost registers again and is handed the new sub-token', async ($, on) => {
+  const { calls, stored } = session(on, [subagent('a1')])
+  await attach($)
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+  delete stored['children:s1']
+
+  const again = await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  expect(calls.filter((call) => call.args['operation'] === 'register_child')).toHaveLength(2)
+  expect(calls.filter((call) => call.args['operation'] === 'resume')).toEqual([])
+  expect(again.additionalContext?.join('\n')).toContain('sub_token: "q3H"')
+  expect(stored['children:s1']).toMatchObject({ a1: { subToken: 'q3H' } })
+})
+
+test('a child the server removed (its Task was set Done) is registered afresh when the subagent starts again', async ($, on) => {
+  const gone: Answer = { value: { content: [], isError: true, structuredContent: { kind: 'not_permitted', message: 'the sub_token names no child agent of this session' } } }
+  const { calls, intercept } = session(on, [subagent('a1')])
+  let removed = false
+  intercept.answer = (args) => {
+    if (!removed) return undefined
+    if (args['operation'] === 'resume') return gone
+    return args['operation'] === 'register_child' ? ok(identity({ sub_token: 'fresh' })) : undefined
+  }
+  await attach($)
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+  removed = true
+
+  const again = await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  expect(calls.filter((call) => call.args['operation'] === 'register_child')).toHaveLength(2)
+  expect(again.additionalContext?.join('\n')).toContain('sub_token: "fresh"')
 })

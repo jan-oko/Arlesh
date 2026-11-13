@@ -193,6 +193,34 @@ subagent's Arlesh calls, and draws the Task under the subagent's row. Details in
     (`$.agent.list()` lists them, without `teammateId`). *Why:* the Spec is about subagents; a
     teammate is a session of its own.
 
+## Amendments after the first hand test (2026-11-14, same PR)
+
+The user's hand test of the first build found four things; the user accepted a child being able to
+re-claim any node inside its parent's Claim as it is (it is what the ruling says), and asked for
+the rest:
+
+1. **Undo brings a child back Paused.** The journal's row image has the standing it had when it
+   went (Active), so the statement that re-inserts an `agents` row with a `parent_id` writes
+   `claim_paused = 1`. No schema change. It reads Active when its subagent resumes.
+2. **A child removed by an agent's write is not restored by Ctrl+Z.** Agent writes are journaled
+   under the `mcp` source and are on no stack, so there is nothing to restore it from. Left as it
+   is and stated: reopening the Task and starting the subagent again finds its sub-token refused,
+   registers afresh, and gets a new child and token. (The alternative, putting agent writes on a
+   stack, changes ADR 0018's rule that an agent's writes never enter the user's Undo Stack; not
+   done.)
+3. **A child's refusals say why.** The generic MCP refusal is reworded for a child, after the tool
+   has answered (`ArleshMcp::explain_to_child`), by the pure rules in `agents/rules/refusals.rs`: a
+   Paused child's write says its Claim is paused and who resumes it; a node outside the sub-Claim
+   that the parent's own view can read says it is outside the child's Claim and may be claimed. A
+   node the parent cannot read keeps the generic words.
+4. **Registering again rotates the token.** `register_child` for a `client_id` that already has a
+   child answers it with a **new** sub-token and the old stops, so a mod that lost its record can
+   recover. Only the parent can call it. The mod registers only when it has no record (a known
+   child is resumed), and it now sets the `sub_token` of the child it works under on every Arlesh
+   call, replacing a stale one the subagent remembers.
+
+Settings → Agents folds a parent's children away, closed by default.
+
 ## Consequences
 
 - A subagent dispatched with the mod shows in Settings → Agents under its parent, its Task as its

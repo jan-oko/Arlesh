@@ -317,6 +317,13 @@ async fn parent_with_children(pool: &SqlitePool, tasks: [i64; 2]) -> i64 {
     parent
 }
 
+async fn paused_flags(pool: &SqlitePool) -> Vec<bool> {
+    sqlx::query_scalar("SELECT claim_paused FROM agents ORDER BY id")
+        .fetch_all(pool)
+        .await
+        .expect("read the flags")
+}
+
 async fn agent_names(pool: &SqlitePool) -> Vec<String> {
     sqlx::query_scalar("SELECT name FROM agents ORDER BY id")
         .fetch_all(pool)
@@ -338,7 +345,6 @@ async fn removing_a_parent_agent_removes_its_children_and_undo_and_redo_reverse_
         .await
         .expect("create task");
     let parent = parent_with_children(&pool, [first.id.sid(), second.id.sid()]).await;
-    let before = board(&pool).await;
 
     open_gesture(&app).await;
     arlesh_lib::commands::agents::apply_agent_action(
@@ -357,7 +363,11 @@ async fn removing_a_parent_agent_removes_its_children_and_undo_and_redo_reverse_
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(agent_names(&pool).await, ["parent", "child 0", "child 1"]);
-    assert_eq!(board(&pool).await, before, "undo brings back all three");
+    assert_eq!(
+        paused_flags(&pool).await,
+        [false, true, true],
+        "the children come back paused, not as active as they were"
+    );
 
     redo(&app).await.expect("there is something to redo");
     assert!(
@@ -380,7 +390,6 @@ async fn setting_a_childs_task_done_removes_it_and_undo_restores_the_status_and_
         .await
         .expect("create task");
     parent_with_children(&pool, [first.id.sid(), second.id.sid()]).await;
-    let before = board(&pool).await;
 
     open_gesture(&app).await;
     task_commands::update_task(
@@ -402,11 +411,18 @@ async fn setting_a_childs_task_done_removes_it_and_undo_restores_the_status_and_
     );
 
     undo(&app).await.expect("there is something to undo");
+    assert_eq!(agent_names(&pool).await, ["parent", "child 0", "child 1"]);
     assert_eq!(
-        board(&pool).await,
-        before,
-        "one Ctrl+Z restores the status and the child"
+        paused_flags(&pool).await,
+        [false, true, false],
+        "the child comes back paused; its sibling was never touched"
     );
+    let status: String = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
+        .bind(first.id.sid())
+        .fetch_one(&pool)
+        .await
+        .expect("read the status");
+    assert_ne!(status, "done", "one Ctrl+Z restores the Task's status too");
 
     redo(&app).await.expect("there is something to redo");
     assert_eq!(agent_names(&pool).await, ["parent", "child 1"]);

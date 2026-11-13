@@ -88,12 +88,40 @@ describe("AgentsSection", () => {
     expect(within(list).queryByText(/·/)).toBeNull();
   });
 
+  it("folds a parent's children away until they are opened, and shows how many there are", async () => {
+    vi.mocked(fetchAgents).mockResolvedValue(overview([
+      summary(),
+      summary({ id: 2, parent_id: 1, name: "helper", status: "paused" }),
+      summary({ id: 3, parent_id: 1, name: "scout" }),
+    ]));
+    render(<AgentsSection />);
+
+    const toggle = await screen.findByRole("button", { name: /mcp\.agents\.subagentsToggle.*"count":2/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("helper")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("helper")).toBeInTheDocument();
+    expect(screen.getByText("scout")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByText("helper")).toBeNull();
+  });
+
+  it("shows no control on an agent with no children", async () => {
+    render(<AgentsSection />);
+    await screen.findByText("writer");
+    expect(screen.queryByRole("button", { name: /mcp\.agents\.subagentsToggle/ })).toBeNull();
+  });
+
   it("nests a child under its parent, with its claim and without a lock", async () => {
     vi.mocked(fetchAgents).mockResolvedValue(overview([
       summary(),
       summary({ id: 2, parent_id: 1, name: "helper", status: "paused" }),
     ]));
     render(<AgentsSection />);
+    fireEvent.click(await screen.findByRole("button", { name: /mcp\.agents\.subagentsToggle/ }));
     const nested = await screen.findByRole("list", { name: /mcp\.agents\.subagents/ });
     expect(within(nested).getByText("helper")).toBeInTheDocument();
     expect(within(nested).getByText("mcp.agents.standing.paused")).toBeInTheDocument();

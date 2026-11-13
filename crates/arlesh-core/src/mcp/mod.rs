@@ -336,7 +336,8 @@ impl ServerHandler for ArleshMcp {
             },
         };
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(handler, request, context);
-        handler.tool_router.call(tcc).await
+        let response = handler.tool_router.call(tcc).await?;
+        Ok(handler.explain_to_child(response).await)
     }
 
     /// The handshake, with the MCP roots added to the instructions — see

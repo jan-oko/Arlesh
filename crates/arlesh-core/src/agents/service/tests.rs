@@ -679,18 +679,29 @@ async fn parent_and_child() -> (Board, AgentId, AgentId) {
 }
 
 #[tokio::test]
-async fn registering_answers_a_token_once_and_the_same_child_again_without_one() {
+async fn registering_again_answers_the_same_child_with_a_new_token_and_the_old_one_stops() {
     let board = board().await;
     let parent = board.attach("orchestrator", "work", NOW).await.agent.id;
 
     let (child, token) = board.register_child(parent, "sub-1").await.unwrap();
-    let (again, second) = board.register_child(parent, "sub-1").await.unwrap();
+    let (again, rotated) = board.register_child(parent, "sub-1").await.unwrap();
 
-    assert!(token.is_some());
+    let (token, rotated) = (token.unwrap(), rotated.unwrap());
+    assert_ne!(token, rotated);
     assert_eq!(child.parent_id, Some(parent));
     assert_eq!(child.account, "work");
     assert_eq!(again.id, child.id);
-    assert!(second.is_none());
+    let mut db = board.db().await;
+    assert!(matches!(
+        child_for_sub_token(&mut db, parent, &token).await,
+        Err(AgentError::SubTokenInvalid)
+    ));
+    assert_eq!(
+        child_for_sub_token(&mut db, parent, &rotated)
+            .await
+            .unwrap(),
+        child.id
+    );
 }
 
 #[tokio::test]

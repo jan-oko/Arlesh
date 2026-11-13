@@ -55,7 +55,9 @@ pub(super) fn add_sub_token(tool: &mut Tool) {
     let property = serde_json::json!({
         "type": "string",
         "description": "Only for a subagent given a sub-token: the call runs as your child agent \
-                        and sees only its sub-Claim. Leave it out to act as the session's agent.",
+                        and sees only its sub-Claim. The session's agent gets a sub-token from \
+                        arlesh_agents.register_child and hands it to the subagent. Leave it out to \
+                        act as the session's agent.",
     });
     let properties = schema
         .entry("properties")

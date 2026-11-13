@@ -7,6 +7,7 @@ import Switch from "@/components/Switch/Switch";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
 import { accountRowId, AGENTS_SECTION_ID } from "@/utils/agent-anchors";
+import AgentChildren from "./AgentChildren";
 import AgentRow from "./AgentRow";
 import HelpTip from "./HelpTip";
 import styles from "./SettingsModal.module.css";
@@ -100,7 +101,7 @@ export default function AgentsSection() {
               onAct={(action) => { void act(summary.agent.id, action); }}
             >
               {childrenOf(summary.agent.id).length > 0 && (
-                <ul className={own.children} aria-label={t("mcp.agents.subagents", { name: summary.agent.name })}>
+                <AgentChildren parent={summary.agent.name} count={childrenOf(summary.agent.id).length}>
                   {childrenOf(summary.agent.id).map((child) => (
                     <AgentRow
                       key={child.agent.id}
@@ -110,7 +111,7 @@ export default function AgentsSection() {
                       onAct={(action) => { void act(child.agent.id, action); }}
                     />
                   ))}
-                </ul>
+                </AgentChildren>
               )}
             </AgentRow>
           ))}

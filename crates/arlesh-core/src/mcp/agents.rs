@@ -311,12 +311,18 @@ impl ArleshMcp {
     /// resumed session.
     ///
     /// **Subagents** run over your connection. Register each one with `register_child` (its
-    /// description as `name`, its id as `client_id`): the answer holds its **sub_token**, shown
-    /// once. A subagent passes `sub_token` on every Arlesh tool call and sees only its own
-    /// **sub-Claim**, which it takes with `claim` inside your Claim and nowhere else; a call
-    /// without `sub_token` runs as you, on your whole Claim. A child shares your account, cannot
-    /// lock itself and cannot register children, and goes when its Task is Done or you are removed.
-    /// A client with the arlesh-notify mod does all of this for its subagents.
+    /// description as `name`, its id as `client_id`): the answer holds its **sub_token**. Hand it
+    /// to the subagent, which passes `sub_token` on every Arlesh tool call and sees only its own
+    /// **sub-Claim**. It takes one with `claim`: anything inside your Claim, replacing its own,
+    /// and nowhere else. A call without `sub_token` runs as you, on your whole Claim. Register the
+    /// same `client_id` again only if you lost the token: you get a new `sub_token` and the old one
+    /// stops working. A child shares your account, cannot lock itself and cannot register
+    /// children. It is paused while it is not running (a paused child reads, writes nothing, and
+    /// you or the user resume it), and it is removed when its Task is set Done or you are removed.
+    /// A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
+    /// reopened and the subagent starts again, `register_child` makes a fresh child with a new
+    /// `sub_token`. A child the user brings back with Ctrl+Z returns paused. A client with the
+    /// arlesh-notify mod does all of this for its subagents.
     ///
     /// A **Claim** is a subtree and it is your whole view: you read and write only inside it, as
     /// if it were your own MCP root. Only one agent's active Claim may cover any node. `pause`

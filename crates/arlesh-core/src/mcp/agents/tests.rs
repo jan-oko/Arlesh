@@ -852,7 +852,7 @@ async fn a_child_cannot_attach_lock_register_or_report_usage() {
 }
 
 #[tokio::test]
-async fn registering_needs_an_attached_session_and_answers_the_token_only_once() {
+async fn registering_needs_an_attached_session_and_registering_again_rotates_the_token() {
     let (mcp, _pool) = board().await;
     let session = session(&mcp);
     let register_call =
@@ -868,8 +868,13 @@ async fn registering_needs_an_attached_session_and_answers_the_token_only_once()
         "not_permitted",
         "{unattached}"
     );
-    assert!(structured(&first)["sub_token"].is_string(), "{first}");
-    assert!(structured(&second).get("sub_token").is_none(), "{second}");
+    let old = structured(&first)["sub_token"]
+        .as_str()
+        .expect("a sub-token");
+    let new = structured(&second)["sub_token"]
+        .as_str()
+        .expect("a new sub-token");
+    assert_ne!(old, new, "registering again gives a new token");
     assert_eq!(
         structured(&first)["agent"]["id"],
         structured(&second)["agent"]["id"]
@@ -878,4 +883,165 @@ async fn registering_needs_an_attached_session_and_answers_the_token_only_once()
         structured(&first).get("claim_name").is_none(),
         "nothing is claimed yet"
     );
+    let with_old = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": old }),
+    )
+    .await;
+    let with_new = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": new }),
+    )
+    .await;
+    assert_eq!(
+        structured(&with_old)["kind"],
+        "not_permitted",
+        "the old token stops: {with_old}"
+    );
+    assert!(!is_error(&with_new), "{with_new}");
+}
+
+async fn set_status(session: &ArleshMcp, id: &str, expected: &str, status: &str) -> Value {
+    call(
+        session,
+        "arlesh_tasks",
+        json!({ "operation": "set_status", "id": id, "expected": expected, "status": status }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_child_removed_because_an_agent_set_its_task_done_is_registered_afresh_when_the_task_is_reopened(
+) {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let old = register(&session, "sub-1").await;
+    child_claims(&session, &old, "task", "100").await;
+
+    let done = set_status(&session, "100", "todo", "done").await;
+    let gone = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": old }),
+    )
+    .await;
+    let reopened = set_status(&session, "100", "done", "todo").await;
+    let fresh = register(&session, "sub-1").await;
+    let claimed = child_claims(&session, &fresh, "task", "100").await;
+    let read = call(
+        &session,
+        "arlesh_snapshot",
+        json!({ "operation": "load", "sections": ["tasks"], "sub_token": fresh }),
+    )
+    .await;
+
+    assert!(!is_error(&done), "{done}");
+    assert_eq!(
+        structured(&gone)["kind"],
+        "not_permitted",
+        "the child went with its Task: {gone}"
+    );
+    assert!(!is_error(&reopened), "{reopened}");
+    assert_ne!(old, fresh, "a fresh child has a fresh token");
+    assert!(!is_error(&claimed), "{claimed}");
+    assert_eq!(task_titles(&read), ["Docs"], "{read}");
+}
+
+fn message(answer: &Value) -> String {
+    structured(answer)["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn a_paused_childs_write_is_refused_saying_it_is_paused() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+    call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "pause", "sub_token": token }),
+    )
+    .await;
+
+    let refused = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "update", "id": "100", "title": "Renamed", "sub_token": token }),
+    )
+    .await;
+
+    assert_eq!(structured(&refused)["kind"], "not_permitted", "{refused}");
+    let said = message(&refused);
+    assert!(said.contains("Your Claim is paused"), "{said}");
+    assert!(
+        said.contains("parent agent or the user resumes it"),
+        "{said}"
+    );
+}
+
+#[tokio::test]
+async fn a_node_outside_the_sub_claim_but_inside_the_parents_is_refused_saying_so() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+
+    let read = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "101", "sub_token": token }),
+    )
+    .await;
+    let write = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "update", "id": "101", "title": "Renamed", "sub_token": token }),
+    )
+    .await;
+
+    for answer in [&read, &write] {
+        assert_eq!(structured(answer)["kind"], "not_permitted", "{answer}");
+        let said = message(answer);
+        assert!(said.contains("is outside your Claim"), "{said}");
+        assert!(said.contains("arlesh_agents.claim"), "{said}");
+    }
+}
+
+#[tokio::test]
+async fn a_node_outside_the_parents_claim_keeps_the_generic_refusal() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach(&session, "orchestrator", 10).await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+
+    let read = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "101", "sub_token": token }),
+    )
+    .await;
+    let parents = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "101" }),
+    )
+    .await;
+
+    assert_eq!(structured(&read)["kind"], "not_permitted", "{read}");
+    assert_eq!(
+        message(&read),
+        message(&parents),
+        "the child learns nothing the parent was not told"
+    );
+    assert!(!message(&read).contains("Claim"), "{}", message(&read));
 }

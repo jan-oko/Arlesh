@@ -193,7 +193,11 @@ database triggers when its parent is deleted or the Task its sub-Claim names is 
 write that causes it, so the removal joins that write's Gesture: Ctrl+Z on removing the parent, or
 on setting the Task Done, brings the child back too. The triggers are guarded on
 `undo_context.suppressed`, as `mcp_roots_forget_*` are, so a replay restores and removes rows from
-the journal alone and never twice.
+the journal alone and never twice. A child restored by undo is put back **Paused** (the statement
+that re-inserts an `agents` row with a `parent_id` writes `claim_paused = 1`), so it reads Active
+again only when its subagent resumes. A child removed by an **agent's** write (an agent set its Task
+Done) was journaled under `mcp`, which is on no stack, so the user's Ctrl+Z does not bring it back;
+the mod registers the subagent afresh when it starts again.
 
 *Overlap after an undo.* Undo restores the row as it was, which can leave two active Claims
 overlapping when another agent claimed the subtree meanwhile. The Claim rules already tolerate it:

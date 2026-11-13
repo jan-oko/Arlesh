@@ -86,8 +86,10 @@ Agent (`agents.parent_id`), nested under it in Settings → Agents. Ruled with t
 
 **Registering.** The session's Agent calls `arlesh_agents.register_child(name, client_id)`; the
 answer carries the child and its **sub-token**, once. `client_id` is the client's own id for the
-subagent (Claude Code's agent id), kept in the child's `session_uuid`; registering it again answers
-the same child without a token. A child cannot register children. The arlesh-notify mod does all of
+subagent (Claude Code's agent id), kept in the child's `session_uuid`. Registering it again answers
+the same child with a **new** sub-token and the old one stops working: only the parent can ask, and
+it asks when it has lost the token. A mod that still has its record resumes the child instead and
+never registers again, so it does not rotate the token. A child cannot register children. The arlesh-notify mod does all of
 this when a subagent starts, names the child from the subagent's description, and hands the
 subagent its sub-token in its starting context; the subagent then claims the Task its brief names.
 
@@ -128,6 +130,15 @@ the parent restores each child as it was.
 its parent is, with the same cause, and has no lock of its own. Its Tasks are blocked through the
 parent's Claim, which contains them.
 
+**What a child is told when refused.** The generic "not inside the MCP roots" refusal hides two
+causes a child can act on, so a child's refusal says them: a **Paused** child's write is refused
+saying its Claim is paused and that its parent or the user resumes it; a node **outside the
+sub-Claim but inside the parent's Claim** is refused saying it is outside the child's Claim and that
+it may claim it with `arlesh_agents.claim` (which replaces its own). A node outside the parent's
+Claim, or outside the MCP roots, keeps the generic words, so a child learns nothing its parent
+could not see. A child may claim anything inside its parent's Claim, including nodes its siblings
+do not hold.
+
 **Finish and resume.** When the subagent stops, the mod pauses its sub-Claim (`arlesh_agents.pause`
 with the `sub_token`); the child stays listed as Paused, still naming its Task. When the subagent is
 resumed, the mod resumes it. Neither needs a step by the session's agent.
@@ -140,7 +151,19 @@ resumed, the mod resumes it. Neither needs a step by the session's agent.
   node's state, and a Compound Task's derived Done does not remove it.
 
 Both are database triggers, suppressed while undo replays, so Ctrl+Z on the Gesture brings the
-child back with the Task's status or the parent. Settings → Remove removes a child by hand.
+child back with the Task's status or the parent. A child that comes back through undo is always
+**Paused**, whatever it was when it went: it becomes Active when its subagent actually resumes.
+Settings → Remove removes a child by hand.
+
+An agent's writes are not on the undo stack (they are journaled under the `mcp` source), so a child
+removed because an **agent** set its Task Done is **not** restored by the user's Ctrl+Z. That is
+safe: if the Task is moved off Done again and the same subagent starts again, the mod finds its old
+sub-token refused, registers the subagent afresh and hands it a new sub-token and a new child, and
+it works as before.
+
+**In Settings → Agents** the children of an Agent are folded under it, closed by default, with a
+control that shows how many there are; an Agent with no children has no control. The open state is
+not remembered.
 
 **Nested subagents** (a subagent's own subagents) are not registered: the mod gives one the
 sub-token of its nearest registered ancestor, so it works in that sub-Claim. Teammates and workflow

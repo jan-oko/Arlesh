@@ -221,3 +221,51 @@ fn a_column_name_that_is_not_a_plain_identifier_is_refused() {
 fn an_empty_gesture_plans_nothing() {
     assert!(plan(&[], Replay::Inverse).expect("plan").is_empty());
 }
+
+#[test]
+fn undoing_the_delete_of_a_child_agent_brings_it_back_paused() {
+    let mut deleted = entry(
+        RowOperation::Delete,
+        Some(r#"{"id":12,"claim_paused":0,"parent_id":7}"#),
+        None,
+    );
+    deleted.table = "agents".into();
+
+    let statement = only(&[deleted], Replay::Inverse);
+
+    let paused = statement
+        .sql()
+        .replace('"', "")
+        .split(['(', ')'])
+        .nth(1)
+        .and_then(|columns| {
+            columns
+                .split(", ")
+                .position(|column| column == "claim_paused")
+        })
+        .and_then(|at| statement.values().get(at).cloned());
+    assert_eq!(paused, Some(SqlValue::Integer(1)));
+}
+
+#[test]
+fn a_top_level_agent_and_other_tables_come_back_as_they_were() {
+    let mut agent = entry(
+        RowOperation::Delete,
+        Some(r#"{"id":7,"claim_paused":0,"parent_id":null}"#),
+        None,
+    );
+    agent.table = "agents".into();
+    let other = entry(
+        RowOperation::Delete,
+        Some(r#"{"id":1,"claim_paused":0,"parent_id":7}"#),
+        None,
+    );
+
+    for entry in [agent, other] {
+        let statement = only(&[entry], Replay::Inverse);
+        assert!(
+            statement.values().contains(&SqlValue::Integer(0)),
+            "{statement:?}"
+        );
+    }
+}

@@ -133,14 +133,15 @@ export const register: Register = (on) => {
     return done
   }).catch(($, e, next) => next(e))
 
-  // An Arlesh call a subagent makes without its `sub_token` gets it, so the convention holds
-  // whether or not the model remembers the argument.
+  // An Arlesh call a subagent makes carries the `sub_token` of the child it works under, whether
+  // or not the model remembered the argument, and even when it passed a stale one (a child that
+  // was registered again has a new token its transcript never saw).
   on('tool.call', { tool: ARLESH_TOOL }, async ($, e, next) => {
     const agentId = e.agentId
     const input: Record<string, unknown> = { ...e }
-    if (agentId === undefined || input['sub_token'] !== undefined) return next(e)
+    if (agentId === undefined) return next(e)
     const found = await governingOf($, agentId)
-    if (found === undefined) return next(e)
+    if (found === undefined || input['sub_token'] === found.child.subToken) return next(e)
     const ran = await next({ ...e, ...{ sub_token: found.child.subToken } })
     void noteAnswer($, found, e.tool, ran.result ?? ran.text)
     return ran

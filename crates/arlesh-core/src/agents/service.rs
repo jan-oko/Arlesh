@@ -633,8 +633,9 @@ pub async fn blocking<M: SessionMode>(
 
 /// Registers a subagent of the Agent `parent` as a child Agent, named `name` (made unique) and
 /// working under the parent's account, for the client's subagent `client_id`. Answers the child
-/// and its sub-token, shown this once; registering the same `client_id` again answers the same
-/// child with no token. A child cannot register children.
+/// and its sub-token, shown this once. Registering the same `client_id` again answers the same
+/// child with a **new** sub-token and the old one stops working: the parent has lost the token and
+/// no one else can ask. A child cannot register children.
 #[tracing::instrument(skip(db))]
 pub async fn register_child<M: SessionMode>(
     db: &mut Db<M>,
@@ -661,13 +662,18 @@ pub async fn register_child<M: SessionMode>(
     }
     let stamp = format_time(now);
     if let Some(known) = db.agents().child_by_client(parent, client_id).await? {
-        db.agents().touch(known.id, &stamp).await?;
+        // The parent registering a subagent it already registered has lost the token (a mod that
+        // lost its record), and only the parent can ask: it gets a new one and the old stops.
+        let token = secret::random_token()?;
+        db.agents()
+            .set_child_token(known.id, &secret::digest(&token), &stamp)
+            .await?;
         let known = db
             .agents()
             .get(known.id)
             .await?
             .ok_or(AgentError::NotFound(known.id))?;
-        return Ok((known, None));
+        return Ok((known, Some(token)));
     }
     let name = names::tidy(name).unwrap_or_else(|| DEFAULT_CHILD_NAME.to_owned());
     let taken: Vec<String> = db

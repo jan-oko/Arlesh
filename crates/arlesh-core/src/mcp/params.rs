@@ -294,6 +294,8 @@ pub enum AgentsOperation {
     Status,
     /// Claims a subtree, replacing any Claim held. The subtree must lie inside the user's MCP
     /// roots and overlap no other agent's active Claim; it becomes your whole view.
+    /// A child agent (calling with a `sub_token`) may claim anything inside its parent's Claim,
+    /// replacing its own; it overlaps only its siblings' sub-Claims.
     Claim {
         /// The subtree's root.
         subtree: NodeRef,
@@ -310,9 +312,10 @@ pub enum AgentsOperation {
     Lock,
     /// Unlocks yourself, as soon as there is room again.
     Unlock,
-    /// Registers a subagent of this session as a child agent and answers its `sub_token`, once.
-    /// The child may claim only inside your Claim, and sees only what it claims. Registering the
-    /// same `client_id` again answers the same child, without a token.
+    /// Registers a subagent of this session as a child agent and answers its `sub_token`. The
+    /// child may claim only inside your Claim, and sees only what it claims. Registering the same
+    /// `client_id` again answers the same child with a new `sub_token` and the old one stops
+    /// working, so register again only when you have lost the token.
     RegisterChild {
         /// What to call it, e.g. the subagent's description; made unique.
         name: String,
