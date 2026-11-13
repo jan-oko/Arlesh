@@ -5,7 +5,7 @@ use rmcp::{
     model::{CallToolResult, ErrorData},
     tool, tool_router,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Map, Value};
 
@@ -38,7 +38,10 @@ impl ArleshMcp {
     /// clipped to its Time Scope — with `plan_inherited_from` naming where an inherited one comes
     /// from, and `plan_conflict` (`parent_plan` or `empty`) when it breaks a plan rule. `filter` applies a List View
     /// preset (`plan`, `start`, `do`, `backlog`, `all`); `agentic: {}` (or `{"max_priority":"A"}`)
-    /// keeps only the Tasks that read as Agentic, most urgent first. Read-only.
+    /// keeps only the Tasks that read as Agentic, most urgent first. Every Task carries
+    /// `info_count`, the Info notes directly under it that you may see — the user writes a Task's
+    /// details as Infos, so read them (`arlesh_tasks.get` returns them) before you work a Task.
+    /// Read-only.
     #[tool(
         name = "arlesh_snapshot",
         annotations(title = "Arlesh snapshot", read_only_hint = true)
@@ -87,10 +90,11 @@ impl ArleshMcp {
 
         // Short ids are worked out over everything the MCP can see, before any filter or query
         // narrows it: a node goes by one short id however it is asked for.
-        let names = {
+        let (names, info_counts) = {
             let mut whole = load.clone();
             access::restrict_snapshot(&mut whole, &map);
-            NodeNames::of(&whole)
+            // Counted here too: the filters below drop Infos a Task's count must still include.
+            (NodeNames::of(&whole), super::infos::counts_by_task(&whole))
         };
 
         // The presets are defined in `crate::filters`, and the frontend's own evaluator is held
@@ -132,8 +136,8 @@ impl ArleshMcp {
         // No answer can be produced at all if the payload will not serialize, so this is a
         // transport error rather than a tool result — the same call `result`'s own serialisation
         // failures make.
-        let available =
-            split_into_sections(&load, &wanted, &names, matched.as_ref()).map_err(|error| {
+        let available = split_into_sections(&load, &wanted, &names, &info_counts, matched.as_ref())
+            .map_err(|error| {
                 ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
             })?;
 
@@ -167,6 +171,7 @@ fn split_into_sections(
     load: &MindmapLoad,
     wanted: &[Section],
     names: &NodeNames,
+    info_counts: &HashMap<NodeId, usize>,
     matched: Option<&HashSet<NodeId>>,
 ) -> Result<Vec<SectionItems>, serde_json::Error> {
     let mut payload = match serde_json::to_value(load)? {
@@ -198,6 +203,7 @@ fn split_into_sections(
                             names.stamp(item, table);
                             if table == NodeTable::Task {
                                 stamp_effective_plan(item, &load.plans, &short_ids);
+                                stamp_info_count(item, info_counts);
                             }
                             if let (NodeTable::Task, Some(matched)) = (table, matched) {
                                 mark_match(item, matched);
@@ -256,6 +262,21 @@ pub(super) fn stamp_effective_plan(
             fields.insert("plan_conflict".into(), conflict);
         }
     }
+}
+
+/// Stamps a task row with `info_count`: the Infos directly under it that the caller may see.
+fn stamp_info_count(item: &mut Value, counts: &HashMap<NodeId, usize>) {
+    let Value::Object(fields) = item else {
+        return;
+    };
+    let Some(id) = fields
+        .get("id")
+        .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
+    else {
+        return;
+    };
+    let count = counts.get(&id).copied().unwrap_or(0);
+    fields.insert("info_count".into(), Value::from(count));
 }
 
 /// Marks a task row with whether it matched the agentic query or is there for context.

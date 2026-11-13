@@ -256,6 +256,68 @@ async fn a_private_node_stays_hidden_inside_a_root() {
     );
 }
 
+/// An Info under a Task, as the user writes one; `private` marks it so.
+async fn info(pool: &sqlx::SqlitePool, task_id: i64, body: &str, position: i64, private: bool) {
+    sqlx::query(
+        "INSERT INTO infos (body, details, parent_type, parent_id, position, is_private) \
+         VALUES (?, 'the details', 'task', ?, ?, ?)",
+    )
+    .bind(body)
+    .bind(task_id)
+    .bind(position)
+    .bind(private)
+    .execute(pool)
+    .await
+    .expect("insert info");
+}
+
+#[tokio::test]
+async fn a_tasks_own_infos_come_back_with_it_and_are_counted_in_the_snapshot() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    let child = task(&app, board.inside, "Sub-item").await;
+    sqlx::query("UPDATE tasks SET parent_type = 'task', parent_id = ? WHERE id = ?")
+        .bind(board.inside_task)
+        .bind(child)
+        .execute(&pool)
+        .await
+        .expect("nest the sub-item");
+    info(&pool, board.inside_task, "second", 2, false).await;
+    info(&pool, board.inside_task, "first", 1, false).await;
+    info(&pool, board.inside_task, "secret", 3, true).await;
+    info(&pool, child, "under the sub-item", 1, false).await;
+    add_root(&app, NodeTable::Domain, board.inside).await;
+    let mcp = mcp(&pool);
+
+    let got = get_task(&mcp, board.inside_task).await;
+    let infos = structured(&got)["infos"].as_array().expect("infos array");
+    let bodies: Vec<&str> = infos.iter().filter_map(|i| i["body"].as_str()).collect();
+    assert_eq!(
+        bodies,
+        vec!["first", "second"],
+        "board order, no private, no sub-item's"
+    );
+    assert_eq!(infos[0]["details"], "the details");
+    assert!(infos[0]["short_id"].is_string() && infos[0]["full_id"].is_string());
+
+    let payload = snapshot(&mcp).await;
+    let count_of = |id: i64| {
+        payload["tasks"]
+            .as_array()
+            .and_then(|tasks| tasks.iter().find(|t| t["id"] == id))
+            .map(|task| task["info_count"].clone())
+    };
+    assert_eq!(count_of(board.inside_task), Some(serde_json::json!(2)));
+    assert_eq!(count_of(child), Some(serde_json::json!(1)));
+
+    let none = get_task(&mcp, child).await;
+    assert_eq!(structured(&none)["infos"].as_array().map(Vec::len), Some(1));
+    let empty = task(&app, board.inside, "Bare").await;
+    let bare = get_task(&mcp, empty).await;
+    assert_eq!(structured(&bare)["infos"], serde_json::json!([]));
+}
+
 #[tokio::test]
 async fn only_an_agentic_task_inside_a_root_can_be_written() {
     let pool = helpers::test_pool().await;

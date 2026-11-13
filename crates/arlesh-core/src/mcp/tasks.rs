@@ -54,7 +54,10 @@ impl ArleshMcp {
     /// Task reads the snapshot does not answer, and the writes an agent may make.
     ///
     /// Reads: `get` returns a task together with its block reasons — both the explicit ones and
-    /// those implied by its unmet dependencies, which the snapshot gives you only as raw edges.
+    /// those implied by its unmet dependencies, which the snapshot gives you only as raw edges —
+    /// and its `infos`: the Info notes directly under it (not under its sub-items), in board
+    /// order, each with its ids, `body` and `details`. **The user writes a Task's details as
+    /// Infos, so read them before you work a Task.**
     /// `containment_conflicts` asks which descendants would violate the containment invariant if a
     /// node were given a particular window; it is a what-if and changes nothing.
     ///
@@ -398,7 +401,15 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map, &names);
+    let infos = super::infos::as_read(
+        &super::infos::directly_under(&board.load, &id),
+        &board.names,
+    );
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
+    if let Value::Object(fields) = &mut found {
+        // The user writes a Task's details as Infos under it, so they come back with it.
+        fields.insert("infos".into(), infos);
+    }
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);
         super::snapshot::stamp_effective_plan(task, &board.load.plans, &names);
