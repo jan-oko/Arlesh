@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A single block reason attached to a task or goal: one the user wrote, or — when
 /// [`Self::derived`] says so — one the backend derived and nobody can edit.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlockReason {
     /// Owning node kind: `task` or `goal`.
     pub owner_type: String,

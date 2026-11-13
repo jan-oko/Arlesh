@@ -23,7 +23,7 @@ use crate::{
 /// than sniffing for present fields. The occurrences themselves are not here: they are ordinary
 /// rows of their kinds, and travel in [`MindmapLoad::tasks`], [`MindmapLoad::goals`] and
 /// [`MindmapLoad::commitments`] beside the stored ones.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum FlowHabitResult {
     /// Derived — or not a Habit at all, which is an answer, not a failure.
@@ -40,7 +40,7 @@ pub enum FlowHabitResult {
 ///
 /// Entries are in the same order as [`MindmapLoad::flows`]; `flow_id` is carried anyway so a
 /// consumer can key by it instead of trusting position.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowHabitEntry {
     /// The flow this entry describes.
     pub flow_id: i64,
