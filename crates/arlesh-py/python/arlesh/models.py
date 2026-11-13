@@ -29,6 +29,71 @@ class Model(RootModel[Any]):
     """
 
 
+class AgentActionPause(BaseModel):
+    """
+    Pauses its Claim.
+    """
+
+    action: Literal["pause"]
+
+
+class AgentActionResume(BaseModel):
+    """
+    Makes its paused Claim active again; refused while another active Claim overlaps.
+    """
+
+    action: Literal["resume"]
+
+
+class AgentActionRelease(BaseModel):
+    """
+    Lets go of its Claim.
+    """
+
+    action: Literal["release"]
+
+
+class AgentActionLock(BaseModel):
+    """
+    Locks (`true`) or unlocks (`false`) the agent.
+    """
+
+    action: Literal["lock"]
+    locked: bool
+    """
+    Whether the lock is on.
+    """
+
+
+class AgentActionRemove(BaseModel):
+    """
+    Removes the Agent; its token stops working.
+    """
+
+    action: Literal["remove"]
+
+
+class AgentAction(
+    RootModel[
+        AgentActionPause
+        | AgentActionResume
+        | AgentActionRelease
+        | AgentActionLock
+        | AgentActionRemove
+    ]
+):
+    root: (
+        AgentActionPause
+        | AgentActionResume
+        | AgentActionRelease
+        | AgentActionLock
+        | AgentActionRemove
+    )
+    """
+    A change the user makes to an Agent by hand.
+    """
+
+
 class AgentActivity(BaseModel):
     """
     What the agents are doing on the whole board, counted.
@@ -45,6 +110,35 @@ class AgentActivity(BaseModel):
     waits: Annotated[int, Field(ge=0)]
     """
     Pending, live agentic waits on something other than the user — CI, say.
+    """
+
+
+class AgentStanding(StrEnum):
+    """
+    Where an Agent's Claim stands among the others.
+    """
+
+    unclaimed = "unclaimed"
+    """
+    It holds no Claim: it sees nothing.
+    """
+    active = "active"
+    """
+    Its Claim is held.
+    """
+    paused = "paused"
+    """
+    Its Claim is paused.
+    """
+    shadowed = "shadowed"
+    """
+    Its Claim is held but now overlaps an older active Claim (a node was moved), so it sees
+    nothing until the overlap is gone.
+    """
+    unreachable = "unreachable"
+    """
+    Its Claim's root left the user's MCP roots, was deleted or went private, so it sees
+    nothing.
     """
 
 
@@ -201,14 +295,51 @@ class Capabilities(BaseModel):
     """
 
 
-class CapacityState(BaseModel):
+class CapacityCauseAgentLocked(BaseModel):
     """
-    The lock as it is read and written: stored in the file, answered by the commands and the MCP.
+    The agent is locked by hand.
     """
 
-    at_capacity: bool
+    kind: Literal["agent_locked"]
+
+
+class CapacityCauseAccountLocked(BaseModel):
     """
-    Whether agents are at capacity. Off when nothing was ever saved.
+    The agent's account is locked by hand.
+    """
+
+    kind: Literal["account_locked"]
+
+
+class CapacityCauseUsageLimit(BaseModel):
+    """
+    A window of the agent's account is at its limit until it resets.
+    """
+
+    kind: Literal["usage_limit"]
+    resets_at: str
+    """
+    When it resets (ISO 8601 local time).
+    """
+    window: str
+    """
+    The window that is full.
+    """
+
+
+class ClaimStatus(StrEnum):
+    """
+    Whether a Claim is held or has been set aside.
+    """
+
+    active = "active"
+    """
+    Held: no other active Claim may cover any node of its subtree.
+    """
+    paused = "paused"
+    """
+    Set aside, by the agent or by hand. The agent keeps its token and reads its subtree, but
+    cannot write it, and another agent may claim the subtree meanwhile.
     """
 
 
@@ -861,6 +992,21 @@ class InstanceType(StrEnum):
     machinery that already exists, rather than a second recurrence engine. Each iteration's
     verdict is a Modification row keyed by (flow item, iteration scope), reusing the
     overridden-status slot; see `docs/adr/0005-commitment-node-kind.md`.
+    """
+
+
+class IssuedPin(BaseModel):
+    """
+    A PIN a signed-in client asked for, to hand to an agent.
+    """
+
+    expires_at: str
+    """
+    When the PIN lapses (ISO 8601 local time).
+    """
+    pin: str
+    """
+    The digits to give the agent.
     """
 
 
@@ -1547,6 +1693,17 @@ class StatusRefusal(StrEnum):
     `Alt+Enter` on an Agentic Task that is not Doing: Started is not an Agentic status, and
     only Doing work can be handed back.
     """
+    open_sub_items = "open_sub_items"
+    """
+    The press would set the Task Done while a counted sub-item is not: a Task cannot be
+    finished over open work. Complete or archive what is left.
+    """
+    below_sub_items = "below_sub_items"
+    """
+    `Alt+Enter` would pause the Task below what its sub-items make it read: it reads at least
+    Started, or In Progress, from them, so the lower status would change nothing. The click and
+    `Enter` cycle never asks: it skips to the floor.
+    """
 
 
 class StatusStep(StrEnum):
@@ -2080,6 +2237,25 @@ class UpdateSpawnedWaitRequest(BaseModel):
     """
 
 
+class UsageWindow(BaseModel):
+    """
+    How much of one limit window an account has used, as an agent reported it.
+    """
+
+    kind: str
+    """
+    Which window: `five_hour`, `seven_day`, whatever the client calls its plan limits.
+    """
+    percent_used: float
+    """
+    How much of it is used, 0 to 100 (more is capped by the rule, not refused).
+    """
+    resets_at: str
+    """
+    When the window resets (ISO 8601 local time). The account is free of this window then.
+    """
+
+
 class Verdict(StrEnum):
     """
     Whether a Commitment was held to. The Commitment kind's answer to a Task's status, and
@@ -2244,6 +2420,25 @@ class WireErrorKind(StrEnum):
     exhaustive with no wildcard arm: a new domain error variant must be
     classified explicitly and will fail to compile until it is, rather
     than silently falling back to this kind.
+    """
+
+
+class Account(BaseModel):
+    """
+    An account the agents work under, with what it has used.
+    """
+
+    label: str
+    """
+    The label agents declare.
+    """
+    locked: bool
+    """
+    A manual lock on every agent of the account.
+    """
+    windows: list[UsageWindow]
+    """
+    The last report of each limit window.
     """
 
 
@@ -3609,70 +3804,6 @@ class IterationScope(BaseModel):
     """
 
 
-class NodeFacts(BaseModel):
-    """
-    What the board says about one node beyond its own row. Every field is left off the wire at
-    its default.
-    """
-
-    capabilities: Capabilities | None = None
-    """
-    What the row may be done to, when its origin turns anything off — a Habit occurrence, a
-    derived wait ([`crate::nodes::rules::capabilities`]). Absent, everything is allowed.
-    """
-    dependency_blocks: list[DependencyBlock] | None = None
-    """
-    The dependencies a Task is blocked by, in edge order.
-    """
-    expired: bool | None = None
-    """
-    Whether a Commitment's Verdict Window ran out before anything was recorded.
-    """
-    inherited_agentic: bool | None = None
-    """
-    Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
-    own: the nearest flag above it, else not.
-    """
-    inherited_plan: TimeScope | None = None
-    """
-    The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
-    Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
-    and what an own Plan must sit inside.
-    """
-    inherited_time_scope: TimeScope | None = None
-    """
-    The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
-    own to replace it.
-    """
-    mcp_visible_via: str | None = None
-    """
-    The title of the MCP root the node is seen through, when the MCP can see it.
-    """
-    met: bool | None = None
-    """
-    Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
-    Achieved, a wait no longer pending.
-    """
-    open_question: int | str | None = None
-    """
-    The open agentic question beneath a Task — the wait that makes it read Review.
-    """
-    plan_conflict: PlanConflict | None = None
-    """
-    The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
-    can leave; the guard never lets a write leave one.
-    """
-    plan_source: str | None = None
-    """
-    The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
-    or, for a node whose inherited Plan came to nothing, the node it would have come from.
-    """
-    plan_source_short_id: str | None = None
-    """
-    [`Self::plan_source`]'s short id, when the board has one for it.
-    """
-
-
 class NodeKey(BaseModel):
     """
     One stored node: its table and its row id there.
@@ -4365,6 +4496,25 @@ class StepEntrySetFlowDependency(BaseModel):
     """
 
 
+class SubItems(BaseModel):
+    """
+    What a Task's sub-items say about a status press on it: the part of its subtree the status
+    gestures depend on. The backend reads it off the board, whole subtree counted by Compound's
+    rule; a caller that cannot read it passes the default, which constrains nothing, and the
+    backend still decides.
+    """
+
+    floor: TaskStatus
+    """
+    What the sub-items make the Task read at least: To Do, Started or In Progress. Never Done.
+    """
+    open: Annotated[int, Field(ge=0)]
+    """
+    How many counted sub-items are not Done: Backlogged ones, pending waits and Unresolved
+    Commitments included. A Task cannot be set Done while any is.
+    """
+
+
 class Task(BaseModel):
     """
     A task row as returned from the database.
@@ -4817,6 +4967,26 @@ class UpdateTaskRequest(BaseModel):
     """
 
 
+class Claim(BaseModel):
+    """
+    A subtree an Agent holds: its whole view of the board.
+    """
+
+    claimed_at: str
+    """
+    When the Claim was made (ISO 8601 local time): of two Claims that come to overlap, the
+    older keeps its place.
+    """
+    root: NodeKey
+    """
+    The subtree's root. A stored node, inside the user's MCP roots.
+    """
+    status: ClaimStatus
+    """
+    Whether the Claim is held or paused.
+    """
+
+
 class Commitment(BaseModel):
     """
     A commitment row as returned from the database.
@@ -5186,106 +5356,77 @@ class McpAccessCatalogue(BaseModel):
     """
 
 
-class MindmapLoad(BaseModel):
+class NodeFacts(BaseModel):
     """
-    Everything one mindmap render reads, gathered in a single command round trip.
-
-    Each field is exactly what the equivalent single-resource command returns; this type adds no
-    derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
-    `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
+    What the board says about one node beyond its own row. Every field is left off the wire at
+    its default.
     """
 
-    agent_activity: AgentActivity | None = None
+    capabilities: Capabilities | None = None
     """
-    What the agents are doing on the whole board. Filled by the app's load only.
+    What the row may be done to, when its origin turns anything off — a Habit occurrence, a
+    derived wait ([`crate::nodes::rules::capabilities`]). Absent, everything is allowed.
     """
-    block_reasons: list[BlockReason]
+    dependency_blocks: list[DependencyBlock] | None = None
     """
-    Every block reason across tasks and goals — as `list_all_block_reasons`.
+    The dependencies a Task is blocked by, in edge order.
     """
-    commitments: list[Commitment]
+    derived_in_progress: bool | None = None
     """
-    Every commitment, stored and derived — the Commitment virtual table.
+    Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    by hand: a Compound Task, or a parent raised to it.
     """
-    domains: list[Domain]
+    expired: bool | None = None
     """
-    Aspects, projects, domains and tags — as `list_domains(None)`.
+    Whether a Commitment's Verdict Window ran out before anything was recorded.
     """
-    expectations: list[Expectation]
+    inherited_agentic: bool | None = None
     """
-    Every expectation, stored and derived — the Expectation virtual table: a Task's spawned
-    wait and a delegated Task's wait are rows here, told apart by their `origin`. A wait's
-    check tasks are rows of `tasks`.
+    Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
+    own: the nearest flag above it, else not.
     """
-    facts: dict[str, NodeFacts] | None = None
+    inherited_plan: TimeScope | None = None
     """
-    What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
-    which of its dependencies block it, what it inherits, its open question, whether it has
-    expired. Filled by the app's load only, as [`Self::short_ids`] is.
+    The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
+    Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
+    and what an own Plan must sit inside.
     """
-    flow_commitments: list[FlowCommitment]
+    inherited_time_scope: TimeScope | None = None
     """
-    Every flow's Commitment items.
+    The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
+    own to replace it.
     """
-    flow_cycles: list[FlowItemCycle]
+    mcp_visible_via: str | None = None
     """
-    Every flow's cycle pairs — as `list_all_flow_cycles`.
+    The title of the MCP root the node is seen through, when the MCP can see it.
     """
-    flow_dependencies: list[FlowDependency]
+    met: bool | None = None
     """
-    Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.
+    Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
+    Achieved, a wait no longer pending.
     """
-    flow_expectations: list[FlowExpectation]
+    open_question: int | str | None = None
     """
-    Every flow's wait items.
+    The open agentic question beneath a Task — the wait that makes it read Review.
     """
-    flow_goals: list[FlowGoal]
+    plan_conflict: PlanConflict | None = None
     """
-    Every flow's goal items — as `list_all_flow_goals`.
+    The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
+    can leave; the guard never lets a write leave one.
     """
-    flow_instance_nodes: list[TargetRef]
+    plan_source: str | None = None
     """
-    Every real node materialised by a started flow — as `list_flow_instance_nodes`.
+    The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
+    or, for a node whose inherited Plan came to nothing, the node it would have come from.
     """
-    flow_tasks: list[FlowTask]
+    plan_source_short_id: str | None = None
     """
-    Every flow's task items — as `list_all_flow_tasks`.
+    [`Self::plan_source`]'s short id, when the board has one for it.
     """
-    flows: list[Flow]
+    sub_items: SubItems | None = None
     """
-    Every flow — as `list_flows`.
-    """
-    goals: list[Goal]
-    """
-    Every goal, stored and derived — the Goal virtual table.
-    """
-    habits: list[FlowHabitEntry]
-    """
-    One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
-    """
-    infos: list[Info]
-    """
-    Every info node — as `list_infos`.
-    """
-    lifecycles: list[ItemLifecycle]
-    """
-    Every task's, goal's and commitment's derived lifecycle at `now`, derived rows included.
-    """
-    short_ids: dict[str, str] | None = None
-    """
-    Each Task's, Goal's, Commitment's and wait's **short id** on the whole board, keyed as the
-    board keys a node (`task-12`): what the app names a dependency it is blocked by with.
-    Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
-    off the wire, everywhere else — the MCP names nodes among those it can see.
-    """
-    task_dependencies: list[TaskDependencyEdge]
-    """
-    Every task dependency edge — as `list_all_task_dependencies`.
-    """
-    tasks: list[Task]
-    """
-    Every task, stored and derived — the Task virtual table. A Habit occurrence is one of
-    these like any other, told apart only by its `origin`.
+    What a Task's sub-items say about it — the floor they derive and how many are open — when
+    they say anything: the editors grey out the statuses it cannot hold from it.
     """
 
 
@@ -5497,6 +5638,85 @@ class StepEntry(
     """
 
 
+class Agent(BaseModel):
+    """
+    An Agent: a session of an AI client, attached with a PIN.
+    """
+
+    account: str
+    """
+    The label of the account it works under; usage is kept per account.
+    """
+    claim: Claim | None
+    """
+    Its Claim, if it holds one.
+    """
+    created_at: str
+    """
+    When it first attached.
+    """
+    id: int
+    """
+    The Agent's identity.
+    """
+    last_seen_at: str | None
+    """
+    When a session last used its token or attached with it.
+    """
+    locked: bool
+    """
+    A manual lock: its claimed Agentic Tasks read blocked while it is on.
+    """
+    name: str
+    """
+    What Settings → Agents calls it. Unique.
+    """
+    session_uuid: str
+    """
+    The client's session id, as it last attached with it.
+    """
+
+
+class AgentSummary(BaseModel):
+    """
+    One Agent as Settings → Agents lists it: the Agent, where its Claim stands, and whether it is
+    at capacity.
+    """
+
+    agent: Agent
+    """
+    The Agent.
+    """
+    at_capacity: (
+        CapacityCauseAgentLocked
+        | CapacityCauseAccountLocked
+        | CapacityCauseUsageLimit
+        | None
+    )
+    """
+    Why its Agentic Tasks read blocked, when they do.
+    """
+    standing: AgentStanding
+    """
+    Where its Claim stands.
+    """
+
+
+class AgentsOverview(BaseModel):
+    """
+    Every Agent and account, as Settings → Agents lists them.
+    """
+
+    accounts: list[Account]
+    """
+    The accounts they work under, with usage.
+    """
+    agents: list[AgentSummary]
+    """
+    The Agents, oldest first.
+    """
+
+
 class DuplicatedGoal(BaseModel):
     """
     A duplicate command's answer: the copy's root, and what the copy left behind.
@@ -5512,7 +5732,111 @@ class DuplicatedGoal(BaseModel):
     """
 
 
+class MindmapLoad(BaseModel):
+    """
+    Everything one mindmap render reads, gathered in a single command round trip.
+
+    Each field is exactly what the equivalent single-resource command returns; this type adds no
+    derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
+    `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
+    """
+
+    agent_activity: AgentActivity | None = None
+    """
+    What the agents are doing on the whole board. Filled by the app's load only.
+    """
+    block_reasons: list[BlockReason]
+    """
+    Every block reason across tasks and goals — as `list_all_block_reasons`.
+    """
+    commitments: list[Commitment]
+    """
+    Every commitment, stored and derived — the Commitment virtual table.
+    """
+    domains: list[Domain]
+    """
+    Aspects, projects, domains and tags — as `list_domains(None)`.
+    """
+    expectations: list[Expectation]
+    """
+    Every expectation, stored and derived — the Expectation virtual table: a Task's spawned
+    wait and a delegated Task's wait are rows here, told apart by their `origin`. A wait's
+    check tasks are rows of `tasks`.
+    """
+    facts: dict[str, NodeFacts] | None = None
+    """
+    What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
+    which of its dependencies block it, what it inherits, its open question, whether it has
+    expired. Filled by the app's load only, as [`Self::short_ids`] is.
+    """
+    flow_commitments: list[FlowCommitment]
+    """
+    Every flow's Commitment items.
+    """
+    flow_cycles: list[FlowItemCycle]
+    """
+    Every flow's cycle pairs — as `list_all_flow_cycles`.
+    """
+    flow_dependencies: list[FlowDependency]
+    """
+    Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.
+    """
+    flow_expectations: list[FlowExpectation]
+    """
+    Every flow's wait items.
+    """
+    flow_goals: list[FlowGoal]
+    """
+    Every flow's goal items — as `list_all_flow_goals`.
+    """
+    flow_instance_nodes: list[TargetRef]
+    """
+    Every real node materialised by a started flow — as `list_flow_instance_nodes`.
+    """
+    flow_tasks: list[FlowTask]
+    """
+    Every flow's task items — as `list_all_flow_tasks`.
+    """
+    flows: list[Flow]
+    """
+    Every flow — as `list_flows`.
+    """
+    goals: list[Goal]
+    """
+    Every goal, stored and derived — the Goal virtual table.
+    """
+    habits: list[FlowHabitEntry]
+    """
+    One entry per flow, in `flows` order — the dependent wave, resolved backend-side.
+    """
+    infos: list[Info]
+    """
+    Every info node — as `list_infos`.
+    """
+    lifecycles: list[ItemLifecycle]
+    """
+    Every task's, goal's and commitment's derived lifecycle at `now`, derived rows included.
+    """
+    short_ids: dict[str, str] | None = None
+    """
+    Each Task's, Goal's, Commitment's and wait's **short id** on the whole board, keyed as the
+    board keys a node (`task-12`): what the app names a dependency it is blocked by with.
+    Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
+    off the wire, everywhere else — the MCP names nodes among those it can see.
+    """
+    task_dependencies: list[TaskDependencyEdge]
+    """
+    Every task dependency edge — as `list_all_task_dependencies`.
+    """
+    tasks: list[Task]
+    """
+    Every task, stored and derived — the Task virtual table. A Habit occurrence is one of
+    these like any other, told apart only by its `origin`.
+    """
+
+
 # The tagged unions, by the names the Rust types have.
+CapacityCause: TypeAlias = CapacityCauseAgentLocked | CapacityCauseAccountLocked | CapacityCauseUsageLimit
 Dependency: TypeAlias = DependencyTask | DependencyGoal | DependencyExpectation
 FlowHabitResult: TypeAlias = FlowHabitResultLoaded | FlowHabitResultFailed
 Origin: TypeAlias = OriginManual | OriginHabit | OriginCheck | OriginSpawnedWait | OriginDelegationWait

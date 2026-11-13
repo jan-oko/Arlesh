@@ -4,13 +4,11 @@
 //! Each method is what its command did before the port existed, moved here unchanged: it opens a
 //! session from the [`SessionFactory`], calls the domain, and commits.
 
-use arlesh_core::{
-    capacity::AgentCapacity, database::session::SessionFactory, undo::stacks::UndoStacks,
-};
+use arlesh_core::{database::session::SessionFactory, undo::stacks::UndoStacks};
 
 mod access;
+mod agents;
 mod block_reasons;
-mod capacity;
 mod commitments;
 mod domains;
 mod expectations;
@@ -30,17 +28,11 @@ pub struct SqliteBackend {
     factory: SessionFactory,
     /// The Undo and Redo Stacks, session-scoped: in memory, empty at every start.
     stacks: UndoStacks,
-    /// The agent capacity lock, shared with the MCP endpoint.
-    capacity: AgentCapacity,
 }
 
 impl SqliteBackend {
-    /// A backend over `factory`, with its stacks and the capacity lock it shares with the MCP.
-    pub fn new(factory: SessionFactory, stacks: UndoStacks, capacity: AgentCapacity) -> Self {
-        Self {
-            factory,
-            stacks,
-            capacity,
-        }
+    /// A backend over `factory`, with its stacks.
+    pub fn new(factory: SessionFactory, stacks: UndoStacks) -> Self {
+        Self { factory, stacks }
     }
 }

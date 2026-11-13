@@ -34,7 +34,10 @@ no open PR, never the main checkout, `dev`, `master`, the current directory's wo
 uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
 device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
 is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
-Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
+It also stops each running box server (`server start`) whose branch has no open PR and that is not
+`dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
+and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
+are pruned.
 
 `list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
 worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
@@ -45,10 +48,16 @@ no open PR, never the main checkout, `dev`, `master`, the current directory's wo
 uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
 device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
 is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
-Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
+It also stops each running box server (`server start`) whose branch has no open PR and that is not
+`dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
+and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
+are pruned.
 
 A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
-(`run`, `server start|token|pin`); an existing one is used as-is.
+(`run`, `server start|token|pin`); an existing one is used as-is, found by the branch it holds
+(`git worktree list --porcelain`), so a worktree made by hand as `.claude/worktrees/fix-274` for
+another branch name is reused, not collided with. Its instance, port and package are still named
+after the branch.
 
 `run` builds only when the branch's worktree changed since the last successful build (a hash of
 HEAD plus the uncommitted diff, per branch and per OS), installs on an Android device only when
@@ -72,12 +81,23 @@ native module and schema, or an APK of the wrong branch (seen: `Finished` in 0.2
 Box keeps the one target, because the dependencies are ~14G of debug artifacts and disk is the
 constraint (per-worktree targets would cost that per branch, and `clean` and `prune` would have to
 delete them too), and makes the workspace crates provably the branch's own instead: every cargo build
-box runs (desktop, server bindings, Android) is wrapped in `owned_target`. It drops cargo's records
-of the workspace crates (their `.fingerprint/` and `build/` dirs, every profile and target triple,
-never a dependency's) unless this worktree compiled them last and nothing has written them since;
-`<target>/.arlesh-box-members` holds the owner and a signature of those records, so a plain `cargo`
-run in another worktree is caught too. Cost: switching branches recompiles the workspace crates
-(about a minute for the server, more for Tauri) and no extra disk. The frontend is not shared (each
+box runs (desktop, server bindings, Android) is wrapped in `owned_target`. Each workspace crate gets
+a content key: its committed tree (`git rev-parse HEAD:<dir>`), its uncommitted and untracked changes,
+every file it reads from outside its directory (`include_str!`, `include_bytes!`, `include!` and
+`sqlx::migrate!` targets found by scanning its non-test Rust files, committed symlinks that leave the
+directory such as `src-tauri/migrations`, a Tauri crate's `frontendDist`), and the keys of the
+workspace crates it depends on. `<target>/.arlesh-box-members` records, per crate, the key its cargo
+records were built under and a signature of those records. Before a build a crate's records
+(its `.fingerprint/` and `build/` dirs, every profile and target triple, never a dependency's) are
+dropped unless the recorded key equals the key of the tree about to build and nothing has written
+them since (so a plain `cargo` run in another worktree is caught too); all crates are dropped when a
+shared input differs (Cargo.toml, Cargo.lock, rust-toolchain, `.cargo/` and the `.cargo/config*`
+files cargo reads). A crate whose key cannot be known (a macro path that is not a literal, git
+failing) is dropped every time, and so are the crates above it; the Android build drops `src-tauri`
+every time, because `tauri android build` makes `dist/` after box has taken its keys. Cost: a branch
+switch recompiles only the crates whose content differs (and what depends on them), and no extra disk;
+the Tauri crate is nearly always one of them, since its patched `tauri.conf.json` (port, title) is
+baked into the binary. The frontend is not shared (each
 worktree has its own node_modules, Vite server and dist), and the per-branch binary and APK are
 copied out of the target right after the build, so a "build is current" stamp never points at
 another branch's artifact.
@@ -89,13 +109,20 @@ A device or package without that permission gets a note and the run goes on.
 Android: the package is com.atai.arlesh.box.<branch> and the label "Arlesh (<branch>)", so it
 installs beside the real app; build.gradle.kts and strings.xml are patched for the build and
 restored. Needs ANDROID_HOME, ANDROID_NDK_HOME and a JDK
-(ARLESH_BOX_JAVA_HOME wins over JAVA_HOME). Never pairs: pair once by hand with `adb pair`.
+(ARLESH_BOX_JAVA_HOME wins over JAVA_HOME). Never pairs: pair once by hand with `adb pair`. A phone
+that answers but whose adb TLS handshake fails (`adb connect` prints `failed to connect to <addr>` with no
+reason; `Connection refused` is a closed port) is reported as having rejected this computer's key, with
+the re-pair steps, instead of as unreachable.
 Settings file: $XDG_CONFIG_HOME/arlesh/box.env, beside box-devices.json, is read at startup; a missing
 file does nothing. One `KEY=value` per line; blank lines and `#` comments are skipped; an `export `
 prefix and a pair of single or double quotes around the value are accepted; `$HOME`, `${HOME}` and a
 leading `~` in the value are expanded. A variable already set in the real environment wins over the
 file. A malformed line stops box and names its line number, never its value. Typical keys:
 ARLESH_BOX_FIREBASE_PROJECT, ARLESH_FCM_CREDENTIALS_FILE, ARLESH_BACKUP_TOKEN, ARLESH_BOX_SEED_URL.
+Speed: `gh auth status` is not run up front (a failing `gh` call is diagnosed afterwards); the Firebase
+access token comes from gcloud only when a call needs one and is cached in $XDG_STATE_HOME/arlesh/box/
+firebase-token.json (mode 600, 45 minutes, never printed); a candidate adb address gets a 1 s TCP
+connect before `adb connect`, so an unreachable phone costs about a second.
 Firebase, per branch: with ARLESH_BOX_FIREBASE_PROJECT set and gcloud application-default
 credentials, the package is registered as an Android app and its config written as a gitignored
 google-services.json; --no-firebase turns it off.
@@ -356,15 +383,57 @@ def dir_name(branch: str) -> str:
 
 
 def worktree_path(name: str) -> Path:
-    """An existing worktree by directory name, used as-is."""
+    """An existing worktree by name, used as-is: its directory, else the one holding the branch
+    whose `dir_name` is `name` (a worktree made by hand under another folder name)."""
     path = worktrees_dir() / name
-    if not path.is_dir():
-        raise die(f"No worktree '{name}'. Try: {CMD} list")
-    return path
+    if path.is_dir():
+        return path
+    for held_branch, held_path in git_worktrees().items():
+        if dir_name(held_branch) == name and held_path.parent == worktrees_dir().resolve():
+            return held_path
+    raise die(f"No worktree '{name}'. Try: {CMD} list")
 
 
 def git_in(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return capture(["git", "-C", str(cwd), *args])
+
+
+def parse_worktree_list(porcelain: str) -> dict[str, Path]:
+    """Branch -> worktree path from `git worktree list --porcelain` (detached worktrees have none)."""
+    held: dict[str, Path] = {}
+    path: Path | None = None
+    for line in porcelain.splitlines():
+        if line.startswith("worktree "):
+            path = Path(line.removeprefix("worktree "))
+        elif line.startswith("branch refs/heads/") and path is not None:
+            held[line.removeprefix("branch refs/heads/")] = path
+    return held
+
+
+def git_worktrees() -> dict[str, Path]:
+    """Every checked-out branch of the repository and where it is checked out, whatever the folder
+    is called. Paths are resolved, so they compare with `worktrees_dir().resolve()`."""
+    out = git_in(main_checkout(), "worktree", "list", "--porcelain")
+    if out.returncode != 0:
+        return {}
+    return {b: p.resolve() for b, p in parse_worktree_list(out.stdout).items()}
+
+
+def existing_worktree(branch: str) -> Path | None:
+    """The box worktree that already holds `branch`, under whatever folder name it was made with.
+
+    A branch checked out elsewhere (the main checkout, a folder outside `.claude/worktrees`) is an
+    error: git would refuse a second checkout, and box builds only from its own worktrees.
+    """
+    path = git_worktrees().get(branch)
+    if path is None:
+        return None
+    if path.parent != worktrees_dir().resolve():
+        raise die(
+            f"{branch} is already checked out at {path}, outside .claude/worktrees. "
+            f"Check out another branch there, or remove that worktree, then run again."
+        )
+    return path
 
 
 def worktree_branch(path: Path) -> str:
@@ -427,6 +496,9 @@ def ensure_worktree(branch: str, report: bool = True) -> Path:
     name = dir_name(branch)
     path = worktrees_dir() / name
     root = main_checkout()
+    held_at = existing_worktree(branch)
+    if held_at is not None and held_at != path.resolve():  # keep the unresolved spelling when it is the same folder
+        path = held_at
     if path.is_dir():
         held = worktree_branch(path)
         if held != branch:
@@ -818,21 +890,18 @@ def update_state(change: Any) -> None:
     atomic_write(state_file(), json.dumps(state, indent=2) + "\n")
 
 
-def worktree_stamp(wt: Path) -> str:
-    """Hash of HEAD plus the uncommitted diff (tracked changes and untracked, non-ignored files)."""
-    head = capture(["git", "-C", str(wt), "rev-parse", "HEAD"])
-    if head.returncode != 0:
-        raise die(f"{wt} is not a git worktree.")
-    digest = hashlib.sha256()
-    digest.update(head.stdout.strip().encode() + b"\0")
+def hash_uncommitted(wt: Path, digest: Any, pathspec: str | None = None) -> None:
+    """Feed `digest` the uncommitted diff (tracked changes and untracked, non-ignored files),
+    limited to `pathspec` when given."""
+    only = ["--", pathspec] if pathspec else []
     diff = subprocess.run(
-        ["git", "-C", str(wt), "diff", "HEAD", "--binary", "--no-ext-diff"],
+        ["git", "-C", str(wt), "diff", "HEAD", "--binary", "--no-ext-diff", *only],
         capture_output=True,
         check=False,
     )
     digest.update(diff.stdout + b"\0")
     untracked = subprocess.run(
-        ["git", "-C", str(wt), "ls-files", "--others", "--exclude-standard", "-z"],
+        ["git", "-C", str(wt), "ls-files", "--others", "--exclude-standard", "-z", *only],
         capture_output=True,
         check=False,
     )
@@ -851,6 +920,16 @@ def worktree_stamp(wt: Path) -> str:
         except OSError:
             pass
         digest.update(b"\0")
+
+
+def worktree_stamp(wt: Path) -> str:
+    """Hash of HEAD plus the uncommitted diff (tracked changes and untracked, non-ignored files)."""
+    head = capture(["git", "-C", str(wt), "rev-parse", "HEAD"])
+    if head.returncode != 0:
+        raise die(f"{wt} is not a git worktree.")
+    digest = hashlib.sha256()
+    digest.update(head.stdout.strip().encode() + b"\0")
+    hash_uncommitted(wt, digest)
     return digest.hexdigest()
 
 
@@ -870,15 +949,40 @@ def record_built(os_name: str, branch: str, stamp: str) -> None:
 
 OWNER_FILE = ".arlesh-box-members"
 
+# `tauri android build` runs `npm run build` (the frontend `dist/` the Tauri crate embeds) after
+# box has taken its keys, so the key cannot describe what that build compiles: the crate is rebuilt.
+ANDROID_UNKEYED = ("src-tauri",)
 
-def workspace_members(wt: Path) -> list[str]:
-    """Names of the workspace's own crates (never their dependencies), from `cargo metadata`."""
+
+@dataclass(frozen=True)
+class Crate:
+    """A workspace crate: its directory (relative to the workspace root, posix) and the workspace
+    crates it depends on at build time (dev-dependencies excluded)."""
+
+    name: str
+    directory: str
+    deps: tuple[str, ...] = ()
+
+
+def workspace_crates(wt: Path) -> dict[str, Crate]:
+    """The workspace's own crates (never their dependencies), from `cargo metadata`."""
     res = capture(
         ["cargo", "metadata", "--no-deps", "--format-version", "1", "--offline"], cwd=wt
     )
     if res.returncode != 0:
         raise die(f"cargo metadata failed in {wt}; box cannot tell which crates are the branch's own.")
-    return sorted(pkg["name"] for pkg in json.loads(res.stdout)["packages"])
+    packages = json.loads(res.stdout)["packages"]
+    names = {pkg["name"] for pkg in packages}
+    root = wt.resolve()
+    crates: dict[str, Crate] = {}
+    for pkg in packages:
+        directory = Path(pkg["manifest_path"]).resolve().parent.relative_to(root).as_posix()
+        deps = sorted(
+            d["name"] for d in pkg["dependencies"]
+            if d.get("path") and d.get("kind") != "dev" and d["name"] in names
+        )  # fmt: skip
+        crates[pkg["name"]] = Crate(pkg["name"], directory, tuple(deps))
+    return crates
 
 
 def member_dirs(target: Path, members: Sequence[str]) -> list[Path]:
@@ -907,7 +1011,8 @@ def members_signature(target: Path, members: Sequence[str]) -> str:
     return digest.hexdigest()
 
 
-def read_owner(target: Path) -> dict[str, str]:
+def read_owner(target: Path) -> dict[str, Any]:
+    """What the last build recorded: `{"shared": key, "crates": {name: {"key", "signature"}}}`."""
     try:
         data = json.loads((target / OWNER_FILE).read_text())
     except (OSError, ValueError):
@@ -915,36 +1020,245 @@ def read_owner(target: Path) -> dict[str, str]:
     return data if isinstance(data, dict) else {}
 
 
+# ---- What a workspace crate was compiled from: its content key ---------------------------------
+#
+# Cargo judges a workspace crate fresh from file mtimes, and every worktree gets the same unit
+# hashes, so the records in the shared target say nothing about WHOSE code they hold. The content
+# key says it: a hash of everything the crate's compilation reads. A record is kept only when the
+# key it was built under equals the key of the tree about to build; anything else is dropped.
+# A key that cannot be computed with confidence is None, and None always drops.
+
+# Directory components and file names whose Rust files exist only for `cargo test`.
+_TEST_PATHS = re.compile(r"(?:^|/)tests/|(?:^|/)tests\.rs$|_tests\.rs$")
+_INCLUDE_MACRO = re.compile(r"\b(include_str|include_bytes|include|migrate)!\s*\(")
+_STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+_MANIFEST_DIR_ENV = re.compile(r'env!\(\s*"CARGO_MANIFEST_DIR"\s*\)')
+
+
+def macro_argument(text: str, open_paren: int) -> str | None:
+    """The text between the parenthesis at `open_paren` and its match; parentheses inside string
+    literals do not count."""
+    depth, i = 0, open_paren
+    while i < len(text):
+        c = text[i]
+        if c == '"':
+            i += 1
+            while i < len(text) and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_paren + 1 : i]
+        i += 1
+    return None
+
+
+def included_path(macro: str, argument: str, source: Path, crate_dir: Path) -> Path | None:
+    """The file or directory an `include_str!`-style macro reads, or None when it is not a literal
+    path (`env!("OUT_DIR")`, a variable...), which cannot be keyed."""
+    from_manifest = bool(_MANIFEST_DIR_ENV.search(argument))
+    rest = _MANIFEST_DIR_ENV.sub("", argument)
+    literals = _STRING_LITERAL.findall(rest)
+    residue = re.sub(r"concat!|[\s,()]", "", _STRING_LITERAL.sub("", rest))
+    if residue or (not literals and macro != "migrate"):
+        return None
+    relative = "./migrations" if macro == "migrate" and not literals else "".join(literals)
+    base = crate_dir if from_manifest or macro == "migrate" else source.parent
+    return Path(os.path.normpath(f"{base}/{relative}"))  # a join would let "/x" replace the base
+
+
+def outside_inputs(crate_dir: Path, sources: Sequence[Path]) -> list[Path] | None:
+    """Everything in `sources` (Rust files, test-only ones skipped by the caller) that the compiler
+    reads from outside `crate_dir`: `include_str!`, `include_bytes!`, `include!` and `sqlx::migrate!`
+    targets. A path that resolves (through symlinks too) outside the crate directory is listed;
+    None when some macro's path cannot be read off the source."""
+    real_crate = crate_dir.resolve()
+    found: list[Path] = []
+    for source in sources:
+        try:
+            text = source.read_text(errors="replace")
+        except OSError:
+            continue
+        for match in _INCLUDE_MACRO.finditer(text):
+            argument = macro_argument(text, match.end() - 1)
+            if argument is None:
+                return None
+            target = included_path(match.group(1), argument, source, crate_dir)
+            if target is None:
+                return None
+            if not target.resolve().is_relative_to(real_crate):
+                found.append(target)
+    return found
+
+
+def hash_path(digest: Any, label: str, path: Path) -> None:
+    """Feed `digest` a file's bytes, or a directory's files in name order; a missing path as such."""
+    digest.update(f"{label}\0".encode())
+    if path.is_dir():
+        for item in sorted(p for p in path.rglob("*") if p.is_file()):
+            digest.update(f"{item.relative_to(path).as_posix()}\0".encode())
+            digest.update(item.read_bytes() + b"\0")
+    elif path.is_file():
+        digest.update(path.read_bytes() + b"\0")
+    else:
+        digest.update(b"missing\0")
+
+
+def tracked_and_untracked(wt: Path, directory: str) -> list[Path] | None:
+    """Files under `directory` that git knows or would add (not ignored); None if git failed."""
+    out = subprocess.run(
+        ["git", "-C", str(wt), "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", directory],
+        capture_output=True, check=False,
+    )  # fmt: skip
+    if out.returncode != 0:
+        return None
+    return [wt / raw.decode(errors="replace") for raw in out.stdout.split(b"\0") if raw]
+
+
+def tracked_symlinks(wt: Path, directory: str) -> list[Path]:
+    """Symlinks committed under `directory` (mode 120000)."""
+    out = git_in(wt, "ls-files", "-s", "--", directory).stdout
+    return [wt / line.split("\t", 1)[1] for line in out.splitlines() if line.startswith("120000 ")]
+
+
+def frontend_dist(crate_dir: Path) -> Path | None:
+    """The `frontendDist` folder a Tauri crate embeds, when `tauri.conf.json` names a local one."""
+    try:
+        conf = json.loads((crate_dir / "tauri.conf.json").read_text())
+        dist = conf["build"]["frontendDist"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(dist, str) or "://" in dist:
+        return None
+    return Path(os.path.normpath(crate_dir / dist))
+
+
+def own_content_key(wt: Path, crate: Crate) -> str | None:
+    """Hash of one crate's own inputs: its committed tree, its uncommitted changes, and every file
+    it reads from outside its directory. None when that cannot be known."""
+    crate_dir = wt / crate.directory
+    tree = git_in(wt, "rev-parse", f"HEAD:{crate.directory}")
+    files = tracked_and_untracked(wt, crate.directory)
+    if files is None:
+        return None
+    sources = [f for f in files if f.suffix == ".rs" and not _TEST_PATHS.search(f.relative_to(wt).as_posix())]
+    outside = outside_inputs(crate_dir, sources)
+    if outside is None:
+        return None
+    for link in tracked_symlinks(wt, crate.directory):
+        if not link.resolve().is_relative_to(crate_dir.resolve()):
+            outside.append(link)
+    dist = frontend_dist(crate_dir)
+    if dist is not None:
+        outside.append(dist)
+    digest = hashlib.sha256()
+    digest.update((tree.stdout.strip() if tree.returncode == 0 else "untracked").encode() + b"\0")
+    hash_uncommitted(wt, digest, crate.directory)
+    for path in sorted(set(outside)):
+        hash_path(digest, os.path.relpath(path.resolve(), wt.resolve()), path.resolve())
+    return digest.hexdigest()
+
+
+def content_keys(wt: Path, crates: dict[str, Crate], unkeyed: Sequence[str] = ()) -> dict[str, str | None]:
+    """Each crate's key: its own inputs plus its workspace dependencies' keys, so a change below
+    reaches every crate above it. `unkeyed` names crate directories that are never kept."""
+    keys: dict[str, str | None] = {}
+
+    def key_of(name: str, visiting: tuple[str, ...] = ()) -> str | None:
+        if name in keys:
+            return keys[name]
+        crate = crates[name]
+        own = None if crate.directory in unkeyed or name in visiting else own_content_key(wt, crate)
+        below = [key_of(d, (*visiting, name)) for d in crate.deps]
+        if own is None or any(k is None for k in below):
+            keys[name] = None
+            return None
+        digest = hashlib.sha256(own.encode())
+        for dep, k in zip(crate.deps, below, strict=True):
+            digest.update(f"\0{dep}={k}".encode())
+        keys[name] = digest.hexdigest()
+        return keys[name]
+
+    for name in crates:
+        key_of(name)
+    return keys
+
+
+def shared_inputs_key(wt: Path) -> str:
+    """Hash of what every crate shares: the lockfile, the toolchain pin, the root manifest and
+    cargo's config files (`.cargo/` of the root, and every `.cargo/config*` from the root and from
+    `src-tauri` up through the parent directories, as cargo reads them)."""
+    digest = hashlib.sha256()
+    root = wt.resolve()
+    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rust-toolchain"):
+        hash_path(digest, name, root / name)
+    hash_path(digest, ".cargo", root / ".cargo")
+    configs: set[Path] = set()
+    for start in (root, root / "src-tauri"):
+        for folder in (start, *start.parents):
+            configs |= {folder / ".cargo" / n for n in ("config", "config.toml") if (folder / ".cargo" / n).is_file()}
+    for config in sorted(configs):
+        hash_path(digest, os.path.relpath(config, root), config)
+    return digest.hexdigest()
+
+
 @contextlib.contextmanager
-def owned_target(wt: Path, target: Path) -> Iterator[None]:
+def owned_target(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
     """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
 
     Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
     are hashed relative to the root). Cargo then judges them fresh by mtime alone, so a worktree
     whose files are older than another's build artifacts is never recompiled and runs the other
-    branch's code. Before a build, the workspace crates' fingerprints are dropped unless this
-    worktree was the last to compile them and nothing has written them since; cargo then rebuilds
-    them and keeps every dependency. After the build (also a failed one), the new owner is recorded.
+    branch's code. Each crate's records are therefore kept only when they were built from exactly
+    this tree's content (the content key above) and nothing has written them since; every other
+    crate's records are dropped, all of them when a shared input (lockfile, toolchain, cargo
+    config) differs. Cargo rebuilds what was dropped and keeps every dependency. After the build
+    (also a failed one), each crate that cargo wrote records for is recorded under its key.
+
+    `unkeyed` lists crate directories whose inputs are produced during the build itself, so no key
+    taken beforehand can describe them: those are dropped every time.
     """
-    members = workspace_members(wt)
-    owner = read_owner(target)
-    mine = owner.get("worktree") == str(wt.resolve()) and owner.get(
-        "signature"
-    ) == members_signature(target, members)
-    if not mine:
-        units = member_dirs(target, members)
-        for unit in units:
+    crates = workspace_crates(wt)
+    keys = content_keys(wt, crates, unkeyed)
+    shared = shared_inputs_key(wt)
+    recorded = read_owner(target)
+    recorded_crates = recorded.get("crates") if recorded.get("shared") == shared else None
+    if not isinstance(recorded_crates, dict):
+        recorded_crates = {}
+    kept: dict[str, dict[str, str]] = {}
+    dropped: list[str] = []
+    for name in crates:
+        entry = recorded_crates.get(name)
+        current = members_signature(target, [name])
+        key = keys[name]
+        if key is not None and isinstance(entry, dict) and entry == {"key": key, "signature": current}:
+            kept[name] = entry
+            continue
+        for unit in member_dirs(target, [name]):
             shutil.rmtree(unit)
+            if name not in dropped:
+                dropped.append(name)
+    if dropped:
         note(
-            f"shared target: rebuilding the workspace crates for {wt.name} "
-            f"({len(units)} stale records dropped; dependencies are kept)"
+            f"shared target: rebuilding {', '.join(dropped)} for {wt.name} "
+            f"(changed since they were built; {len(kept)} kept; dependencies are kept)"
         )
+    before = {name: members_signature(target, [name]) for name in crates}
     try:
         yield
     finally:
         target.mkdir(parents=True, exist_ok=True)
-        record = {"worktree": str(wt.resolve()), "signature": members_signature(target, members)}
-        atomic_write(target / OWNER_FILE, json.dumps(record) + "\n")
+        record: dict[str, dict[str, str]] = {}
+        for name in crates:
+            after = members_signature(target, [name])
+            if after == before[name]:
+                if name in kept:
+                    record[name] = kept[name]
+            elif (key := keys[name]) is not None:
+                record[name] = {"key": key, "signature": after}
+        atomic_write(target / OWNER_FILE, json.dumps({"shared": shared, "crates": record}) + "\n")
 
 
 # ---- Patching tracked files for the length of a build ------------------------------------
@@ -2181,6 +2495,7 @@ ADB_TLS = "_adb-tls-connect._tcp"
 ADB_TIMEOUT = (
     8  # seconds for one `adb connect` / `get-state` on a device that may be unreachable
 )
+PROBE_TIMEOUT = 1.0  # seconds for the TCP connect that precedes `adb connect`
 MAX_PORT_GUESSES = 3  # discovered ports tried against a tailnet address
 
 
@@ -2360,20 +2675,91 @@ def remember_adb_serial(target: Target, addr: str, entry: MdnsEntry | None) -> N
         save_devices(devices)
 
 
-def adb_connected(addr: str) -> bool:
-    """`adb connect` then `get-state`, each bounded: a dead address must not stall the run."""
+# `adb connect` outcomes besides success. A refused connection means the port is wrong or closed.
+# A handshake failure means something answered there but did not accept this computer's adb key.
+CONNECTED, REFUSED, REJECTED, UNREACHABLE = "connected", "refused", "rejected", "unreachable"
+
+# `failed to connect to <addr>` with no `: <reason>` after the address, as adb prints when the TLS
+# handshake fails; a socket failure carries its reason (`: Connection refused`, `: Connection timed out`).
+_BARE_FAILURE = re.compile(r"failed to connect to\s+'?[^\s':]+(?::\d+)?'?\s*$", re.MULTILINE)
+_REASONED_FAILURE = re.compile(r"failed to connect to\s+'?[^\s']+'?:\s+\S")
+
+
+def adb_server_log() -> Path:
+    return Path(tempfile.gettempdir()) / f"adb.{os.getuid()}.log"
+
+
+def log_says_handshake_failed(log: Path, window: int = 16384) -> bool:
+    """Fallback for a failure `adb connect` does not explain: the tail of adb's own server log."""
     try:
-        subprocess.run(
+        with log.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - window))
+            return b"Handshake failed" in fh.read()
+    except OSError:
+        return False
+
+
+def classify_connect(output: str, log: Path | None = None) -> str:
+    """CONNECTED, REFUSED, REJECTED or UNREACHABLE from what `adb connect` printed.
+
+    The wording decides first. Only a failure that names no reason (and is not "refused") is
+    looked up in adb's server log, so a scrape of the log never overrides an explicit message.
+    """
+    if re.search(r"\b(connected|already connected) to\b", output):
+        return CONNECTED
+    if "refused" in output.lower():
+        return REFUSED
+    if _BARE_FAILURE.search(output):
+        return REJECTED
+    if _REASONED_FAILURE.search(output):
+        return UNREACHABLE
+    if "failed to connect" in output or "unable to connect" in output:
+        return REJECTED if log and log_says_handshake_failed(log) else UNREACHABLE
+    return UNREACHABLE
+
+
+def probe_failure(addr: str, timeout: float = PROBE_TIMEOUT) -> str | None:
+    """REFUSED or UNREACHABLE when a plain TCP connect to `host:port` fails, None when it is accepted.
+
+    A dead address costs `timeout` here instead of `ADB_TIMEOUT` inside `adb connect`. The
+    connection is closed at once; nothing is sent.
+    """
+    host, _, port = addr.rpartition(":")
+    try:
+        with socket.create_connection((host.strip("[]"), int(port)), timeout=timeout):
+            return None
+    except ConnectionRefusedError:
+        return REFUSED
+    except (OSError, ValueError):
+        return UNREACHABLE
+
+
+def adb_connect(addr: str) -> str:
+    """A TCP probe, then `adb connect` and `get-state`, each bounded: a dead address must not stall.
+
+    Returns CONNECTED, or why not: REFUSED (port closed or wrong), REJECTED (the phone's TLS
+    handshake failed: it does not trust this computer's key) or UNREACHABLE. Only an address that
+    accepts a TCP connection is handed to adb, so an unreachable phone costs about a second.
+    """
+    failed = probe_failure(addr)
+    if failed:
+        return failed
+    try:
+        connect = subprocess.run(
             ["adb", "connect", addr],
             capture_output=True, text=True, check=False, timeout=ADB_TIMEOUT,
         )  # fmt: skip
+        outcome = classify_connect(connect.stdout + connect.stderr, adb_server_log())
+        if outcome != CONNECTED:
+            return outcome
         state = subprocess.run(
             ["adb", "-s", addr, "get-state"],
             capture_output=True, text=True, check=False, timeout=ADB_TIMEOUT,
         )  # fmt: skip
     except subprocess.TimeoutExpired:
-        return False
-    return state.stdout.strip() == "device"
+        return UNREACHABLE
+    return CONNECTED if state.stdout.strip() == "device" else UNREACHABLE
 
 
 def connect_candidates(
@@ -2402,6 +2788,21 @@ def connect_candidates(
     return list(dict(out).items())
 
 
+def rejected_message(target: Target, host: str, rejected: Sequence[str]) -> str:
+    """The phone answered but its TLS handshake failed: it does not trust this computer's key."""
+    ip = rejected[0].rpartition(":")[0] or host or "<ip>"
+    return (
+        f"The phone rejected this computer's key: {target.name} answered at "
+        f"{', '.join(rejected)} but its adb TLS handshake failed, so it is no longer paired "
+        f"with this computer (not a closed port: that would say 'Connection refused'). "
+        f"Re-pair it. On the phone open Settings > Developer options > Wireless debugging > "
+        f"Pair device with pairing code; it shows an IP:port for pairing (a different port "
+        f"from the connect port) and a six-digit code. Then run "
+        f"`adb pair {ip}:<pairing port> <code>` and run this again. "
+        f"This tool does not pair."
+    )
+
+
 def resolve_device(target: Target) -> str:
     """The adb transport (serial or host:port) for the device, connected. Never pairs."""
     need_cmd("adb", "Install platform-tools and put it on PATH (or set ANDROID_HOME).")
@@ -2420,10 +2821,16 @@ def resolve_device(target: Target) -> str:
     )
     tail = tailnet_address(addrs)
     candidates = connect_candidates(target, host, port, entries, entry, tail)
+    rejected: list[str] = []
     for addr, hint in candidates:
-        if adb_connected(addr):
+        outcome = adb_connect(addr)
+        if outcome == CONNECTED:
             remember_adb_serial(target, addr, hint)
             return addr
+        if outcome == REJECTED:
+            rejected.append(addr)
+    if rejected:
+        raise die(rejected_message(target, host, rejected))
     seen = (
         "\n".join(f"  {e.service}  {e.address}" for e in entries)
         or "  (nothing found by adb mdns or avahi-browse)"
@@ -2458,8 +2865,42 @@ def install_reason(serial: str, device: str, branch: str, stamp: str) -> str | N
 # ---- Android: Firebase ----------------------------------------------------------------------------
 
 
+TOKEN_TTL_SECONDS = 45 * 60  # gcloud's application-default tokens last an hour; reuse for less
+
+
+def token_cache_file() -> Path:
+    return state_dir() / "firebase-token.json"
+
+
+def read_cached_token(now: float | None = None) -> str:
+    """The cached access token while it is still valid, else ''. Never printed or logged."""
+    try:
+        data = json.loads(token_cache_file().read_text())
+        token, expires = data["token"], float(data["expires"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    ok = isinstance(token, str) and expires > (time.time() if now is None else now)
+    return token if ok else ""
+
+
+def write_cached_token(token: str, now: float | None = None) -> None:
+    """Keep the token with its expiry, readable by this user only (created 0600, never widened)."""
+    path = token_cache_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    expires = (time.time() if now is None else now) + TOKEN_TTL_SECONDS
+    tmp = path.with_name(path.name + ".new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps({"token": token, "expires": expires}))
+    os.replace(tmp, path)
+
+
 class Firebase:
-    """Per-branch Android apps in the ARLESH_BOX_FIREBASE_PROJECT project, via the REST API."""
+    """Per-branch Android apps in the ARLESH_BOX_FIREBASE_PROJECT project, via the REST API.
+
+    The project comes from the environment alone (box never asks gcloud for it). The access token
+    is fetched with gcloud only when a call needs one, and reused from the state dir until it expires.
+    """
 
     def __init__(self) -> None:
         self.project = os.environ.get("ARLESH_BOX_FIREBASE_PROJECT", "")
@@ -2474,8 +2915,13 @@ class Firebase:
         if not shutil.which("gcloud"):
             note("firebase: gcloud is not installed, skipping.")
             return False
+        self.token = read_cached_token()
+        if self.token:
+            return True
         got = capture(["gcloud", "auth", "application-default", "print-access-token"])
         self.token = got.stdout.strip() if got.returncode == 0 else ""
+        if self.token:
+            write_cached_token(self.token)
         if not self.token:
             note(
                 "firebase: no application-default credentials (gcloud auth application-default login), skipping."
@@ -2484,7 +2930,7 @@ class Firebase:
         return True
 
     def call(
-        self, method: str, path: str, body: dict[str, Any] | None = None
+        self, method: str, path: str, body: dict[str, Any] | None = None, retried: bool = False
     ) -> dict[str, Any]:
         req = urllib.request.Request(
             f"{FIREBASE_API}/{path}",
@@ -2500,6 +2946,11 @@ class Firebase:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 payload = json.loads(resp.read() or b"{}")
         except urllib.error.HTTPError as exc:
+            if exc.code == 401 and not retried:
+                token_cache_file().unlink(missing_ok=True)  # an expired cached token: ask gcloud again
+                self.token = ""
+                if self.ready():
+                    return self.call(method, path, body, retried=True)
             self.fail(method, path, exc)
         except (OSError, urllib.error.URLError) as exc:
             raise die(f"firebase: request to {path} failed: {exc}") from exc
@@ -2874,12 +3325,21 @@ def ci_cached_apk(branch: str, sha: str) -> Path:
 
 
 def gh_unavailable() -> str | None:
-    """Why the gh CLI cannot be used, or None."""
+    """Why the gh CLI cannot be used without running it, or None.
+
+    It does not ask `gh auth status` up front (a network round trip on every command): a caller
+    runs the real gh call and, only when that fails, asks `gh_failure_reason`.
+    """
     if shutil.which("gh") is None:
         return "the gh CLI is not on PATH"
+    return None
+
+
+def gh_failure_reason(exc: BoxError) -> str:
+    """Why a gh call failed: not logged in, if `gh auth status` says so, else gh's own message."""
     if capture(["gh", "auth", "status"]).returncode != 0:
         return "gh is not authenticated (run `gh auth login`)"
-    return None
+    return str(exc)
 
 
 def ci_blocker(wt: Path, branch: str) -> str | None:
@@ -3033,9 +3493,10 @@ def pick_ci_build(wt: Path, mode: str) -> Path | None:
     try:
         run = find_ci_run(wt, branch, sha)
     except BoxError as exc:
+        reason = gh_failure_reason(exc)
         if mode == CI:
-            raise
-        note(f"building locally: {exc}")
+            raise die(f"--ci needs gh: {reason}.") from exc
+        note(f"building locally: {reason}")
         return None
     if run is None:
         if mode != CI:
@@ -3125,7 +3586,7 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
             )
 
     print(f"\n=== {name}: android apk {package} ({label}) ===", flush=True)
-    with patched([gradle, strings]), owned_target(wt, target):
+    with patched([gradle, strings]), owned_target(wt, target, unkeyed=ANDROID_UNKEYED):
         apply_android_patch(gradle, strings, package, label)
         # Rebuilt from scratch, so an older APK is never mistaken for this one.
         shutil.rmtree(app_dir / "build" / "outputs" / "apk", ignore_errors=True)
@@ -3581,7 +4042,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         try:
             prs = open_prs()
         except BoxError as exc:
-            blocker = str(exc)
+            blocker = gh_failure_reason(exc)
     if prs is None:
         if getattr(args, "json", False):
             print(json.dumps({"gh": False, "reason": blocker,
@@ -3712,6 +4173,7 @@ class PrunePlan:
         default_factory=list
     )  # (dir, branch, fate)
     kept: list[tuple[str, str]] = field(default_factory=list)  # (dir, reason)
+    servers: list[str] = field(default_factory=list)  # running servers to stop, no worktree removal
 
 
 def kept_reason(name: str, branch: str) -> str | None:
@@ -3753,6 +4215,13 @@ def branch_fate(branch: str) -> str | None:
     return "its PR was merged" if pr_merged(branch) else None
 
 
+def servers_without_pr(open_branches: set[str], removed: set[str]) -> list[str]:
+    """Running box servers whose branch has no open PR, other than the long-lived branches' and
+    those of worktrees `prune` removes anyway (removing a worktree stops its server)."""
+    spared = {dir_name(b) for b in (*open_branches, *LONG_LIVED)} | removed
+    return [n for n in server_names([]) if n not in spared and server_running(n)]
+
+
 def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
     plan = PrunePlan()
     open_branches = {str(pr.get("headRefName")) for pr in prs}
@@ -3765,6 +4234,7 @@ def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
         else:
             fate = branch_fate(branch)
             plan.remove.append((name, branch, fate or ""))
+    plan.servers = servers_without_pr(open_branches, {n for n, _, _ in plan.remove})
     return plan
 
 
@@ -3775,10 +4245,12 @@ def print_prune_plan(plan: PrunePlan) -> None:
             "  stop its server and app, drop its Firebase app and device installs, git worktree remove"
         )
         print(f"  local branch: {'delete (' + fate + ')' if fate else 'keep (not merged)'}")  # fmt: skip
+    for name in plan.servers:
+        print(f"stop server {name}: no open PR")
     for name, reason in plan.kept:
         print(f"kept: {name}: {reason}")
-    if not plan.remove and not plan.kept:
-        print("no worktrees without an open PR.")
+    if not plan.remove and not plan.kept and not plan.servers:
+        print("no worktrees or servers without an open PR.")
 
 
 def remove_worktree(name: str, branch: str, fate: str) -> None:
@@ -3858,7 +4330,12 @@ def cmd_prune(args: argparse.Namespace) -> None:
     blocker = gh_unavailable()
     plan: PrunePlan | None = None
     if blocker is None:
-        plan = plan_prune(open_prs())
+        try:
+            prs = open_prs()
+        except BoxError as exc:
+            blocker = gh_failure_reason(exc)
+    if blocker is None:
+        plan = plan_prune(prs)
         print_prune_plan(plan)
     else:
         note(f"Not pruning worktrees: open PRs unavailable ({blocker}).")
@@ -3877,6 +4354,8 @@ def cmd_prune(args: argparse.Namespace) -> None:
     if plan:
         for name, branch, fate in plan.remove:
             remove_worktree(name, branch, fate)
+        for name in plan.servers:
+            stop_server(name)
     prune_packages(args, True)
 
 

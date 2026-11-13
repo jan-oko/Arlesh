@@ -26,7 +26,6 @@ import { useSystemBars } from "@/hooks/use-system-bars";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { useThreeFingerTap } from "@/hooks/use-three-finger-tap";
-import { useAgentCapacitySync } from "@/hooks/use-agent-capacity";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
@@ -51,9 +50,6 @@ export default function App() {
   const isInputCaptured = useIsInputCaptured();
 
   useCloseToTraySync();
-  // The agent capacity lock is the backend's, shared with every window and with agents over the
-  // MCP; this keeps this window's copy of it current.
-  useAgentCapacitySync();
   // Standalone or Client, and how the server is doing — for the top bar and the banner.
   useClientModeSync();
   // The phone's push token, kept registered with the server; a tapped notification opens its Task.

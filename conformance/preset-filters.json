@@ -1828,7 +1828,7 @@
     },
     {
       "name": "agents at capacity: start drops every agentic task not done, with its subtree",
-      "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
+      "spec": "agents.md, Capacity per account — while an agent is at capacity, every Agentic Task not yet Done in its Claim is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
       "filter": {
         "preset": "start"
       },
@@ -3021,6 +3021,50 @@
       ],
       "list": [
         "task-in-live"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "do shows a parent that reads in progress from its child, beside the child",
+      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "parent",
+      "mindmap": [
+        "domain-parent",
+        "task-child-active",
+        "task-parent-active"
+      ],
+      "list": [
+        "task-child-active",
+        "task-parent-active"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start shows a parent that reads in progress only while it has a to do child, and a started one by the setting",
+      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "parent",
+      "mindmap": [
+        "domain-parent",
+        "task-child-open",
+        "task-child-todo",
+        "task-idle-child",
+        "task-parent-active",
+        "task-parent-begun",
+        "task-parent-idle"
+      ],
+      "list": [
+        "task-child-open",
+        "task-child-todo",
+        "task-idle-child",
+        "task-parent-active",
+        "task-parent-begun",
+        "task-parent-idle"
       ],
       "commitments": []
     }
@@ -4779,6 +4823,65 @@
               "id": "task-in-archived-project",
               "kind": "task",
               "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "parent": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-parent",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-parent-active",
+              "kind": "task",
+              "status": "in_progress",
+              "children": [
+                {
+                  "id": "task-child-active",
+                  "kind": "task",
+                  "status": "in_progress"
+                },
+                {
+                  "id": "task-child-open",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-parent-begun",
+              "kind": "task",
+              "status": "started",
+              "children": [
+                {
+                  "id": "task-child-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-child-todo",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-parent-idle",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "task-idle-child",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
             }
           ]
         }

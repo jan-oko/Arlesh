@@ -49,7 +49,6 @@
   "checkTaskPrefix": "Check task prefix",
   "checkTaskPrefixReset": "Default",
   "agentStatus": {
-    "capacity": "Agents at capacity: Agentic tasks are blocked.",
     "review_one": "{{count}} agentic task waiting for your review.",
     "review_other": "{{count}} agentic tasks waiting for your review.",
     "waits_one": "{{count}} agent wait.",
@@ -58,8 +57,10 @@
     "onAgent_other": "{{count}} agentic tasks on an agent.",
     "details": "Click for details.",
     "menu": "Agents",
-    "clear": "Clear",
-    "show": "Show"
+    "show": "Show",
+    "capacity_one": "{{count}} agent at capacity: its Agentic tasks are blocked.",
+    "capacity_other": "{{count}} agents at capacity: their Agentic tasks are blocked.",
+    "open": "Open"
   },
   "systemBars": "System bars",
   "systemBarsHelp": "How the app sits against the Android status and gesture bars. Standard: visible, opaque, the app below them. Edge-to-edge: visible but transparent, the app drawn under them with its controls kept clear. Immersive: hidden, swipe from the screen edge to show them briefly. Android only.",

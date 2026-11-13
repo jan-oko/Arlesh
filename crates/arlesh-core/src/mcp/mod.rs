@@ -19,8 +19,9 @@
 //! re-statuses and archives Tasks — creating anywhere inside the roots, never under a Task marked
 //! Not agentic, and changing only Tasks that read as Agentic. [`ArleshMcp::waits`] raises an
 //! agentic wait under one — "the agent is waiting on you" — and [`ArleshMcp::infos`] hangs a note
-//! (an Info) under one. [`ArleshMcp::capacity`] sets the agent capacity lock, which is no node and
-//! is not journaled at all. Every other tool, [`ArleshMcp::snapshot`] included, is annotated
+//! (an Info) under one. [`ArleshMcp::agents`] attaches a session as an Agent and manages its Claim, which is no node;
+//! the agents' tables are journaled for the user's own Settings edits and stay off every stack
+//! for the agent's. Every other tool, [`ArleshMcp::snapshot`] included, is annotated
 //! `read_only_hint = true` and writes nothing. Every write is journaled under the `mcp` source, so none enters the user's Undo Stack.
 //!
 //! # Ids
@@ -40,9 +41,14 @@
 
 mod access;
 mod agentic;
-mod capacity;
+mod agents;
+mod answers;
+mod caller;
 mod delegation;
+mod detached;
+pub mod door;
 pub mod endpoint;
+pub mod events;
 mod flows;
 pub mod ids;
 mod infos;
@@ -54,6 +60,7 @@ mod relations;
 mod result;
 mod schema;
 mod scopes;
+pub mod session;
 mod snapshot;
 mod tasks;
 mod waits;
@@ -74,7 +81,6 @@ use rmcp::{
 };
 
 use crate::board::{self, Announce};
-use crate::capacity::AgentCapacity;
 use crate::database::session::SessionFactory;
 
 /// The default localhost port the MCP endpoint binds to.
@@ -82,6 +88,17 @@ pub const DEFAULT_PORT: u16 = 4747;
 
 /// Environment variable overriding [`DEFAULT_PORT`].
 pub const PORT_ENV_VAR: &str = "ARLESH_MCP_PORT";
+
+/// Who is calling a handler.
+#[derive(Clone, Debug)]
+enum Callers {
+    /// Every call is the user's own view: the MCP roots, no Claim, nothing to attach. For code that
+    /// calls the tools in-process, and the tests that do.
+    Anyone,
+    /// Every call is made over one session, which must attach as an Agent before it may call
+    /// anything but the attach tool, and then sees only its Claim.
+    Session(session::Binding),
+}
 
 /// The MCP tool handler. Holds a [`SessionFactory`] and a way to say the board changed — every
 /// tool opens its own session per call, exactly as a command does.
@@ -93,13 +110,14 @@ pub struct ArleshMcp {
     /// A closure rather than an `AppHandle`, so that nothing in this module has to know what a
     /// window is — an agent's write is not made *in* a window, and every window needs telling.
     announce: Announce,
-    /// The agent capacity lock, shared with the app and every other session. In memory and off
-    /// until [`ArleshMcp::with_capacity`] hands it the app's.
-    capacity: AgentCapacity,
     /// What time it is, for the writes and the short-id reads that derive the board. The wall
     /// clock, unless a test fixes it with [`ArleshMcp::with_clock`].
     clock: Clock,
     tool_router: ToolRouter<Self>,
+    /// Who is calling: anyone, in-process, or one session that must attach.
+    callers: Callers,
+    /// What a tool call needs of a connection when none is behind it — see [`detached`].
+    detached: Arc<std::sync::OnceLock<detached::Detached>>,
 }
 
 /// A source of the current local time.
@@ -113,11 +131,12 @@ impl ArleshMcp {
     pub fn new(factory: SessionFactory) -> Self {
         Self {
             factory,
+            detached: Arc::default(),
             // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
-            capacity: AgentCapacity::in_memory(),
             clock: Arc::new(|| chrono::Local::now().naive_local()),
+            callers: Callers::Anyone,
             tool_router: Self::flattened(
                 Self::snapshot_router()
                     + Self::scopes_router()
@@ -126,9 +145,23 @@ impl ArleshMcp {
                     + Self::flows_router()
                     + Self::waits_router()
                     + Self::infos_router()
-                    + Self::capacity_router(),
+                    + Self::agents_router(),
             ),
         }
+    }
+
+    /// This handler for sessions that must **attach** as an Agent before they may call anything
+    /// but the attach tool, and then see only their Claim. What an endpoint serves; the bare
+    /// [`ArleshMcp::new`] is the in-process, unrestricted one.
+    pub fn requiring_attachment(self) -> Self {
+        self.for_session(session::Binding::default())
+    }
+
+    /// This handler for the one session `binding` belongs to. Every call over it is that session's:
+    /// unattached until it attaches, then the Agent it attached as.
+    pub fn for_session(mut self, binding: session::Binding) -> Self {
+        self.callers = Callers::Session(binding);
+        self
     }
 
     /// `router` with every tool's input schema flattened to one object — see [`schema`].
@@ -151,13 +184,6 @@ impl ArleshMcp {
     /// none of them has a window to tell.
     pub fn announcing(mut self, announce: Announce) -> Self {
         self.announce = announce;
-        self
-    }
-
-    /// Gives this handler the app's agent capacity lock, so what it sets is what the windows see.
-    /// Separate from [`ArleshMcp::new`] for the reason [`ArleshMcp::announcing`] is.
-    pub fn with_capacity(mut self, capacity: AgentCapacity) -> Self {
-        self.capacity = capacity;
         self
     }
 
@@ -212,8 +238,52 @@ impl ArleshMcp {
         format!("{base}\n\n{roots}")
     }
 
+    /// The handshake's answer to `request`, the same one a connected client is given: the
+    /// negotiated protocol version, the capabilities, and the [`instructions`](Self::instructions).
+    ///
+    /// Public so a host that speaks the protocol itself — the Python server — answers `initialize`
+    /// with the Rust server's own words.
+    pub async fn initialize_result(
+        &self,
+        request: &InitializeRequestParams,
+    ) -> Result<InitializeResult, ErrorData> {
+        let mut result = self.negotiate_initialize(request)?;
+        result.instructions = Some(self.instructions().await);
+        Ok(result)
+    }
+
+    /// Runs the tool `name` with `arguments` exactly as a connected client's `tools/call` would,
+    /// and answers what that call answers: a result (a domain failure is a result with
+    /// `is_error`), or a protocol error (an unknown tool).
+    ///
+    /// For a host that speaks the protocol itself. The tools never read the connection they are
+    /// called over, so none is needed — see [`detached`].
+    pub async fn call(
+        &self,
+        name: &str,
+        arguments: Option<rmcp::model::JsonObject>,
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+        let mut request = rmcp::model::CallToolRequestParams::new(name.to_owned());
+        request.arguments = arguments;
+        let context = self
+            .detached
+            .get_or_init(detached::Detached::start)
+            .context();
+        <Self as ServerHandler>::call_tool(self, request, context).await
+    }
+
+    /// What a connection is told of its own view: the MCP roots in-process; over a session, how to
+    /// attach, or — once attached — who it is and the Claim that is its whole view.
     async fn roots_instructions(&self) -> Result<String, crate::error::AppError> {
         let mut db = self.factory.connect().await?;
+        if let Callers::Session(binding) = &self.callers {
+            let nodes = db.access().catalogue().await?;
+            let view = match binding.agent() {
+                Some(id) => crate::agents::service::view(&mut db, id).await?,
+                None => None,
+            };
+            return Ok(access::agent_instructions(&nodes, view.as_ref()));
+        }
         let nodes = db.access().catalogue().await?;
         let roots = db.access().roots().await?;
         let stored: Vec<_> = nodes
@@ -232,9 +302,23 @@ impl ArleshMcp {
 #[tool_handler(
     router = self.tool_router,
     name = "Arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive and unarchive Agentic tasks (arlesh_tasks.archive and unarchive; a stored task archived by hand takes its whole subtree with it, and a Habit occurrence is archived as the app archives one); set_status is a compare-and-set naming the status you last saw. create and update also set a task's time_scope, plan, on_scope_exit, asynchronous, block_reasons, tags and prerequisites (dependencies on create; add_/remove_dependencies and add_/remove_tags on update) — record \"X after Y\" as X's dependency on Y; an update lands whole or not at all. arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and polls it with get. arlesh_infos.create hangs a note (an Info: a one-line body and optional details) under an Agentic task — e.g. to keep a long title's full wording when you shorten the title. arlesh_capacity is the agent capacity lock: set it (at_capacity: true) when you cannot take on more Agentic work, and clear it (false) as soon as there is room — while it is on, every Agentic task not yet done is blocked (block reason \"Agents at capacity\"), so Start offers none — here as in the app. Everything else is read-only. Every node comes back with id, short_id and full_id; name one by any of them, as a string — its row id, or a prefix (3+ characters) of its full id such as the short_id; an id matching several nodes is refused as ambiguous_id, listing them. When writing, a parameter left out means unchanged and null means clear. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be claimed. An Agentic task's status is todo, on_agent, review, doing or done: claim one with set_status todo -> on_agent, finish it with done; to hand it to the user, raise a question with arlesh_waits.ask — it reads review until the user answers, then on_agent again; doing means the user is on it. You never set doing or review. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits; each tool's description lists its operations and the parameters each takes. Details: a node's origin says whether it is a Habit occurrence (id a UUID), a commitment's verdict is recorded, never inferred, and a parent under a domain-table row is named project (a Project) or domain (any other subtype)."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive and unarchive Agentic tasks (arlesh_tasks.archive and unarchive; a stored task archived by hand takes its whole subtree with it, and a Habit occurrence is archived as the app archives one); set_status is a compare-and-set naming the status you last saw. create and update also set a task's time_scope, plan, on_scope_exit, asynchronous, block_reasons, tags and prerequisites (dependencies on create; add_/remove_dependencies and add_/remove_tags on update) — record \"X after Y\" as X's dependency on Y; an update lands whole or not at all. arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and reads it with get (get_many reads several, and says gone for one that no longer exists). arlesh_waits.watch takes the ids of waits you want to hear about, checks that each is an agentic wait you can see and returns their current states; it changes nothing. If your session says Arlesh notifications are on, rely on them: waits you ask, raise or watch notify you when they are released, reopened, archived or deleted, so do not poll get and do not sleep. Otherwise do not wait on a wait: nothing will wake you, so ask the question where your conversation can carry the answer too. arlesh_infos.create hangs a note (an Info: a one-line body and optional details) under an Agentic task — e.g. to keep a long title's full wording when you shorten the title. arlesh_agents is your identity: until your session attaches (with a one-time PIN) it is the only tool you may call; once attached you see only the subtree you claimed (arlesh_agents.claim, pause, resume, release), and arlesh_agents.lock marks you at capacity — your claimed Agentic tasks then read blocked (block reason \"Agents at capacity\") so Start offers none — until arlesh_agents.unlock; the usage of your account's plan limits is reported with arlesh_agents.report_usage. Everything else is read-only. Every node comes back with id, short_id and full_id; name one by any of them, as a string — its row id, or a prefix (3+ characters) of its full id such as the short_id; an id matching several nodes is refused as ambiguous_id, listing them. When writing, a parameter left out means unchanged and null means clear. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be claimed. An Agentic task's status is todo, on_agent, review, doing or done: claim one with set_status todo -> on_agent, finish it with done; to hand it to the user, raise a question with arlesh_waits.ask — it reads review until the user answers, then on_agent again; doing means the user is on it. You never set doing or review. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits; each tool's description lists its operations and the parameters each takes. Details: a node's origin says whether it is a Habit occurrence (id a UUID), a commitment's verdict is recorded, never inferred, and a parent under a domain-table row is named project (a Project) or domain (any other subtype)."
 )]
 impl ServerHandler for ArleshMcp {
+    /// A tool call: turned away unless the session has attached (the attach tool excepted), and
+    /// otherwise the tool's own answer.
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+        if let Some(refusal) = self.admit(&request.name) {
+            return refusal.map(Into::into);
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
+    }
+
     /// The handshake, with the MCP roots added to the instructions — see
     /// [`ArleshMcp::instructions`].
     async fn initialize(
@@ -243,9 +327,7 @@ impl ServerHandler for ArleshMcp {
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
         context.peer.set_peer_info(request.clone());
-        let mut result = self.negotiate_initialize(&request)?;
-        result.instructions = Some(self.instructions().await);
-        Ok(result)
+        self.initialize_result(&request).await
     }
 }
 
@@ -256,6 +338,27 @@ pub fn port() -> u16 {
     endpoint::env_port().unwrap_or(DEFAULT_PORT)
 }
 
+/// The handler an endpoint serves: tools over `factory`, and counting every
+/// write into the `streams`' feed after the host's own `announce`.
+///
+/// An agent's write is a change to the board, and every device following `/events/changes` has to
+/// hear of it. Public so a host that speaks the protocol itself builds the same handler the
+/// router serves.
+pub fn handler(
+    factory: SessionFactory,
+    announce: Announce,
+    streams: &events::EventStreams,
+) -> ArleshMcp {
+    let feed = streams.feed.clone();
+    let announce: Announce = Arc::new(move |origin: Option<&str>| {
+        announce(origin);
+        feed.bump();
+    });
+    ArleshMcp::new(factory)
+        .announcing(announce)
+        .requiring_attachment()
+}
+
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
 ///
 /// Public so that a host other than the desktop app — the Python bindings, under the FastAPI
@@ -263,7 +366,7 @@ pub fn port() -> u16 {
 pub fn router(
     factory: SessionFactory,
     announce: Announce,
-    capacity: AgentCapacity,
+    streams: events::EventStreams,
 ) -> axum::Router {
     // `allowed_hosts` already defaults to loopback only. `allowed_origins` defaults to empty,
     // which *disables* Origin validation rather than enforcing it — so a page in the user's
@@ -271,15 +374,16 @@ pub fn router(
     // Origin at all, which a browser always does and an MCP client never does.
     let config = StreamableHttpServerConfig::default().enforce_origin_validation();
 
+    let handler = handler(factory.clone(), announce, &streams);
+    let served = events::routes(factory, streams, true);
+
+    // One handler per `rmcp` session, each with a binding of its own: a session attaches once, and
+    // its subagents, which share the connection, are covered by it.
     let service = StreamableHttpService::new(
-        move || {
-            Ok(ArleshMcp::new(factory.clone())
-                .announcing(announce.clone())
-                .with_capacity(capacity.clone()))
-        },
+        move || Ok(handler.clone().for_session(session::Binding::default())),
         Arc::new(LocalSessionManager::default()),
         config,
     );
 
-    axum::Router::new().nest_service("/mcp", service)
+    served.nest_service("/mcp", service)
 }

@@ -499,15 +499,15 @@ async fn an_agent_claims_only_from_to_do() {
 async fn a_question_makes_it_review_and_expected_may_name_review() {
     let pool = helpers::test_pool().await;
     let (mcp, id) = claimed(&pool).await;
-    succeeded(
-        &mcp.waits(Parameters(params::WaitsOperation::Ask {
+    let asked = mcp
+        .waits(Parameters(params::WaitsOperation::Ask {
             task_id: id.into(),
             title: "Review PR #1?".into(),
             note: None,
         }))
         .await
-        .expect("the waits tool returned no result"),
-    );
+        .expect("the waits tool returned no result");
+    let question = succeeded(&asked)["id"].as_i64().expect("a stored wait");
 
     // The compare reads the board's status: Review, not the On Agent the row holds.
     let stale = run(
@@ -522,11 +522,32 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     assert_eq!(refused(&stale), "status_changed");
     assert_eq!(body(&stale)["details"]["current"], "review");
 
-    let done = run(
+    // The open question is a pending wait beneath the Task, and a Task is not set Done over one.
+    let open = run(
         &mcp,
         TasksOperation::SetStatus {
             id: id.into(),
             expected: AgenticStatusParam::Review,
+            status: AgenticStatusParam::Done,
+        },
+    )
+    .await;
+    assert_eq!(refused(&open), "invalid_request");
+
+    // Answered, it reads On Agent again, and then it can be finished.
+    succeeded(
+        &mcp.waits(Parameters(params::WaitsOperation::Release {
+            id: question.into(),
+            answer: Some("Merged".to_string()),
+        }))
+        .await
+        .expect("the waits tool returned no result"),
+    );
+    let done = run(
+        &mcp,
+        TasksOperation::SetStatus {
+            id: id.into(),
+            expected: AgenticStatusParam::OnAgent,
             status: AgenticStatusParam::Done,
         },
     )
@@ -1156,6 +1177,156 @@ mod agent_waits {
             false,
             "but it can still see it"
         );
+    }
+
+    #[tokio::test]
+    async fn watch_answers_the_states_of_agentic_waits_and_get_many_says_which_are_gone() {
+        let (pool, _app, mcp, id) = raised(true).await;
+        let full = get(&mcp, id).await["full_id"].as_str().unwrap().to_owned();
+
+        let watched = waits(
+            &mcp,
+            params::WaitsOperation::Watch {
+                ids: vec![id.into(), full.clone().into()],
+            },
+        )
+        .await;
+        let states = succeeded(&watched)["waits"].as_array().unwrap().clone();
+
+        assert_eq!(states.len(), 2);
+        for state in &states {
+            assert_eq!(state["gone"], false);
+            assert_eq!(state["status"], "pending");
+            assert_eq!(state["archived"], false);
+            assert_eq!(state["question"], true);
+            assert_eq!(state["wait_id"], full.as_str());
+            assert!(state["task_short_id"]
+                .as_str()
+                .is_some_and(|short| short.len() >= 3));
+        }
+
+        sqlx::query("DELETE FROM expectations WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let many = waits(
+            &mcp,
+            params::WaitsOperation::GetMany {
+                ids: vec![full.clone().into()],
+            },
+        )
+        .await;
+        assert_eq!(succeeded(&many)["waits"][0]["gone"], true);
+        assert_eq!(
+            refused(
+                &waits(
+                    &mcp,
+                    params::WaitsOperation::Watch {
+                        ids: vec![full.into()]
+                    }
+                )
+                .await
+            ),
+            "not_permitted",
+            "watch validates: a wait that is gone is refused"
+        );
+    }
+
+    /// One `GET` answered whole: the connection is asked to close, so the body ends it.
+    async fn http_get(address: std::net::SocketAddr, target: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        let request =
+            format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut answer = String::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            stream.read_to_string(&mut answer),
+        )
+        .await
+        .expect("the answer arrives")
+        .unwrap();
+        answer
+    }
+
+    #[tokio::test]
+    async fn the_wait_poll_tells_of_a_release_made_outside_the_endpoint() {
+        use arlesh_lib::mcp::events::{self, ChangeFeed, EventStreams};
+        let (pool, _app, _mcp, id) = raised(true).await;
+        // The app polls: its windows write without announcing to the endpoint.
+        let feed = ChangeFeed::new();
+        // A cursor of 0 is no cursor, so the board has moved once before the poll begins.
+        feed.bump();
+        let routes = events::routes(
+            helpers::session_factory(&pool),
+            EventStreams {
+                feed,
+                poll: Some(std::time::Duration::from_millis(100)),
+                ..EventStreams::default()
+            },
+            false,
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, routes).await });
+        let baseline = http_get(address, "/events/expectations?agentic=true&wait=0").await;
+        let field = |name: &str| {
+            let after = baseline.split_once(&format!("\"{name}\":")).unwrap().1;
+            after
+                .split([',', '}'])
+                .next()
+                .unwrap()
+                .trim_matches('"')
+                .to_owned()
+        };
+        let (revision, epoch) = (field("revision"), field("epoch"));
+
+        sqlx::query("UPDATE expectations SET status = 'released' WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let heard = http_get(
+            address,
+            &format!("/events/expectations?agentic=true&after={revision}&epoch={epoch}&wait=5"),
+        )
+        .await;
+
+        assert!(heard.contains("\"change\":\"released\""), "{heard}");
+        assert!(heard.contains("\"deleted\":false"), "{heard}");
+    }
+
+    #[tokio::test]
+    async fn watch_refuses_a_wait_that_is_not_agentic() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let plain = expectation_commands::create_expectation(
+            app.state(),
+            arlesh_lib::tasks::model::CreateExpectationRequest {
+                title: "Parts arrive".into(),
+                parent_type: "task".into(),
+                parent_id: board.inside_task.into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("create wait")
+        .id
+        .sid();
+        let mcp = mcp(&pool);
+
+        let refusal = waits(
+            &mcp,
+            params::WaitsOperation::Watch {
+                ids: vec![plain.into()],
+            },
+        )
+        .await;
+
+        assert_eq!(refused(&refusal), "invalid_request");
     }
 
     /// A done Asynchronous Agentic Task inside a root, and the wait its completion spawned — a

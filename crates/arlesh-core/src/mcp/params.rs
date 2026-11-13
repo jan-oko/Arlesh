@@ -139,6 +139,12 @@ impl From<i64> for NodeIdParam {
     }
 }
 
+impl From<String> for NodeIdParam {
+    fn from(id: String) -> Self {
+        Self::Short(id)
+    }
+}
+
 /// A reference to a node in the tree, by kind and id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct NodeRef {
@@ -244,17 +250,72 @@ pub enum ScopesOperation {
     },
 }
 
-/// The agent capacity lock: read it, or set it on or off.
+/// One limit window of an account, as a client reports it.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct UsageWindowParam {
+    /// Which window: `five_hour`, `seven_day`, or the client's own name for a plan limit.
+    pub kind: String,
+    /// How much of it is used, 0 to 100.
+    pub percent_used: f64,
+    /// When the window resets: an ISO 8601 instant, with or without an offset.
+    pub resets_at: String,
+}
+
+/// The operations on this session's identity.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
-pub enum CapacityOperation {
-    /// Whether agents are at capacity just now.
-    Get,
-    /// Sets the lock: `true` when you cannot take on more Agentic work, `false` when there is room.
-    Set {
-        /// `true` — agents are at capacity; `false` — there is room for more work.
-        at_capacity: bool,
+pub enum AgentsOperation {
+    /// Attaches this MCP session as an agent. Give either a one-time `pin` (from Settings →
+    /// Agents, or from the running desktop app) to become a new agent, or the agent `token` an
+    /// earlier attach answered to become that agent again. Optionally claim a `subtree` in the
+    /// same step. Until a session attaches, this is the only operation it may call.
+    Attach {
+        /// The client's own session id.
+        session_id: String,
+        /// A one-time PIN, to become a new agent.
+        #[serde(default)]
+        pin: Option<String>,
+        /// The agent token an earlier attach answered, to become that agent again.
+        #[serde(default)]
+        token: Option<String>,
+        /// A name for the agent; made unique. Ignored with a `token`.
+        #[serde(default)]
+        name: Option<String>,
+        /// The label of the account this agent works under, so usage is tracked per account.
+        /// Ignored with a `token`.
+        #[serde(default)]
+        account: Option<String>,
+        /// A subtree to claim straight away.
+        #[serde(default)]
+        subtree: Option<NodeRef>,
+    },
+    /// Who this session is: the agent, where its Claim stands and whether it is at capacity.
+    Status,
+    /// Claims a subtree, replacing any Claim held. The subtree must lie inside the user's MCP
+    /// roots and overlap no other agent's active Claim; it becomes your whole view.
+    Claim {
+        /// The subtree's root.
+        subtree: NodeRef,
+    },
+    /// Pauses your Claim: another agent may claim the subtree, and you keep your token. A paused
+    /// Claim reads but writes nothing.
+    Pause,
+    /// Makes a paused Claim active again; refused while another active Claim overlaps it.
+    Resume,
+    /// Lets go of your Claim. You stay attached and see nothing until you claim again.
+    Release,
+    /// Locks yourself: your claimed Agentic tasks read blocked ("Agents at capacity") so Start
+    /// offers none, until you unlock. Use it when you cannot take on more Agentic work.
+    Lock,
+    /// Unlocks yourself, as soon as there is room again.
+    Unlock,
+    /// Reports how much of the account's plan limits is used, so agents of the account are held
+    /// back at the limit and freed at the reset. A host that can read its usage does this on its
+    /// own.
+    ReportUsage {
+        /// One entry per limit window.
+        windows: Vec<UsageWindowParam>,
     },
 }
 
@@ -676,6 +737,21 @@ pub enum WaitsOperation {
     Get {
         /// The wait: a row id or a short id.
         id: NodeIdParam,
+    },
+    /// Starts watching waits: checks that each id names an agentic wait you can see, and answers
+    /// each one's current state. It changes nothing on the board. If your session says Arlesh
+    /// notifications are on, you are then notified when a watched wait is released, reopened,
+    /// archived or deleted; waits you ask or raise are watched already. Otherwise it only
+    /// validates the ids.
+    Watch {
+        /// The waits: row ids or short ids.
+        ids: Vec<NodeIdParam>,
+    },
+    /// Several waits' current states in one read: for each id, its status, archived flag and ids,
+    /// or `gone` when no visible wait has that id any more (deleted, or outside what you can see).
+    GetMany {
+        /// The waits: row ids or full or short ids.
+        ids: Vec<NodeIdParam>,
     },
 }
 

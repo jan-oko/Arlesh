@@ -16,7 +16,7 @@ Additional rules live in `.claude/rules/`. Read them before starting any task.
 - **The model map** — [`docs/model-map.html`](docs/model-map.html) for people, [`docs/model-map.md`](docs/model-map.md) for agents — says how the concepts fit together and why each exists. Read the `.md` before changing the model. [`docs/model-graph.html`](docs/model-graph.html) is the derivation graph on its own page. **Keep all three files in step with the code:** a PR that adds, removes or changes the meaning of a concept, or what a derived state is computed from, updates `model-map.html`, `model-map.md` and `model-graph.html` in the same PR, as it updates the spec.
 - **Changelog fragments; the bot assembles `CHANGELOG.md`.** Record a user-visible change as one file at `changelog.d/<heading>/<NNNN>-<slug>.md`, where the directory is the heading — `added`, `changed`, `fixed` or `removed`. The four-digit number orders the section, newest first; pick one above every number you can see. It does **not** have to be unique, so two branches picking the same number still produce two different files. The file holds the entry exactly as it should read, starting `- **Title.** …`, continuation paragraphs indented two spaces. It is user-facing: describe behaviour, not refactors. Nothing user-visible changed? Write no fragment.
   - **Never edit `CHANGELOG.md` by hand, and never run `npm run changelog` on a branch** (reassembling on a branch puts the merge conflict back). The bot (`.github/workflows/bot.yml`) reassembles `CHANGELOG.md`'s `[Unreleased]` section from the fragments after every push to `dev`; master receives the result through the `dev` → `master` release merge and commits it with `BOT_COMMIT_ACCESS_TOKEN`, an administrator's token that can push past `dev`'s required checks (the default `GITHUB_TOKEN` cannot: GH006). Nothing in CI fails a branch or a master run over `CHANGELOG.md` — the `changelog:check` gate was dropped on 2026-09-22 because it could only ever fire on master after the merge that carried a fragment (17 of master's 18 red runs). This replaces the deferred `Arlesh-ab9`.
-- **Adding a migration.** Write `crates/arlesh-core/migrations/NNNN_name.sql` with the next number and never edit or renumber an existing one: its checksum is recorded in real databases. A **fresh** database does not run the chain; it is created from `crates/arlesh-core/baseline/schema.sql` (the schema and seed data as of the migration in `baseline/version.txt`), which records those versions as applied, and then runs only the migrations numbered above it. So a new migration needs nothing else: **the bot re-cuts the baseline** to the newest migration after it lands on `dev` (`scripts/recut-baseline.mjs`, which rewrites `version.txt` and regenerates `schema.sql`), and **nobody re-cuts by hand** or on a branch. The unit test `the_baseline_file_is_what_the_migrations_generate` fails if the two ever disagree; to regenerate locally for a look, `cargo run -p arlesh-core --example generate_baseline`. Why it exists: the chain's `ALTER TABLE` drop/rename statements each revalidate the whole schema, which made every test database cost ~3 s to build.
+- **Adding a migration.** Write `crates/arlesh-core/migrations/NNNN_name.sql` with the next number and never edit or renumber an existing one: its checksum is recorded in real databases. A **fresh** database does not run the chain; it is created from `crates/arlesh-core/baseline/schema.sql` (the schema and seed data as of the migration in `baseline/version.txt`), which records those versions as applied, and then runs only the migrations numbered above it. So a new migration needs nothing else: **the bot re-cuts the baseline** to the newest migration after it lands on `dev` (`scripts/recut-baseline.mjs`, which rewrites `version.txt` and regenerates `schema.sql`), and **nobody re-cuts by hand** or on a branch. The unit test `the_baseline_file_is_what_the_migrations_generate` fails if the two ever disagree; to regenerate locally for a look, `cargo run -p arlesh-core --example generate_baseline`. Why it exists: the chain's `ALTER TABLE` drop/rename statements each revalidate the whole schema, which made every test database cost ~3 s to build. **Migration numbers are assigned centrally by the orchestrator**: an agent that needs one asks rather than picking.
 
 - **Commit all changes at the end of every request.** Stage and commit everything modified during the request in a single commit with a clear message. Do not leave the working tree dirty.
 - The implementation phases, listed in `SPEC.md` and nowhere else, define sequencing. Do not implement Phase N+1 features while Phase N is in progress unless explicitly asked.
@@ -45,6 +45,45 @@ Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no pr
 - **Always hand back with an agentic question — the board must stay truthful.** It has to show what is really happening: a Task whose next step is the user's must read **Review**, with the reason visible. So when you finish your work, or otherwise pass it to the user — a PR ready for review, a spec question, anything the user must act on — raise a question wait under the Task with `arlesh_waits.ask`. Its title (and its note, if more is needed) says why: what the user must do ("PR #n is green: review and merge?"). The question is what puts the Task in Review, and it is the only way an agent hands responsibility back; without it the Task sits **On Agent** and looks as if the agent still holds it. Don't mark the Task `done` yourself while the user still has to act; set `done` only after their answer settles it.
 - If the MCP is unreachable, Arlesh isn't running (it must be open or in the tray): say so and ask the user to start it. Don't guess at the board, and don't fall back to bd.
 - `.beads/` is kept as a read-only archive of the closed bd history. Don't run `bd` to track new work.
+
+### Waiting for the user's answer: notifications
+
+Raising a wait does not by itself wake anyone when it is answered. What an agent does next depends
+on whether its session says **"Arlesh notifications are on in this session"** (the line the
+`arlesh-notify` plugin adds; see [ADR 0013](docs/adr/0013-notifying-agents-when-a-wait-resolves.md)).
+The Arlesh MCP server's instructions carry the protocol and say nothing about whether the plugin is
+there; only that line does.
+
+**If it says so** (the plugin is installed: `/plugin install arlesh-notify --marketplace
+jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh-notify` from a checkout):
+
+- After raising a wait you are blocked on, carry on with other unblocked work. Otherwise end the turn
+  and stay idle; the notification wakes you. A sub-agent reports back and finishes, and its parent
+  session gets the notification.
+- Never poll `arlesh_waits.get` and never sleep. To follow a wait you did not raise, pass its id to
+  `arlesh_waits.watch`.
+- On "Arlesh notification: wait W on Task T changed (…)": read the wait with `arlesh_waits.get` and
+  its Task, then act on the answer as the user's input to that question, within the usual rules.
+  Anything ambiguous means you ask again.
+
+  | The wait is | You |
+  | --- | --- |
+  | released | act on the answer |
+  | reopened | stop any work that depended on it |
+  | gone (archived or deleted) | treat the question as withdrawn, and ask if that is unclear |
+
+**If it does not say so:** still raise the hand-back wait (the board must stay truthful), but do not
+wait on it. Ask the question in the conversation too: to the orchestrator, or to the user if you are
+a top-level session. Then end the turn or report back. The answer comes back through the
+conversation.
+
+## Working with agents in this repo
+
+- **Branches and merges.** Feature PRs target `dev`; a release is a `dev` → `master` merge. Squash merges. One PR per area: a follow-up or fix to an open PR goes onto that PR's branch, not a new PR.
+- **Branch protection.** Required checks yes, "require branches to be up to date" off, so a stale base does not block a merge. No merge queue.
+- **Worktree and branch are named `<short id>-<slug>`**, both the same, created under `.claude/worktrees/` (`git worktree add .claude/worktrees/<name> -b <name> origin/dev`). `npm run box` names each instance after its worktree folder, so a random name tells the user nothing.
+- **Disk and memory are tight on the dev machine.** No full local test suite: run targeted tests with `CARGO_INCREMENTAL=0` and `-j 3`. CI is the gate.
+- **A fix inside an unshipped feature's PR amends that feature's changelog fragment** instead of adding a `fixed` one.
 
 ## Non-Interactive Shell Commands
 

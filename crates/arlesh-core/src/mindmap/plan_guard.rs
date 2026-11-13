@@ -22,9 +22,14 @@ use super::rules::plans::{refusal_message, PlanAudit};
 
 /// The board's plan audit at `now`, read inside the write's transaction.
 pub async fn audit(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<PlanAudit, AppError> {
-    Ok(super::load_within(db, now, Horizon::default(), false)
-        .await?
-        .plans)
+    Ok(super::load_within(
+        db,
+        now,
+        Horizon::default(),
+        crate::capacity::blocks::Blocking::default(),
+    )
+    .await?
+    .plans)
 }
 
 /// Refuses the write just made when it left a plan rule broken within its reach — the nodes in

@@ -24,7 +24,6 @@ mod habit_fold_conformance;
 mod list_sections_conformance;
 mod mcp;
 mod mcp_access;
-mod mcp_capacity;
 mod mcp_endpoint;
 mod mcp_writes;
 mod mindmap_commands;

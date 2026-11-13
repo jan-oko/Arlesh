@@ -107,3 +107,13 @@ async fn a_follower_follows_once_resumed_and_not_after_suspending() {
     assert!(follower.is_following());
     follower.suspend();
 }
+
+#[test]
+fn the_follower_follows_the_route_the_conformance_map_names() {
+    let contract: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../../conformance/client-mode.json"))
+            .expect("the conformance map is JSON");
+    let streams = contract["streams"]["changes"].as_str();
+
+    assert_eq!(streams, Some(format!("GET {CHANGES_PATH}").as_str()));
+}

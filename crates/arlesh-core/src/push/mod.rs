@@ -12,7 +12,7 @@ use chrono::NaiveDateTime;
 use crate::{
     database::session::{Db, Transactional},
     error::AppError,
-    mindmap,
+    mindmap::{self, model::MindmapLoad},
 };
 
 use model::{DevicePlan, PushDevice, SentEntry};
@@ -172,6 +172,17 @@ impl<'session> PushOperator<'session> {
     }
 }
 
+/// The board at `now`, with the Agentic Tasks of the agents at capacity blocked, and whether any
+/// agent is at capacity: the one fact a device is told about capacity.
+async fn board_at_capacity(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+) -> Result<(MindmapLoad, bool), AppError> {
+    let blocking = crate::agents::service::blocking(db, now).await?;
+    let at_capacity = !blocking.is_none();
+    Ok((mindmap::board(db, now, blocking).await?, at_capacity))
+}
+
 /// Registers `client` for push, and answers whether it was new. A new device is taken to have been
 /// told everything true on the board at `now`, so it hears only of what happens after it
 /// registers; a known one (a token rotated, the app restarted) keeps its record, and so is still
@@ -182,12 +193,11 @@ pub async fn register_device(
     client: &str,
     fcm_token: &str,
     now: NaiveDateTime,
-    at_capacity: bool,
 ) -> Result<bool, AppError> {
     let stamp = now.to_string();
     let new = db.push().register(client, fcm_token, &stamp).await?;
     if new {
-        let load = mindmap::board(db, now, at_capacity).await?;
+        let (load, at_capacity) = board_at_capacity(db, now).await?;
         let baseline = rules::baseline(&rules::observe(&load, at_capacity));
         db.push().record(client, &baseline, &stamp).await?;
     }
@@ -201,13 +211,12 @@ pub async fn register_device(
 pub async fn plan_all(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
-    at_capacity: bool,
 ) -> Result<Vec<DevicePlan>, AppError> {
     let devices = db.push().devices().await?;
     if devices.is_empty() {
         return Ok(Vec::new());
     }
-    let load = mindmap::board(db, now, at_capacity).await?;
+    let (load, at_capacity) = board_at_capacity(db, now).await?;
     let observed = rules::observe(&load, at_capacity);
     let mut plans = Vec::new();
     for device in devices {

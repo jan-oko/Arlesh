@@ -6,7 +6,7 @@ import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import McpEndpointSection from "./McpEndpointSection";
 import HelpTip from "./HelpTip";
 import own from "./McpEndpointSection.module.css";
-import AgentCapacitySection from "./AgentCapacitySection";
+import AgentsSection from "./AgentsSection";
 import styles from "./SettingsModal.module.css";
 import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 
@@ -15,7 +15,7 @@ const REMOVE_GLYPH = "×";
 /**
  * The MCP roots: the parts of the board the MCP may see, under a short heading whose ? holds the
  * explanation. Add one with the node search `Ctrl+O` uses, remove one with its ×. Each change is one undoable step. Below them, the endpoint's port
- * and whether it is listening, then the agent capacity lock.
+ * and whether it is listening, then the agents.
  */
 export default function McpAccessPage() {
   const { t } = useTranslation(["settings", "nodeKinds"]);
@@ -72,7 +72,7 @@ export default function McpAccessPage() {
       )}
       {/* In Client mode the app serves no MCP: agents use the server's `/mcp`. */}
       {!isClient && <McpEndpointSection />}
-      <AgentCapacitySection />
+      <AgentsSection />
     </div>
   );
 }

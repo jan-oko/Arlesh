@@ -4,6 +4,7 @@ channel, through a fake push service."""
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta
 from typing import Any
@@ -65,6 +66,21 @@ def server(start: Start, tokens: DatabaseTokenStore, sender: FakeSender) -> Iter
     headers = {"Authorization": f"Bearer {tokens.add('tests')}"}
     with TestClient(start(sender=sender), headers=headers) as client:
         yield client
+
+
+def set_capacity(client: TestClient, database: Any, at_capacity: bool) -> None:
+    """Puts an agent holding the root Aspect at capacity, or back in room: the account's lock."""
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO mcp_roots (node_kind, node_id) VALUES ('domain', 1)"
+        )
+        connection.execute(
+            "INSERT OR IGNORE INTO agents (name, account, session_uuid, token_sha256, claim_kind, "
+            "claim_id, claimed_at, created_at) VALUES ('agent', 'work', 's', 'digest', "
+            "'domain', 1, '2026-11-04T09:00:00', '2026-11-04T09:00:00')"
+        )
+    locked = client.put("/agent-accounts/lock", json={"label": "work", "locked": at_capacity})
+    assert locked.status_code == 204, locked.text
 
 
 def look(client: TestClient) -> int:
@@ -154,7 +170,7 @@ def test_without_credentials_the_server_takes_registrations_and_sends_nothing(
 
 
 def test_each_of_the_five_events_is_one_notification_on_its_own_channel(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int, server_db: Any
 ) -> None:
     register(server, phone)
 
@@ -163,9 +179,9 @@ def test_each_of_the_five_events_is_one_notification_on_its_own_channel(
     question = sender.sent[0][1]
     assert (question.task, question.title) == (f"task-{task}", "Pick a name")
 
-    server.put("/capacity", json={"at_capacity": True})
+    set_capacity(server, server_db, True)
     look(server)
-    server.put("/capacity", json={"at_capacity": False})
+    set_capacity(server, server_db, False)
     look(server)
 
     morning = {"kind": "part_of_day", "date": "2020-01-01", "part": "morning"}
@@ -205,14 +221,14 @@ def test_each_of_the_five_events_is_one_notification_on_its_own_channel(
     ]
 
 
-def test_the_lock_is_told_when_it_is_set_and_when_it_is_cleared(
-    server: TestClient, phone: dict[str, str], sender: FakeSender
+def test_an_agent_at_capacity_is_told_when_it_starts_and_when_it_ends(
+    server: TestClient, phone: dict[str, str], sender: FakeSender, server_db: Any
 ) -> None:
     register(server, phone)
 
-    server.put("/capacity", json={"at_capacity": True})
+    set_capacity(server, server_db, True)
     look(server)
-    server.put("/capacity", json={"at_capacity": False})
+    set_capacity(server, server_db, False)
     look(server)
 
     assert sender.channels(PHONE_TOKEN) == ["capacity_locked", "capacity_cleared"]
@@ -292,17 +308,17 @@ def test_a_token_the_push_service_no_longer_knows_is_dropped(
     register(server, phone)
     sender.delivery = Delivery.unregistered
 
-    server.put("/capacity", json={"at_capacity": True})
+    set_capacity(server, server_db, True)
     look(server)
 
     assert DatabasePushStore(server_db).devices() == []
 
 
 def test_a_failed_send_is_tried_again_at_the_next_look(
-    server: TestClient, phone: dict[str, str], sender: FakeSender
+    server: TestClient, phone: dict[str, str], sender: FakeSender, server_db: Any
 ) -> None:
     register(server, phone)
-    server.put("/capacity", json={"at_capacity": True})
+    set_capacity(server, server_db, True)
     sender.delivery = Delivery.failed
     assert look(server) == 0
 

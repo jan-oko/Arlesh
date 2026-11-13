@@ -323,6 +323,11 @@ impl NodeNames {
         value
     }
 
+    /// The full id of every node the MCP can see.
+    pub fn full_ids(&self) -> std::collections::HashSet<String> {
+        self.nodes.iter().map(|node| node.id.clone()).collect()
+    }
+
     /// The short id of one node, when the MCP can see it.
     pub fn short_id(&self, table: NodeTable, id: &NodeId) -> Option<&str> {
         self.by_node

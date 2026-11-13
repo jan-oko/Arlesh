@@ -37,6 +37,8 @@ import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { takesCompound } from "@/utils/compound";
+import { statusBlock } from "@/utils/task-gestures";
+import type { StatusBlock } from "@/utils/task-gestures";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
@@ -101,6 +103,13 @@ export interface TaskSaveData {
    * it on a task saved Done. Absent leaves the recorded one alone. */
   doneAt?: string;
 }
+
+/** The `editor` key that says why a status pill is greyed out. */
+const STATUS_BLOCK_HINT: Record<StatusBlock, "statusBlockCompound" | "statusBlockBelowSubItems" | "statusBlockOpenSubItems"> = {
+  compound: "statusBlockCompound",
+  below_sub_items: "statusBlockBelowSubItems",
+  open_sub_items: "statusBlockOpenSubItems",
+};
 
 /** The pills each model offers, in order. Review is never picked: it shows, disabled, while the
  * agent's question is open. */
@@ -389,11 +398,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             no clicks, and say why. Switching Compound off below frees them, starting from the
             status the task was showing. */}
         <div className={styles.statusPills}>
-          {pills.map((s) => (
-            <button key={s.status} type="button" disabled={isCompound} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
-              {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}
-            </button>
-          ))}
+          {pills.map((s) => {
+            const block = statusBlock(s, isCompound, node.subItems);
+            return (
+              <button key={s.status} type="button" disabled={block !== null} {...(block === null ? {} : { title: t(STATUS_BLOCK_HINT[block]) })} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
+                {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}
+              </button>
+            );
+          })}
           {shownStatus !== null && isReview(shownStatus) && (
             <button type="button" disabled className={`${styles.statusPill} ${styles.statusPillActive}`} title={t("statusReviewDerived")}>
               {t("status:agentic.review")}

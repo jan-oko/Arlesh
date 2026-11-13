@@ -23,6 +23,7 @@ from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.push.database_push_store import DatabasePushStore
 from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
@@ -68,6 +69,12 @@ def tokens(server_db: Path) -> DatabaseTokenStore:
 
 
 @pytest.fixture
+def connect_token(server_db: Path, tokens: DatabaseTokenStore) -> str:
+    """The server's connect token, as ``arlesh-server connect-token issue`` prints it."""
+    return ConnectTokens(server_db).issue()
+
+
+@pytest.fixture
 def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
     """Builds the server over the test's database, as ``arlesh-server`` does."""
 
@@ -79,6 +86,7 @@ def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
             board=Board(opener(database), holder(database), force=force),
             tokens=DatabaseTokenStore(database) if path is not None else tokens,
             pairs=DatabasePairingStore(database),
+            connect=ConnectTokens(database),
             version="test",
             pushes=DatabasePushStore(database),
             sender=sender,

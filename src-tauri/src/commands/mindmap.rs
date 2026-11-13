@@ -15,7 +15,7 @@ use crate::{backend::revision::BoardLoad, error::WireError};
 /// inherits, its open question — and what the agents are doing come with it
 /// ([`crate::mindmap::rules::facts`]), so the app reads them rather than working them out.
 ///
-/// The agent capacity lock's block is derived onto it here (see [`crate::capacity::blocks`]), so
+/// The block of an agent at capacity is derived onto it here (see [`crate::capacity::blocks`]), so
 /// the board a window draws is blocked exactly as the MCP's is.
 ///
 /// In Client mode it carries the `revision` the server read the board at, which the window keeps

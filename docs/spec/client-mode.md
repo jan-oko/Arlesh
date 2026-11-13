@@ -178,8 +178,7 @@ async with arlesh.Arlesh(backend=arlesh.SqliteBackend("arlesh.db", client="noteb
 - `board.changes()` is an async iterator over the board's changes: the server's `/events` stream
   over HTTP, the process's own write counter over SQLite. It yields the newest revision only, never a
   backlog, and holds a connection only while someone is iterating.
-- Two reads the port lacks are answered by the Python layer: `get_info` from the list of infos, and
-  `board(at_capacity=…)` is refused over HTTP.
+- One read the port lacks is answered by the Python layer: `get_info`, from the list of infos.
 - Operations only a local file has (`serve_mcp`, `stop_mcp`, `reset_undo`, `arlesh.hold`) are
   refused over HTTP with `not_permitted`, `details.reason = "not_in_client_mode"`.
 - `await arlesh.pairing.start(url, name)` asks for a PIN to show, and `await
@@ -206,7 +205,9 @@ and the server's `test_server_parity.py` fails when a listed route is not served
 
 ## Live sync
 
-The server streams changes over Server-Sent Events. `GET /events` sends `board-changed` with a
+(The agents' wait stream, `GET /events/expectations`, is a long poll that answers JSON, served by the FastAPI server behind the same bearer token (it has no Server-Sent Events form); see [MCP](mcp-server.md), *Being told a wait resolved*.)
+
+The server streams changes over Server-Sent Events. `GET /events/changes` sends `board-changed` with a
 **revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the
 windows as the same Tauri `board-changed` event a Standalone write raises, now carrying the event's
 `revision` and `epoch`. After a reconnect it reloads if the revision jumped.
@@ -240,7 +241,7 @@ always has. The rules, in `src/stores/watch-board-changes.ts`:
   (optimistic UI, Task `288`) builds on the stored revision.
 
 A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the board shrinks
-several times over. `/events` is not.
+several times over. The event streams are not.
 
 ## Undo
 
@@ -365,9 +366,9 @@ undo) **waits for the lane to empty** before it is sent, so it never overtakes a
   later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
   other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
   reason on its error line (ADR 0012, decision 14).
-- **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
+- **Asks first.** Marking a Goal occurrence achieved over unfinished children rolls back quietly and
   opens the occurrence prompt. Confirming applies the patch again and sends the write with the
-  confirmation.
+  confirmation. A Task occurrence over open work is refused outright, with a toast.
 - **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
   goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
   says whether it did. A write the server had already answered stays until a board reflects it. While the
@@ -394,14 +395,23 @@ locally while it is still queued, and otherwise waits for the lane and undoes on
 
 ## Shared and local state
 
-- **Shared, on the server:** the board, and the **agent capacity lock**, which has its own routes.
+- **Shared, on the server:** the board, and the agents with their Claims and accounts, which have their own routes (`/agents`).
 - **Local to each device:** preferences, and the window and tab session.
 
 ## MCP
 
 In Client mode the app serves **no** MCP endpoint, and Settings → Agents shows no endpoint section;
-the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly, each
-with its own token. This is the [HTTP Server](http-api.md)'s *the app serves none*.
+the MCP roots and the agents there are the server's. Agents talk to the server's `/mcp` directly. This is
+the [HTTP Server](http-api.md)'s *the app serves none*.
+
+**Agents** (2026-11-07, Task `7a0`; see [Agents](agents.md)). `/mcp` no longer takes a device token: every
+session connects with the server's one low-privilege **connect token** (`arlesh-server connect-token`),
+then attaches as an Agent with a one-time PIN. Settings → Agents lists the server's Agents, their Claims,
+accounts and usage, and asks for PINs, apart from the Devices list; the Agents are the server's, shared
+by every device. Pairing stays device-only: its six-digit PIN and an agent's eight-digit PIN are
+different things. Although the app serves no MCP endpoint in Client mode, it still serves the **loopback
+PIN door** (`POST /agents/pin`, loopback only, no `Origin`), which forwards the request to the server with
+the device's token, so an agent on the same machine can attach without anyone copying a PIN.
 
 ## Tokens on the device
 

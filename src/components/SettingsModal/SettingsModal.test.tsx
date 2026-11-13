@@ -7,12 +7,14 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { isAndroid } from "@/utils/platform";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
+import { undo } from "@/api/gesture";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@/hooks/use-mcp-roots");
+vi.mock("@/api/gesture", () => ({ gestureName: () => undefined, undo: vi.fn(() => Promise.resolve(null)), redo: vi.fn(() => Promise.resolve(null)), invoke: vi.fn() }));
 vi.mock("@/utils/platform", () => ({ isAndroid: vi.fn(() => false) }));
 // The endpoint section has its own test; here it only has to render quietly.
 vi.mock("@/hooks/use-mcp-endpoint", () => ({
@@ -336,5 +338,13 @@ describe("SettingsModal", () => {
     goTo("mcp");
 
     expect(screen.getByText("settings:mcp.none")).toBeInTheDocument();
+  });
+
+  it("undoes on Ctrl+Z while it is open, though it holds the keyboard", () => {
+    open();
+
+    fireEvent.keyDown(window, { code: "KeyZ", ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(1);
   });
 });

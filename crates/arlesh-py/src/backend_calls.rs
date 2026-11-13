@@ -27,15 +27,6 @@ fn json(value: impl Serialize) -> Result<Value, WireError> {
     serde_json::to_value(value).map_err(|error| WireError::internal(error.to_string()))
 }
 
-/// What a backend does not offer, in the shape a refused operation takes in Client mode.
-fn unavailable(what: &str) -> WireError {
-    WireError::new(
-        WireErrorKind::InvalidRequest,
-        format!("{what} is not available over a server"),
-        Some(serde_json::json!({ "reason": "unavailable" })),
-    )
-}
-
 /// The board last read, with the stamp it carried; set by [`run`] for the host to keep.
 pub(crate) struct Answer {
     /// The operation's result.
@@ -48,16 +39,18 @@ pub(crate) struct Answer {
 pub(crate) async fn run(backend: &dyn Backend, request: Request) -> Result<Answer, WireError> {
     if let Request::Board {
         now: at,
-        at_capacity,
+        without_nulls,
     } = request
     {
-        if at_capacity.is_some() {
-            return Err(unavailable("`at_capacity`"));
-        }
         let load = backend.load_mindmap(at.unwrap_or_else(now)).await?;
         let revision = load.revision.clone();
+        let board = json(load.into_load())?;
         return Ok(Answer {
-            value: json(load.into_load())?,
+            value: if without_nulls {
+                crate::request::without_nulls(board)
+            } else {
+                board
+            },
             revision,
         });
     }
@@ -399,9 +392,13 @@ async fn dispatch(backend: &dyn Backend, request: Request) -> Result<Value, Wire
         Request::RemoveMcpRoot { node_kind, node_id } => {
             json(backend.remove_mcp_root(node_kind, node_id).await?)
         }
-        Request::AgentCapacity => json(backend.agent_capacity().await?),
-        Request::SetAgentCapacity { at_capacity } => {
-            json(backend.set_agent_capacity(at_capacity).await?)
+        Request::ListAgents => json(backend.list_agents().await?),
+        Request::IssueAgentPin => json(backend.issue_agent_pin().await?),
+        Request::ApplyAgentAction { id, action } => {
+            json(backend.apply_agent_action(id, action).await?)
+        }
+        Request::SetAgentAccountLocked { label, locked } => {
+            json(backend.set_agent_account_locked(label, locked).await?)
         }
         Request::DeleteNodes { nodes } => json(backend.delete_nodes(nodes).await?),
         Request::RunGesture { name, steps } => json(backend.run_gesture(name, steps).await?),

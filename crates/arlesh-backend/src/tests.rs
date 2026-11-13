@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 /// Every per-domain port file, read at compile time so a new method cannot be missed.
 const PORT_FILES: &[&str] = &[
     include_str!("access.rs"),
+    include_str!("agents.rs"),
     include_str!("block_reasons.rs"),
-    include_str!("capacity.rs"),
     include_str!("commitments.rs"),
     include_str!("domains.rs"),
     include_str!("expectations.rs"),

@@ -1,0 +1,1 @@
+- **Loading the board from a server is faster.** The server sends the board as the core wrote it instead of reading it into models and writing it out again, and compresses it at a lighter level, so the full load answers in roughly half the time.

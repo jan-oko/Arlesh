@@ -32,7 +32,7 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let map = attempt!(crate::access::access_map(&mut db).await);
+        let map = attempt!(self.caller_map(&mut db).await);
         let references = attempt!(db.access().knowledge_base_references().await);
         let visible = access::visible_knowledge_base(&references, &map);
         let sees = |entity: &str, id: i64| visible.contains(&(entity.to_string(), id));

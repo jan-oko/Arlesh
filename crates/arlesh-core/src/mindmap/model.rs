@@ -115,6 +115,10 @@ pub struct MindmapLoad {
     /// the MCP and the write guard read. Never sent as it is.
     #[serde(skip)]
     pub plans: super::rules::plans::PlanAudit,
+    /// The Tasks that read In Progress only from their sub-items — a Compound Task's, or a
+    /// parent's raised to it. Never sent as it is: the facts carry it per node.
+    #[serde(skip)]
+    pub derived_in_progress: Vec<NodeId>,
 }
 
 /// A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
@@ -171,6 +175,14 @@ pub struct NodeFacts {
     /// Whether a Commitment's Verdict Window ran out before anything was recorded.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,
+    /// Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    /// by hand: a Compound Task, or a parent raised to it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub derived_in_progress: bool,
+    /// What a Task's sub-items say about it — the floor they derive and how many are open — when
+    /// they say anything: the editors grey out the statuses it cannot hold from it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_items: Option<crate::tasks::rules::gestures::SubItems>,
     /// Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
     /// Achieved, a wait no longer pending.
     #[serde(skip_serializing_if = "std::ops::Not::not")]

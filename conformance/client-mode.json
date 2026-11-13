@@ -5,6 +5,9 @@
     "`routes` maps every method of the app's Backend port (`crates/arlesh-backend/src/`) to the REST",
     "route(s) `HttpBackend` calls for it. `standalone_only` lists the methods with no route: People",
     "and the knowledge base, which HttpBackend refuses as not available in Client mode.",
+    "`streams` names the event routes: `changes` is the Server-Sent Event stream the app follows for",
+    "live sync (`src-tauri/src/backend/http/events.rs`); `expectations` is the agents' long poll",
+    "(`arlesh-notify`), which answers JSON and has no Server-Sent Event form.",
     "`api_version` is the integer `/health` answers, bumped only on a breaking change.",
     "",
     "Both sides replay it. `crates/arlesh-backend/src/tests.rs` fails when a port method is in neither",
@@ -23,6 +26,10 @@
     "the `routes`."
   ],
   "api_version": 1,
+  "streams": {
+    "changes": "GET /events/changes",
+    "expectations": "GET /events/expectations"
+  },
   "standalone_only": [
     "create_person",
     "get_person",
@@ -338,11 +345,17 @@
     "duplicate_flow_item": [
       "POST /flow-items/{item_type}/{id}/duplicate"
     ],
-    "agent_capacity": [
-      "GET /capacity"
+    "list_agents": [
+      "GET /agents"
     ],
-    "set_agent_capacity": [
-      "PUT /capacity"
+    "issue_agent_pin": [
+      "POST /agents/pins"
+    ],
+    "apply_agent_action": [
+      "POST /agents/{id}/action"
+    ],
+    "set_agent_account_locked": [
+      "PUT /agent-accounts/lock"
     ],
     "mcp_access_catalogue": [
       "GET /mcp-access/catalogue"

@@ -114,13 +114,116 @@ fn alt_enter_hands_a_doing_agentic_task_back_and_refuses_anywhere_else() {
 fn a_compound_task_refuses_every_status_gesture() {
     for step in [StatusStep::Advance, StatusStep::Alt] {
         assert_eq!(
-            status_after(step, ordinary(TaskStatus::Todo), true),
+            status_after(step, ordinary(TaskStatus::Todo), true, SubItems::default()),
             Err(StatusRefusal::Compound)
         );
     }
     assert_eq!(
-        status_after(StatusStep::Advance, ordinary(TaskStatus::Todo), false),
+        status_after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::Todo),
+            false,
+            SubItems::default()
+        ),
         Ok(ordinary(TaskStatus::InProgress))
+    );
+}
+
+fn after(step: StatusStep, current: Status, sub_items: SubItems) -> Result<Status, StatusRefusal> {
+    status_after(step, current, false, sub_items)
+}
+
+fn sub_items(floor: TaskStatus, open: usize) -> SubItems {
+    SubItems { floor, open }
+}
+
+#[test]
+fn a_task_is_not_set_done_over_open_sub_items() {
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::InProgress),
+            sub_items(TaskStatus::InProgress, 2)
+        ),
+        Err(StatusRefusal::OpenSubItems)
+    );
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            agentic(AgenticStatus::Doing),
+            sub_items(TaskStatus::Todo, 1)
+        ),
+        Err(StatusRefusal::OpenSubItems),
+        "an Agentic Task is held to it too"
+    );
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::InProgress),
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        Ok(ordinary(TaskStatus::Done)),
+        "with nothing open it finishes"
+    );
+}
+
+#[test]
+fn the_cycle_skips_statuses_below_the_floor_and_alt_enter_is_refused_below_it() {
+    // Reads Started from a child: Enter on Done skips To Do and lands on Started.
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::Done),
+            sub_items(TaskStatus::Started, 0)
+        ),
+        Ok(ordinary(TaskStatus::Started))
+    );
+    // Reads In Progress from a child: Done goes to In Progress.
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::Done),
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        Ok(ordinary(TaskStatus::InProgress))
+    );
+    // Reads In Progress from a child, and Alt+Enter would pause it to Started.
+    assert_eq!(
+        after(
+            StatusStep::Alt,
+            ordinary(TaskStatus::InProgress),
+            sub_items(TaskStatus::InProgress, 1)
+        ),
+        Err(StatusRefusal::BelowSubItems)
+    );
+    // Started is the floor, so Started is allowed, and so is rising above it.
+    assert_eq!(
+        after(
+            StatusStep::Alt,
+            ordinary(TaskStatus::Done),
+            sub_items(TaskStatus::Started, 0)
+        ),
+        Ok(ordinary(TaskStatus::Started))
+    );
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            ordinary(TaskStatus::Started),
+            sub_items(TaskStatus::Started, 1)
+        ),
+        Ok(ordinary(TaskStatus::InProgress))
+    );
+}
+
+#[test]
+fn an_agentic_task_is_not_held_to_a_floor() {
+    assert_eq!(
+        after(
+            StatusStep::Advance,
+            agentic(AgenticStatus::Done),
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        Ok(agentic(AgenticStatus::Todo))
     );
 }
 
@@ -194,5 +297,55 @@ fn a_verdict_control_toggles_and_never_moves_straight_to_the_other_verdict() {
     assert_eq!(
         verdict_after(VerdictPress::Broken, Verdict::Kept),
         Verdict::Broken
+    );
+}
+
+#[test]
+fn an_editor_may_not_offer_what_a_task_cannot_hold() {
+    let blocked = |status, compound, items| status_block(status, compound, items);
+    let none = SubItems::default();
+    assert_eq!(
+        blocked(ordinary(TaskStatus::Done), true, none),
+        Some(StatusBlock::Compound)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Todo),
+            false,
+            sub_items(TaskStatus::Started, 0)
+        ),
+        Some(StatusBlock::BelowSubItems)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Done),
+            false,
+            sub_items(TaskStatus::Started, 1)
+        ),
+        Some(StatusBlock::OpenSubItems)
+    );
+    assert_eq!(
+        blocked(
+            ordinary(TaskStatus::Started),
+            false,
+            sub_items(TaskStatus::Started, 1)
+        ),
+        None
+    );
+    assert_eq!(
+        blocked(
+            agentic(AgenticStatus::Done),
+            false,
+            sub_items(TaskStatus::InProgress, 1)
+        ),
+        Some(StatusBlock::OpenSubItems)
+    );
+    assert_eq!(
+        blocked(
+            agentic(AgenticStatus::Todo),
+            false,
+            sub_items(TaskStatus::InProgress, 0)
+        ),
+        None
     );
 }
