@@ -1,18 +1,20 @@
+import { invokeOutsideGesture } from "@/api/gesture";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import type { Event, UnlistenFn } from "@tauri-apps/api/event";
 import { currentWindowLabel } from "@/api/window-label";
 import type { PersistedTab } from "@/stores/tab-persistence";
 import { parsePersistedTab } from "@/stores/tab-persistence";
+import type { BoardChanges } from "@/utils/board-changes";
 
 /**
- * The two things windows say to each other.
+ * The three things windows say to each other.
  *
- * **The board changed** — emitted by the backend after a Gesture commits, to every window but the
- * one that made the change. It is a signal to reload, not a diff, and the reload it asks for is
- * the same one that already runs after every local edit. In Client mode there is no such
- * exclusion: the server's change stream is the only announcement, so it reaches every window, the
- * one that wrote included, and carries the revision the board reached so that window can tell it
- * already holds it. See `src-tauri/src/board.rs`.
+ * **The board changed** — sent by the backend to every window, the one that made the change
+ * included, as **the changed nodes**: the entries of the board that differ, with the sequence
+ * number, the revision and the epoch they bring the board to and the board's hash (ADR 0020). The
+ * window applies them to the board it holds (`src/utils/board-changes.ts`) and no longer reloads
+ * after its own write. In Client mode the server's change stream is relayed as it is; in Standalone
+ * the backend's own publisher makes the same event. See `src-tauri/src/commands/board.rs`.
  *
  * **A tab arrived** — emitted by a window that is handing one of its tabs to another. This one
  * does carry a payload, because a tab is state rather than a signal; it is the same shape the tab
@@ -28,7 +30,7 @@ import { parsePersistedTab } from "@/stores/tab-persistence";
  * `src/api/agents.ts`) comes through the same door, {@link listenHere}.
  */
 
-/** The backend's event name. Must match `BOARD_CHANGED` in `src-tauri/src/board.rs`. */
+/** The backend's event name. Must match `BOARD_CHANGED` in `crates/arlesh-core/src/board.rs`. */
 const BOARD_CHANGED = "board-changed";
 
 /** The event a window sends when it hands a tab to another window. */
@@ -46,7 +48,8 @@ export interface TabClaim {
 /**
  * A point in the server's history of the board: how many writes it had committed, in one run of
  * the server (the epoch). Client mode only: Standalone has no server and stamps nothing.
- * See `src/stores/board-revision-store.ts` for what a window does with it.
+ * The window's board carries the one it holds (`src/stores/use-board-store.ts`), and a writer
+ * waits for it to reach the revision of its write.
  */
 export interface BoardRevision {
   epoch: string;
@@ -59,6 +62,97 @@ export function isBoardRevision(value: unknown): value is BoardRevision {
   const epoch: unknown = Reflect.get(value, "epoch");
   const revision: unknown = Reflect.get(value, "revision");
   return typeof epoch === "string" && typeof revision === "number";
+}
+
+/**
+ * One `board-changed` event: the publication it brings the board to and what changed.
+ *
+ * `seq` is the publication's number within its `epoch`, and `revision` the writes the board holds
+ * at least. An event with no `seq` comes from a server that predates changed nodes, and one that
+ * says `reload` could not carry its changes: either way the window loads the whole board.
+ */
+export interface BoardChange {
+  epoch: string;
+  seq?: number;
+  revision: number;
+  /** The instant the board was derived at: what "now" means on it. */
+  now?: string;
+  /** The board hash after the event. */
+  hash?: number;
+  changes?: BoardChanges;
+  reload?: boolean;
+}
+
+/** Whether `value` is a {@link BoardChange}, as the backend sends it. */
+export function isBoardChange(value: unknown): value is BoardChange {
+  if (typeof value !== "object" || value === null) return false;
+  return typeof Reflect.get(value, "epoch") === "string" && typeof Reflect.get(value, "revision") === "number";
+}
+
+/** The latest publication's identity: what a window checks its board against. */
+export interface BoardHead {
+  epoch: string;
+  seq: number;
+  revision: number;
+  hash: number;
+  /** The hash of each collection, for naming the one that differs. */
+  sums: Record<string, number>;
+}
+
+function isBoardHead(value: unknown): value is BoardHead {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    typeof Reflect.get(value, "epoch") === "string" &&
+    typeof Reflect.get(value, "seq") === "number" &&
+    typeof Reflect.get(value, "hash") === "number"
+  );
+}
+
+/**
+ * The newest revision a write is known to have reached: what a window settles on after its own
+ * write. In Client mode the highest revision any answer of the server's current run carried; in
+ * Standalone the publisher's. `null` when none is known, or the call failed.
+ */
+export async function boardFence(): Promise<BoardRevision | null> {
+  try {
+    const fence = await invokeOutsideGesture<unknown>("board_fence");
+    return isBoardRevision(fence) ? fence : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The latest publication's identity, or `null` when the backend has none yet or the call failed. */
+export async function boardHead(): Promise<BoardHead | null> {
+  try {
+    const head = await invokeOutsideGesture<unknown>("board_head");
+    return isBoardHead(head) ? head : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What a window found when its board disagreed with the producer's. */
+export interface DivergenceReport {
+  /** How it was found: `event`, `head`, `recompute` or `load`. */
+  found_by: "event" | "head" | "recompute" | "load";
+  epoch: string;
+  window_seq: number | null;
+  head_seq: number | null;
+  window_hash: number;
+  head_hash: number;
+  /** The collections whose sums differ. */
+  collections: string[];
+}
+
+/** Writes a board divergence, a bug, to the app's log. Never throws: the window reloads anyway. */
+export async function reportBoardDivergence(report: DivergenceReport): Promise<void> {
+  console.error("[arlesh] board divergence", report);
+  try {
+    await invokeOutsideGesture("report_board_divergence", { report });
+  } catch {
+    // The report is best-effort; the console line above is the window's own record.
+  }
 }
 
 /** Unsubscribes nothing, for a webview with no event bus — a unit test's jsdom. */
@@ -79,17 +173,16 @@ export function listenHere<T>(event: string, handler: (event: Event<T>) => void)
 }
 
 /**
- * Calls `onChanged` whenever another window commits a change to the board, or, in Client mode,
- * whenever the server says it changed. In Client mode the event carries the revision the board
- * reached, so a window can tell whether it is news; otherwise `null`, which is always news.
+ * Calls `onChanged` with every `board-changed` event, or with `null` for one whose payload is not a
+ * {@link BoardChange} (which a window answers by loading the board whole).
  *
  * Resolves to the unsubscribe. A webview with no Tauri host hears nothing and says so by resolving
  * to a no-op rather than rejecting: a view that cannot be told about other windows still works,
  * and there are no other windows to be told about.
  */
-export async function onBoardChanged(onChanged: (change: BoardRevision | null) => void): Promise<UnlistenFn> {
+export async function onBoardChanged(onChanged: (change: BoardChange | null) => void): Promise<UnlistenFn> {
   return listenHere<unknown>(BOARD_CHANGED, (event) => {
-    onChanged(isBoardRevision(event.payload) ? event.payload : null);
+    onChanged(isBoardChange(event.payload) ? event.payload : null);
   }).catch(() => unsubscribed);
 }
 

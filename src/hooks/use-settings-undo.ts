@@ -27,8 +27,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function useSettingsUndo(): { toast: PendingToast | null; dismissToast: () => void } {
   const [toast, setToast] = useState<PendingToast | null>(null);
   const bump = useSettingsReloadStore((s) => s.bump);
-  const reload = useCallback(async () => { bump(); }, [bump]);
-  const { onUndo, onRedo } = useUndo({ reload, showToast: setToast });
+  const settle = useCallback(async () => { bump(); }, [bump]);
+  const { onUndo, onRedo } = useUndo({ settle, showToast: setToast });
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {

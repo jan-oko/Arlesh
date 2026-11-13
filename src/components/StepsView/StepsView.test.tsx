@@ -81,7 +81,7 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
   return { id, ...rowId, kind, title: id, position: 0, tagIds: [], children: [], ...typed, ...extra };
 }
 
-const reload = vi.fn(() => Promise.resolve());
+const settleBoard = vi.fn(() => Promise.resolve());
 const createChild = vi.fn((_parentId: string, _parentKind: NodeKind, _title: string) =>
   Promise.resolve(n("task-99", "task")));
 const createNode = vi.fn((_parentId: string, _parentKind: NodeKind, childKind: NodeKind, _title: string) =>
@@ -94,7 +94,7 @@ function mockTree(children: MindmapNode[]): void {
     isLoading: false,
     error: null,
     loadCondition: { failedFlows: [], unrenderableCommitmentFlows: [] },
-    reload,
+    settle: settleBoard,
     createNode,
     createChild,
     settleCreated: vi.fn((created: MindmapNode) => Promise.resolve(created)),
@@ -830,7 +830,7 @@ describe("P, the quick Plan picker", () => {
     }));
     expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
     // The write has landed once the board reloads; only then is there a step to take back.
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settleBoard).toHaveBeenCalled());
 
     pressWith("KeyZ", { ctrl: true });
     await settle();
@@ -887,7 +887,7 @@ describe("D, the quick dependency picker", () => {
 
     await waitFor(() => expect(addTaskDependency).toHaveBeenCalledWith(1, { type: "expectation", id: 7 }));
     expect(dialog.isConnected).toBe(false);
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settleBoard).toHaveBeenCalled());
 
     pressWith("KeyZ", { ctrl: true });
     await settle();

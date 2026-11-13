@@ -27,7 +27,7 @@ describe("useExpectationActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     usePendingWritesStore.getState().reset();
-    usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
+    usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
   });
 
   it("releases a pending wait", () => {

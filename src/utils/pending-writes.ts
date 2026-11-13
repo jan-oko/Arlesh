@@ -48,9 +48,14 @@ export type NodePatch =
 
 /** What the server said when it answered a write. */
 export interface WriteAnswer {
-  /** The window's board-read counter when the answer arrived (decision 5). */
+  /** The window's board-intake counter when the answer arrived: the next board the window takes in
+   * has a greater one (ADR 0020, decision 14). */
   afterRead: number;
-  /** From the write response (Task 9298); `null` where a response has none. */
+  /** When the answer arrived, in milliseconds. A write whose revision could not be learned is
+   * retired by the first board taken in a while after this. */
+  answeredAt: number;
+  /** The run and revision the write reached: from its response when it carries them, otherwise from
+   * the backend's fence as the answer arrived. `null` when neither is known. */
   epoch: string | null;
   revision: number | null;
   /** The node's own fields as the server wrote them, when the response carries the row. */
@@ -80,15 +85,25 @@ export interface PendingWrite {
 export type Lane = readonly PendingWrite[];
 
 /**
- * What a drawn board knows about its own read: which read it was (the window-wide counter, bumped
- * at the start of every read) and the revision it saw. The revision and epoch are `null` in
- * Standalone and before the first load.
+ * What a drawn board knows about itself: which intake it was (the window-wide counter, bumped each
+ * time the window takes a board in, a load or an event), the publication it is (the run, the
+ * sequence number and the revision) and when it was taken in. The publication is `null` for a board
+ * read from a server that predates changed nodes.
  */
 export interface BoardStamp {
   read: number;
   epoch: string | null;
+  seq: number | null;
   revision: number | null;
+  /** When the board was taken in, in milliseconds. */
+  at: number;
 }
+
+/**
+ * How long after an answer a board must be taken in to retire a write whose revision is unknown
+ * (the backend's fence could not be read): by then the write is on any board that is current.
+ */
+export const UNKNOWN_REVISION_RETIRES_AFTER_MS = 5000;
 
 /** Whether `id` is a temporary id, one a created node has until the server answers (decision 8). */
 export function isTemporaryId(id: string): boolean {
@@ -99,15 +114,18 @@ export function isTemporaryId(id: string): boolean {
 export type NewWrite = Pick<PendingWrite, "seq" | "nodeId" | "patch" | "label">;
 
 /**
- * Whether a board stamped `stamp` already shows the write `answer` answered (decision 5). Yes when
- * the board's read began after the answer arrived, which holds in both modes, or when its revision
- * has reached the write's in the same epoch.
+ * Whether a board stamped `stamp` already shows the write `answer` answered (ADR 0020, decision
+ * 14). Yes when the board's revision has reached the write's in the same run. Across a new run (a
+ * restart, which a committed write survives) a board taken in after the answer shows it. A write
+ * whose revision is unknown is retired by the first board taken in at least
+ * {@link UNKNOWN_REVISION_RETIRES_AFTER_MS} after the answer.
  */
 export function isReflected(answer: WriteAnswer, stamp: BoardStamp): boolean {
-  if (stamp.read > answer.afterRead) return true;
-  if (answer.epoch === null || answer.revision === null) return false;
-  if (stamp.epoch !== answer.epoch || stamp.revision === null) return false;
-  return stamp.revision >= answer.revision;
+  if (answer.epoch === null || answer.revision === null) {
+    return stamp.at >= answer.answeredAt + UNKNOWN_REVISION_RETIRES_AFTER_MS;
+  }
+  if (stamp.epoch === answer.epoch) return stamp.revision !== null && stamp.revision >= answer.revision;
+  return stamp.read > answer.afterRead;
 }
 
 /** Whether the write has not been answered: it is drawn with the cue. */

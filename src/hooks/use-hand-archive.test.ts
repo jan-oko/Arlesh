@@ -26,11 +26,11 @@ function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const rendered = renderHook(() => useHandArchive({ findNode: (id) => byId.get(id), reload, showToast }));
-  return { ...rendered, reload, showToast };
+  const rendered = renderHook(() => useHandArchive({ findNode: (id) => byId.get(id), settle, showToast }));
+  return { ...rendered, settle, showToast };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -38,12 +38,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("useHandArchive", () => {
   it("archives a live stored Task by hand, then reloads", async () => {
     vi.mocked(updateTask).mockResolvedValue(Object.create(null));
-    const { result, reload } = setup([node("task-5")]);
+    const { result, settle } = setup([node("task-5")]);
 
     act(() => { result.current.toggleArchive("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "archived" }));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("unarchives the Task archived by hand back to live", async () => {

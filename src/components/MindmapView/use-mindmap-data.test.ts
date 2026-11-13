@@ -18,6 +18,7 @@ import { isNodeBlocked } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { currentBoard } from "@/test/current-board";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -481,7 +482,7 @@ describe("useMindmapData", () => {
     vi.clearAllMocks();
     useMindmapStore.getState().clearToast();
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope());
+      if (cmd === "load_mindmap") return Promise.resolve(currentBoard(mindmapEnvelope()));
       return Promise.resolve(null);
     });
   });
@@ -497,7 +498,7 @@ describe("useMindmapData", () => {
   it("populates the tree from API data on mount", async () => {
     const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Work" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [aspect] }));
+      if (cmd === "load_mindmap") return Promise.resolve(currentBoard(mindmapEnvelope({ domains: [aspect] })));
       return Promise.resolve(null);
     });
     const { result } = renderHook(() => useMindmapData());
@@ -523,7 +524,7 @@ describe("useMindmapData", () => {
     const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Growth" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(mindmapEnvelope({ domains: [aspect], facts: { "domain-1": { mcp_visible_via: "Growth" } } }));
+        return Promise.resolve(currentBoard(mindmapEnvelope({ domains: [aspect], facts: { "domain-1": { mcp_visible_via: "Growth" } } })));
       }
       return Promise.resolve(undefined);
     });
@@ -536,7 +537,7 @@ describe("useMindmapData", () => {
   it("reads the agents' activity off the load", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(mindmapEnvelope({ agent_activity: { review: 1, waits: 2, on_agent: 3 } }));
+        return Promise.resolve(currentBoard(mindmapEnvelope({ agent_activity: { review: 1, waits: 2, on_agent: 3 } })));
       }
       return Promise.resolve(undefined);
     });
@@ -550,7 +551,7 @@ describe("useMindmapData", () => {
     const flow = mkFlow({ id: 7, title: "Standup" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(
+        return Promise.resolve(currentBoard(
           mindmapEnvelope({
             flows: [flow],
             habits: [
@@ -561,7 +562,7 @@ describe("useMindmapData", () => {
               },
             ],
           }),
-        );
+        ));
       }
       return Promise.resolve(null);
     });
@@ -582,7 +583,7 @@ describe("useMindmapData", () => {
     const flows = [mkFlow({ id: 7, title: "Standup" }), mkFlow({ id: 8, title: "Retro" })];
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(
+        return Promise.resolve(currentBoard(
           mindmapEnvelope({
             flows,
             habits: flows.map((flow) => ({
@@ -591,7 +592,7 @@ describe("useMindmapData", () => {
               result: { outcome: "failed" as const, message: "nope" },
             })),
           }),
-        );
+        ));
       }
       return Promise.resolve(null);
     });
@@ -608,7 +609,7 @@ describe("useMindmapData", () => {
   it("reports no load condition when every flow loads", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] }));
+        return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] })));
       }
       return Promise.resolve(null);
     });
@@ -626,7 +627,7 @@ describe("useMindmapData", () => {
     const milestone: FlowGoal = { id: 9, flow_id: 7, title: "Milestone", parent_type: "flow", parent_id: 7, position: 0, is_private: false };
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(mindmapEnvelope({ flows: [nightly], flow_goals: [milestone] }));
+        return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [nightly], flow_goals: [milestone] })));
       }
       return Promise.resolve(null);
     });
@@ -646,7 +647,7 @@ describe("useMindmapData", () => {
       { flow_id: 7, flow_title: "Standup", result: { outcome: "failed", message: "nope" } },
     ];
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ flows: [flow], habits }));
+      if (cmd === "load_mindmap") return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [flow], habits })));
       return Promise.resolve(null);
     });
 
@@ -656,7 +657,7 @@ describe("useMindmapData", () => {
 
     habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded" } }];
     await act(async () => {
-      await result.current.reload();
+      await result.current.settle();
     });
 
     expect(result.current.loadCondition.failedFlows).toEqual([]);
@@ -693,7 +694,7 @@ describe("useMindmapData — mutations", () => {
       lifecycles: listExtra(extras, "derive_scope_lifecycles", []),
     });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "load_mindmap") return Promise.resolve(envelope);
+      if (cmd === "load_mindmap") return Promise.resolve(currentBoard(envelope));
       if (Object.prototype.hasOwnProperty.call(extras, cmd)) return Promise.resolve(extras[cmd]);
       return Promise.resolve(null);
     });
@@ -746,7 +747,7 @@ describe("useMindmapData — mutations", () => {
       });
 
       let pending: Promise<void> = Promise.resolve();
-      act(() => { pending = result.current.reload(); });
+      act(() => { pending = result.current.settle(); });
 
       // The refresh is in flight right now. The canvas must still be mounted.
       expect(result.current.isLoading).toBe(false);
@@ -759,7 +760,7 @@ describe("useMindmapData — mutations", () => {
       const { result } = await loadedHook();
       const before = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
 
-      await act(async () => { await result.current.reload(); });
+      await act(async () => { await result.current.settle(); });
 
       const after = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "load_mindmap").length;
       expect(after).toBe(before + 1);
@@ -838,7 +839,7 @@ describe("useMindmapData — mutations", () => {
       });
       const envelope = mindmapEnvelope({ domains: [ASPECT], goals: [GOAL], tasks: [occurrence] });
       vi.mocked(invoke).mockImplementation((cmd: string) => {
-        if (cmd === "load_mindmap") return Promise.resolve(envelope);
+        if (cmd === "load_mindmap") return Promise.resolve(currentBoard(envelope));
         if (cmd === "create_task") return Promise.resolve(mkTask({ id: 42, title: "buy milk" }));
         return Promise.resolve(null);
       });
@@ -1338,7 +1339,7 @@ describe("useMindmapData — mutations", () => {
       // Wire a project under the aspect so it can be deleted
       const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
       setupInvoke({ list_domains: [ASPECT, PROJECT], delete_nodes: undefined });
-      await act(async () => { await result.current.reload(); });
+      await act(async () => { await result.current.settle(); });
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       await act(async () => { await result.current.removeNode([{ id: "domain-5", kind: "project" }]); });

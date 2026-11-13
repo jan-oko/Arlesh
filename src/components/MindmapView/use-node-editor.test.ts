@@ -63,9 +63,9 @@ const root: MindmapNode = {
 };
 
 function setup() {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const { result } = renderHook(() =>
-    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], settle }),
   );
   act(() => result.current.setEditorModal({ nodeId: "task-5", node: taskNode }));
   return result;
@@ -83,18 +83,18 @@ describe("useNodeEditor — double-click", () => {
   // A Habit occurrence is a row like any other (ADR 0008): it opens the same editor, and what it
   // saves lands on that occurrence alone.
   it("opens the ordinary editor on a Habit occurrence", () => {
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
-      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], settle }),
     );
     act(() => result.current.onDoubleClick("habititem-flow_task-4-3-virtual"));
     expect(result.current.editorModal?.nodeId).toBe("habititem-flow_task-4-3-virtual");
   });
 
   it("saves an occurrence on its own row without re-clamping its window, which cannot move", async () => {
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
-      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], settle }),
     );
     act(() => result.current.setEditorModal({ nodeId: virtualHabitItemNode.id, node: virtualHabitItemNode }));
     await act(async () => { await result.current.onTaskSave(saveData); });
@@ -224,9 +224,9 @@ describe("useNodeEditor — done date", () => {
 
 describe("useNodeEditor — Compound", () => {
   function setupWith(node: MindmapNode) {
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
-      useNodeEditor({ tree: { ...root, children: [node] }, allTasksAndGoals: [node], reload }),
+      useNodeEditor({ tree: { ...root, children: [node] }, allTasksAndGoals: [node], settle }),
     );
     act(() => result.current.setEditorModal({ nodeId: node.id, node }));
     return result;
@@ -268,9 +268,9 @@ describe("useNodeEditor — saving a flow item", () => {
   };
 
   it("writes the template's own fields with the title, one save for the whole item", async () => {
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const tree: MindmapNode = { ...root, children: [flowTask] };
-    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle }));
     act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
 
     await act(() => result.current.onFlowItemSave({
@@ -285,9 +285,9 @@ describe("useNodeEditor — saving a flow item", () => {
   });
 
   it("sends a planned pair's Cycle Plan to the backend", async () => {
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const tree: MindmapNode = { ...root, children: [flowTask] };
-    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle }));
     act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
 
     await act(() => result.current.onFlowItemSave({
@@ -302,9 +302,9 @@ describe("useNodeEditor — saving a flow item", () => {
 
   it("lands the rest of the save on the fork an Archive & new answer created", async () => {
     vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], commitments: [], expectations: [], tasks: [[7, 70], [6, 60]] });
-    const reload = vi.fn().mockResolvedValue(undefined);
+    const settle = vi.fn().mockResolvedValue(undefined);
     const tree: MindmapNode = { ...root, children: [flowTask] };
-    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle }));
     act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
 
     await act(() => result.current.onFlowItemSave({
@@ -324,8 +324,8 @@ describe("useNodeEditor — archiving a Domain from its editor", () => {
   };
 
   function openDomain(node: MindmapNode) {
-    const reload = vi.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], reload }));
+    const settle = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], settle }));
     act(() => result.current.setEditorModal({ nodeId: node.id, node }));
     return result;
   }

@@ -60,16 +60,16 @@ const taskSave: TaskSaveData = {
 };
 
 function setup(node: MindmapNode) {
-  const reload = vi.fn().mockResolvedValue(undefined);
-  const hook = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], reload }));
+  const settle = vi.fn().mockResolvedValue(undefined);
+  const hook = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], settle }));
   act(() => hook.result.current.setEditorModal({ nodeId: node.id, node }));
-  return { ...hook, reload };
+  return { ...hook, settle };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
   useMindmapStore.getState().clearToast();
   useClientModeStore.setState({ status: null });
 });
@@ -78,7 +78,7 @@ describe("useNodeEditor — a Save through the lane", () => {
   it("closes the editor and shows the saved own fields before the write resolves", async () => {
     const held = deferred<unknown[]>();
     vi.mocked(runGesture).mockReturnValue(held.promise);
-    const { result, reload } = setup(taskNode);
+    const { result, settle } = setup(taskNode);
 
     await act(async () => { await result.current.onTaskSave(taskSave); });
 
@@ -89,7 +89,7 @@ describe("useNodeEditor — a Save through the lane", () => {
     // No derived field is in the patch, and nothing reloaded yet.
     expect(patchedFields()[0]).not.toHaveProperty("overdue");
     expect(patchedFields()[0]).not.toHaveProperty("inheritedPlan");
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
     await waitFor(() => expect(runGesture).toHaveBeenCalledTimes(1));
 
     held.resolve([]);

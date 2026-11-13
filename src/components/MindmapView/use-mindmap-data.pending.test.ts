@@ -1,19 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { renderHook, waitFor, act } from "@testing-library/react";
+import type { BoardChange } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
+import { currentBoard } from "@/test/current-board";
+import { applyBoardChanges, indexBoard } from "@/utils/board-changes";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
+// The change stream, held by the test: `emit` is a `board-changed` as the shell relays it.
+const listeners = new Set<(change: BoardChange | null) => void>();
+function emit(change: BoardChange | null): void {
+  for (const listener of [...listeners]) listener(change);
+}
 vi.mock("@/api/board", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/board")>()),
-  onBoardChanged: vi.fn(() => Promise.resolve(() => undefined)),
+  onBoardChanged: vi.fn((handler: (change: BoardChange | null) => void) => {
+    listeners.add(handler);
+    return Promise.resolve(() => { listeners.delete(handler); });
+  }),
 }));
 
 const SCOPE_LABELS = {
@@ -57,10 +68,9 @@ const ROWS = {
 
 const EPOCH = "run1";
 
-/** The board as the server serves it, with the Task titled `title`, read at `revision`. */
-function board(title: string, revision: number | undefined): MindmapLoad {
+/** The board as the server publishes it, with the Task titled `title`. */
+function board(title: string): MindmapLoad {
   return {
-    ...(revision === undefined ? {} : { revision: { epoch: EPOCH, revision } }),
     ...ROWS,
     tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })],
     commitments: [], expectations: [], infos: [], flows: [],
@@ -68,6 +78,19 @@ function board(title: string, revision: number | undefined): MindmapLoad {
     flow_dependencies: [], block_reasons: [], task_dependencies: [], flow_instance_nodes: [],
     lifecycles: [], habits: [],
   };
+}
+
+/** What the server says when the Task is renamed: publication `seq`, at `revision`, with the hash it carries. */
+function renamed(title: string, seq: number, revision: number): BoardChange {
+  const changes = { tasks: { set: [["task-1", mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })] as const], del: [] } };
+  const after = applyBoardChanges(indexBoard(board("Write code")), changes);
+  return { epoch: EPOCH, seq, revision, now: "2026-11-13T12:00:00", hash: after.digests.total, changes };
+}
+
+/** An event as a server sends it before it carries a hash, so a window has nothing to compare. */
+function withoutHash(change: BoardChange): BoardChange {
+  const { epoch, seq, revision, now, changes } = change;
+  return { epoch, revision, ...(seq === undefined ? {} : { seq }), ...(now === undefined ? {} : { now }), ...(changes === undefined ? {} : { changes }) };
 }
 
 function find(root: MindmapNode, id: string): MindmapNode | undefined {
@@ -99,25 +122,34 @@ function enqueueRename(title: string, send: () => ReturnType<ReturnType<typeof h
 
 let fetches: number;
 let served: () => MindmapLoad;
+let fence: { epoch: string; revision: number } | null;
 
 beforeEach(() => {
   vi.clearAllMocks();
   store().reset();
+  listeners.clear();
   fetches = 0;
-  served = () => board("Write code", 5);
+  fence = null;
+  served = () => board("Write code");
   vi.mocked(invoke).mockImplementation((command: string) => {
     if (command === "load_mindmap") {
       fetches += 1;
-      return Promise.resolve(served());
+      return Promise.resolve(currentBoard(served(), { epoch: EPOCH, seq: 1, revision: 5 }));
     }
+    if (command === "board_fence") return Promise.resolve(fence);
     return Promise.resolve(null);
   });
 });
 
 async function mounted() {
-  const hook = renderHook(() => useMindmapData());
+  const seen: Array<string | undefined> = [];
+  const hook = renderHook(() => {
+    const data = useMindmapData();
+    seen.push(find(data.tree, "task-1")?.title);
+    return data;
+  });
   await waitFor(() => expect(find(hook.result.current.tree, "task-1")).toBeDefined());
-  return hook;
+  return { ...hook, seen };
 }
 
 describe("useMindmapData with pending writes", () => {
@@ -127,59 +159,102 @@ describe("useMindmapData with pending writes", () => {
     act(() => enqueueRename("Renamed", held.send));
     expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed", pending: true });
 
-    await act(() => result.current.reload());
+    fence = { epoch: EPOCH, revision: 5 };
+    await act(() => result.current.settle());
     expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed", pending: true });
   });
 
-  it("reloads once on an answer the board does not reflect, and then shows the server's board", async () => {
-    const { result } = await mounted();
+  it("makes no second load for a write: the event brings the server's value and the patch goes in the same update", async () => {
+    const { result, seen } = await mounted();
     const held = heldSend();
     act(() => enqueueRename("Renamed", held.send));
     const before = fetches;
-    served = () => board("Renamed", 6);
-    await act(async () => held.answer({ epoch: EPOCH, revision: 6 }));
-    await waitFor(() => expect(store().writes).toHaveLength(0));
-    expect(fetches).toBe(before + 1);
+    fence = { epoch: EPOCH, revision: 6 };
+    await act(async () => held.answer({ epoch: null, revision: null }));
+    expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed" });
+    expect(store().writes).toHaveLength(1);
+
+    seen.length = 0;
+    act(() => emit(renamed("Renamed", 2, 6)));
+
+    expect(store().writes).toHaveLength(0);
+    expect(fetches).toBe(before);
     expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed" });
     expect(find(result.current.tree, "task-1")?.pending).toBeUndefined();
+    // No flicker: the board never drew the old title between the patch and the server's value.
+    expect(seen.every((title) => title === "Renamed")).toBe(true);
   });
 
-  it("does not reload for an answer the board on screen already reflects", async () => {
+  it("settles on the event for the write's revision, and a load is never made for it", async () => {
+    const { result } = await mounted();
+    const held = heldSend();
+    act(() => enqueueRename("Renamed", held.send));
+    fence = { epoch: EPOCH, revision: 6 };
+    await act(async () => held.answer({ epoch: null, revision: null }));
+    const before = fetches;
+
+    let done = false;
+    act(() => { void result.current.settle().then(() => { done = true; }); });
+    await act(async () => { await Promise.resolve(); });
+    expect(done).toBe(false);
+    act(() => emit(renamed("Renamed", 2, 6)));
+    await waitFor(() => expect(done).toBe(true));
+
+    expect(fetches).toBe(before);
+  });
+
+  it("does not wait for an answer the board on screen already reflects", async () => {
     const { result } = await mounted();
     const held = heldSend();
     act(() => enqueueRename("Renamed", held.send));
     const before = fetches;
-    await act(async () => held.answer({ epoch: EPOCH, revision: 5 }));
+    fence = { epoch: EPOCH, revision: 5 };
+    await act(async () => held.answer({ epoch: null, revision: null }));
     await waitFor(() => expect(store().writes).toHaveLength(0));
     expect(fetches).toBe(before);
     expect(find(result.current.tree, "task-1")?.title).toBe("Write code");
   });
 
-  it("coalesces the reloads that several answers ask for", async () => {
+  it("keeps the patches of two answered writes until the board reaches each one's revision", async () => {
     const { result } = await mounted();
     const first = heldSend();
     const second = heldSend();
     act(() => { enqueueRename("One", first.send); enqueueRename("Two", second.send); });
-    const before = fetches;
-    served = () => board("Two", 8);
-    await act(async () => first.answer({ epoch: EPOCH, revision: 7 }));
-    await act(async () => second.answer({ epoch: EPOCH, revision: 8 }));
-    await waitFor(() => expect(store().writes).toHaveLength(0));
-    expect(fetches - before).toBeLessThanOrEqual(2);
+    fence = { epoch: EPOCH, revision: 6 };
+    await act(async () => first.answer({ epoch: null, revision: null }));
+    fence = { epoch: EPOCH, revision: 7 };
+    await act(async () => second.answer({ epoch: null, revision: null }));
+    expect(store().writes).toHaveLength(2);
+
+    act(() => emit(renamed("One", 2, 6)));
+    expect(store().writes).toHaveLength(1);
+    act(() => emit(withoutHash(renamed("Two", 3, 7))));
+
+    expect(store().writes).toHaveLength(0);
     expect(find(result.current.tree, "task-1")?.title).toBe("Two");
   });
 
-  it("never lets an older read land after a newer one: a reload asked during a read waits for it", async () => {
+  it("never lets an older read land after a newer one: a settle asked during a read waits for it", async () => {
     const { result } = await mounted();
     let release: (load: MindmapLoad) => void = () => undefined;
     const slow = new Promise<MindmapLoad>((resolve) => { release = resolve; });
-    vi.mocked(invoke).mockImplementationOnce(() => slow);
+    let slowOnce = true;
+    vi.mocked(invoke).mockImplementation((command: string) => {
+      if (command === "load_mindmap") {
+        if (slowOnce) {
+          slowOnce = false;
+          return slow.then((load) => currentBoard(load));
+        }
+        return Promise.resolve(currentBoard(served()));
+      }
+      return Promise.resolve(null);
+    });
     let older: Promise<void> = Promise.resolve();
     let newer: Promise<void> = Promise.resolve();
-    act(() => { older = result.current.reload(); });
-    served = () => board("Newer", 7);
-    act(() => { newer = result.current.reload(); });
-    await act(async () => { release(board("Older", 6)); await Promise.all([older, newer]); });
+    act(() => { older = result.current.settle(); });
+    served = () => board("Newer");
+    act(() => { newer = result.current.settle(); });
+    await act(async () => { release(board("Older")); await Promise.all([older, newer]); });
     expect(find(result.current.tree, "task-1")?.title).toBe("Newer");
   });
 });

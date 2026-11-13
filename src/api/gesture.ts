@@ -161,6 +161,16 @@ export async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> 
 }
 
 /**
+ * Invokes a Tauri command **outside** any Gesture: for a call that writes nothing and is no step of
+ * what the user did. The board's own checks are those (the fence a write settles on, the head a
+ * window compares its board with, a report of a divergence): opening and closing a Gesture around
+ * each would be three trips across the bridge for one.
+ */
+export async function invokeOutsideGesture<T>(command: string, args?: InvokeArgs): Promise<T> {
+  return args === undefined ? tauriInvoke<T>(command) : tauriInvoke<T>(command, args);
+}
+
+/**
  * Runs `run` as one Gesture called `name`, so everything it invokes is a single Ctrl+Z.
  *
  * `name` is what the toast will say the user did ("paste 5 nodes"), so it is phrased from the

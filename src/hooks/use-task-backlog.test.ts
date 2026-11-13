@@ -22,13 +22,13 @@ const PLAN = { start_id: testKey(4), end_id: testKey(4) };
 const NEEDS_CONFIRMATION = { kind: "needs_confirmation", message: "a backlogged task cannot also be planned" };
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const rendered = renderHook(() =>
-    useTaskBacklog({ findNode: (id) => byId.get(id), reload, showToast }),
+    useTaskBacklog({ findNode: (id) => byId.get(id), settle, showToast }),
   );
-  return { ...rendered, reload, showToast };
+  return { ...rendered, settle, showToast };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -36,12 +36,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskBacklog", () => {
   it("puts an ordinary task in the backlog", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, reload } = setup([node("task-5", { status: "todo" })]);
+    const { result, settle } = setup([node("task-5", { status: "todo" })]);
 
     act(() => { result.current.toggleBacklog("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "backlog" }));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("takes a backlogged task back out — the same key reverses itself", async () => {
@@ -66,7 +66,7 @@ describe("useTaskBacklog", () => {
 
   it("clears the Plan and backlogs in one write when the prompt is accepted", async () => {
     vi.mocked(updateTask).mockRejectedValueOnce(NEEDS_CONFIRMATION).mockResolvedValue({} as never);
-    const { result, reload } = setup([node("task-5", { status: "todo", plan: PLAN })]);
+    const { result, settle } = setup([node("task-5", { status: "todo", plan: PLAN })]);
 
     act(() => { result.current.toggleBacklog("task-5"); });
     await waitFor(() => expect(result.current.planPrompt).not.toBeNull());
@@ -75,7 +75,7 @@ describe("useTaskBacklog", () => {
     await waitFor(() =>
       expect(updateTask).toHaveBeenLastCalledWith(5, { archival: "backlog", plan: null }),
     );
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
     expect(result.current.planPrompt).toBeNull();
   });
 

@@ -11,7 +11,7 @@ const board = node("root", [
   node("a", [node("a1"), node("a2")], { status: "todo" }),
   node("b", [node("b1")]),
 ]);
-const stamp: BoardStamp = { read: 1, epoch: "e1", revision: 5 };
+const stamp: BoardStamp = { read: 1, epoch: "e1", seq: 5, revision: 5, at: 0 };
 const none = new Map<string, string>();
 
 function fields(seq: number, nodeId: string, f: OwnFields, over: Partial<PendingWrite> = {}): PendingWrite {
@@ -19,7 +19,7 @@ function fields(seq: number, nodeId: string, f: OwnFields, over: Partial<Pending
 }
 
 function answered(over: Partial<WriteAnswer> = {}): WriteAnswer {
-  return { afterRead: 1, epoch: "e1", revision: 6, fields: null, createdId: null, ...over };
+  return { afterRead: 1, answeredAt: 0, epoch: "e1", revision: 6, fields: null, createdId: null, ...over };
 }
 
 function child(root: MindmapNode, ...path: string[]): MindmapNode | undefined {
@@ -49,9 +49,9 @@ describe("applyPendingWrites", () => {
     expect(child(out, "a")?.status).toBe("done");
   });
 
-  it("drops an answered write whose answer a later read reflects", () => {
+  it("drops an answered write a board of a new epoch, taken in after the answer, reflects", () => {
     const write = fields(1, "a", { title: "x" }, { state: "answered", answer: answered({ afterRead: 1 }) });
-    expect(applyPendingWrites(board, { ...stamp, read: 2 }, [write], none)).toBe(board);
+    expect(applyPendingWrites(board, { ...stamp, epoch: "e2", read: 2 }, [write], none)).toBe(board);
   });
 
   it("drops an answered write the board's revision has reached, in the same epoch", () => {

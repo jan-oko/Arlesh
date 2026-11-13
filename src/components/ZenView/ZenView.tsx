@@ -74,7 +74,7 @@ export default function ZenView() {
   const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "zenView", "listView"]);
   const {
-    tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, reload,
+    tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, settle,
     onCycleStatus, onToggleStarted, renameNode, createTask, deleteTask, removeNode, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useListData();
   const sharedFilter = useBoardFilter();
@@ -96,20 +96,20 @@ export default function ZenView() {
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
-  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
+  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, settle });
   const { setEditorModal, onDoubleClick: openEditor } = nodeEditor;
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const find = (id: string) => findNode(tree, id);
-  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({ findNode: find, reload, showToast });
-  const { toggleAgentic } = useTaskAgentic({ findNode: find, reload, showToast });
-  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: find, reload, showToast });
-  const { toggleCompound } = useTaskCompound({ findNode: find, reload, showToast });
-  const quickPlan = useQuickPlan({ findNode: find, reload, showToast });
-  const quickDependency = useQuickDependency({ tree, findNode: find, reload, showToast });
+  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({ findNode: find, settle, showToast });
+  const { toggleAgentic } = useTaskAgentic({ findNode: find, settle, showToast });
+  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: find, settle, showToast });
+  const { toggleCompound } = useTaskCompound({ findNode: find, settle, showToast });
+  const quickPlan = useQuickPlan({ findNode: find, settle, showToast });
+  const quickDependency = useQuickDependency({ tree, findNode: find, settle, showToast });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({ findNode: find, showToast });
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
   const searchableNodes = useSearchableNodes(tree);
   const startFromSearch = useSearchStart(tree);
 

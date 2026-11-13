@@ -116,7 +116,7 @@ export default function StepsView() {
   const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
-    tree, isLoading, error, reload, createChild, settleCreated, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
+    tree, isLoading, error, settle, createChild, settleCreated, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
     createCommitment, createFlow,
   } = useMindmapData();
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -160,7 +160,7 @@ export default function StepsView() {
     collectTasksAndGoals(tree, acc);
     return acc;
   }, [tree]);
-  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
+  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, settle });
   const { editorModal, setEditorModal } = nodeEditor;
 
   // The focus exemption: the selected card stays on the Step even once your own edit stops it
@@ -251,21 +251,21 @@ export default function StepsView() {
     findNode: (id) => findNode(tree, id), showToast,
   });
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), settle, showToast,
   });
-  const { toggleAgentic } = useTaskAgentic({ findNode: (id) => findNode(tree, id), reload, showToast });
+  const { toggleAgentic } = useTaskAgentic({ findNode: (id) => findNode(tree, id), settle, showToast });
   const { toggleAsynchronous } = useTaskAsynchronous({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), settle, showToast,
   });
   const { toggleCompound } = useTaskCompound({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), settle, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   // `P`. A fold card is found in the drawn tree and refused by name, as any node without a Plan is.
-  const quickPlan = useQuickPlan({ findNode: lookup, reload, showToast });
+  const quickPlan = useQuickPlan({ findNode: lookup, settle, showToast });
   // `D`, refusing what `P` refuses and for the same reason.
-  const quickDependency = useQuickDependency({ tree, findNode: lookup, reload, showToast });
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const quickDependency = useQuickDependency({ tree, findNode: lookup, settle, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
 
   /**
    * Selects a card a shared action just created. When the gesture made a child of a card rather
@@ -279,7 +279,7 @@ export default function StepsView() {
     setSelection(id === null ? null : { cell: "child", nodeId: id });
   }, [enterSubtree]);
 
-  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, reload });
+  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, settle });
 
   // Deleting on the other views' terms: the List View's single-selection confirmation and its
   // "next, else previous" landing, over the Mindmap's writer — so one Ctrl+Z takes it back.

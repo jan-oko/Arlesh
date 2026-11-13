@@ -83,10 +83,10 @@ function board(): MindmapNode {
 }
 
 function setup(tree: MindmapNode = board()) {
-  const reload = vi.fn(() => Promise.resolve());
+  const settle = vi.fn(() => Promise.resolve());
   const showToast = vi.fn();
-  const rendered = renderHook(() => useQuickDependency({ tree, findNode: (id) => findNode(tree, id), reload, showToast }));
-  return { ...rendered, reload, showToast };
+  const rendered = renderHook(() => useQuickDependency({ tree, findNode: (id) => findNode(tree, id), settle, showToast }));
+  return { ...rendered, settle, showToast };
 }
 
 /** The last toast's message, or undefined. */
@@ -161,7 +161,7 @@ describe("useQuickDependency — opening", () => {
 describe("useQuickDependency — adding", () => {
   it("writes the edge in one Gesture and reloads the board", async () => {
     const backend = installBackend();
-    const { result, reload } = setup();
+    const { result, settle } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
     const wait = result.current.target?.candidates?.find((c) => c.id === "expectation-7");
@@ -178,19 +178,19 @@ describe("useQuickDependency — adding", () => {
     }]);
     expect(backend.gestures()).toBe(before + 1);
     expect(result.current.target).toBeNull();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledTimes(1);
   });
 
   it("shows the backend's refusal — a cycle it could see and the search could not — as a toast", async () => {
     installBackend({ refuseWrite: "adding this dependency would create a cycle" });
-    const { result, reload, showToast } = setup();
+    const { result, settle, showToast } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
     const other = result.current.target?.candidates?.find((c) => c.id === "task-2");
     if (other === undefined) throw new Error("task-2 was not offered");
 
     await act(async () => { await result.current.apply(other); });
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
     const message = lastToast(showToast);
     expect(message).toContain("warnings:quickDependencyFailed");
     expect(message).toContain("would create a cycle");
