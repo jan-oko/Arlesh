@@ -89,6 +89,9 @@ pub enum TaskError {
         "this wait is a review; give a verdict (approved or changes_requested) before releasing it"
     )]
     AgenticVerdictMissing,
+    /// A review, or the release of an agentic wait, was refused by the review rules.
+    #[error(transparent)]
+    Review(#[from] crate::tasks::rules::review::ReviewRefusal),
     /// A verdict was written to a wait that is not a review.
     #[error("only a review takes a verdict")]
     VerdictOnNonReview,

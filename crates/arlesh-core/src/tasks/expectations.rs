@@ -30,6 +30,7 @@ use super::model::{
     CreateExpectationRequest, DurationSpec, Expectation, ExpectationArchival, ExpectationId,
     ExpectationStatus, Review, ReviewDetails, ReviewVerdict, TimeScope, UpdateExpectationRequest,
 };
+use super::rules::review as review_rules;
 use super::waits::{instant_column, instant_from_column};
 use super::{insertion_position, time_scope_columns, time_scope_from_row};
 
@@ -299,6 +300,20 @@ impl<'session> ExpectationOperator<'session> {
         request: CreateExpectationRequest,
         now: NaiveDateTime,
     ) -> Result<Expectation, TaskError> {
+        let mut request = request;
+        // Every entry point lands here, so the review rules hold for all of them: a review exists
+        // only on an agentic wait, and its content is checked and normalised before it is stored.
+        if let Some(details) = request.review.take() {
+            review_rules::require_agentic(request.agentic, true)?;
+            let (title, summary, details) = review_rules::normalise_review(
+                &request.title,
+                request.agentic_note.as_deref(),
+                details,
+            )?;
+            request.title = title;
+            request.agentic_note = Some(summary);
+            request.review = Some(details);
+        }
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let (every_n, every_kind) = every_columns(&request.check_every);
         let starting = request

@@ -727,17 +727,20 @@ pub enum WaitsOperation {
     /// back for the user's verdict. The Task reads Review until the user answers (or you release
     /// the review with the verdict they gave you).
     RaiseReview {
-        /// The Agentic Task the agent worked, which the review hangs under.
+        /// The Agentic Task the agent is working, which the review hangs under. It must be held by
+        /// you (On Agent or Review): claim it first.
         task_id: NodeIdParam,
-        /// What is up for review, as the review's title.
+        /// What is up for review, as the review's title (not blank, 200 characters at most).
         title: String,
-        /// What changed, in full.
+        /// What changed, in full (10000 characters at most).
         summary: String,
         /// Links to the work: a PR, a doc, a build. A PR link makes the user's approval their word
-        /// to merge it. Arlesh stores the links and never follows them.
+        /// to merge it. At most 20, each a non-blank `label` (100 characters) and an http or https
+        /// `url` (2000); anything else is refused. Arlesh stores the links and never follows them.
         #[serde(default)]
         links: Vec<model::ReviewLink>,
-        /// What the user can try by hand, one entry each. Shown read only.
+        /// What the user can try by hand, one entry each, 30 at most of 1000 characters; blank
+        /// entries are dropped. Shown read only.
         #[serde(default)]
         hand_tests: Vec<String>,
     },

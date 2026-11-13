@@ -601,7 +601,16 @@ row ids or short ids.
   verdict: an agentic wait with `question: true` and a `review` object. `summary` (what changed)
   is the wait's `agentic_note`; `links` is a list of `{label, url}` (a PR, a doc, a build; a PR
   link makes the user's approval their word to merge it); `hand_tests` is a list of strings, one
-  per thing the user can try by hand. The Task reads `review` until the user answers.
+  per thing the user can try by hand. The Task reads `review` until the user answers, and stays
+  `review` while **any** other question or review under it is open. The Task must be **held by an
+  agent** — `on_agent`, or already `review`: raising one under an unclaimed (`todo`) Task is refused
+  (`invalid_request`, "claim it first"). Plain questions are not held to this. The content is
+  checked: a blank title or summary, a link missing its label or URL, or a URL that is not http or
+  https is refused with a message saying what to change; blank hand tests are dropped. Caps: title
+  200 characters, summary 10000, 20 links (label 100, URL 2000), 30 hand tests (1000 each). The
+  app shows the links as clickable links (editor, Zen card, List row), http and https only. A
+  review exists only on an agentic wait, so a review given to any other wait — over REST, say —
+  is refused by the core rule.
 - **`release(id, answer?, verdict?)`** releases an agentic wait under a Task the agent can write. A
   **question** wait needs a non-blank `answer` — one the agent got from the user in its own
   session — and is refused (`invalid_request`) without one, writing nothing. A **review** needs
@@ -609,9 +618,12 @@ row ids or short ids.
   an agent releasing a review itself must supply is the verdict the user gave it in its own
   session, never one of its own — an agent has no business approving its own work. A `verdict` on
   a wait that is not a review is refused. A wait that is neither needs nothing. A wait that is not
-  agentic is refused as `not_permitted`.
+  agentic is refused as `not_permitted`. A question or review that is **already released** is
+  refused (`invalid_request`): the user's answer or verdict is never overwritten, and a second
+  release is a mistake. A wait on something else is idempotent and passes.
 - **`get(id)`** returns one visible wait's `status`, `question`, `note` and `answer` (with its
-  short and full id), so an agent can poll for the user's answer without loading the snapshot. A
+  short and full id, and the Task's `task_id` and `task_short_id` as `get_many` names them; wait
+  ids and Task ids share one number space, so name nodes by short id), so an agent can poll for the user's answer without loading the snapshot. A
   **review** also carries `review: {links, hand_tests, verdict?}`: its presence is the kind (a
   review when `review` is present, a question when `question` is true without it, a wait on
   something else when `question` is false), and `verdict` appears once the user has answered.
