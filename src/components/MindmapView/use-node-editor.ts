@@ -354,9 +354,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
             time_scope: data.timeScope,
             archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
             is_private: data.isPrivate,
-            agentic: data.agentic,
-            agentic_note: data.agenticNote,
-            answer: data.agenticAnswer,
           };
           await runGesture("save-wait", [
             { op: "update_expectation", id: dbId, request },
