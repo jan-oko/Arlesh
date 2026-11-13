@@ -1,3 +1,4 @@
+import { atom, read, update } from 'claude-code'
 import type { Register, EngineInterface } from 'claude-code'
 
 import {
@@ -18,6 +19,8 @@ import {
   type Standing,
 } from './attach'
 import { forget, prune, remember, revive, type Book, type Entry } from './book'
+import * as kids from './children'
+import type { RowLines } from '../types'
 import {
   expandVariables,
   mainCheckoutOf,
@@ -54,6 +57,13 @@ let standing: Standing | undefined
 /** An attach in flight, so two triggers do not attach twice. */
 let attaching: Promise<Standing> | undefined
 let lastReport: Reported | undefined
+/** Which `Agent` call started each subagent, so its row can be found again. */
+const spawned = new Map<string, string>()
+
+/** The line under each subagent's row, by the Agent call's tool use id. */
+const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
+
+const ARLESH_TOOL = /^mcp__.+__arlesh_[a-z_]+$/
 
 /** Runs `job` after every earlier one: the book is read, changed and written in turn. */
 function serially<T>(job: () => Promise<T>): Promise<T> {
@@ -93,6 +103,63 @@ export const register: Register = (on) => {
     void reportUsage($, e.rateLimits)
     return result
   })
+
+  // The Agent call that starts (or resumes) a subagent: remembered, so its row can be drawn on.
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    const id = e.resume?.agentId ?? started.agentId
+    if (id !== undefined && !spawned.has(id)) spawned.set(id, e.tool_use_id)
+    return started
+  }).catch(($, e, next) => next(e))
+
+  // A subagent starts: registered as a child agent, and told its sub-token once. Resumed: its
+  // Claim resumes with it (what a resume says to it never reaches it, so it is not told again).
+  on('classic.SubagentStart', async ($, e, next) => {
+    const started = await next(e)
+    try {
+      const block = await childStarted($, e.agent_id)
+      if (block === undefined) return started
+      return { ...started, additionalContext: [...(started.additionalContext ?? []), block] }
+    } catch (error) {
+      $.ui.log(`arlesh-notify: could not register a subagent: ${String(error)}`, { to: 'debug' })
+      return started
+    }
+  }).catch(($, e, next) => next(e))
+
+  // A subagent that stops has its Claim paused; the child stays listed, still naming its Task.
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    if (e.agentId !== undefined) void childStopped($, e.agentId)
+    return done
+  }).catch(($, e, next) => next(e))
+
+  // An Arlesh call a subagent makes without its `sub_token` gets it, so the convention holds
+  // whether or not the model remembers the argument.
+  on('tool.call', { tool: ARLESH_TOOL }, async ($, e, next) => {
+    const agentId = e.agentId
+    const input: Record<string, unknown> = { ...e }
+    if (agentId === undefined || input['sub_token'] !== undefined) return next(e)
+    const found = await governingOf($, agentId)
+    if (found === undefined) return next(e)
+    const ran = await next({ ...e, ...{ sub_token: found.child.subToken } })
+    void noteAnswer($, found, e.tool, ran.result ?? ran.text)
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // Under a subagent's `Agent(…)` row: the Arlesh Task it is on, and whether its Claim is active
+  // or paused. Every other row is drawn as it was.
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    if (e.props.tool !== 'Agent') return next(e)
+    const line = (await read($, rows))[e.props.tool_use_id]
+    if (line === undefined) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {await next(e)}
+        <Text dimColor>{line}</Text>
+      </Box>
+    )
+  }).catch(($, e, next) => next(e))
 
   // A server that lost the binding (it restarted) turns the session away: attach again.
   on('tool.call', { tool: /^mcp__.+__arlesh_[a-z_]+$/ }, async ($, e, next) => {
@@ -439,5 +506,129 @@ async function reportUsage($: Engine, given: readonly Limit[] | undefined): Prom
     })
   } catch (error) {
     $.ui.log(`arlesh-notify: could not report usage: ${String(error)}`, { to: 'debug' })
+  }
+}
+
+/** The key the session's children are stored under. */
+async function childrenKey($: Engine): Promise<string> {
+  return `children:${await $.session.id()}`
+}
+
+async function loadChildren($: Engine): Promise<kids.Children> {
+  return kids.prune(kids.revive(await $.store.get(await childrenKey($))), await $.clock.now())
+}
+
+async function saveChildren($: Engine, children: kids.Children): Promise<void> {
+  await $.store.set(await childrenKey($), children)
+}
+
+/** Which agent spawned each of the session's subagents. */
+async function spawnersOf($: Engine): Promise<Map<string, string>> {
+  const parents = new Map<string, string>()
+  for (const agent of await $.agent.list()) {
+    if (agent.parentId !== undefined) parents.set(agent.id, agent.parentId)
+  }
+  return parents
+}
+
+/** The record a subagent works under: its own, or its nearest registered ancestor's. */
+async function governingOf($: Engine, agentId: string): Promise<kids.Governing | undefined> {
+  return kids.governing(await loadChildren($), await spawnersOf($), agentId)
+}
+
+/** Draws (or redraws) the line under the `Agent` row that started `agentId`. */
+async function showRow($: Engine, agentId: string, child: kids.Child): Promise<void> {
+  const toolUseId = spawned.get(agentId)
+  const line = kids.rowLine(child)
+  if (toolUseId === undefined || line === undefined) return
+  await update($, rows, (current) => ({ ...current, [toolUseId]: line }))
+}
+
+/** Changes one record under the queue, and redraws its row. */
+async function changeChild(
+  $: Engine,
+  id: string,
+  change: (child: kids.Child) => kids.Child | undefined,
+): Promise<void> {
+  const changed = await serially(async () => {
+    const children = await loadChildren($)
+    const child = children[id]
+    if (child === undefined) return undefined
+    const next = change(child)
+    const { [id]: _gone, ...rest } = children
+    await saveChildren($, next === undefined ? rest : { ...rest, [id]: { ...next, savedAt: await $.clock.now() } })
+    return next
+  })
+  if (changed !== undefined) await showRow($, id, changed)
+}
+
+/** What a call to the child's `arlesh_agents` (pause, resume, claim) says of it, kept for the row. */
+async function noteAnswer($: Engine, found: kids.Governing, tool: string, result: unknown): Promise<void> {
+  try {
+    if (kids.isChildGone(result)) return await changeChild($, found.id, () => undefined)
+    if (!tool.endsWith('__arlesh_agents')) return
+    const identity = kids.identityFrom(result)
+    if (identity === undefined) return
+    await changeChild($, found.id, (child) => ({
+      ...child,
+      ...(identity.claimName === undefined ? {} : { claimName: identity.claimName }),
+      ...(identity.standing === undefined ? {} : { standing: identity.standing }),
+    }))
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not note a subagent's answer: ${String(error)}`, { to: 'debug' })
+  }
+}
+
+/**
+ * A subagent started: the context block to hand it, or `undefined` when it needs none (not an
+ * attached session, not a plain subagent, already known, or resumed).
+ */
+async function childStarted($: Engine, id: string): Promise<string | undefined> {
+  if (attaching !== undefined) await attaching
+  const connection = server
+  if (standing?.kind !== 'attached' || connection === undefined) return undefined
+  const agents = await $.agent.list()
+  const info = agents.find((agent) => agent.id === id)
+  if (info === undefined || info.teammateId !== undefined) return undefined
+  const known = (await loadChildren($))[id]
+  if (known !== undefined) {
+    if (known.nested === true) return undefined
+    const back = await $.mcp.call(connection.name, 'arlesh_agents', { operation: 'resume', sub_token: known.subToken })
+    if (!kids.isChildGone(back)) {
+      await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, back)
+      return undefined
+    }
+    await changeChild($, id, () => undefined)
+  }
+  const ancestor =
+    info.parentId === undefined ? undefined : kids.governing(await loadChildren($), await spawnersOf($), info.parentId)
+  if (ancestor !== undefined) {
+    const record: kids.Child = { ...ancestor.child, nested: true, savedAt: await $.clock.now() }
+    delete record.claimName
+    delete record.standing
+    await serially(async () => saveChildren($, { ...(await loadChildren($)), [id]: record }))
+    return kids.contextBlock(ancestor.child.name, ancestor.child.subToken)
+  }
+  const made = kids.registeredFrom(
+    await $.mcp.call(connection.name, 'arlesh_agents', kids.registerArguments(info.description || id, id)),
+  )
+  if (made === undefined) return undefined
+  if (made.subToken === undefined) return undefined
+  const record: kids.Child = { childId: made.childId, subToken: made.subToken, name: made.name, savedAt: await $.clock.now() }
+  await serially(async () => saveChildren($, { ...(await loadChildren($)), [id]: record }))
+  return kids.contextBlock(made.name, made.subToken)
+}
+
+/** A subagent stopped: its Claim is paused, unless the child is gone or is not its own. */
+async function childStopped($: Engine, id: string): Promise<void> {
+  try {
+    const known = (await loadChildren($))[id]
+    const connection = server
+    if (known === undefined || known.nested === true || connection === undefined) return
+    const paused = await $.mcp.call(connection.name, 'arlesh_agents', { operation: 'pause', sub_token: known.subToken })
+    if (kids.isChildGone(paused)) return await changeChild($, id, () => undefined)
+    await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, paused)
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not pause a subagent's claim: ${String(error)}`, { to: 'debug' })
   }
 }

@@ -1,5 +1,6 @@
 {
   "name": "arlesh-notify",
-  "version": "0.2.0",
-  "description": "Attaches a Claude Code session to Arlesh as an agent, reports its plan usage, and wakes it when an Arlesh wait it raised or watches is released, reopened, archived or deleted."
+  "version": "0.3.0",
+  "description": "Attaches a Claude Code session to Arlesh as an agent, reports its plan usage, and wakes it when an Arlesh wait it raised or watches is released, reopened, archived or deleted.",
+  "types": "./types/index.d.ts"
 }
