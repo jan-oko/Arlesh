@@ -164,6 +164,26 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
+## Replication
+
+Designed in [ADR 0017](docs/adr/0017-client-board-replica.md), not built yet.
+
+**Replica** — A client's own copy of the board, running the same core as the server. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
+
+**Prediction** — A write run on the Replica before the server has answered it. What it shows is what the board will look like if the server agrees. _Avoid_: optimistic patch, speculation.
+
+**Settling** — The moment the queue of writes drains: the Replica drops its Predictions and takes the server's rows. A correct Prediction changes nothing on screen.
+
+**Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
+
+**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas sync from. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
+
+**Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and falls back to one when it cannot prove it is current. _Avoid_: backup (that is the administrator's).
+
+**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show.
+
+---
+
 ## Not built yet
 
 Specced, and deliberately kept, but not in the app today. Nothing above depends on them.
