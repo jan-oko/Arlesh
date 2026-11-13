@@ -32,6 +32,27 @@ class BoardRevision(BaseModel):
     revision: int
 
 
+class BoardHead(BaseModel):
+    """The latest publication's identity: the run (``epoch``), its number within the run
+    (``seq``), the writes its board holds at least (``revision``) and the board's hash, with the
+    hash of each collection (``sums``) for diagnosing a mismatch."""
+
+    epoch: str
+    seq: int
+    revision: int
+    hash: int
+    sums: dict[str, int]
+
+
+class CurrentBoard(BaseModel):
+    """The latest publication: the board's JSON as the core wrote it (``body``), its ``head`` and
+    the wall-clock instant it was derived at (``now``, ISO 8601 without a zone)."""
+
+    body: str
+    head: BoardHead
+    now: str
+
+
 class ServerStatus(BaseModel):
     """What an :class:`HttpBackend` knows about its server between calls."""
 

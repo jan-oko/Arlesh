@@ -33,6 +33,7 @@ use std::sync::Arc;
 
 use arlesh_core::database::session::SessionFactory;
 use arlesh_core::mcp::{events::ExpectationsQuery, ArleshMcp};
+use arlesh_core::mindmap::publisher::{BoardPublisher, LocalClock};
 use arlesh_core::undo::stacks::UndoStacks;
 use pyo3::prelude::*;
 
@@ -56,6 +57,19 @@ struct NativeDatabase {
 }
 
 impl NativeDatabase {
+    /// The board publisher, or the refusal when none was started for this file.
+    fn publisher(&self) -> PyResult<BoardPublisher> {
+        shared::for_database(&self.path)
+            .publisher
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                raise(arlesh_core::error::WireError::not_permitted(
+                    "the board publisher was not started",
+                ))
+            })
+    }
+
     /// The MCP handler, or the refusal of a read-only database.
     fn mcp(&self) -> PyResult<ArleshMcp> {
         self.mcp.clone().ok_or_else(|| raise(mcp::read_only()))
@@ -91,6 +105,68 @@ impl NativeDatabase {
     #[getter]
     fn revision(&self) -> u64 {
         shared::for_database(&self.path).changes.revision()
+    }
+
+    /// The run of this process: names the board's revisions and publications.
+    #[getter]
+    fn epoch(&self) -> String {
+        shared::for_database(&self.path).changes.epoch().to_string()
+    }
+
+    /// Starts the board publisher over this open's factory, once per database file: it derives
+    /// the board after every committed write and every minute, and keeps the latest publication
+    /// and the last change events for `board_current` and `board_events_after`.
+    fn start_publisher(&self) {
+        let shared = shared::for_database(&self.path);
+        shared.publisher.get_or_init(|| {
+            BoardPublisher::start(
+                self.factory.clone(),
+                shared.changes.clone(),
+                Arc::new(LocalClock),
+                Arc::new(|_| {}),
+                pyo3_async_runtimes::tokio::get_runtime().handle(),
+            )
+        });
+    }
+
+    /// The latest publication, as `(board JSON, head JSON, derived-at)`; waits for the first.
+    fn board_current<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let publisher = self.publisher()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let publication = publisher.current().await;
+            let body = publication.json().map_err(publication_failure)?;
+            let head = serde_json::to_string(&publication.head()).map_err(publication_failure)?;
+            let now = serde_json::to_string(&publication.now).map_err(publication_failure)?;
+            Ok((body.to_string(), head, now.trim_matches('"').to_string()))
+        })
+    }
+
+    /// The change events after publication `after`, each `(seq, JSON)`; waits up to `wait`
+    /// seconds for the next one. One `reload` event when the ring no longer holds them all.
+    fn board_events_after<'py>(
+        &self,
+        py: Python<'py>,
+        after: u64,
+        wait: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let publisher = self.publisher()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let events = publisher
+                .after(after, std::time::Duration::from_secs_f64(wait.max(0.0)))
+                .await;
+            Ok(events
+                .into_iter()
+                .map(|event| (event.seq, event.data.to_string()))
+                .collect::<Vec<_>>())
+        })
+    }
+
+    /// The latest publication's head as JSON, or `None` before the first.
+    fn board_head(&self) -> PyResult<Option<String>> {
+        self.publisher()?
+            .head()
+            .map(|head| serde_json::to_string(&head).map_err(publication_failure))
+            .transpose()
     }
 
     /// Waits until the board's revision is past `after`, and answers it: what `GET /events/changes`
@@ -298,6 +374,14 @@ impl NativeDatabase {
             Ok(())
         })
     }
+}
+
+/// A publication that cannot be written out.
+fn publication_failure(error: serde_json::Error) -> PyErr {
+    raise(errors::Failure::new(
+        arlesh_core::error::WireErrorKind::InvalidRequest,
+        error.to_string(),
+    ))
 }
 
 /// `text` as JSON.

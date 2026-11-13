@@ -319,7 +319,7 @@ fn reload_event(publication: &Publication) -> ChangeEvent {
 }
 
 async fn derive(factory: &SessionFactory, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
-    let mut db = factory.begin().await?;
+    let mut db = factory.begin_read().await?;
     let load = current(&mut db, now).await?;
     db.commit().await?;
     Ok(load)

@@ -35,6 +35,8 @@ features = ["pyo3/extension-module"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# So a test can import a helper beside it: `from tests.server.integration.live_stream import ...`.
+pythonpath = ["."]
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 

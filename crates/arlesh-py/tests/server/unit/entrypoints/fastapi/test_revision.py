@@ -54,7 +54,9 @@ def _app(counter: Counter) -> Starlette:
 
 
 def _stamped(counter: Counter) -> TestClient:
-    app = RevisionHeadersMiddleware(_app(counter), revision=lambda: counter.revision, epoch="run1")
+    app = RevisionHeadersMiddleware(
+        _app(counter), revision=lambda: counter.revision, epoch=lambda: "run1"
+    )
     return TestClient(app)
 
 
@@ -78,7 +80,9 @@ def test_an_answer_before_the_board_is_open_carries_no_stamp() -> None:
     def closed() -> int:
         raise BoardNotOpen("the board is not open")
 
-    client = TestClient(RevisionHeadersMiddleware(_app(Counter()), revision=closed, epoch="run1"))
+    client = TestClient(
+        RevisionHeadersMiddleware(_app(Counter()), revision=closed, epoch=lambda: "run1")
+    )
     response = client.get("/read")
 
     assert response.status_code == 200
