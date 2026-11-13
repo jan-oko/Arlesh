@@ -103,9 +103,10 @@ impl EventParser {
 ///
 /// A phone suspends the app when it goes to the background, and a connection held through that is
 /// one the system kills anyway. So the stream is dropped on [`suspend`](Self::suspend) and opened
-/// afresh on [`resume`](Self::resume), which checks `/health` again and reloads the windows, since
-/// the board may have changed while the app was away. A desktop never suspends, and so follows from
-/// the start to the end of the run.
+/// afresh on [`resume`](Self::resume), which checks `/health` again and asks the server for the
+/// events missed while the app was away (the last event id is kept across the gap), so the windows
+/// are caught up rather than reloaded. A desktop never suspends, and so follows from the start to
+/// the end of the run.
 pub struct Follower {
     backend: Arc<HttpBackend>,
     announce: Announce,

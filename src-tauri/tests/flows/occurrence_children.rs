@@ -98,7 +98,7 @@ async fn complete_root(
 
 /// The iteration root's status as the board reads it.
 async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -> String {
-    let load = helpers::load_board_at(&app, at("2026-01-05T09:00:00"))
+    let load = helpers::load_board_at(app, at("2026-01-05T09:00:00"))
         .await
         .unwrap()
         .into_load();

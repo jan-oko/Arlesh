@@ -164,9 +164,9 @@ export function unsubscribed(): void {}
  * Tauri's `listen` with no target listens to every target: its backend delivers an event to a
  * listener registered for "any" target whatever the emit was addressed to (`match_any_or_filter`
  * in tauri's `event/listener.rs`). So an `emitTo` one window meant for another reached **every**
- * window listening — a tab handed to one window was adopted by all of them, and each board change,
- * announced once per other window, made every window reload once per other window. Naming this
- * window's label as the target is what makes `emitTo` mean "to that window".
+ * window listening — a tab handed to one window was adopted by all of them. Naming this window's
+ * label as the target is what makes `emitTo` mean "to that window". (A board change is emitted to
+ * every window, so it reaches each one once either way.)
  */
 export function listenHere<T>(event: string, handler: (event: Event<T>) => void): Promise<UnlistenFn> {
   return listen<T>(event, handler, { target: currentWindowLabel() });

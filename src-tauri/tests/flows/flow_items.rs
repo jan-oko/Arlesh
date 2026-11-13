@@ -128,7 +128,7 @@ fn occurrence(item_type: TemplateKind, item_id: i64, iteration: ScopeKey) -> Nod
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    helpers::load_board_at(&app, at(instant))
+    helpers::load_board_at(app, at(instant))
         .await
         .unwrap()
         .into_load()
