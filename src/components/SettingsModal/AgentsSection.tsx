@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { AgentSummary } from "@/api/agents";
 import { useAgents } from "@/hooks/use-agents";
 import { useAgentAccountsStore } from "@/stores/use-agent-accounts-store";
 import Switch from "@/components/Switch/Switch";
@@ -42,6 +43,15 @@ export default function AgentsSection() {
     return () => window.clearTimeout(timer);
   }, [anchor, isLoading]);
 
+  // A child is nested under its parent; one whose parent is missing (a race) is listed at top level.
+  const listed = new Set(overview.agents.map((summary) => summary.agent.id));
+  const topLevel = overview.agents.filter(
+    ({ agent }) => agent.parent_id === null || !listed.has(agent.parent_id),
+  );
+  const childrenOf = (id: number) => overview.agents.filter(({ agent }) => agent.parent_id === id);
+  const accountOf = (summary: AgentSummary) =>
+    overview.accounts.find((account) => account.label === summary.agent.account);
+
   async function copy(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
@@ -81,14 +91,28 @@ export default function AgentsSection() {
       )}
       {overview.agents.length > 0 && (
         <ul className={own.list} aria-label={t("mcp.agents.list")}>
-          {overview.agents.map((summary) => (
+          {topLevel.map((summary) => (
             <AgentRow
               key={summary.agent.id}
               summary={summary}
-              account={overview.accounts.find((account) => account.label === summary.agent.account)}
+              account={accountOf(summary)}
               nodes={nodes}
               onAct={(action) => { void act(summary.agent.id, action); }}
-            />
+            >
+              {childrenOf(summary.agent.id).length > 0 && (
+                <ul className={own.children} aria-label={t("mcp.agents.subagents", { name: summary.agent.name })}>
+                  {childrenOf(summary.agent.id).map((child) => (
+                    <AgentRow
+                      key={child.agent.id}
+                      summary={child}
+                      account={undefined}
+                      nodes={nodes}
+                      onAct={(action) => { void act(child.agent.id, action); }}
+                    />
+                  ))}
+                </ul>
+              )}
+            </AgentRow>
           ))}
         </ul>
       )}

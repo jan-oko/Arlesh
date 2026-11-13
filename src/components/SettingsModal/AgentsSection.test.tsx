@@ -41,13 +41,13 @@ vi.mock("@/api/mcp-access", () => ({
   mcpNodeKeyString: (key: { node_kind: string; node_id: number }) => `${key.node_kind}:${key.node_id}`,
 }));
 
-function summary(over: Partial<AgentSummary> & { name?: string; status?: "active" | "paused" } = {}): AgentSummary {
+function summary(over: Partial<AgentSummary> & { id?: number; parent_id?: number; name?: string; status?: "active" | "paused" } = {}): AgentSummary {
   const status = over.status ?? "active";
   return {
     agent: {
-      id: 1, name: over.name ?? "writer", account: "work", session_uuid: "s",
+      id: over.id ?? 1, name: over.name ?? "writer", account: "work", session_uuid: "s",
       claim: { root: { node_kind: "goal", node_id: 10 }, status, claimed_at: "2026-11-07T09:00:00" },
-      locked: false, created_at: "2026-11-07T09:00:00", last_seen_at: null,
+      locked: false, created_at: "2026-11-07T09:00:00", last_seen_at: null, parent_id: over.parent_id ?? null,
     },
     standing: over.standing ?? status,
     at_capacity: over.at_capacity ?? null,
@@ -86,6 +86,29 @@ describe("AgentsSection", () => {
     expect(within(list).getByText("Work")).toBeInTheDocument();
     expect(within(list).getByText("Ship")).toBeInTheDocument();
     expect(within(list).queryByText(/·/)).toBeNull();
+  });
+
+  it("nests a child under its parent, with its claim and without a lock", async () => {
+    vi.mocked(fetchAgents).mockResolvedValue(overview([
+      summary(),
+      summary({ id: 2, parent_id: 1, name: "helper", status: "paused" }),
+    ]));
+    render(<AgentsSection />);
+    const nested = await screen.findByRole("list", { name: /mcp\.agents\.subagents/ });
+    expect(within(nested).getByText("helper")).toBeInTheDocument();
+    expect(within(nested).getByText("mcp.agents.standing.paused")).toBeInTheDocument();
+    expect(within(nested).getByText("Ship")).toBeInTheDocument();
+    expect(within(nested).queryByText("Work")).toBeNull();
+    expect(within(nested).queryByRole("button", { name: /mcp\.agents\.lock/ })).toBeNull();
+    expect(within(nested).getByRole("button", { name: /mcp\.agents\.resume/ })).toBeInTheDocument();
+    expect(within(nested).getByRole("button", { name: /mcp\.agents\.remove/ })).toBeInTheDocument();
+  });
+
+  it("lists a child whose parent is missing at top level", async () => {
+    vi.mocked(fetchAgents).mockResolvedValue(overview([summary({ id: 2, parent_id: 9, name: "orphan" })]));
+    render(<AgentsSection />);
+    const list = await screen.findByRole("list", { name: "mcp.agents.list" });
+    expect(within(list).getByText("orphan")).toBeInTheDocument();
   });
 
   it("names why an agent at capacity is held back", async () => {

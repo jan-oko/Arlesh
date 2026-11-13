@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Account, AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
 import type { AgentAction } from "@/api/agents";
@@ -14,10 +14,12 @@ interface Props {
   account: Account | undefined;
   nodes: readonly McpCatalogueNode[];
   onAct: (action: AgentAction) => void;
+  /** The rows of this agent's child agents, nested under it. */
+  children?: ReactNode;
 }
 
 /** One agent: who it is, what it holds, how it stands, and the hand controls its standing allows. */
-export default function AgentRow({ summary, account, nodes, onAct }: Props) {
+export default function AgentRow({ summary, account, nodes, onAct, children }: Props) {
   const { t } = useTranslation(["settings", "nodeKinds"]);
   const [removing, setRemoving] = useState(false);
   const { agent, standing } = summary;
@@ -60,7 +62,9 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
           <span key="standing" className={own.badge} title={standingNotes[standing]}>
             {standingNames[standing]}
           </span>,
-          <span key="account" className={own.meta}>{capitalised(agent.account)}</span>,
+          ...(agent.parent_id === null
+            ? [<span key="account" className={own.meta}>{capitalised(agent.account)}</span>]
+            : []),
           <span key="seen" className={own.meta}>
             {agent.last_seen_at === null
               ? t("settings:mcp.agents.neverSeen")
@@ -85,7 +89,7 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
           usage: (window, time) => t("settings:mcp.agents.capacity.usage_limit", { window, time }),
         })}</div>
       )}
-      {account !== undefined && account.windows.map((window) => (
+      {agent.parent_id === null && account !== undefined && account.windows.map((window) => (
         <div key={window.kind} className={own.meta}>
           {t("settings:mcp.agents.window", {
             window: window.kind,
@@ -110,14 +114,16 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
             {named("release")}
           </button>
         )}
-        <button
-          className={styles.button}
-          type="button"
-          aria-label={labelled(agent.locked ? "unlock" : "lock")}
-          onClick={() => onAct({ action: "lock", locked: !agent.locked })}
-        >
-          {named(agent.locked ? "unlock" : "lock")}
-        </button>
+        {controls.canLock && (
+          <button
+            className={styles.button}
+            type="button"
+            aria-label={labelled(agent.locked ? "unlock" : "lock")}
+            onClick={() => onAct({ action: "lock", locked: !agent.locked })}
+          >
+            {named(agent.locked ? "unlock" : "lock")}
+          </button>
+        )}
         {!removing && (
           <button className={styles.button} type="button" aria-label={labelled("remove")} onClick={() => setRemoving(true)}>
             {named("remove")}
@@ -135,6 +141,7 @@ export default function AgentRow({ summary, account, nodes, onAct }: Props) {
           </button>
         </div>
       )}
+      {children}
     </li>
   );
 }

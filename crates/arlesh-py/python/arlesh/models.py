@@ -5671,6 +5671,11 @@ class Agent(BaseModel):
     """
     What Settings → Agents calls it. Unique.
     """
+    parent_id: int | None
+    """
+    The Agent this one is a child of: a subagent the mod registered under its session's Agent.
+    `None` for an Agent. For a child, `session_uuid` is the client's id for the subagent.
+    """
     session_uuid: str
     """
     The client's session id, as it last attached with it.
