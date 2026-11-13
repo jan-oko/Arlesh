@@ -85,6 +85,17 @@ typed into it. `Ctrl+W` loses it too, but a close is a gesture that says "throw 
 that quietly drops the contents is a different thing. So it alone takes the same
 `isInputCaptured` guard the view chords carry.
 
+**Help.** `F1` opens Help, and pressing it again closes it. Help is a full view, left like a modal:
+it takes the whole window over the tab, and the close button (the on-screen ×) or `Esc` returns to the
+view you came from exactly as it was — the tab stays mounted beneath it, so its view, selection and
+scroll are untouched. It is also opened from Settings → General on the desktop, and from the ☰ menu on
+the phone. Like the cheat-sheet it carries no guard, so it is reachable in every state; it holds the
+keyboard while open, so the view chords are off behind it. For now Help holds the derivation graph only
+(the model map's graph, drawn from `src/data/derivation-graph.ts`): hover or focus a box to preview
+its card, click, tap or `Enter` to pin it, Clear to let go; on touch a tap pins, there being no hover,
+and a narrow screen scrolls the graph sideways. The right-click menus are per node, row and tab, so
+none of them carries a Help line.
+
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
 `F11` again brings them back. Bare `F` does the same, but **only when nothing is selected** — with a
 selection, `F` keeps its existing meaning of converting that node to a Flow, and in List View the

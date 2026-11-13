@@ -8,6 +8,7 @@ function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
     isInputCaptured: false,
     onSetView: vi.fn(),
     onToggleHotkeys: vi.fn(),
+    onToggleHelp: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onQuit: vi.fn(),
     subtreeRootId: null,
@@ -92,6 +93,16 @@ describe("GLOBAL_BINDINGS", () => {
     const ctx = makeContext();
     expect(runFor("Slash", { ctrlKey: true, altKey: true }, ctx)).toBe(false);
     expect(ctx.onToggleHotkeys).not.toHaveBeenCalled();
+  });
+
+  it("when F1 is pressed, toggles Help in every state", () => {
+    const ctx = makeContext();
+    expect(runFor("F1", {}, ctx)).toBe(true);
+    expect(ctx.onToggleHelp).toHaveBeenCalledTimes(1);
+
+    const captured = makeContext({ isInputCaptured: true });
+    expect(runFor("F1", {}, captured)).toBe(true);
+    expect(captured.onToggleHelp).toHaveBeenCalledTimes(1);
   });
 
   it("when F11 is pressed, shows the board alone", () => {

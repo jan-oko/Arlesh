@@ -1,0 +1,263 @@
+/* The whole window, over the tab; the tab stays mounted beneath. */
+.view {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--node-border);
+}
+
+.titles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font-size: calc(var(--text-lg) + 4px);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  background: none;
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover { background: var(--node-bg-hover); }
+.close:focus-visible,
+.clear:focus-visible,
+.cardX:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The one thing that scrolls. */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.intro {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 75ch;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.swatchStored { background: var(--mode-all); }
+.swatchDerived { background: var(--accent); }
+.swatchPreset { background: var(--overdue); }
+.swatchSelected { background: var(--accent); box-shadow: 0 0 0 2px var(--text-primary); }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (min-width: 1180px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Scrolls sideways on a narrow screen instead of shrinking the text. */
+.graph {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  min-width: 1040px;
+  height: auto;
+  color: var(--text-secondary);
+}
+
+.node { cursor: pointer; outline: none; }
+.node rect { fill: var(--surface); stroke-width: 1.6; }
+.stored rect { stroke: var(--mode-all); }
+.derived rect { stroke: var(--accent); }
+.preset rect { stroke: var(--overdue); }
+.node text {
+  fill: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 1.1;
+  opacity: 0.35;
+}
+.far { stroke-dasharray: 5 4; }
+
+.active .node { opacity: 0.25; }
+.active .edge { opacity: 0.06; }
+.active .node.on { opacity: 1; }
+.active .edge.edgeOn { opacity: 1; stroke: var(--accent); stroke-width: 1.8; }
+
+.lit rect { fill: color-mix(in srgb, var(--accent) 14%, transparent); }
+.hover rect {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-dasharray: 4 3;
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.sel rect { fill: var(--accent); stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: none; }
+.sel text { fill: var(--surface); font-weight: 700; }
+.node:focus-visible rect { stroke: var(--text-primary); stroke-width: 3; }
+
+.hint {
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3) var(--space-4);
+  height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.hint p { margin: 0; flex: none; }
+.hintTitle { font-weight: 700; }
+.io { font-size: var(--text-sm); color: var(--text-secondary); }
+
+.kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.mono { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); word-break: break-word; }
+
+.aside { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.asideHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.asideTitle { margin: 0; font-size: var(--text-lg); }
+.clear {
+  background: none;
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  min-height: 36px;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.clear:disabled { opacity: 0.45; cursor: default; }
+
+.empty {
+  margin: 0;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px dashed var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3);
+}
+
+.cards { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cardTop { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.cardTitle { margin: 0; font-size: var(--text-lg); }
+.cardX {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  min-width: 36px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.cardX:hover { color: var(--text-primary); }
+.cardText { margin: 0; }
+.facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  line-height: 1.9;
+}
+.facts dd { margin: 0; }
+.concept { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
