@@ -75,7 +75,7 @@ export default function ReviewAnswer({ review, onSend, compact = false }: Props)
             {links.map((link) => (
               <li key={`${link.label}\n${link.url}`}>
                 {isWebUrl(link.url)
-                  ? <a href={link.url} target="_blank" rel="noopener noreferrer" dir="auto">{link.label}</a>
+                  ? <a className={styles.link} href={link.url} target="_blank" rel="noopener noreferrer" dir="auto">{link.label}</a>
                   : <span dir="auto">{link.label}</span>}
               </li>
             ))}
