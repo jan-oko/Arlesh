@@ -684,6 +684,24 @@ enters the user's Undo Stack, and every open window is told the board changed.
 
 Creating is the whole surface: an agent neither edits, moves nor deletes an Info.
 
+## A Task's Infos come back with it
+
+The user writes a Task's details as Infos under it, and an agent that misses them works the Task
+blind (Task 583). So they travel with the Task:
+
+- **`arlesh_tasks.get`** returns an `infos` array beside `task` and `block_reasons`: the Infos
+  **directly** under the Task, not those under its sub-items, in board order (`position`), each
+  with `id`, `short_id`, `full_id`, `body` and `details`. A Task with none returns `[]`.
+- **Every Task row in the snapshot** carries `info_count`: how many Infos hang directly under it
+  that the caller may see. It counts the whole visible board, so a filter or an `agentic` query
+  that drops the Infos from a page does not lower it.
+- Both are cut as the rest of the MCP is: a private Info is not counted or returned, nor is one
+  outside the MCP roots.
+- A Habit occurrence can carry Infos (its `id` is the Info's `parent_id`), and the snapshot counts
+  them. `arlesh_tasks.get` refuses an occurrence, so its Infos are read from the snapshot's `infos`.
+- The server instructions and the `arlesh_tasks` description tell an agent to read a Task's Infos
+  before working it.
+
 ## Issue links
 
 *Removed* (ruled by the user, 2026-10-01, Task 661). A Task, Goal, Commitment or Project could carry
