@@ -929,12 +929,9 @@ async fn dispatch(
             without_nulls: bare,
         } => {
             let at = at.unwrap_or_else(now);
-            transaction(factory, async |db| {
-                let blocking = agents::service::blocking(db, at).await.wired()?;
-                mindmap::board(db, at, blocking).await.wired()
-            })
-            .await
-            .map(|board| if bare { without_nulls(board) } else { board })
+            transaction(factory, async |db| mindmap::current(db, at).await.wired())
+                .await
+                .map(|board| if bare { without_nulls(board) } else { board })
         }
         Request::GetTask { id } => {
             transaction(factory, async |db| {
