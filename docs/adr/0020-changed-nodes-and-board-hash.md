@@ -85,7 +85,7 @@ on the stream, and the diff works on the core's values, never the Python models.
    order (decision 12) agrees. *Why JSON text and not a Rust value walk:* the board lives in JS, and
    `JSON.stringify(JSON.parse(s)) === s` holds for the core's compact JSON of these types (no
    floats, no integer-like object keys, no integers above 2^53, no lone surrogates); a corpus pins
-   it with every escape that could differ (decision 19). *Why not wasm:* ADR 0017 drops the wasm
+   it with every escape that could differ (build plan, step 2). *Why not wasm:* ADR 0017 drops the wasm
    build, and the digest is twelve lines. *Why FNV-1a 32:* trivially identical in both languages,
    needs no dependency, and a collision only delays detection of a missed event until the next
    check. Measured: digesting a synthetic 2.4 MB board of 16 000 entries in Node took 19-30 ms on
@@ -406,7 +406,7 @@ module (it reads the database and runs on Tokio).
 - `pub struct BoardHead { epoch, seq, revision, hash, sums }` (`Serialize`, `Deserialize`).
 - `pub struct ChangeEvent { seq: u64, data: Arc<str> }`: `data` is the decision 16 JSON.
 - `pub type Sink = Arc<dyn Fn(&ChangeEvent) + Send + Sync>`.
-- `pub trait Clock: Send + Sync { fn now(&self) -> NaiveDateTime; fn sleep_until_next_minute(&self) -> BoxFuture<'static, ()>; }`
+- `pub trait Clock: Send + Sync { fn now(&self) -> NaiveDateTime; fn next_tick(&self) -> Pin<Box<dyn Future<Output = ()> + Send>>; }`
   with `LocalClock` (local wall clock, fires 500 ms past each minute) and a test clock.
 - `pub struct BoardPublisher` (cheap `Clone`, an `Arc` inside):
   - `start(factory: SessionFactory, feed: ChangeFeed, clock: Arc<dyn Clock>, sink: Sink, runtime: &tokio::runtime::Handle) -> Self`
@@ -423,7 +423,9 @@ module (it reads the database and runs on Tokio).
   - `head(&self) -> Option<BoardHead>`.
   - `async fn after(&self, seq: u64, wait: Duration) -> Vec<ChangeEvent>`: the ring's events
     after `seq` when they are all there; one synthesized `reload` event at the current publication
-    when they are not; waits up to `wait` for the next event when there is none; empty on timeout.
+    when they are not (so `after(0, …)` always answers the reload event, since publication 1, the
+    first board of a run, has no event); waits up to `wait` for the next event when there is none;
+    empty on timeout.
   - `epoch(&self) -> Arc<str>`: the feed's.
 
 Tests, with a temporary database and the test clock: a write then `record_write` publishes one
@@ -460,9 +462,8 @@ Files: `crates/arlesh-py/src/{shared.rs,lib.rs,request.rs}`,
   `RevisionHeadersMiddleware` leaves an `X-Arlesh-Revision` the route set. Declare it before
   `GET /board` so the path is not read as `?now`.
 - `GET /events/changes` (`routers/events.py`): on connect, a `Last-Event-ID` of this epoch replays
-  `board_events_after(seq, 0)`; another epoch's or an unreadable one sends one reload event from
-  `board_events_after(0, 0)`'s synthesized form (the publisher returns it for a `seq` the ring
-  cannot serve); no id sends nothing. Then `board-head` once, then loop: `board_events_after(last,
+  `board_events_after(seq, 0)`; another epoch's or an unreadable one sends the reload event
+  `board_events_after(0, 0)` answers; no id sends nothing. Then `board-head` once, then loop: `board_events_after(last,
   wait=0.5)`, each event written as `id: <epoch>:<seq>` / `event: board-changed` / `data: <data>`,
   and a `board-head` event (`data`: the head JSON) after 15 s with none, in place of the keepalive
   comment. Shutdown is checked between waits, as now.
