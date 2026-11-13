@@ -668,12 +668,10 @@ async fn an_agents_write_never_lands_in_the_users_open_gesture() {
     let agents = succeeded(&run(&mcp, create("project", board.inside, "The agent's")).await)["id"]
         .as_i64()
         .expect("a stored row");
-    undo_commands::close_gesture(helpers::window(&app), app.state())
+    undo_commands::close_gesture(app.state())
         .await
         .expect("close gesture");
-    undo_commands::undo(helpers::window(&app), app.state())
-        .await
-        .expect("undo");
+    undo_commands::undo(app.state()).await.expect("undo");
 
     let left: Vec<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE id IN (?, ?)")
         .bind(users)
@@ -1573,12 +1571,10 @@ mod agent_notes {
         let agents = succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"]
             .as_i64()
             .expect("a stored row");
-        undo_commands::close_gesture(helpers::window(&app), app.state())
+        undo_commands::close_gesture(app.state())
             .await
             .expect("close gesture");
-        undo_commands::undo(helpers::window(&app), app.state())
-            .await
-            .expect("undo");
+        undo_commands::undo(app.state()).await.expect("undo");
 
         let users_left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
             .bind(users)

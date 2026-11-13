@@ -7,7 +7,7 @@
 
 use crate::helpers;
 
-use arlesh_lib::commands::{flows as flow_commands, mindmap as mindmap_commands};
+use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
     generate_habit_iterations,
     model::{
@@ -128,7 +128,7 @@ fn occurrence(item_type: TemplateKind, item_id: i64, iteration: ScopeKey) -> Nod
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    helpers::load_board_at(&app, at(instant))
         .await
         .unwrap()
         .into_load()

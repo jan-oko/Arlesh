@@ -9,8 +9,7 @@ use std::borrow::Cow;
 use crate::helpers;
 
 use arlesh_lib::commands::{
-    commitments as commitment_commands, flows as flow_commands, mindmap as mindmap_commands,
-    tasks as task_commands,
+    commitments as commitment_commands, flows as flow_commands, tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
@@ -125,7 +124,7 @@ fn item(item_id: i64, date: chrono::NaiveDate) -> NodeId {
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    helpers::load_board_at(&app, at(instant))
         .await
         .unwrap()
         .into_load()
