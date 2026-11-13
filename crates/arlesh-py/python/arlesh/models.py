@@ -601,73 +601,6 @@ class ExpectationStatus(StrEnum):
     """
 
 
-class ReviewLink(BaseModel):
-    """
-    A link a review carries: a PR, a doc, a build. Arlesh stores it and never follows it.
-    """
-
-    label: str
-    """
-    What the link is, in a word or two ("PR #12", "Design doc").
-    """
-    url: str
-    """
-    Where it points.
-    """
-
-
-class ReviewVerdict(StrEnum):
-    """
-    The user's answer to a review. Stored as a value; `Approved` on a review with a PR link is the
-    user's explicit word to merge it.
-    """
-
-    approved = "approved"
-    """
-    Accepted — and, with a PR link, merge it.
-    """
-    changes_requested = "changes_requested"
-    """
-    Not accepted: the agent fixes what the note says, then raises a new review.
-    """
-
-
-class Review(BaseModel):
-    """
-    A review as an Expectation carries it: the agent's [`ReviewDetails`], and the user's verdict
-    once given.
-    """
-
-    hand_tests: list[str] | None = None
-    """
-    What the user can try by hand.
-    """
-    links: list[ReviewLink] | None = None
-    """
-    Links to what changed.
-    """
-    verdict: ReviewVerdict | None = None
-    """
-    The user's verdict; absent while the review is open.
-    """
-
-
-class ReviewDetails(BaseModel):
-    """
-    What the agent hands over with a review, written when it raises it.
-    """
-
-    hand_tests: list[str] | None = None
-    """
-    What the user can try by hand. Shown as a list, read only: nothing is ticked or stored per
-    item.
-    """
-    links: list[ReviewLink] | None = None
-    """
-    Links to what changed: a PR, a doc, a build. Possibly none.
-    """
-
-
 class FirstCheck(BaseModel):
     """
     When a wait item's first check falls in each occurrence's window: the start of the
@@ -1481,6 +1414,37 @@ class ResolvedScope(BaseModel):
     start: str
     """
     Inclusive window start.
+    """
+
+
+class ReviewLink(BaseModel):
+    """
+    A link a review carries: a PR, a doc, a build. Arlesh stores it and never follows it.
+    """
+
+    label: str
+    """
+    What the link is, in a word or two ("PR #12", "Design doc").
+    """
+    url: str
+    """
+    Where it points.
+    """
+
+
+class ReviewVerdict(StrEnum):
+    """
+    The user's answer to a review. Stored as a value; `Approved` on a review with a PR link is the
+    user's explicit word to merge it.
+    """
+
+    approved = "approved"
+    """
+    Accepted — and, with a PR link, merge it.
+    """
+    changes_requested = "changes_requested"
+    """
+    Not accepted: the agent fixes what the note says, then raises a new review.
     """
 
 
@@ -2777,54 +2741,6 @@ class CreateDomainRequest(BaseModel):
     """
 
 
-class CreateExpectationRequest(BaseModel):
-    """
-    Request body for creating an expectation.
-    """
-
-    agentic: bool | None = False
-    """
-    Whether the wait is agentic — refused unless the parent is a Task that reads as Agentic.
-    """
-    agentic_note: str | None = None
-    """
-    An agentic wait's note.
-    """
-    check_every: DurationSpec | None = None
-    """
-    How often to check on it. Omitted, it is never checked.
-    """
-    check_starting: datetime | None = None
-    """
-    When the first check falls due. Omitted with a Check every, it is the moment of creation.
-    """
-    parent_id: int | str
-    """
-    Parent entity id.
-    """
-    parent_type: str
-    """
-    Parent entity type.
-    """
-    question: bool | None = None
-    """
-    Whether an agentic wait is a question for the user. Omitted, it is.
-    """
-    review: ReviewDetails | None = None
-    """
-    Makes the wait an agentic **review** with these details; the wait is then a question
-    (`question` is ignored) and agentic.
-    """
-    time_scope: TimeScope | None = None
-    """
-    Initial relevance window. Omitted, the expectation has none.
-    """
-    title: str
-    """
-    Display title.
-    """
-
-
 class CreateFlowRequest(BaseModel):
     """
     Request body for creating a flow.
@@ -3980,6 +3896,42 @@ class ReparentConflicts(BaseModel):
     """
 
 
+class Review(BaseModel):
+    """
+    A review as an Expectation carries it: the agent's [`ReviewDetails`], and the user's verdict
+    once given.
+    """
+
+    hand_tests: list[str]
+    """
+    What the user can try by hand.
+    """
+    links: list[ReviewLink]
+    """
+    Links to what changed.
+    """
+    verdict: ReviewVerdict | None = None
+    """
+    The user's verdict; absent while the review is open.
+    """
+
+
+class ReviewDetails(BaseModel):
+    """
+    What the agent hands over with a review, written when it raises it.
+    """
+
+    hand_tests: list[str] | None = []
+    """
+    What the user can try by hand. Shown as a list, read only: nothing is ticked or stored per
+    item.
+    """
+    links: Annotated[list[ReviewLink] | None, Field(validate_default=True)] = []
+    """
+    Links to what changed: a PR, a doc, a build. Possibly none.
+    """
+
+
 class Scope(BaseModel):
     """
     A scope as it travels on the wire: its key plus everything derived from it.
@@ -4149,23 +4101,6 @@ class StepEntryCreateCommitment(BaseModel):
     """
     op: Literal["create_commitment"]
     request: CreateCommitmentRequest
-    """
-    What to create.
-    """
-
-
-class StepEntryCreateExpectation(BaseModel):
-    """
-    Creates a wait.
-    """
-
-    may_be_refused: bool | None = False
-    """
-    When the write is refused, take back what it wrote and carry on, answering
-    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
-    """
-    op: Literal["create_expectation"]
-    request: CreateExpectationRequest
     """
     What to create.
     """
@@ -5135,6 +5070,54 @@ class Commitment(BaseModel):
     """
 
 
+class CreateExpectationRequest(BaseModel):
+    """
+    Request body for creating an expectation.
+    """
+
+    agentic: bool | None = False
+    """
+    Whether the wait is agentic — refused unless the parent is a Task that reads as Agentic.
+    """
+    agentic_note: str | None = None
+    """
+    An agentic wait's note.
+    """
+    check_every: DurationSpec | None = None
+    """
+    How often to check on it. Omitted, it is never checked.
+    """
+    check_starting: datetime | None = None
+    """
+    When the first check falls due. Omitted with a Check every, it is the moment of creation.
+    """
+    parent_id: int | str
+    """
+    Parent entity id.
+    """
+    parent_type: str
+    """
+    Parent entity type.
+    """
+    question: bool | None = None
+    """
+    Whether an agentic wait is a question for the user. Omitted, it is.
+    """
+    review: ReviewDetails | None = None
+    """
+    Makes the wait an agentic **review** with these details; the wait is then a question
+    (`question` is ignored) and agentic.
+    """
+    time_scope: TimeScope | None = None
+    """
+    Initial relevance window. Omitted, the expectation has none.
+    """
+    title: str
+    """
+    Display title.
+    """
+
+
 class CreateTaskRequest(BaseModel):
     """
     Request body for creating a task.
@@ -5556,6 +5539,23 @@ class StepEntryCreateTask(BaseModel):
     """
     op: Literal["create_task"]
     request: CreateTaskRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateExpectation(BaseModel):
+    """
+    Creates a wait.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_expectation"]
+    request: CreateExpectationRequest
     """
     What to create.
     """
