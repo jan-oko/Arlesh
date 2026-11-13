@@ -51,8 +51,9 @@ describe("landscape side insets", () => {
   });
 
   it("keeps the bars' ends clear of the corner's radius and of the camera, and nothing else", () => {
-    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), var\(--corner-tl\), var\(--clear-left, 0px\)\)/);
-    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), var\(--corner-tr\), var\(--clear-right, 0px\)\)/);
+    // The top bar's content starts below the status bar, so a corner pads only by what is left of it.
+    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), calc\(\(var\(--corner-tl\) - var\(--safe-top\)\) \* 0\.3\), var\(--clear-left, 0px\)\)/);
+    expect(phoneTopBar).toMatch(/max\(var\(--space-2\), calc\(\(var\(--corner-tr\) - var\(--safe-top\)\) \* 0\.3\), var\(--clear-right, 0px\)\)/);
     expect(bottomNav).toMatch(/max\(var\(--corner-br\), var\(--clear-right, 0px\)\) var\(--safe-bottom\) max\(var\(--corner-bl\), var\(--clear-left, 0px\)\)/);
   });
 });
@@ -86,7 +87,7 @@ describe("Full screen's padding for the system bars", () => {
   });
 
   it("is added to the content box of every view but the Mindmap, phone overrides included", () => {
-    for (const css of views) expect(css).toContain("var(--peek-pad-bottom)");
+    for (const css of views.slice(0, 3)) expect(css).toContain("var(--peek-pad-bottom)");
     for (const css of views.slice(0, 3)) expect(css).toContain("var(--peek-pad-top)");
     expect(views[0]).toContain(
       "padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
@@ -120,8 +121,18 @@ describe("The List's sticky headers in full screen", () => {
     expect(list).not.toContain("::before");
     const zen = read("src/components/ZenView/ZenView.module.css");
     expect(zen).toMatch(/\.container \{[^}]*padding: var\(--space-4\) var\(--space-4\)/);
-    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{\s*--zen-edge: 2px;\s*padding: var\(--zen-edge\) var\(--zen-edge\) calc\(var\(--zen-edge\) \+ var\(--peek-pad-bottom\)\);/);
-    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.gridArea \{\s*border-radius:\s*max\(0px, calc\(var\(--corner-tl\) - var\(--zen-edge\)\)\)/);
+    // Every side the same sliver, the bottom included: the card runs to the bottom edge.
+    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{[^}]*--zen-edge: 2px;[^}]*padding: var\(--zen-edge\);/);
+    expect(zen).toContain("--zen-r-bl: max(0px, calc(var(--corner-bl) - var(--zen-edge)));");
+    expect(zen).toMatch(/\.gridArea \{\s*border-radius: var\(--zen-r-tl\) var\(--zen-r-tr\) var\(--zen-r-br\) var\(--zen-r-bl\);/);
+    expect(zen).not.toContain("--peek-pad-bottom)\n");
+    // A card that touches a screen corner takes the device's radius for it, and its focus ring is inside the border.
+    const card = read("src/components/ZenView/ZenTaskCard.module.css");
+    for (const corner of ["tl", "tr", "br", "bl"]) expect(card).toContain(`.card[data-zen-corners~="${corner}"]`);
+    expect(card).toMatch(/:global\(:root\[data-fs-bars\]\) \.cardSelected \{\s*box-shadow: inset 0 0 0 1px/);
+    expect(card).toMatch(/border: 1px solid var\(--node-border\)/);
+    // The strip of pills clears the corner and the camera like a row does.
+    expect(read("src/components/ZenView/ZenStrip.module.css")).toContain("var(--clear-top, 0px) var(--clear-right, 0px) var(--space-1) var(--clear-left, 0px)");
     expect(zen).not.toContain("--peek-pad-top");
     for (const name of ["Steps", "Plan"]) {
       const css = read(`src/components/${name}View/${name}View.module.css`);

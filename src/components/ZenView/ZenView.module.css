@@ -13,21 +13,24 @@
 
 /* Full screen only: the cards fill nearly the whole screen, up under the status bar, the cutout and
    the side bars (user, 2026-11-08), and follow the screen's curve at the corners (2026-11-09).
-   `--zen-edge` is the sliver left between a card and the edge of the screen; the grid area is
-   clipped by the device's corner radii less that, so the cards' outer corners run just inside the
-   curve. The bottom keeps the gesture bar's inset, which lifts the area clear of the bottom corners,
-   so those get a small radius of their own. Where no radii are known (no bridge) the guess is 16px. */
+   `--zen-edge` is the sliver left between a card and the edge of the screen on every side, the
+   bottom included (the gesture bar draws over the card, which is what its pill does anywhere).
+   `--zen-r-*` are the device's corner radii less that sliver; a card that touches a screen corner
+   (`data-zen-corners`, see `zenCardCorners`) takes that radius for it in `ZenTaskCard.module.css`,
+   so its border and its focus ring trace the whole card, corners included. The grid area is
+   clipped by the same radii for the one case the cards cannot follow, a grid that scrolls. Where
+   no radii are known (no bridge) the guess is 16px. */
 :global(:root[data-fs-bars]) .container {
   --zen-edge: 2px;
-  padding: var(--zen-edge) var(--zen-edge) calc(var(--zen-edge) + var(--peek-pad-bottom));
+  --zen-r-tl: max(0px, calc(var(--corner-tl) - var(--zen-edge)));
+  --zen-r-tr: max(0px, calc(var(--corner-tr) - var(--zen-edge)));
+  --zen-r-br: max(0px, calc(var(--corner-br) - var(--zen-edge)));
+  --zen-r-bl: max(0px, calc(var(--corner-bl) - var(--zen-edge)));
+  padding: var(--zen-edge);
 }
 
 :global(:root[data-fs-bars]) .gridArea {
-  border-radius:
-    max(0px, calc(var(--corner-tl) - var(--zen-edge)))
-    max(0px, calc(var(--corner-tr) - var(--zen-edge)))
-    max(10px, calc(var(--corner-br) - var(--zen-edge) - var(--peek-pad-bottom)))
-    max(10px, calc(var(--corner-bl) - var(--zen-edge) - var(--peek-pad-bottom)));
+  border-radius: var(--zen-r-tl) var(--zen-r-tr) var(--zen-r-br) var(--zen-r-bl);
 }
 
 .strips {

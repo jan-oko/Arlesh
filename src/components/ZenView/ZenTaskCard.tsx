@@ -23,6 +23,8 @@ const ICON_BOX = 24;
 
 interface Props {
   row: TaskListRow;
+  /** The screen corners this card touches (`zenCardCorners`), for Full screen to round them. */
+  corners: string;
   width: number;
   /** The card's height, or `null` when it is as tall as its content (the phone layout). */
   height: number | null;
@@ -63,7 +65,7 @@ interface Props {
  * and its Review glyph whether or not badges are shown.
  */
 export default function ZenTaskCard({
-  row, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
+  row, corners, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
   onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, question, onAnswer,
 }: Props) {
   useInputCapture(isEditingTitle);
@@ -105,12 +107,12 @@ export default function ZenTaskCard({
 
   return (
     <div
-      data-cutout-row=""
       className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}${fitsContent ? ` ${styles.cardFits}` : ""}`}
       data-row-id={node.id}
       data-pending={node.pending === true ? "" : undefined}
       aria-describedby={overdue ? overdueNoteId : undefined}
       data-zen-card="task"
+      data-zen-corners={corners === "" ? undefined : corners}
       aria-current={isSelected ? "true" : undefined}
       style={cardStyle}
       title={node.title}

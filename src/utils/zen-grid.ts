@@ -283,3 +283,22 @@ export function zenNavigationTarget(
 export function zenDrawnOrder(model: ZenNavigationModel): string[] {
   return [...model.commitments, ...model.expectations, ...model.tasks];
 }
+
+/**
+ * Which of the screen's corners a card in the grid touches, as a space-separated list of `tl`,
+ * `tr`, `bl` and `br` (empty for a card in the middle), so that in Full screen it draws that
+ * corner with the device's radius. Cards fill the area in rows of `columns`; a last row that is
+ * short is centred and reaches neither bottom corner.
+ */
+export function zenCardCorners(index: number, count: number, columns: number): string {
+  if (columns <= 0 || index < 0 || index >= count) return "";
+  const rows = Math.ceil(count / columns);
+  const firstRowFull = count >= columns;
+  const lastRowFull = count % columns === 0;
+  const touches: string[] = [];
+  if (firstRowFull && index === 0) touches.push("tl");
+  if (firstRowFull && index === columns - 1) touches.push("tr");
+  if (lastRowFull && index === (rows - 1) * columns) touches.push("bl");
+  if (lastRowFull && index === count - 1) touches.push("br");
+  return touches.join(" ");
+}

@@ -4,9 +4,13 @@
   gap: var(--space-2);
   flex-shrink: 0;
   min-height: 48px;
-  /* The buttons spread across the whole bar, but not into a rounded corner (padding by its radius)
-     or under the camera (`--clear-*`, from `use-cutout-clearance.ts`; 0 where there is none). */
-  padding: 0 max(var(--space-2), var(--corner-tr), var(--clear-right, 0px)) 0 max(var(--space-2), var(--corner-tl), var(--clear-left, 0px));
+  /* The buttons spread across the whole bar, but not into a rounded corner or under the camera. The
+     bar's content starts below the status bar (`--safe-top`), so the corner, whose arc has mostly
+     curved away by then, pads only by what is left of its radius there, scaled to where the arc
+     really sits (0.3). In portrait on a phone whose status bar is as tall as the radius that is 0,
+     so the menu and the square sit at the bar's own padding. The camera is `--clear-*`, from
+     `use-cutout-clearance.ts` (0 where there is none). */
+  padding: 0 max(var(--space-2), calc((var(--corner-tr) - var(--safe-top)) * 0.3), var(--clear-right, 0px)) 0 max(var(--space-2), calc((var(--corner-tl) - var(--safe-top)) * 0.3), var(--clear-left, 0px));
   padding-top: var(--safe-top);
   background: var(--surface);
   border-bottom: 1px solid var(--node-border);

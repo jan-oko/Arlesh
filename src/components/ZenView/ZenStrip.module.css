@@ -5,7 +5,8 @@
   gap: var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: var(--space-1);
+  /* Clear of the camera and, in Full screen, of the rounded corner it runs under (`--clear-*`). */
+  padding: var(--clear-top, 0px) var(--clear-right, 0px) var(--space-1) var(--clear-left, 0px);
 }
 
 .card {

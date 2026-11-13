@@ -33,7 +33,7 @@ import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
 import { zenContents } from "@/utils/zen-contents";
 import type { ZenDirection, ZenNavigationModel } from "@/utils/zen-grid";
-import { zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize, ZEN_GAP_PX } from "@/utils/zen-grid";
+import { zenCardCorners, zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize, ZEN_GAP_PX } from "@/utils/zen-grid";
 import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 import CommitmentIcon from "@/components/NodeIcon/CommitmentIcon";
 import ExpectationIcon from "@/components/NodeIcon/ExpectationIcon";
@@ -307,10 +307,11 @@ export default function ZenView() {
           <div className={styles.centered}>{t("zenView:empty")}</div>
         ) : (
           <div className={`${styles.grid}${isPhone ? ` ${styles.gridStacked}` : ""}`} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
-            {contents.tasks.rows.map((row) => (
+            {contents.tasks.rows.map((row, index) => (
               <ZenTaskCard
                 key={stableKey(row.node.id)}
                 row={row}
+                corners={zenCardCorners(index, contents.tasks.rows.length, layout.columns)}
                 width={layout.cardWidth}
                 height={isPhone ? null : layout.cardHeight}
                 text={text}

@@ -34,6 +34,18 @@
   border-color: var(--overdue);
 }
 
+/* Full screen: a card that touches a screen corner rounds it by the device's radius, and the
+   selection's ring is drawn inside the border, where the grid area's clip cannot cut it, so both
+   trace the card's whole shape. The resting border is the same hairline as outside Full screen. */
+:global(:root[data-fs-bars]) .card[data-zen-corners~="tl"] { border-top-left-radius: var(--zen-r-tl); }
+:global(:root[data-fs-bars]) .card[data-zen-corners~="tr"] { border-top-right-radius: var(--zen-r-tr); }
+:global(:root[data-fs-bars]) .card[data-zen-corners~="br"] { border-bottom-right-radius: var(--zen-r-br); }
+:global(:root[data-fs-bars]) .card[data-zen-corners~="bl"] { border-bottom-left-radius: var(--zen-r-bl); }
+
+:global(:root[data-fs-bars]) .cardSelected {
+  box-shadow: inset 0 0 0 1px var(--card-selection, var(--node-border-selected));
+}
+
 .cardSelected {
   border-color: var(--card-selection, var(--node-border-selected));
   box-shadow: 0 0 0 1px var(--card-selection, var(--node-border-selected));
