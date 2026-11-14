@@ -25,6 +25,29 @@ function Rows() {
   );
 }
 
+/** A full-width strip whose only pill sits at the left, with a camera over the middle of the top edge. */
+function Strip({ pillRight }: { pillRight: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useCutoutClearance(ref);
+  return (
+    <div data-cutout-row="children" data-testid="strip" ref={(node) => {
+      ref.current = node;
+      if (node === null) return;
+      place(node, 0, 40);
+      const pill = node.firstElementChild;
+      if (pill !== null) pill.getBoundingClientRect = () => new DOMRect(10, 0, pillRight - 10, 40);
+    }}><span /></div>
+  );
+}
+
+function pushTopCamera(): void {
+  const style = document.documentElement.style;
+  style.setProperty("--cutout-top-start", "380px");
+  style.setProperty("--cutout-top-end", "420px");
+  style.setProperty("--cutout-top-depth", "30px");
+  window.dispatchEvent(new Event("arlesh-insets"));
+}
+
 function pushCamera(): void {
   const style = document.documentElement.style;
   style.setProperty("--cutout-left-start", "120px");
@@ -35,7 +58,10 @@ function pushCamera(): void {
 
 afterEach(() => {
   const style = document.documentElement.style;
-  for (const name of ["start", "end", "depth"]) style.removeProperty(`--cutout-left-${name}`);
+  for (const name of ["start", "end", "depth"]) {
+    style.removeProperty(`--cutout-left-${name}`);
+    style.removeProperty(`--cutout-top-${name}`);
+  }
 });
 
 describe("useCutoutClearance", () => {
@@ -62,5 +88,19 @@ describe("useRowCutoutClearance", () => {
   it("measures nothing and writes nothing while there is no cutout", () => {
     const { getByTestId } = render(<Rows />);
     expect(getByTestId("near").style.getPropertyValue("--clear-left")).toBe("");
+  });
+});
+
+describe("a strip marked data-cutout-row=children", () => {
+  it("is cleared by where its pills are: a camera over empty strip pushes nothing", () => {
+    const { getByTestId } = render(<Strip pillRight={300} />);
+    act(pushTopCamera);
+    expect(getByTestId("strip").style.getPropertyValue("--clear-top")).toBe("0px");
+  });
+
+  it("is pushed below the camera once a pill is under it", () => {
+    const { getByTestId } = render(<Strip pillRight={500} />);
+    act(pushTopCamera);
+    expect(getByTestId("strip").style.getPropertyValue("--clear-top")).toBe("30px");
   });
 });

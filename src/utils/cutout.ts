@@ -116,6 +116,11 @@ export function clearanceFor(box: Box, bands: CutoutBands, viewport: { width: nu
   };
 }
 
+/** The larger clearance on each side. */
+function widest(a: Clearance, b: Clearance): Clearance {
+  return { left: Math.max(a.left, b.left), right: Math.max(a.right, b.right), top: Math.max(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) };
+}
+
 /** The properties a box's clearance is written to, for its CSS to pad by. */
 const CLEARANCE_PROPERTIES = {
   left: "--clear-left",
@@ -130,8 +135,15 @@ const CLEARANCE_PROPERTIES = {
  * Padding does not move the box, so measuring it again gives the same answer.
  */
 export function writeClearance(element: HTMLElement, bands: CutoutBands): void {
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  // A row marked `data-cutout-row="children"` is a wide strip whose own box spans the screen but
+  // whose items do not (a scrolling strip of pills): it is cleared by where its items are, so a
+  // camera over empty strip pushes nothing, and one a pill scrolls under does.
+  const boxes = element.dataset.cutoutRow === "children"
+    ? Array.from(element.children, (child) => child.getBoundingClientRect())
+    : [element.getBoundingClientRect()];
   const clearance = hasCutout(bands)
-    ? clearanceFor(element.getBoundingClientRect(), bands, { width: window.innerWidth, height: window.innerHeight })
+    ? boxes.map((box) => clearanceFor(box, bands, viewport)).reduce(widest, NO_CLEARANCE)
     : NO_CLEARANCE;
   for (const side of SIDES) element.style.setProperty(CLEARANCE_PROPERTIES[side], `${clearance[side]}px`);
 }

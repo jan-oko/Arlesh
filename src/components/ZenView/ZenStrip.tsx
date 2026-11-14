@@ -26,7 +26,7 @@ interface Props {
 export default function ZenStrip({ label, nodes, renderGlyph, selectedId, exemptedIds, onSelect, onOpenEditor, onStepGlyph, stepLabel }: Props) {
   if (nodes.length === 0) return null;
   return (
-    <section className={styles.strip} aria-label={label} data-cutout-row="">
+    <section className={styles.strip} aria-label={label} data-cutout-row="children">
       {nodes.map((node) => (
         <ZenStripCard
           key={node.id}

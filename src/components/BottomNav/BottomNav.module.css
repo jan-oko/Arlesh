@@ -3,8 +3,10 @@
   flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--node-border);
-  /* The bottom edge: its ends keep clear of the screen's rounded corners, and of a camera on a side. */
-  padding: 0 max(var(--corner-br), var(--clear-right, 0px)) var(--safe-bottom) max(var(--corner-bl), var(--clear-left, 0px));
+  /* The buttons spread across the whole width. Their ends keep clear of the screen's rounded corners
+     only by what the arc still intrudes above the gesture inset (`--safe-bottom`), as the top bar's
+     do, and of a camera on a side; in portrait that is nothing. */
+  padding: 0 max(calc((var(--corner-br) - var(--safe-bottom)) * 0.3), var(--clear-right, 0px)) var(--safe-bottom) max(calc((var(--corner-bl) - var(--safe-bottom)) * 0.3), var(--clear-left, 0px));
   font-family: var(--font-sans);
 }
 

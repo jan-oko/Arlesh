@@ -54,7 +54,8 @@ describe("landscape side insets", () => {
     // The top bar's content starts below the status bar, so a corner pads only by what is left of it.
     expect(phoneTopBar).toMatch(/max\(var\(--space-2\), calc\(\(var\(--corner-tl\) - var\(--safe-top\)\) \* 0\.3\), var\(--clear-left, 0px\)\)/);
     expect(phoneTopBar).toMatch(/max\(var\(--space-2\), calc\(\(var\(--corner-tr\) - var\(--safe-top\)\) \* 0\.3\), var\(--clear-right, 0px\)\)/);
-    expect(bottomNav).toMatch(/max\(var\(--corner-br\), var\(--clear-right, 0px\)\) var\(--safe-bottom\) max\(var\(--corner-bl\), var\(--clear-left, 0px\)\)/);
+    // The bottom navigation's content sits above the gesture inset, so a corner pads only by what is left of it.
+    expect(bottomNav).toMatch(/max\(calc\(\(var\(--corner-br\) - var\(--safe-bottom\)\) \* 0\.3\), var\(--clear-right, 0px\)\) var\(--safe-bottom\) max\(calc\(\(var\(--corner-bl\) - var\(--safe-bottom\)\) \* 0\.3\), var\(--clear-left, 0px\)\)/);
   });
 });
 
@@ -122,7 +123,7 @@ describe("The List's sticky headers in full screen", () => {
     const zen = read("src/components/ZenView/ZenView.module.css");
     expect(zen).toMatch(/\.container \{[^}]*padding: var\(--space-4\) var\(--space-4\)/);
     // Every side the same sliver, the bottom included: the card runs to the bottom edge.
-    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{[^}]*--zen-edge: 2px;[^}]*padding: var\(--zen-edge\);/);
+    expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{[^}]*--zen-edge: 6px;[^}]*padding: var\(--zen-edge\);/);
     expect(zen).toContain("--zen-r-bl: max(0px, calc(var(--corner-bl) - var(--zen-edge)));");
     expect(zen).toMatch(/\.gridArea \{\s*border-radius: var\(--zen-r-tl\) var\(--zen-r-tr\) var\(--zen-r-br\) var\(--zen-r-bl\);/);
     expect(zen).not.toContain("--peek-pad-bottom)\n");
