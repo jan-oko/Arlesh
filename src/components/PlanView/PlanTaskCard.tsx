@@ -78,6 +78,7 @@ export default function PlanTaskCard({
     <div
       className={`${styles.card}${overdue ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}`}
       data-plan-card-id={node.id}
+      data-cutout-row=""
       aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
       draggable={nativeDrag}

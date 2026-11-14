@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useRowCutoutClearance } from "@/hooks/use-cutout-clearance";
 import TopBar from "@/components/TopBar/TopBar";
 import PhoneTopBar from "@/components/PhoneTopBar/PhoneTopBar";
 import TopBarSquare from "@/components/PhoneTopBar/TopBarSquare";
@@ -15,7 +16,8 @@ import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useTabTitle } from "@/hooks/use-tab-title";
-import { usePhoneLayout, useShowsActionBar } from "@/hooks/use-media-query";
+import { useTouchLayout } from "@/hooks/use-media-query";
+import styles from "./ActiveTab.module.css";
 import { useTwoFingerPreset } from "@/hooks/use-two-finger-preset";
 
 /**
@@ -30,9 +32,10 @@ import { useTwoFingerPreset } from "@/hooks/use-two-finger-preset";
 export default function ActiveTab() {
   const view = useViewStore((s) => s.view);
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
-  const isPhone = usePhoneLayout();
-  const showsActionBar = useShowsActionBar();
+  const isTouchLayout = useTouchLayout();
   const paletteOpen = usePaletteStore((s) => s.isOpen);
+  const viewsRef = useRef<HTMLDivElement>(null);
+  useRowCutoutClearance(viewsRef, view);
 
   useTabTitle();
   useGlobalHotkeys();
@@ -42,18 +45,25 @@ export default function ActiveTab() {
 
   return (
     <>
-      {!isFullscreen && (isPhone ? <PhoneTopBar /> : <TopBar />)}
+      {!isFullscreen && (isTouchLayout ? <PhoneTopBar /> : <TopBar />)}
+      {/* Every view spans the screen, under a cutout and the side bars. The Mindmap canvas is panned
+          and needs nothing; in the others a row or card that the camera overlaps keeps its content
+          clear of it (`data-cutout-row`, `use-cutout-clearance.ts`). */}
       {view === "mindmap" && <MindmapView />}
-      {view === "list" && <ListView />}
-      {view === "plan" && <PlanView />}
-      {view === "steps" && <StepsView />}
-      {view === "zen" && <ZenView />}
+      {view !== "mindmap" && (
+        <div ref={viewsRef} className={styles.views}>
+          {view === "list" && <ListView />}
+          {view === "plan" && <PlanView />}
+          {view === "steps" && <StepsView />}
+          {view === "zen" && <ZenView />}
+        </div>
+      )}
       {/* Full screen hides these too, leaving only the hot square in the bottom-right corner (tap:
           Open, long-press: the palette) and the three-finger tap, which toggles it back off. */}
-      {(showsActionBar || isPhone) && (isFullscreen
+      {isTouchLayout && (isFullscreen
         ? <TopBarSquare corner />
-        : <BottomChrome showActionBar={showsActionBar} showNav={isPhone} />)}
-      {paletteOpen && <CommandPalette showTabs={!isPhone} />}
+        : <BottomChrome showActionBar showNav />)}
+      {paletteOpen && <CommandPalette showTabs={!isTouchLayout} />}
     </>
   );
 }

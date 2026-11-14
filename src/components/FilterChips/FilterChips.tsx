@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
+import { useCutoutClearance } from "@/hooks/use-cutout-clearance";
 import { useTranslation } from "react-i18next";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
@@ -22,11 +23,13 @@ export default function FilterChips() {
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
   const chips = useActiveFilters(catalogue, entries);
+  const ref = useRef<HTMLDivElement>(null);
+  useCutoutClearance(ref, chips.length > 0);
 
   if (chips.length === 0) return null;
 
   return (
-    <div className={styles.row} data-owns-keys="">
+    <div ref={ref} className={styles.row} data-owns-keys="">
       {chips.map((chip) => {
         const chipStyle: ChipStyle = {
           "--chip-mode-color": modeColorVar(chip.mode),

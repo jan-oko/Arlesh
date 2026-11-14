@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useCutoutClearance } from "@/hooks/use-cutout-clearance";
 import { useTranslation } from "react-i18next";
 import AgentStatus from "@/components/TopBar/AgentStatus";
 import SubtreeBreadcrumb from "@/components/TopBar/SubtreeBreadcrumb";
@@ -44,12 +45,14 @@ export default function PhoneTopBar() {
   const portrait = useMediaQuery(PORTRAIT_QUERY);
   const choice = usePresetChoice();
   const [sheet, setSheet] = useState<OpenSheet>(null);
+  const barRef = useRef<HTMLElement>(null);
+  useCutoutClearance(barRef);
 
   const presetLabel = t(`listView:preset.${choice.active}`);
 
   return (
     <>
-      <header className={styles.bar}>
+      <header ref={barRef} className={styles.bar}>
         <button type="button" className={styles.iconBtn} aria-label={t("touch:menuOpen")} aria-haspopup="dialog" onClick={() => setSheet("menu")}>
           {MENU_GLYPH}
         </button>

@@ -1,0 +1,9 @@
+/* Holds the List, Plan, Steps and Zen views: a plain column that fills what the bars leave, with no
+   padding, so each view reaches the screen's edges. A row or card the camera overlaps pads its own
+   content clear of it (`use-cutout-clearance.ts`). */
+.views {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}

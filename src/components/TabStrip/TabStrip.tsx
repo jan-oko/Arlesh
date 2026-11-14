@@ -12,7 +12,7 @@ import { carriesTab, encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 import { useTabTearOff } from "@/hooks/use-tab-tear-off";
 import { currentWindowLabel } from "@/api/window-label";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
-import { usePhoneLayout } from "@/hooks/use-media-query";
+import { useTouchLayout } from "@/hooks/use-media-query";
 import styles from "./TabStrip.module.css";
 
 const ADD_ICON = "+";
@@ -53,7 +53,7 @@ export default function TabStrip() {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isPhone = usePhoneLayout();
+  const isTouchLayout = useTouchLayout();
 
   // Every window takes a dragged tab anywhere on it, and hands over the tabs other windows take.
   // A tab dragged out that neither this window nor another took becomes a window of its own.
@@ -136,7 +136,7 @@ export default function TabStrip() {
 
   // The phone layout shows one tab and no strip (docs/spec/touch.md); the tab chords still work
   // from a keyboard.
-  if (isPhone) return null;
+  if (isTouchLayout) return null;
 
   return (
     <div className={styles.strip} role="tablist" aria-label={t("common:tabs")}>

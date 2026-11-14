@@ -25,5 +25,7 @@ export function useSystemBars(): void {
     const root = document.documentElement;
     if (bridged && isFullscreen && mode !== "standard") root.dataset.fsBars = mode;
     else delete root.dataset.fsBars;
+    // The Full screen corners count to the layout around the camera, which re-reads on this.
+    window.dispatchEvent(new Event("arlesh-insets"));
   }, [mode, dark, isFullscreen]);
 }
