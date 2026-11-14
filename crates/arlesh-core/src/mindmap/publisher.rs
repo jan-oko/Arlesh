@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Timelike};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
@@ -53,18 +53,18 @@ pub trait Clock: Send + Sync {
     fn next_tick(&self) -> Tick;
 }
 
-/// The host's local wall clock, ticking half a second past each minute.
+/// The host's wall clock in the zone the server was told ([`crate::clock`]), else the machine's
+/// local zone, ticking half a second past each minute.
 pub struct LocalClock;
 
 impl Clock for LocalClock {
     fn now(&self) -> NaiveDateTime {
-        chrono::Local::now().naive_local()
+        crate::clock::now()
     }
 
     fn next_tick(&self) -> Tick {
-        let now = chrono::Local::now();
-        let into_minute = u64::from(now.timestamp_subsec_millis())
-            + 1000 * u64::from(chrono::Timelike::second(&now));
+        let now = crate::clock::now();
+        let into_minute = u64::from(now.nanosecond() / 1_000_000) + 1000 * u64::from(now.second());
         let wait = (60_000 + 500 - into_minute) % 60_000;
         // Never zero: a tick that fires at once would loop.
         let wait = if wait == 0 { 60_000 } else { wait };

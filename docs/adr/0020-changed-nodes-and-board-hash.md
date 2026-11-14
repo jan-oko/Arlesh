@@ -261,7 +261,8 @@ on the stream, and the diff works on the core's values, never the Python models.
     included, as the events carry it) with `X-Arlesh-Seq`, `X-Arlesh-Revision` (the publication's
     revision, not the current one), `X-Arlesh-Epoch`, `X-Arlesh-Hash` and `X-Arlesh-Board-Now`.
     It derives nothing, so it is cheaper than `/board`. The shared board is therefore derived at the
-    **server's** clock, not the device's: the server must run in the user's time zone, which the
+    **server's** clock, not the device's: the server keeps the user's time zone, a setting (`ARLESH_TIME_ZONE`,
+    default the server machine's own zone; added after review, see the PR), which the
     spec already asks of it for writes.
 
 20. **`api_version` is not bumped.** Everything is additive. An app that knows only revisions

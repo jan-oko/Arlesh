@@ -136,7 +136,9 @@ publication), `board_fence` and `board_head` (both answered from memory, *Live s
 instant (the lists, the lifecycles, the dependency picker) is sent the device's clock in the
 device's time zone. The board the windows hold is the server's latest publication, derived at the
 server's clock (*Live sync*), and a write is stamped by the server's clock, as it would be by any
-other writer. So the server must run in the user's time zone (`TZ`).
+other writer. So the server must keep the user's time zone: it is a server setting (`--time-zone`
+or `ARLESH_TIME_ZONE`, an IANA name; see [HTTP API](http-api.md), *Running*), and unset it is the server
+machine's own zone.
 
 ## The Backend crate and Python
 

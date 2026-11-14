@@ -11,6 +11,7 @@ pub mod agents;
 pub mod block_reasons;
 pub mod board;
 pub mod capacity;
+pub mod clock;
 pub mod database;
 pub mod domains;
 pub mod duplicate;

@@ -427,6 +427,23 @@ fn open(
     })
 }
 
+/// Makes `name`, an IANA time zone name, the zone this process reads its wall clock in: what the
+/// board is derived at, writes are stamped with and the publisher ticks by. Refused for a name no
+/// zone has. `None` goes back to the machine's own zone.
+#[pyfunction]
+fn set_time_zone(name: Option<&str>) -> PyResult<()> {
+    let Some(name) = name else {
+        arlesh_core::clock::clear_time_zone();
+        return Ok(());
+    };
+    arlesh_core::clock::set_time_zone(name).map_err(|error| {
+        raise(errors::Failure::new(
+            arlesh_core::error::WireErrorKind::InvalidRequest,
+            error.to_string(),
+        ))
+    })
+}
+
 /// Runs one pure rule — a JSON object tagged by `rule` — and answers its result as JSON.
 /// Runs one call on `arlesh-server`'s token table in the database at `path`, and waits for it:
 /// the token store's way in, which is not a coroutine. See [`tokens`].
@@ -475,6 +492,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(http_backend::pair_start, module)?)?;
     module.add_function(wrap_pyfunction!(http_backend::pair_poll, module)?)?;
     module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
+    module.add_function(wrap_pyfunction!(set_time_zone, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
     module.add_function(wrap_pyfunction!(token_call, module)?)?;
     module.add_function(wrap_pyfunction!(push_call, module)?)?;

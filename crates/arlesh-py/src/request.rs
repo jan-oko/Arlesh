@@ -914,7 +914,7 @@ async fn transaction<T: Serialize>(
 
 /// The local wall clock, as every write the app makes reads it.
 pub(crate) fn now() -> NaiveDateTime {
-    chrono::Local::now().naive_local()
+    arlesh_core::clock::now()
 }
 
 /// Runs one request.

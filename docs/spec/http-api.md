@@ -31,7 +31,7 @@ database, so it takes no hold.
 
 ```
 pip install 'arlesh[server]'
-arlesh-server --db <path> [--host <addr>] [--port N] [--tls-cert F --tls-key F] [--force]
+arlesh-server --db <path> [--host <addr>] [--port N] [--tls-cert F --tls-key F] [--time-zone ZONE] [--force]
 ```
 
 It is started by hand on whichever machine holds the database. There is no unit file and no
@@ -43,6 +43,17 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   file holding the URL instead, for a secret mounted as a file; giving both is refused. SQLite is
   the only scheme for now (Postgres comes later, through portable SQL). `--db` and
   `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
+
+- **The time zone.** The server keeps the user's day in one zone: "today", the parts of the day,
+  Overdue, Missed, the cooldown of a Habit and every `now` it derives the board at or stamps a
+  write with. `--time-zone <IANA name>` or `ARLESH_TIME_ZONE` (for example `Europe/Berlin`, or
+  `UTC`) sets it; the flag wins over the variable. Unset, it is the server machine's own zone,
+  which in a container is UTC unless `TZ` says otherwise, so **set it for a container**. A name no
+  zone has refuses to start, saying so. The zone database is built in (it does not need `tzdata`
+  in the image, and `TZ` is not read for the named zone). The desktop app deriving locally
+  (Standalone) keeps the device's zone, and a window's own reads still send the device's clock.
+  In a compose file: `environment: { ARLESH_TIME_ZONE: Europe/Berlin }` beside
+  `ARLESH_DATABASE_URL`.
 
 - **The backup endpoint.** `ARLESH_BACKUP_TOKEN` switches on `GET /backup`, an administrator's
   route for pulling a consistent snapshot of the database (see *Backup*). Unset, the route does not

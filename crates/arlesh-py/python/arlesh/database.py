@@ -885,6 +885,18 @@ class Database(ABC):
         :meth:`start_publisher`."""
 
 
+def set_time_zone(name: str | None) -> None:
+    """Makes ``name``, an IANA time zone name such as ``Europe/Berlin``, the zone this process reads
+    its wall clock in: "today", the parts of the day, Overdue and Missed are judged in it, and so is
+    every board the process derives. Without it (or with ``None``) the machine's local zone is
+    used. Raises
+    :class:`InvalidRequest` for a name no zone has."""
+    try:
+        _native.set_time_zone(name)
+    except _native.NativeError as error:
+        raise from_native(error) from None
+
+
 class Arlesh(Database):
     """The :class:`Database` port over a backend you choose: ``Arlesh(backend=SqliteBackend(…))``
     is the core over a local file, ``Arlesh(backend=HttpBackend(…))`` a client of an

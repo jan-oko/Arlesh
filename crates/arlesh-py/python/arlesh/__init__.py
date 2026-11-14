@@ -34,7 +34,7 @@ from arlesh.backends import (
     ServerStatus,
     SqliteBackend,
 )
-from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open
+from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open, set_time_zone
 from arlesh.errors import (
     AmbiguousId,
     ArleshError,
@@ -81,4 +81,5 @@ __all__ = [
     "open",
     "pairing",
     "rules",
+    "set_time_zone",
 ]
