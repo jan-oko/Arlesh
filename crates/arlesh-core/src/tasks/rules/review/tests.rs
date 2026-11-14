@@ -54,6 +54,7 @@ fn wait(under: i64, question: bool) -> Expectation {
 }
 
 const ON_AGENT: Status = Status::Agentic(AgenticStatus::OnAgent);
+const TODO: Status = Status::Agentic(AgenticStatus::Todo);
 const REVIEW: Status = Status::Agentic(AgenticStatus::Review);
 
 #[test]
@@ -80,7 +81,30 @@ fn an_answered_question_leaves_it_on_agent() {
 }
 
 #[test]
-fn only_on_agent_reads_review() {
+fn a_to_do_task_with_an_open_question_reads_review() {
+    let mut tasks = vec![task(1, TODO)];
+    derive(&mut tasks, &[wait(1, true)]);
+    assert_eq!(tasks[0].status, REVIEW);
+}
+
+#[test]
+fn a_to_do_task_with_a_wait_that_is_not_a_question_stays_to_do() {
+    let mut tasks = vec![task(1, TODO)];
+    derive(&mut tasks, &[wait(1, false)]);
+    assert_eq!(tasks[0].status, TODO);
+}
+
+#[test]
+fn a_to_do_task_whose_question_is_answered_reads_to_do_again() {
+    let mut released = wait(1, true);
+    released.status = ExpectationStatus::Released;
+    let mut tasks = vec![task(1, TODO)];
+    derive(&mut tasks, &[released]);
+    assert_eq!(tasks[0].status, TODO);
+}
+
+#[test]
+fn only_to_do_and_on_agent_read_review() {
     let doing = Status::Agentic(AgenticStatus::Doing);
     let ordinary = Status::Ordinary(TaskStatus::InProgress);
     let mut tasks = vec![task(1, doing), task(2, ordinary)];
