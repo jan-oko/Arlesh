@@ -751,6 +751,17 @@ mod agentic_compound {
     }
 
     #[test]
+    fn a_to_do_child_whose_question_is_open_reads_review_before_the_board_derives_it() {
+        let mut board = compound_of(vec![child(2, AgenticStatus::Todo), child(3, OnAgent)]);
+        board.expectations = vec![Expectation {
+            agentic: true,
+            question: true,
+            ..wait(9, ("task", 2), ExpectationStatus::Pending)
+        }];
+        assert_eq!(board.agentic_of(1), Review);
+    }
+
+    #[test]
     fn on_agent_and_review_mixed_read_review() {
         let board = compound_of(vec![child(2, OnAgent), child(3, Review)]);
         assert_eq!(board.agentic_of(1), Review);
