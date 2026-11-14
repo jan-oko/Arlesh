@@ -94,6 +94,21 @@ def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: 
     assert deleted.status_code == 204
 
 
+def test_a_duplicated_domain_with_a_sub_domain_and_a_task_is_deleted_with_its_content(
+    server: TestClient, create: Create, domain: int, new_task: NewTask
+) -> None:
+    create("/domains", {"title": "Inner", "subtype": "project", "parent_id": domain})
+    new_task(domain)
+    copy = server.post(f"/domains/{domain}/duplicate", params={"target_id": 1, "position": 0})
+    copy_id = copy.json()["copy"]["id"]
+
+    deleted = server.delete(f"/domains/{copy_id}")
+
+    assert deleted.status_code == 204, deleted.text
+    assert server.get(f"/domains/{copy_id}").status_code == 404
+    assert server.get(f"/domains/{domain}").status_code == 200
+
+
 def test_a_tag_is_put_on_and_taken_off_a_task(
     server: TestClient, create: Create, domain: int, new_task: NewTask
 ) -> None:

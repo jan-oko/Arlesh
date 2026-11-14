@@ -204,6 +204,52 @@ async fn delete_node_subtree(
     Ok(())
 }
 
+/// Cascade-deletes everything that hangs directly under the stored node `(parent_type, parent_id)`
+/// — its Tasks, Goals, Commitments and waits, each with its own subtree, and the notes on the node
+/// itself — and leaves the node. The caller deletes the node, which is a `domains` row that
+/// [`delete_node_subtree`] does not handle.
+///
+/// Takes a transactional session for the reason [`delete_node_subtree`] does.
+pub(crate) async fn delete_children_of(
+    db: &mut Db<Transactional>,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<(), TaskError> {
+    let mut children: Vec<(&str, i64)> = Vec::new();
+    children.extend(
+        db.tasks()
+            .child_ids(parent_type, parent_id)
+            .await?
+            .into_iter()
+            .map(|id| ("task", id)),
+    );
+    children.extend(
+        db.goals()
+            .child_ids(parent_type, parent_id)
+            .await?
+            .into_iter()
+            .map(|id| ("goal", id)),
+    );
+    children.extend(
+        db.commitments()
+            .child_ids(parent_type, parent_id)
+            .await?
+            .into_iter()
+            .map(|id| ("commitment", id)),
+    );
+    children.extend(
+        db.expectations()
+            .child_ids(parent_type, parent_id)
+            .await?
+            .into_iter()
+            .map(|id| (expectations::EXPECTATION, id)),
+    );
+    for (child_type, child_id) in children {
+        delete_node_subtree(db, child_type, child_id).await?;
+    }
+    delete_infos_under(db, parent_type, parent_id).await
+}
+
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
 /// both boundary ids are present; the duration parameters are optional metadata on top.
 fn time_scope_from_row(

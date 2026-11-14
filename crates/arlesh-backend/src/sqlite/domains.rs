@@ -63,15 +63,11 @@ impl DomainsPort for SqliteBackend {
     }
 
     async fn delete_domain(&self, id: i64) -> Result<(), WireError> {
-        let mut db = self
-            .factory
-            .connect()
+        let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
+        arlesh_core::domains::delete_subtree(&mut db, DomainId(id))
             .await
             .map_err(WireError::from_error)?;
-        db.domains()
-            .delete(DomainId(id))
-            .await
-            .map_err(WireError::from_error)
+        db.commit().await.map_err(WireError::from_error)
     }
 
     async fn duplicate_domain(
