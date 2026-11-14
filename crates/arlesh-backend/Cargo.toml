@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-backend"
-version = "0.3.0"
+version = "1.0.0"
 description = "Arlesh's Backend port and its two implementations: the in-process SQLite core and the HTTP client"
 edition = "2021"
 

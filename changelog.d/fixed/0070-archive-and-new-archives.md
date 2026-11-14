@@ -1,1 +1,0 @@
-- **"Archive & new" archives the old Habit.** It used to leave the old Habit recurring beside the new one, so every occurrence arrived twice. The old Habit now stops after today and keeps its history.

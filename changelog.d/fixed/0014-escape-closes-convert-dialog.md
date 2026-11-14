@@ -1,1 +1,0 @@
-- **Escape closes the Convert to Flow dialog.** It opened without focus, so Escape did nothing until you clicked into it; it now opens with Cancel focused.

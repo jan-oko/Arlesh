@@ -1,1 +1,0 @@
-- **The day turns over at 02:00, not midnight, and so do the week, month and season.** Night (22:00–02:00) now sits wholly inside the day it starts on. At 00:30 you are still in the previous date's day: that is the day the scope picker marks as today, a task plans into, and a Habit's open iteration belongs to; the next iteration arrives at 02:00. Stored scopes keep their dates.

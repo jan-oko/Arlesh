@@ -1,1 +1,0 @@
-- **Changing a node's type.** A node keeps the kind it was created as: **Ctrl+↑** / **Ctrl+↓** no longer cycle its type, and the context menu's **Set type** submenu is gone, as is converting a Flow's goal and task items into each other. To change a kind, create the new node and move or delete the old one.

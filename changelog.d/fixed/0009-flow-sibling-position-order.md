@@ -1,1 +1,0 @@
-- **Starting a Flow that mixes Goals and Tasks keeps their order.** A Task could be sorted by an unrelated Goal's position.

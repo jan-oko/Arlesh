@@ -1,1 +1,0 @@
-- **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.

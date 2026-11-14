@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-core"
-version = "0.3.0"
+version = "1.0.0"
 description = "Arlesh's domain: the model, its rules, the session layer, undo and the MCP endpoint"
 edition = "2021"
 

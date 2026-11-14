@@ -1,1 +1,0 @@
-- **Searches leave archived nodes out.** **Ctrl+O**, the node results of **Ctrl+F**, and the Under and Depends on boxes no longer offer archived nodes; *Include archived nodes in search* in Settings → General brings them back. Delegated Tasks are offered only while the Delegated pill is on Include.

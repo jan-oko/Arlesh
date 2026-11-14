@@ -1,1 +1,0 @@
-- **Hebrew as an interface language.** The app is English-only and the Language setting is gone. Titles you write in Hebrew still render right-to-left, and status badges always sit along a node's left edge.
