@@ -3,6 +3,7 @@ import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useHelpStore } from "@/stores/use-help-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { usePaletteStore } from "@/stores/use-palette-store";
@@ -23,6 +24,7 @@ export default function PhoneMenuSheet({ showPlanScope, onOpenSettings, onClose 
   const setPlanScope = useFilterStore((s) => s.setPlanScope);
   const planScopeOverlapping = useDisplayStore((s) => s.planScopeOverlapping);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
+  const showHelp = useHelpStore((s) => s.show);
   const openPalette = usePaletteStore((s) => s.open);
   // On a touch-only device the sheet this opens teaches the gestures, so the entry says so.
   const touchOnly = useMediaQuery(TOUCH_ONLY_QUERY);
@@ -48,6 +50,7 @@ export default function PhoneMenuSheet({ showPlanScope, onOpenSettings, onClose 
         <li><button type="button" className={styles.sheetRow} onClick={then(openPalette)}>{t("touch:menuPalette")}</button></li>
         <li><button type="button" className={styles.sheetRow} onClick={then(onOpenSettings)}>{t("touch:menuSettings")}</button></li>
         <li><button type="button" className={styles.sheetRow} onClick={then(toggleHotkeys)}>{touchOnly ? t("touch:gesturesTitle") : t("touch:menuHotkeys")}</button></li>
+        <li><button type="button" className={styles.sheetRow} onClick={then(showHelp)}>{t("touch:menuHelp")}</button></li>
       </ul>
     </BottomSheet>
   );

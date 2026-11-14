@@ -7,11 +7,13 @@ import ScopeClampPrompt from "@/components/ScopeClampPrompt/ScopeClampPrompt";
 import HotkeysModal from "@/components/HotkeysModal/HotkeysModal";
 import ServerBanner from "@/components/ServerBanner/ServerBanner";
 import FirstRunChooser from "@/components/FirstRunChooser/FirstRunChooser";
+import HelpView from "@/components/HelpView/HelpView";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import { runStandalone } from "@/api/client-mode";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { useClientModeSync } from "@/hooks/use-client-mode";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useHelpStore } from "@/stores/use-help-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
@@ -40,6 +42,8 @@ export default function App() {
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   // Three fingers tapping anywhere is full screen, in every view and over a sheet alike.
   useThreeFingerTap(toggleFullscreen, hasTouch);
+  const helpOpen = useHelpStore((s) => s.isOpen);
+  const closeHelp = useHelpStore((s) => s.close);
   const closeHotkeys = useHotkeysStore((s) => s.close);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
@@ -107,6 +111,9 @@ export default function App() {
       {/* Read once, as the sheet opens: the view chords are off while it holds the keyboard, so the
           view it opened over is the view it closes over. */}
       {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} view={active?.stores.view.getState().view} />}
+      {/* Help is a full view left like a modal: the tab stays mounted beneath it, so closing it
+          returns to exactly where you were. */}
+      {helpOpen && <HelpView onClose={closeHelp} />}
       {/* Any view's editor, drag or Plan writer may ask these, so they hang above them all. */}
       <PlanClampPrompt />
       <QuitConfirm />

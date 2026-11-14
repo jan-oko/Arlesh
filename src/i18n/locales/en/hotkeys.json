@@ -28,6 +28,7 @@
   "viewSteps": "Show the Steps view",
   "viewZen": "Show the Zen view",
   "toggleHotkeys": "Show this cheat-sheet",
+  "openHelp": "Open Help",
   "quitApp": "Quit Arlesh",
   "toggleFilter": "Toggle the filter menu",
   "openFilterSearch": "Filter: search the filters and add one",

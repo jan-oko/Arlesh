@@ -85,6 +85,22 @@ typed into it. `Ctrl+W` loses it too, but a close is a gesture that says "throw 
 that quietly drops the contents is a different thing. So it alone takes the same
 `isInputCaptured` guard the view chords carry.
 
+**Help.** `F1` opens Help, and pressing it again closes it. Help is a full view, left like a modal:
+it takes the whole window over the tab, and the close button (the on-screen ×) or `Esc` returns to the
+view you came from exactly as it was — the tab stays mounted beneath it, so its view, selection and
+scroll are untouched. It is also opened from Settings → General on the desktop, and from the ☰ menu on
+the phone. Like the cheat-sheet it carries no guard, so it is reachable in every state; it holds the
+keyboard while open, so the view chords are off behind it. Help shows the concept map as one scrolling page, with **no title bar**: the close button floats over
+the corner. The page is the map's prose and its pipeline diagram, a jump list to its eight groups, the
+derivation graph in its place, and the concept cards of each group — all drawn from
+`src/data/model-map.ts`, `src/data/model-map-pipeline.ts` and `src/data/derivation-graph.ts`, in the
+app's own fonts and theme, with no network request. In the graph, hover or focus a box to preview it,
+click, tap or `Enter` to pin its card, Clear to let go; on touch a tap pins, there being no hover, and
+a narrow screen scrolls the graph sideways. A button beside the graph's heading **expands it to fill
+the whole Help view**; the same button, or `Esc` (which leaves the expanded graph before it closes
+Help), returns to the page at the place it was left, with the pinned cards kept. The right-click menus are per node, row and tab, so
+none of them carries a Help line.
+
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
 `F11` again brings them back. Bare `F` does the same, but **only when nothing is selected** — with a
 selection, `F` keeps its existing meaning of converting that node to a Flow, and in List View the

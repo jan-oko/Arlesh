@@ -18,6 +18,7 @@ import McpAccessPage from "./McpAccessPage";
 import ServerPage from "./ServerPage";
 import DevicesPage from "./DevicesPage";
 import NotificationsPage from "./NotificationsPage";
+import { useHelpStore } from "@/stores/use-help-store";
 import styles from "./SettingsModal.module.css";
 
 export type { SettingsPage };
@@ -89,7 +90,7 @@ export default function SettingsModal({ onClose, onOpenHotkeys, initialPage = "g
   }
 
   const content: Record<SettingsPage, ReactNode> = {
-    general: <GeneralPage onOpenHotkeys={onOpenHotkeys} />,
+    general: <GeneralPage onOpenHotkeys={onOpenHotkeys} onOpenHelp={() => { onClose(); useHelpStore.getState().show(); }} />,
     mindmap: <MindmapPage />,
     list: <ListPage />,
     steps: <StepsPage />,

@@ -9,6 +9,7 @@ import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { surfaceCommand } from "@/test/surface-command";
 import { LONG_PRESS_MS } from "@/utils/touch/gestures";
 import { usePaletteStore } from "@/stores/use-palette-store";
+import { useHelpStore } from "@/stores/use-help-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
@@ -68,6 +69,14 @@ describe("PhoneTopBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "touch:menuOpen" }));
     fireEvent.click(screen.getByRole("button", { name: "touch:menuPalette" }));
     expect(usePaletteStore.getState().isOpen).toBe(true);
+  });
+
+  it("opens Help from the ☰ menu", () => {
+    useHelpStore.setState({ isOpen: false });
+    render(<PhoneTopBar />);
+    fireEvent.click(screen.getByRole("button", { name: "touch:menuOpen" }));
+    fireEvent.click(screen.getByRole("button", { name: "touch:menuHelp" }));
+    expect(useHelpStore.getState().isOpen).toBe(true);
   });
 });
 
