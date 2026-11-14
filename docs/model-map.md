@@ -165,7 +165,7 @@ How the presets read them:
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
 
 ### Review
-- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent, whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: an exclamation; a review: a checked page).
+- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent, whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: a question mark; a review: a checked page).
 - **Why:** it is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait of its own: the Task shows it, and is where it is answered.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**

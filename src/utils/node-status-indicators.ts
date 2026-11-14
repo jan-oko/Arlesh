@@ -97,7 +97,7 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
     indicators.push({ type: "asynchronous" });
   }
   // What an agent has open for the user on this Task. An agentic wait is never drawn as a node, so
-  // the Task says it: an exclamation for a question, a checked page for a review — two marks, so
+  // the Task says it: a question mark for a question, a checked page for a review — two marks, so
   // the row tells them apart. The tooltip carries the titles.
   const open = openWaits(node);
   if (open.some((wait) => !isReviewWait(wait))) indicators.push({ type: "openQuestion" });

@@ -1,11 +1,13 @@
 interface Props { cx: number; cy: number; r: number; color: string; }
 
-/** An exclamation mark: an agent has a question open for the user. */
+/** A question mark: an agent has a question open for the user. (A review is the checked page, so
+ * the two stay distinguishable.) */
 export default function QuestionIcon({ cx, cy, r, color }: Props) {
+  const p = (dx: number, dy: number) => `${cx + dx * r} ${cy + dy * r}`;
   return (
-    <g fill={color} stroke={color} strokeLinecap="round">
-      <line x1={cx} y1={cy - r * 0.85} x2={cx} y2={cy + r * 0.25} strokeWidth={r * 0.36} />
-      <circle cx={cx} cy={cy + r * 0.78} r={r * 0.22} stroke="none" />
+    <g fill="none" stroke={color} strokeWidth={r * 0.32} strokeLinecap="round" strokeLinejoin="round">
+      <path d={`M ${p(-0.42, -0.4)} C ${p(-0.42, -1.05)} ${p(0.5, -1.05)} ${p(0.5, -0.4)} C ${p(0.5, 0.05)} ${p(0, 0.1)} ${p(0, 0.4)}`} />
+      <circle cx={cx} cy={cy + 0.85 * r} r={r * 0.12} fill={color} />
     </g>
   );
 }
