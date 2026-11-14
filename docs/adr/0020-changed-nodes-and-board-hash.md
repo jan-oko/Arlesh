@@ -84,7 +84,7 @@ on the stream, and the diff works on the core's values, never the Python models.
    check walks the whole board; and it is order-free, so a client that keeps rows in a different
    order (decision 12) agrees. *Why JSON text and not a Rust value walk:* the board lives in JS, and
    `JSON.stringify(JSON.parse(s)) === s` holds for the core's compact JSON of these types (no
-   floats, no integer-like object keys, no integers above 2^53, no lone surrogates); a corpus pins
+   floats, no integer-like object keys, no lone surrogates, and no integers above 2^53 but the least and greatest `i64` of a derived check Task's `position`, which the client writes in full, see `compactJson`); a corpus pins
    it with every escape that could differ (build plan, step 2). *Why not wasm:* ADR 0017 drops the wasm
    build, and the digest is twelve lines. *Why FNV-1a 32:* trivially identical in both languages,
    needs no dependency, and a collision only delays detection of a missed event until the next
