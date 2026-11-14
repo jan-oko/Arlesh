@@ -414,6 +414,10 @@ async fn write_overlay(
     if let Some(is_private) = request.is_private {
         overlay.set_is_private(is_private, drawn);
     }
+    if request.verdict.is_some() {
+        // A derived wait is never a review: only a stored wait carries one.
+        return Err(crate::tasks::error::TaskError::VerdictOnNonReview.into());
+    }
     if let Some(agentic) = request.agentic {
         if agentic && !current.agentic {
             require_agentic_task(db, &current.parent_id, now).await?;

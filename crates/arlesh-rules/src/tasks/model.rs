@@ -1424,6 +1424,13 @@ pub struct Expectation {
     /// The answer a question wait was released with, or is being given. `None` for none.
     #[serde(default)]
     pub answer: Option<String>,
+    /// Present on an agentic **review** — the agent's hand-back of finished work — and absent on a
+    /// question and on a wait on something else. A review is a question too ([`Self::question`] is
+    /// true), so it makes its Task read Review; what tells it apart is this. Its title and
+    /// summary are [`Self::title`] and [`Self::agentic_note`], and the user's note is
+    /// [`Self::answer`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<Review>,
     /// Where the row came from: made by hand, or derived from a Task (ADR 0008).
     #[serde(default)]
     pub origin: Origin,
@@ -1432,6 +1439,83 @@ pub struct Expectation {
 /// An agentic wait is a question unless it says otherwise.
 fn question_by_default() -> bool {
     true
+}
+
+/// A link a review carries: a PR, a doc, a build. Arlesh stores it and never follows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ReviewLink {
+    /// What the link is, in a word or two ("PR #12", "Design doc").
+    pub label: String,
+    /// Where it points.
+    pub url: String,
+}
+
+/// The user's answer to a review. Stored as a value; `Approved` on a review with a PR link is the
+/// user's explicit word to merge it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewVerdict {
+    /// Accepted — and, with a PR link, merge it.
+    Approved,
+    /// Not accepted: the agent fixes what the note says, then raises a new review.
+    ChangesRequested,
+}
+
+impl ReviewVerdict {
+    /// The database spelling.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes_requested",
+        }
+    }
+
+    /// Parses the database spelling, if recognised.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "approved" => Some(Self::Approved),
+            "changes_requested" => Some(Self::ChangesRequested),
+            _ => None,
+        }
+    }
+}
+
+/// What the agent hands over with a review, written when it raises it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ReviewDetails {
+    /// Links to what changed: a PR, a doc, a build. Possibly none.
+    #[serde(default)]
+    pub links: Vec<ReviewLink>,
+    /// What the user can try by hand. Shown as a list, read only: nothing is ticked or stored per
+    /// item.
+    #[serde(default)]
+    pub hand_tests: Vec<String>,
+}
+
+/// A review as an Expectation carries it: the agent's [`ReviewDetails`], and the user's verdict
+/// once given.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Review {
+    /// Links to what changed.
+    #[serde(default)]
+    pub links: Vec<ReviewLink>,
+    /// What the user can try by hand.
+    #[serde(default)]
+    pub hand_tests: Vec<String>,
+    /// The user's verdict; absent while the review is open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<ReviewVerdict>,
+}
+
+impl Review {
+    /// A review just raised: the agent's details and no verdict yet.
+    pub fn raised(details: ReviewDetails) -> Self {
+        Self {
+            links: details.links,
+            hand_tests: details.hand_tests,
+            verdict: None,
+        }
+    }
 }
 
 /// Request body for creating an expectation.
@@ -1461,6 +1545,10 @@ pub struct CreateExpectationRequest {
     /// Whether an agentic wait is a question for the user. Omitted, it is.
     #[serde(default)]
     pub question: Option<bool>,
+    /// Makes the wait an agentic **review** with these details; the wait is then a question
+    /// (`question` is ignored) and agentic.
+    #[serde(default)]
+    pub review: Option<ReviewDetails>,
 }
 
 /// Request body for updating an expectation.
@@ -1519,6 +1607,10 @@ pub struct UpdateExpectationRequest {
         skip_serializing_if = "Option::is_none"
     )]
     pub answer: Option<Option<String>>,
+    /// The user's verdict on a review (None leaves it unchanged). Only a review takes one, and
+    /// releasing a review needs one, given here or already stored.
+    #[serde(default)]
+    pub verdict: Option<ReviewVerdict>,
 }
 
 #[cfg(test)]

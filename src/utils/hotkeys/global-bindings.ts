@@ -10,6 +10,7 @@ export interface GlobalContext {
   isInputCaptured: boolean;
   onSetView: (view: View) => void;
   onToggleHotkeys: () => void;
+  onToggleHelp: () => void;
   onToggleFullscreen: () => void;
   onQuit: () => void;
   /** Whether the tab is re-rooted at a subtree — gates the two exit chords, as it did per view. */
@@ -131,6 +132,18 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     labelKey: "toggleHotkeys",
     group: "groupApp",
     run: (c) => c.onToggleHotkeys(),
+  },
+  {
+    // F1 is Help everywhere, and is free here. Like the cheat-sheet it carries no guard: it is
+    // reachable in every state, and pressing it again is what closes Help. (The dispatcher still
+    // ignores it inside a text field, so it never gets in the way of typing.)
+    id: "global.openHelp",
+    section: "global",
+    chord: { code: "F1" },
+    labelKey: "openHelp",
+    group: "groupApp",
+    allowRepeat: false,
+    run: (c) => c.onToggleHelp(),
   },
   // --- Promoted out of the view tables ---
   //

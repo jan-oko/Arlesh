@@ -13,6 +13,9 @@ import CalendarIcon from "./CalendarIcon";
 import IceIcon from "./IceIcon";
 import BacklogIcon from "./BacklogIcon";
 import AgenticIcon from "./AgenticIcon";
+import QuestionIcon from "./QuestionIcon";
+import ReviewIcon from "./ReviewIcon";
+import { isReviewWait, openWaits } from "@/utils/open-question";
 import DelegatedIcon from "./DelegatedIcon";
 import AsyncIcon from "./AsyncIcon";
 import ArchiveIcon from "./ArchiveIcon";
@@ -25,7 +28,7 @@ const ICON_SPACING = 16;
 const ROW_GAP = 11;
 const MUTED = "var(--node-text-muted)";
 const DANGER = "var(--danger)";
-/** An agent waiting on the user is the one badge that asks for something, so it is not muted. */
+/** An agent waiting on the user (a question or a review) is the one badge that asks for something, so it is not muted. */
 const ACCENT = "var(--accent)";
 
 interface Props {
@@ -80,15 +83,16 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
           tooltip: t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
           icon: <DelegatedIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
         };
-      case "agentWaiting": {
-        // A question waits on the user and takes the accent; a wait on something else, like CI,
-        // is the agent's business and stays quiet.
-        const note = node.agentWaiting?.note ?? null;
-        const onYou = node.agentWaiting?.question !== false;
-        const tooltip = onYou
-          ? note === null ? t("agentWaiting") : t("agentWaitingNote", { note })
-          : note === null ? t("agentWaitingElsewhere") : t("agentWaitingElsewhereNote", { note });
-        return { tooltip, icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={onYou ? ACCENT : MUTED} /> };
+      case "openQuestion":
+      case "openReview": {
+        const review = indicator.type === "openReview";
+        const titles = openWaits(node).filter((wait) => isReviewWait(wait) === review).map((wait) => wait.title).join(", ");
+        return {
+          tooltip: review ? t("openReview", { titles }) : t("openQuestion", { titles }),
+          icon: review
+            ? <ReviewIcon cx={cx} cy={rowY} r={ICON_R} color={ACCENT} />
+            : <QuestionIcon cx={cx} cy={rowY} r={ICON_R} color={ACCENT} />,
+        };
       }
       case "asynchronous":
         return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };

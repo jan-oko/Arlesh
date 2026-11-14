@@ -23,8 +23,6 @@
   "asynchronous": "Asynchronous — doing this starts a wait",
   "mcpVisible": "Visible to the MCP (via {{root}})",
   "private": "Private",
-  "agentWaiting": "An agent is waiting on you",
-  "agentWaitingNote": "An agent is waiting on you: {{note}}",
-  "agentWaitingElsewhere": "An agent is waiting on something else",
-  "agentWaitingElsewhereNote": "An agent is waiting on something else: {{note}}"
+  "openQuestion": "An agent has a question for you: {{titles}}",
+  "openReview": "An agent hands work back for your review: {{titles}}"
 }

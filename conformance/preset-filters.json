@@ -3067,6 +3067,106 @@
         "task-parent-idle"
       ],
       "commitments": []
+    },
+    {
+      "name": "agentic waits are not drawn under All, and a hand-made wait is",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "agentic waits are not drawn under Start",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "agentic waits are not drawn under Plan",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "the expectations option leaves agentic waits out",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all",
+        "expectations": true
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "the Archived pill's include does not bring an agentic wait back",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all",
+        "archived": "include"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
     }
   ],
   "boards": {
@@ -4882,6 +4982,49 @@
                   "status": "todo"
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    "agentic-waits": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-board",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-host",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "expectation-question",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "agentWaiting": true
+                },
+                {
+                  "id": "expectation-ci",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "agentWaiting": true
+                },
+                {
+                  "id": "expectation-answered",
+                  "kind": "expectation",
+                  "status": "released",
+                  "agentWaiting": true
+                }
+              ]
+            },
+            {
+              "id": "expectation-by-hand",
+              "kind": "expectation",
+              "status": "pending"
             }
           ]
         }

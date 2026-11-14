@@ -8,6 +8,7 @@ import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { isAndroid } from "@/utils/platform";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 import { undo } from "@/api/gesture";
+import { useHelpStore } from "@/stores/use-help-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -103,6 +104,16 @@ describe("SettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "keyboardShortcuts" }));
 
     expect(onOpenHotkeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes itself and opens Help from General", () => {
+    useHelpStore.setState({ isOpen: false });
+    const { onClose } = open();
+
+    fireEvent.click(screen.getByRole("button", { name: "help" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useHelpStore.getState().isOpen).toBe(true);
   });
 
   it("toggles the theme on General", () => {
