@@ -5,7 +5,7 @@
      off the bottom of the line of text beside it. */
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-1) 0;
+  padding: var(--space-2) max(var(--space-1), var(--clear-right, 0px)) 0 max(var(--space-1), var(--clear-left, 0px));
   min-width: 0;
   /* A deep chain stays on one line rather than pushing the list apart. */
   overflow: hidden;

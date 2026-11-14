@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useCutoutClearance } from "@/hooks/use-cutout-clearance";
 import { useViewStore } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import type { TouchLabelKey } from "@/stores/use-command-surface-store";
@@ -19,8 +21,10 @@ export default function BottomNav() {
   const { t } = useTranslation("touch");
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
+  const ref = useRef<HTMLElement>(null);
+  useCutoutClearance(ref);
   return (
-    <nav className={styles.nav} aria-label={t("bottomNavLabel")}>
+    <nav ref={ref} className={styles.nav} aria-label={t("bottomNavLabel")}>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.view}
