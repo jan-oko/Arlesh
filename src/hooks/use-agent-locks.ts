@@ -23,7 +23,10 @@ const MAX_TIMER_MS = 2_147_000_000;
 
 /** The locks in `overview`. Pure, so the rule is tested without a window. */
 export function locksOf(overview: AgentsOverview): AgentLocks {
-  const held = overview.agents.filter((summary) => summary.at_capacity !== null);
+  // A child is at capacity because its parent is: count the parent once.
+  const held = overview.agents.filter(
+    (summary) => summary.agent.parent_id === null && summary.at_capacity !== null,
+  );
   const [only] = held;
   const anchor = held.length === 1 && only !== undefined ? agentRowId(only.agent.id) : AGENTS_SECTION_ID;
   const resets = held.flatMap((summary) =>

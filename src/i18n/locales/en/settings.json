@@ -54,6 +54,8 @@
       "none": "No agents have attached.",
       "loading": "Loading…",
       "list": "Agents",
+      "subagents": "Subagents of {{name}}",
+      "subagentsToggle": "Subagents ({{count}})",
       "separator": " · ",
       "pathSeparator": " › ",
       "noClaim": "No claim",

@@ -1176,6 +1176,8 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "lock",
                 "unlock",
                 "report_usage",
+                "register_child",
+                "finish_child",
             ],
             &[
                 "session_id",
@@ -1185,6 +1187,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "account",
                 "subtree",
                 "windows",
+                "client_id",
             ],
         ),
     ];
@@ -1238,7 +1241,8 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
         }
         assert_eq!(
             properties.len(),
-            parameters.len() + 1,
+            // `operation`, the tool's own parameters, and the `sub_token` every tool takes.
+            parameters.len() + 2,
             "{name} declares nothing else"
         );
         let description = tool.description.as_deref().unwrap_or("");

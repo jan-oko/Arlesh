@@ -49,6 +49,11 @@ impl Lineage {
     pub fn overlaps(&self, a: NodeKey, b: NodeKey) -> bool {
         self.up_from(a).contains(&b) || self.up_from(b).contains(&a)
     }
+
+    /// Whether `node` is `root` or lies beneath it.
+    pub fn within(&self, node: NodeKey, root: NodeKey) -> bool {
+        self.up_from(node).contains(&root)
+    }
 }
 
 /// An active Claim, as the rules see it.
@@ -56,6 +61,8 @@ impl Lineage {
 pub struct Held {
     /// Who holds it.
     pub agent: AgentId,
+    /// The Agent it is a child of: `None` for a top-level Agent. Claims are judged within a level.
+    pub parent: Option<AgentId>,
     /// The subtree's root.
     pub root: NodeKey,
     /// When it was made (ISO 8601, so text order is time order).
@@ -77,20 +84,23 @@ pub enum Refusal {
 }
 
 /// Whether `agent` may hold an active Claim on `candidate`: it must be readable through the user's
-/// roots (`readable`), and no *other* agent's active Claim in `held` may overlap it.
+/// roots (`readable`), and no *other* agent's active Claim on the same level in `held` may overlap
+/// it. `parent` is the agent's own parent: a top-level agent is judged against the other top-level
+/// agents, a child against its siblings, so a sub-Claim is never an overlap with its parent's.
 pub fn check(
     lineage: &Lineage,
     candidate: NodeKey,
     readable: bool,
     held: &[Held],
     agent: AgentId,
+    parent: Option<AgentId>,
 ) -> Result<(), Refusal> {
     if !readable {
         return Err(Refusal::OutsideRoots);
     }
     let conflict = held
         .iter()
-        .filter(|other| other.agent != agent)
+        .filter(|other| other.agent != agent && other.parent == parent)
         .find(|other| lineage.overlaps(candidate, other.root));
     match conflict {
         Some(other) => Err(Refusal::Overlaps {
@@ -101,13 +111,16 @@ pub fn check(
 }
 
 /// The agents whose active Claim overlaps an **older** active Claim, so is set aside until the
-/// overlap goes. Claims made at the same instant are told apart by agent id.
+/// overlap goes. Claims made at the same instant are told apart by agent id. Only Claims on the
+/// same level are compared: top-level agents among themselves, the children of one parent among
+/// themselves.
 pub fn shadowed(lineage: &Lineage, held: &[Held]) -> HashSet<AgentId> {
     let order = |claim: &Held| (claim.claimed_at.clone(), claim.agent);
     held.iter()
         .filter(|claim| {
             held.iter().any(|other| {
                 other.agent != claim.agent
+                    && other.parent == claim.parent
                     && order(other) < order(claim)
                     && lineage.overlaps(claim.root, other.root)
             })
@@ -128,6 +141,29 @@ pub fn standing(
         None => AgentStanding::Unclaimed,
         Some(_) if !root_readable => AgentStanding::Unreachable,
         Some((ClaimStatus::Paused, _)) => AgentStanding::Paused,
+        Some((ClaimStatus::Active, _)) if is_shadowed => AgentStanding::Shadowed,
+        Some((ClaimStatus::Active, _)) => AgentStanding::Active,
+    }
+}
+
+/// Where a child Agent's sub-Claim stands: `claim` is its status and root, `inside_parent` whether
+/// the root is readable through the user's roots and within the parent's Claim, `parent` how the
+/// parent stands, `is_shadowed` whether an older sibling's active sub-Claim overlaps it.
+///
+/// An unclaimed parent, a shadowed one or an unreachable one leaves the child unreachable; a paused
+/// Claim, the child's own or its parent's, reads Paused.
+pub fn child_standing(
+    claim: Option<(ClaimStatus, NodeKey)>,
+    inside_parent: bool,
+    parent: AgentStanding,
+    is_shadowed: bool,
+) -> AgentStanding {
+    let parent_gives_view = matches!(parent, AgentStanding::Active | AgentStanding::Paused);
+    match claim {
+        None => AgentStanding::Unclaimed,
+        Some(_) if !parent_gives_view || !inside_parent => AgentStanding::Unreachable,
+        Some((ClaimStatus::Paused, _)) => AgentStanding::Paused,
+        Some(_) if parent == AgentStanding::Paused => AgentStanding::Paused,
         Some((ClaimStatus::Active, _)) if is_shadowed => AgentStanding::Shadowed,
         Some((ClaimStatus::Active, _)) => AgentStanding::Active,
     }

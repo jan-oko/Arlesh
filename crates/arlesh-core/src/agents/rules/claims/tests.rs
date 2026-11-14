@@ -39,8 +39,16 @@ fn lineage() -> Lineage {
 fn held(agent: i64, root: NodeKey, at: &str) -> Held {
     Held {
         agent: AgentId(agent),
+        parent: None,
         root,
         claimed_at: at.to_owned(),
+    }
+}
+
+fn held_child(agent: i64, parent: i64, root: NodeKey, at: &str) -> Held {
+    Held {
+        parent: Some(AgentId(parent)),
+        ..held(agent, root, at)
     }
 }
 
@@ -65,7 +73,14 @@ fn siblings_do_not_overlap() {
 
 #[test]
 fn a_claim_outside_the_roots_is_refused_before_overlap_is_looked_at() {
-    let result = check(&lineage(), key(NodeTable::Goal, 10), false, &[], AgentId(1));
+    let result = check(
+        &lineage(),
+        key(NodeTable::Goal, 10),
+        false,
+        &[],
+        AgentId(1),
+        None,
+    );
 
     assert_eq!(result, Err(Refusal::OutsideRoots));
 }
@@ -80,6 +95,7 @@ fn a_claim_overlapping_another_agents_is_refused_naming_the_holder() {
         true,
         &others,
         AgentId(1),
+        None,
     );
 
     assert_eq!(result, Err(Refusal::Overlaps { holder: AgentId(7) }));
@@ -95,6 +111,7 @@ fn an_agent_may_claim_again_over_its_own_claim() {
         true,
         &own,
         AgentId(1),
+        None,
     );
 
     assert_eq!(result, Ok(()));
@@ -110,6 +127,7 @@ fn a_sibling_subtree_is_free_to_claim() {
         true,
         &others,
         AgentId(1),
+        None,
     );
 
     assert_eq!(result, Ok(()));
@@ -147,4 +165,127 @@ fn a_claim_stands_as_unclaimed_unreachable_paused_shadowed_or_active() {
     assert_eq!(standing(paused, true, true), AgentStanding::Paused);
     assert_eq!(standing(active, true, true), AgentStanding::Shadowed);
     assert_eq!(standing(active, true, false), AgentStanding::Active);
+}
+
+#[test]
+fn a_node_is_within_itself_and_beneath_its_root_only() {
+    let lineage = lineage();
+    let arlesh = key(NodeTable::Domain, 2);
+
+    assert!(lineage.within(arlesh, arlesh));
+    assert!(lineage.within(key(NodeTable::Task, 100), arlesh));
+    assert!(!lineage.within(arlesh, key(NodeTable::Task, 100)));
+    assert!(!lineage.within(key(NodeTable::Domain, 3), arlesh));
+}
+
+#[test]
+fn a_childs_claim_inside_its_parents_is_no_overlap() {
+    let held = [held(1, key(NodeTable::Domain, 2), "2026-11-07T09:00:00")];
+
+    let result = check(
+        &lineage(),
+        key(NodeTable::Task, 100),
+        true,
+        &held,
+        AgentId(2),
+        Some(AgentId(1)),
+    );
+
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn two_siblings_overlapping_are_refused_naming_the_elder() {
+    let held = [held_child(
+        2,
+        1,
+        key(NodeTable::Goal, 10),
+        "2026-11-07T09:00:00",
+    )];
+
+    let result = check(
+        &lineage(),
+        key(NodeTable::Task, 100),
+        true,
+        &held,
+        AgentId(3),
+        Some(AgentId(1)),
+    );
+
+    assert_eq!(result, Err(Refusal::Overlaps { holder: AgentId(2) }));
+}
+
+#[test]
+fn a_top_level_agent_is_not_refused_by_a_childs_claim() {
+    let held = [held_child(
+        2,
+        1,
+        key(NodeTable::Goal, 10),
+        "2026-11-07T09:00:00",
+    )];
+
+    let result = check(
+        &lineage(),
+        key(NodeTable::Goal, 10),
+        true,
+        &held,
+        AgentId(9),
+        None,
+    );
+
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn shadowing_among_siblings_keeps_the_older_and_ignores_the_parent() {
+    let claims = [
+        held(1, key(NodeTable::Domain, 2), "2026-11-07T08:00:00"),
+        held_child(2, 1, key(NodeTable::Goal, 10), "2026-11-07T09:00:00"),
+        held_child(3, 1, key(NodeTable::Domain, 2), "2026-11-07T10:00:00"),
+    ];
+
+    assert_eq!(shadowed(&lineage(), &claims), HashSet::from([AgentId(3)]));
+}
+
+#[test]
+fn a_childs_standing_follows_its_claim_its_parent_and_its_siblings() {
+    let root = key(NodeTable::Goal, 10);
+    let active = Some((ClaimStatus::Active, root));
+    let paused = Some((ClaimStatus::Paused, root));
+    let parent_active = AgentStanding::Active;
+
+    assert_eq!(
+        child_standing(None, true, parent_active, false),
+        AgentStanding::Unclaimed
+    );
+    for parent in [
+        AgentStanding::Unclaimed,
+        AgentStanding::Shadowed,
+        AgentStanding::Unreachable,
+    ] {
+        assert_eq!(
+            child_standing(active, true, parent, false),
+            AgentStanding::Unreachable
+        );
+    }
+    assert_eq!(
+        child_standing(active, false, parent_active, false),
+        AgentStanding::Unreachable
+    );
+    assert_eq!(
+        child_standing(paused, true, parent_active, true),
+        AgentStanding::Paused
+    );
+    assert_eq!(
+        child_standing(active, true, AgentStanding::Paused, false),
+        AgentStanding::Paused
+    );
+    assert_eq!(
+        child_standing(active, true, parent_active, true),
+        AgentStanding::Shadowed
+    );
+    assert_eq!(
+        child_standing(active, true, parent_active, false),
+        AgentStanding::Active
+    );
 }

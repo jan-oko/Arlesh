@@ -5,6 +5,8 @@ export interface AgentControls {
   canPause: boolean;
   canResume: boolean;
   canRelease: boolean;
+  /** A child agent's capacity follows its parent, so only an agent can be locked. */
+  canLock: boolean;
 }
 
 /** The hand controls an agent's standing allows. */
@@ -14,6 +16,7 @@ export function controlsFor(summary: AgentSummary): AgentControls {
     canPause: claim !== null && claim.status === "active",
     canResume: claim !== null && claim.status === "paused",
     canRelease: claim !== null,
+    canLock: summary.agent.parent_id === null,
   };
 }
 
