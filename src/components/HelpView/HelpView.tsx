@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODEL_MAP_FOOTER, MODEL_MAP_GROUPS, MODEL_MAP_PIPELINE_CAPTION } from "@/data/model-map";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
@@ -30,7 +30,11 @@ export default function HelpView({ onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("help");
   const trap = useFocusTrap<HTMLDivElement>();
+  const closeRef = useRef<HTMLButtonElement>(null);
   const [graphExpanded, setGraphExpanded] = useState(false);
+
+  // Help opens with the close button focused, as a dialog does; leaving the expanded graph keeps focus where it was.
+  useEffect(() => { closeRef.current?.focus(); }, []);
 
   // Leaving Help hands the keyboard back to whatever held it when Help opened.
   useEffect(() => {
@@ -53,9 +57,12 @@ export default function HelpView({ onClose }: Props) {
 
   return (
     <div ref={trap} className={styles.view} role="dialog" aria-modal="true" aria-label={t("title")}>
-      <button type="button" className={styles.close} aria-label={t("close")} title={t("close")} onClick={onClose} autoFocus>
-        {CLOSE_GLYPH}
-      </button>
+      {/* While the graph is expanded its collapse button takes this corner, so there is one button here. */}
+      {!graphExpanded && (
+        <button type="button" ref={closeRef} className={styles.close} aria-label={t("close")} title={t("close")} onClick={onClose}>
+          {CLOSE_GLYPH}
+        </button>
+      )}
       <div className={styles.wrap}>
         <MapIntro />
         <figure className={styles.figure}>

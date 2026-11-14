@@ -4,6 +4,7 @@ import { MODEL_MAP_GRAPH_SECTION } from "@/data/model-map";
 import { useDerivationGraph } from "@/hooks/use-derivation-graph";
 import { groupAnchor } from "@/utils/model-map-anchors";
 import DerivationGraph from "./DerivationGraph";
+import GraphToggleIcon from "./GraphToggleIcon";
 import GraphCard from "./GraphCard";
 import GraphHint from "./GraphHint";
 import InlineText from "./InlineText";
@@ -14,9 +15,6 @@ interface Props {
   expanded: boolean;
   onToggleExpanded: () => void;
 }
-
-const EXPAND_GLYPH = "⤢";
-const COLLAPSE_GLYPH = "⤡";
 
 /**
  * The derivation graph in its place in the map: the graph, the hover line, and the pinned cards.
@@ -50,7 +48,7 @@ export default function DerivationSection({ expanded, onToggleExpanded }: Props)
           <p className={styles.groupIntro}><InlineText text={MODEL_MAP_GRAPH_SECTION.intro} /></p>
         </div>
         <button type="button" className={styles.expand} aria-label={label} title={label} aria-pressed={expanded} onClick={toggleExpanded}>
-          {expanded ? COLLAPSE_GLYPH : EXPAND_GLYPH}
+          <GraphToggleIcon expanded={expanded} />
         </button>
       </div>
       <div className={styles.graphMain}>

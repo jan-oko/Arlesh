@@ -71,10 +71,13 @@ describe("HelpView", () => {
     const expand = screen.getByRole("button", { name: "expandGraph" });
     fireEvent.click(expand);
     expect(screen.getByRole("button", { name: "collapseGraph" })).toHaveAttribute("aria-pressed", "true");
+    // One button in the corner: the Help close button gives way to the collapse button.
+    expect(screen.queryByRole("button", { name: "close" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(window, { code: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "expandGraph" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "close" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { code: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);

@@ -406,9 +406,12 @@
   min-height: 44px;
   background: var(--surface);
   border: 1px solid var(--node-border);
-  border-radius: 8px;
+  border-radius: 22px;
   color: var(--text-primary);
-  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   line-height: 1;
   cursor: pointer;
 }
@@ -427,6 +430,14 @@
 }
 /* Clear of the floating close button, which stays above it. */
 .expanded .graphHead { padding-right: 56px; }
+/* In the corner the Help close button holds on the page: the same place, size and shape. */
+.expanded .expand {
+  position: fixed;
+  top: calc(var(--safe-top) + var(--space-2));
+  right: calc(var(--safe-right) + var(--space-2));
+  z-index: 3;
+  border-radius: 22px;
+}
 
 /*
  * The expanded graph, as the old standalone page laid it out: the graph on the left, whole and fitted
