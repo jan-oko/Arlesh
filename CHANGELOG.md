@@ -221,6 +221,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   **The board alone:** **F11**, or **F** with nothing selected, hides the tab strip and the top bar; press it again to bring them back. Arlesh always reopens with them shown.
 
 ### Changed
+- **A To Do Task with an open agent question reads Review.** An agent can ask before it claims a Task, the only way to say a Spec is missing. Such a Task now reads Review in the app and over the MCP, with the question and the answer field on its card and in its editor, and reads To Do again once you answer. It stays To Do underneath, so claiming it still works. A review, which hands finished work back, is still refused under a Task no agent holds.
+
 - **A Task's Info notes come back with it over the MCP.** `arlesh_tasks.get` now returns the Infos directly under a Task as `infos`, and each Task in the snapshot carries an `info_count`, so an agent reads the details you wrote as notes before working the Task. Private Infos stay hidden.
 
 - **Agent waits are not drawn.** The waits an agent raises (a question, a review, or a wait on something else like CI) no longer appear as nodes or rows in the Mindmap, the List View, Start, Do or Zen; waits you made yourself still do. A Task reading Review shows the open question or review itself, on its card and in its editor, and you answer it there.
