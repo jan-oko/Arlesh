@@ -402,3 +402,22 @@ test('a marker written in the prompt names the Task too, and is taken out of it'
 
   expect(spawns).toEqual([{ description: LABEL, prompt: 'Work on today.' }])
 })
+
+test('on the terminal the line is indented to the text of the result below it, on other surfaces it is not', async ($, on) => {
+  session(on, [subagent('a1')])
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('tool.call', () => ({ result: JSON.stringify({ agent: { id: 12 }, standing: 'active', claim_name: '077 Subagents' }) }))
+  await attach($)
+  await $.agent.spawn(spawnArgs('Fix CI', 'go'))
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1' })
+  const props = { tool: 'Agent', tool_use_id: 'tu1', input: {}, isRunning: false, isErrored: false, isInterrupted: false }
+
+  for (const [surface, indent] of [['terminal', 5], ['desktop', 0]] as const) {
+    const ui = await $.ui.mount({ plugin: 'arlesh-notify', component: 'ToolUse', requestId: 'tu1', surface, props })
+    const row = await ui.find({ type: 'Box', text: /Arlesh/ })
+    expect(JSON.stringify(row), surface).toContain(`"paddingLeft":${indent}`)
+    expect((await ui.find({ type: 'Text', text: /Arlesh/ }))?.props).toEqual({ dimColor: true })
+    await ui.unmount()
+  }
+})

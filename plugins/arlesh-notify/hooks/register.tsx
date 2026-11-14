@@ -81,6 +81,14 @@ const NO_CHILD =
 /** The line under each subagent's row, by the Agent call's tool use id. */
 const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
 
+/**
+ * The terminal column (counted from the row's left edge) where the text of a tool row's result
+ * starts: the result is drawn `  ⎿  <text>`, two spaces, the connector, two spaces. The line lines
+ * up with that text rather than with the connector. Read off a screenshot of a backgrounded
+ * `Agent` row: its `Backgrounded agent` begins five character cells in.
+ */
+const RESULT_TEXT_COLUMN = 5
+
 const ARLESH_TOOL = /^mcp__.+__arlesh_[a-z_]+$/
 
 /** Runs `job` after every earlier one: the book is read, changed and written in turn. */
@@ -184,7 +192,9 @@ export const register: Register = (on) => {
     return (
       <Box flexDirection="column">
         {await next(e)}
-        <Text dimColor>{line}</Text>
+        <Box paddingLeft={e.surface === 'terminal' ? RESULT_TEXT_COLUMN : 0}>
+          <Text dimColor>{line}</Text>
+        </Box>
       </Box>
     )
   }).catch(($, e, next) => next(e))

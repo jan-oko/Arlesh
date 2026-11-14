@@ -82,7 +82,8 @@ environment variables:
   - A subagent started by a subagent is not registered: it gets the sub-token of the subagent that
     started it. Teammates and workflow agents are not registered.
   - In the terminal, the subagent's `Agent(…)` row gets one dim line under it,
-    `Arlesh · <Task short id and title> · Active` (or `Paused`). Claude Code's list of background
+    `Arlesh · <Task short id and title> · Active` (or `Paused`), indented five columns so it
+    lines up with the text of the row's result below it. Claude Code's list of background
     tasks cannot be changed by a mod and shows nothing of it.
   - When the session is not attached, or Arlesh is not running, nothing is registered and the
     subagent is told nothing: its Arlesh calls behave as the session's would.
