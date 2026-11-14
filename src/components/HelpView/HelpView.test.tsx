@@ -83,6 +83,26 @@ describe("HelpView", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("makes the page behind the expanded graph inert and unscrollable, and frees it on collapse", () => {
+    render(<HelpView onClose={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    const jump = screen.getByRole("button", { name: "3Time" });
+    expect(jump.closest("[inert]")).toBeNull();
+    expect(dialog.className).not.toContain("viewLocked");
+
+    fireEvent.click(screen.getByRole("button", { name: "expandGraph" }));
+    expect(jump.closest("[inert]")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Node kinds" }).closest("[inert]")).not.toBeNull();
+    expect(dialog.className).toContain("viewLocked");
+    // The expanded graph itself stays reachable.
+    expect(box("Time Scope").closest("[inert]")).toBeNull();
+    expect(screen.getByRole("button", { name: "collapseGraph" }).closest("[inert]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "collapseGraph" }));
+    expect(jump.closest("[inert]")).toBeNull();
+    expect(dialog.className).not.toContain("viewLocked");
+  });
+
   it("returns from the expanded graph with the same button, keeping what was pinned", () => {
     render(<HelpView onClose={vi.fn()} />);
     fireEvent.click(box("Time Scope"));

@@ -56,7 +56,7 @@ export default function HelpView({ onClose }: Props) {
   }, [onClose, graphExpanded]);
 
   return (
-    <div ref={trap} className={styles.view} role="dialog" aria-modal="true" aria-label={t("title")}>
+    <div ref={trap} className={`${styles.view} ${graphExpanded ? styles.viewLocked : ""}`} role="dialog" aria-modal="true" aria-label={t("title")}>
       {/* While the graph is expanded its collapse button takes this corner, so there is one button here. */}
       {!graphExpanded && (
         <button type="button" ref={closeRef} className={styles.close} aria-label={t("close")} title={t("close")} onClick={onClose}>
@@ -64,6 +64,9 @@ export default function HelpView({ onClose }: Props) {
         </button>
       )}
       <div className={styles.wrap}>
+        {/* While the graph is expanded the page behind it is inert: nothing in it can be focused or
+            clicked. (`display: contents` keeps the page's layout as it was.) */}
+        <div className={styles.pageRest} inert={graphExpanded}>
         <MapIntro />
         <figure className={styles.figure}>
           <PipelineDiagram />
@@ -74,9 +77,12 @@ export default function HelpView({ onClose }: Props) {
             <span><i className={`${styles.swatch} ${styles.swatchPreset}`} />{t("legendReadSide")}</span>
           </div>
         </figure>
+        </div>
         <DerivationSection expanded={graphExpanded} onToggleExpanded={() => setGraphExpanded((now) => !now)} />
+        <div className={styles.pageRest} inert={graphExpanded}>
         {MODEL_MAP_GROUPS.map((group) => <MapGroup key={group.id} group={group} />)}
         <footer className={styles.footer}><InlineText text={MODEL_MAP_FOOTER} /></footer>
+        </div>
       </div>
     </div>
   );

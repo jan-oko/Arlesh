@@ -17,6 +17,11 @@
   .view { scroll-behavior: smooth; }
 }
 
+/* The page cannot scroll while the graph is expanded over it; hiding the overflow keeps its place. */
+.viewLocked { overflow: hidden; }
+/* Groups the page around the graph without a box of its own: the layout is as if they were not there. */
+.pageRest { display: contents; }
+
 /* No bar: the standard close button floats over the corner. */
 .close {
   position: fixed;
