@@ -4,6 +4,7 @@ import { useQuit } from "@/hooks/use-close-to-tray";
 import { useSubtreeExits } from "@/hooks/use-subtree-nav";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
+import { useHelpStore } from "@/stores/use-help-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
@@ -25,6 +26,7 @@ import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 export function useGlobalHotkeys(): void {
   const setView = useViewStore((s) => s.setView);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
+  const toggleHelp = useHelpStore((s) => s.toggle);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const quit = useQuit();
   // The guarded bindings alone consult this; quitting and the cheat-sheet stay live behind a modal.
@@ -41,6 +43,7 @@ export function useGlobalHotkeys(): void {
       isInputCaptured,
       onSetView: setView,
       onToggleHotkeys: toggleHotkeys,
+      onToggleHelp: toggleHelp,
       onToggleFullscreen: toggleFullscreen,
       onQuit: quit,
       subtreeRootId,
