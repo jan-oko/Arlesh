@@ -10,6 +10,7 @@ import {
   doorUrl,
   isLoopback,
   isNotAttached,
+  refusalMessage,
   parseClaim,
   parsePin,
   reportedFrom,
@@ -279,7 +280,7 @@ test('an attach answer gives the name, the token and the claim', () => {
       claim_refused: 'overlaps',
     },
   }
-  expect(attachedFrom(answer)).toEqual({ name: 'arl-ab12', token: 'abc', claim: 'goal 10', claimRefused: 'overlaps' })
+  expect(attachedFrom(answer)).toEqual({ name: 'arl-ab12', token: 'abc', claim: 'goal 10', claimStatus: 'active', claimRefused: 'overlaps' })
   expect(attachedFrom({ isError: true, content: [] })).toBeUndefined()
 })
 
@@ -289,6 +290,32 @@ test('only the not-attached refusal triggers a new attach', () => {
   expect(isNotAttached({ structuredContent: refusal })).toBe(true)
   expect(isNotAttached(JSON.stringify({ kind: 'not_permitted', message: 'outside the roots' }))).toBe(false)
   expect(isNotAttached('{"ok":1}')).toBe(false)
+  // Any shape: a result object with blocks, text with a prefix, a pair of them.
+  expect(isNotAttached({ content: [{ type: 'text', text: JSON.stringify(refusal) }], isError: true })).toBe(true)
+  expect(isNotAttached(`Error: ${JSON.stringify(refusal)}`)).toBe(true)
+  expect(isNotAttached(JSON.stringify([null, JSON.stringify(refusal)]))).toBe(true)
+  expect(isNotAttached(undefined)).toBe(false)
+})
+
+test('a refusal gives its reason from whatever shape it has', () => {
+  const message = 'the subtree overlaps the active claim of agent other'
+
+  expect(refusalMessage({ structuredContent: { kind: 'not_permitted', message } })).toBe(message)
+  expect(refusalMessage(JSON.stringify({ kind: 'not_permitted', message }))).toBe(message)
+  expect(refusalMessage({ content: [{ type: 'text', text: JSON.stringify({ message }) }], isError: true })).toBe(message)
+  expect(refusalMessage('nothing')).toBeUndefined()
+})
+
+test('an attach answer gives the agent id and whether its claim is paused', () => {
+  const answer = { structuredContent: { agent: { id: 7, name: 'a', claim: { status: 'paused' } } } }
+
+  expect(attachedFrom(answer)).toMatchObject({ name: 'a', agentId: 7, claimStatus: 'paused' })
+})
+
+test('a session whose paused claim could not be resumed says why in its context', () => {
+  const said = contextBlock({ kind: 'attached', name: 'n', claim: 'project 1', automatic: true, resumeRefused: 'a sibling holds it' })
+
+  expect(said).toContain('could not be resumed: a sibling holds it')
 })
 
 test('usage is reported when a percent moves a whole point, a window changes, or five minutes pass', () => {

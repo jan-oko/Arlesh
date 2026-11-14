@@ -14,8 +14,9 @@ const identity = (over: Record<string, unknown> = {}) => ({
 })
 
 /** An attached session with an Arlesh server, and a fake that answers `arlesh_agents`. */
-function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = {}, pause: () => Answer = () => ok(identity({ standing: 'paused' }))) {
+function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = {}, pause: () => Answer = () => ok(identity({ standing: 'paused' })), opts: { unattached?: boolean } = {}) {
   const calls: Call[] = []
+  if (opts.unattached !== true) stored['agent:s1'] ??= { token: 'agent-token' }
   const intercept: { answer?: (args: Record<string, unknown>) => Answer | undefined } = {}
   clock = mock.clock(on)
   on('session.root', () => ({ value: '/r' }))
@@ -30,10 +31,22 @@ function session(on: On, agents: AgentInfo[], stored: Record<string, unknown> = 
         })(),
   )
   on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
-  on('http.fetch', () => ({ value: { status: 200, ok: true, headers: {}, text: '{}' } }))
-  on('store.get', (_, e) => ({ value: e.key === 'agent:s1' ? { token: 'agent-token' } : stored[e.key] }))
+  on('http.fetch', (_, e) =>
+    e.url.includes('/agents/pin')
+      ? opts.unattached === true
+        ? { value: { status: 500, ok: false, headers: {}, text: 'no' } }
+        : { value: { status: 200, ok: true, headers: {}, text: '{"pin":"1234"}' } }
+      : { value: { status: 200, ok: true, headers: {}, text: '{}' } },
+  )
+  on('store.get', (_, e) => ({ value: stored[e.key] }))
   on('store.set', (_, e) => {
+    // As the engine: a value must be JSON data, and undefined is not.
+    if (e.value === undefined) throw new Error('$.store.set: value is not JSON data (undefined)')
     stored[e.key] = e.value
+    return { value: undefined }
+  })
+  on('store.delete', (_, e) => {
+    delete stored[e.key]
     return { value: undefined }
   })
   on('agent.list', () => ({ value: agents }))
@@ -420,4 +433,280 @@ test('on the terminal the line is indented to the text of the result below it, o
     expect((await ui.find({ type: 'Text', text: /Arlesh/ }))?.props).toEqual({ dimColor: true })
     await ui.unmount()
   }
+})
+
+// Re-attaching after the server forgot the session (a restart or a deploy).
+
+const REFUSAL = { kind: 'not_permitted', message: 'this session is not attached: call arlesh_agents.attach with a PIN (or an agent token) first' }
+const refused = { result: JSON.stringify(REFUSAL), text: JSON.stringify(REFUSAL), isError: true as const }
+const attaches = (calls: Call[]) => calls.filter((call) => call.args['operation'] === 'attach')
+
+/** A tool.call bottom that refuses the first `times` calls as not attached, then answers. */
+function refusesFirst(on: On, times: number, seen: Array<Record<string, unknown>> = []) {
+  let left = times
+  on('tool.call', (_, e) => {
+    seen.push({ ...e })
+    if (left > 0) {
+      left -= 1
+      return refused
+    }
+    return { result: JSON.stringify({ tasks: [] }), text: '{"tasks":[]}' }
+  })
+  return seen
+}
+
+test('a call the server turns away as not attached re-attaches with the stored token and runs again, so the model sees the real answer', async ($, on) => {
+  const { calls } = session(on, [])
+  const seen = refusesFirst(on, 1)
+  await attach($)
+
+  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
+
+  expect(seen).toHaveLength(2)
+  expect(answered.isError).not.toBe(true)
+  expect(answered.text).toBe('{"tasks":[]}')
+  expect(attaches(calls).map((call) => call.args['token'])).toEqual(['agent-token', 'agent-token'])
+})
+
+test('an arlesh_agents call is recovered the same way', async ($, on) => {
+  const { calls } = session(on, [])
+  const seen = refusesFirst(on, 1)
+  await attach($)
+
+  const status = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'status' })
+
+  expect(status.isError).not.toBe(true)
+  expect(seen).toHaveLength(2)
+  expect(attaches(calls)).toHaveLength(2)
+})
+
+test('a refused attach call is not retried: the attach is the way back in', async ($, on) => {
+  const { calls } = session(on, [])
+  const seen = refusesFirst(on, 5)
+  await attach($)
+
+  const attach_ = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', token: 'agent-token' })
+
+  expect(attach_.isError).toBe(true)
+  expect(seen).toHaveLength(1)
+  expect(attaches(calls)).toHaveLength(1)
+})
+
+test('a token the server refuses falls back to the PIN door, and the new token is kept', async ($, on) => {
+  const { calls, stored, intercept } = session(on, [])
+  refusesFirst(on, 1)
+  await attach($)
+  intercept.answer = (args) =>
+    args['operation'] === 'attach' && args['token'] !== undefined
+      ? { value: { content: [], isError: true, structuredContent: { kind: 'not_permitted', message: 'that agent token is not valid: attach again with a PIN' } } }
+      : args['operation'] === 'attach'
+        ? ok(identity({ agent: { id: 9, name: 'orchestrator' }, token: 'fresh' }))
+        : undefined
+
+  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
+
+  expect(answered.isError).not.toBe(true)
+  expect(attaches(calls).at(-1)?.args['pin']).toBe('1234')
+  expect(stored['agent:s1']).toMatchObject({ token: 'fresh' })
+})
+
+test('a call that is still refused after the re-attach is returned as it is, not run a third time', async ($, on) => {
+  session(on, [])
+  const seen = refusesFirst(on, 5)
+  await attach($)
+
+  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
+
+  expect(answered.isError).toBe(true)
+  expect(seen).toHaveLength(2)
+})
+
+test('a subagent keeps working after the re-attach: its call still carries its sub-token', async ($, on) => {
+  session(on, [subagent('a1')])
+  const seen = refusesFirst(on, 1)
+  await attach($)
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1' })
+
+  expect(answered.isError).not.toBe(true)
+  expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', 'q3H'])
+})
+
+// The session ends.
+
+const ended = (reason: 'prompt_input_exit' | 'logout' | 'other' | 'clear' | 'resume') =>
+  ({ reason, sessionId: 's1', resume: { id: 's1' } }) as const
+const pauses = (calls: Call[]) => calls.filter((call) => call.args['operation'] === 'pause')
+
+test('a session that ends pauses its own claim, so another session may take the subtree', async ($, on) => {
+  const { calls } = session(on, [])
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await attach($)
+
+  await $.session.end(ended('prompt_input_exit'))
+
+  expect(pauses(calls)).toEqual([{ tool: 'arlesh_agents', args: { operation: 'pause' } }])
+})
+
+test('a /clear or a switch of session does not pause: the process goes on over the same connection', async ($, on) => {
+  const { calls } = session(on, [])
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await attach($)
+
+  await $.session.end(ended('clear'))
+  await $.session.end(ended('resume'))
+
+  expect(pauses(calls)).toEqual([])
+})
+
+test('a session that never attached pauses nothing when it ends', async ($, on) => {
+  const { calls } = session(on, [], {}, undefined, { unattached: true })
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await attach($)
+
+  await $.session.end(ended('other'))
+
+  expect(pauses(calls)).toEqual([])
+})
+
+test('a returning session resumes the claim its last one left paused', async ($, on) => {
+  const { calls, intercept } = session(on, [])
+  intercept.answer = (args) =>
+    args['operation'] === 'attach'
+      ? ok(identity({ agent: { id: 7, name: 'orchestrator', claim: { status: 'paused', root: { node_kind: 'project', node_id: 1 } } } }))
+      : args['operation'] === 'resume'
+        ? ok(identity({ agent: { id: 7, name: 'orchestrator', claim: { status: 'active' } }, standing: 'active' }))
+        : undefined
+
+  const started = await $.classic.SessionStart({ source: 'resume' })
+
+  expect(calls.filter((call) => call.args['operation'] === 'resume')).toHaveLength(1)
+  expect(started.additionalContext?.join('\n')).not.toContain('could not be resumed')
+})
+
+test('a claim that cannot be resumed because someone else holds the subtree is said in the context', async ($, on) => {
+  const { intercept } = session(on, [])
+  intercept.answer = (args) =>
+    args['operation'] === 'attach'
+      ? ok(identity({ agent: { id: 7, name: 'orchestrator', claim: { status: 'paused' } } }))
+      : args['operation'] === 'resume'
+        ? { value: { content: [], isError: true, structuredContent: { kind: 'not_permitted', message: 'the subtree overlaps the active claim of agent other' } } }
+        : undefined
+
+  const started = await $.classic.SessionStart({ source: 'resume' })
+
+  expect(started.additionalContext?.join('\n')).toContain(
+    'paused when the last session ended and could not be resumed: the subtree overlaps the active claim of agent other',
+  )
+})
+
+// A session the model attached by hand.
+
+const byHand = (over: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+  result: JSON.stringify(identity({ agent: { id: 7, name: 'hand', claim: null }, ...extra })),
+  ...over,
+})
+
+test('an attach by PIN made by the model is adopted: the token is kept and subagents get children', async ($, on) => {
+  const { calls, stored } = session(on, [subagent('a1')], {}, undefined, { unattached: true })
+  on('tool.call', () => byHand({}, { token: 'handtok' }))
+  await attach($)
+
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', pin: '4321', session_id: 's1' })
+  const started = await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  expect(stored['agent:s1']).toMatchObject({ token: 'handtok' })
+  expect(calls.filter((call) => call.args['operation'] === 'register_child')).toHaveLength(1)
+  expect(started.additionalContext?.join('\n')).toContain('sub_token: "q3H"')
+})
+
+test('an attach by token made by the model is adopted with the token it presented', async ($, on) => {
+  const { stored } = session(on, [], {}, undefined, { unattached: true })
+  on('tool.call', () => byHand({}))
+  await attach($)
+
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', token: 'presented', session_id: 's1' })
+
+  expect(stored['agent:s1']).toMatchObject({ token: 'presented' })
+})
+
+test('an attach that rebinds the session to another agent forgets the children of the old one', async ($, on) => {
+  const { stored } = session(on, [subagent('a1')], {}, undefined, { unattached: true })
+  let id = 7
+  on('tool.call', () => ({ result: JSON.stringify(identity({ agent: { id, name: `agent-${id}`, claim: null } })) }))
+  await attach($)
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', token: 'one', session_id: 's1' })
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+  expect(Object.keys(stored['children:s1'] as object)).toEqual(['a1'])
+
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', token: 'one', session_id: 's1' })
+  expect(Object.keys(stored['children:s1'] as object)).toEqual(['a1'])
+  id = 8
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', token: 'two', session_id: 's1' })
+
+  expect(stored['children:s1']).toEqual({})
+  expect(stored['agent:s1']).toMatchObject({ token: 'two' })
+})
+
+test('an attach the server refused, or one made inside a subagent, is not adopted', async ($, on) => {
+  const { stored } = session(on, [subagent('a1')], {}, undefined, { unattached: true })
+  on('tool.call', (_, e) =>
+    e.agentId === undefined
+      ? { result: JSON.stringify(REFUSAL), text: JSON.stringify(REFUSAL), isError: true }
+      : byHand({}, { token: 'nope' }),
+  )
+  await attach($)
+
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'attach', pin: 'bad', session_id: 's1' })
+
+  expect(stored['agent:s1']).toBeUndefined()
+})
+
+// What a subagent with no child of its own may not do as the session.
+
+const GUARDED = ['claim', 'release', 'pause', 'resume', 'attach', 'lock', 'unlock', 'report_usage', 'register_child'] as const
+
+for (const operation of GUARDED) {
+  test(`${operation} from a subagent with no child of its own is denied, with a child it carries the sub-token`, async ($, on) => {
+    const { calls } = session(on, [subagent('a1'), subagent('a9')])
+    const seen: Array<Record<string, unknown>> = []
+    on('tool.call', (_, e) => {
+      seen.push({ ...e })
+      return { result: '{}' }
+    })
+    await attach($)
+    await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+    const before = calls.length
+
+    const orphan = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a9' })
+    const own = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a1' })
+    const session_ = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation })
+
+    expect(orphan.deny).toContain(`\`${operation}\` here would run as the session`)
+    expect(own.deny).toBeUndefined()
+    expect(seen.filter((call) => call['agentId'] === 'a1').map((call) => call['sub_token'])).toEqual(['q3H'])
+    expect(session_.deny).toBeUndefined()
+    expect(calls.length).toBe(before)
+  })
+}
+
+test('status from a subagent with no child of its own still runs: it only reads', async ($, on) => {
+  session(on, [subagent('a9')])
+  on('tool.call', () => ({ result: '{}' }))
+  await attach($)
+
+  const status = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'status', agentId: 'a9' })
+
+  expect(status.deny).toBeUndefined()
+})
+
+test('a subagent that passes a sub-token of its own is left to the server', async ($, on) => {
+  session(on, [subagent('a9')])
+  on('tool.call', () => ({ result: '{}' }))
+  await attach($)
+
+  const lock = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'lock', agentId: 'a9', sub_token: 'x' })
+
+  expect(lock.deny).toBeUndefined()
 })

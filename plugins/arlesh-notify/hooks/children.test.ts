@@ -1,12 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
-  changesSessionClaim,
+  changesSession,
   contextBlock,
   governing,
   identityFrom,
   isChildGone,
   label,
+  noChildMessage,
   parseMarker,
   prune,
   registeredFrom,
@@ -134,10 +135,20 @@ test('a starting context says the subagent already holds its Task, or why it mus
   expect(refused).toContain('First claim the Task your brief names')
 })
 
-test('a claim or release without a sub_token is the kind of call that would change the session\'s Claim', () => {
-  expect(changesSessionClaim('mcp__arlesh__arlesh_agents', { operation: 'claim' })).toBe(true)
-  expect(changesSessionClaim('mcp__arlesh__arlesh_agents', { operation: 'release' })).toBe(true)
-  expect(changesSessionClaim('mcp__arlesh__arlesh_agents', { operation: 'claim', sub_token: 'x' })).toBe(false)
-  expect(changesSessionClaim('mcp__arlesh__arlesh_agents', { operation: 'status' })).toBe(false)
-  expect(changesSessionClaim('mcp__arlesh__arlesh_tasks', { operation: 'claim' })).toBe(false)
+test('the operations that act on the session are named, with what each would change, and status is not one', () => {
+  for (const operation of ['claim', 'release', 'pause', 'resume', 'attach', 'lock', 'unlock', 'report_usage', 'register_child']) {
+    expect(typeof changesSession('mcp__arlesh__arlesh_agents', { operation }), operation).toBe('string')
+    expect(changesSession('mcp__arlesh__arlesh_agents', { operation, sub_token: 'x' }), operation).toBeUndefined()
+  }
+  expect(changesSession('mcp__arlesh__arlesh_agents', { operation: 'status' })).toBeUndefined()
+  expect(changesSession('mcp__arlesh__arlesh_agents', { operation: 'toString' })).toBeUndefined()
+  expect(changesSession('mcp__arlesh__arlesh_tasks', { operation: 'claim' })).toBeUndefined()
+})
+
+test('the refusal for a subagent with no child says which call, what it would change and what to do', () => {
+  const said = noChildMessage('pause', "the session's Claim (it would pause it)")
+
+  expect(said).toContain('`pause` here would run as the session')
+  expect(said).toContain("change the session's Claim (it would pause it)")
+  expect(said).toContain('register_child')
 })

@@ -5,6 +5,7 @@ import {
   agentName,
   attachArguments,
   attachedFrom,
+  refusalMessage,
   contextBlock,
   doorPort,
   doorUrl,
@@ -72,11 +73,6 @@ interface Pending {
 }
 const pendingByLabel = new Map<string, Pending>()
 const pendingByAgent = new Map<string, Pending>()
-
-const NO_CHILD =
-  'arlesh-notify: this subagent has no child agent of its own, so a claim or release here would run as ' +
-  "the session and change the session's Claim. Ask the orchestrator to register you " +
-  '(arlesh_agents.register_child, or name your Task with [arlesh:<task id>] in the Agent call).'
 
 /** The line under each subagent's row, by the Agent call's tool use id. */
 const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
@@ -175,7 +171,10 @@ export const register: Register = (on) => {
     const input: Record<string, unknown> = { ...e }
     if (agentId === undefined) return next(e)
     const found = await governingOf($, agentId)
-    if (found === undefined) return kids.changesSessionClaim(e.tool, input) ? { deny: NO_CHILD } : next(e)
+    if (found === undefined) {
+      const effect = kids.changesSession(e.tool, input)
+      return effect === undefined ? next(e) : { deny: kids.noChildMessage(String(input['operation']), effect) }
+    }
     if (input['sub_token'] === found.child.subToken) return next(e)
     const ran = await next({ ...e, ...{ sub_token: found.child.subToken } })
     void noteAnswer($, found, e.tool, ran.result ?? ran.text)
@@ -199,14 +198,41 @@ export const register: Register = (on) => {
     )
   }).catch(($, e, next) => next(e))
 
-  // A server that lost the binding (it restarted) turns the session away: attach again.
-  on('tool.call', { tool: /^mcp__.+__arlesh_[a-z_]+$/ }, async ($, e, next) => {
+  // A server that lost the binding (it restarted, or was deployed) turns the session away from
+  // every tool: attach again with the stored token (the PIN door if that is refused), then run the
+  // call once more, so the model sees the real answer. `arlesh_agents` is no exception, except an
+  // attach, which is the way back in.
+  on('tool.call', { tool: ARLESH_TOOL }, async ($, e, next) => {
     const ran = await next(e)
-    if (!e.tool.endsWith('__arlesh_agents') && isNotAttached(ran.result ?? ran.text)) {
-      standing = undefined
-      void attach($, server ?? (await readServer($).catch(() => undefined)))
+    const input: Record<string, unknown> = { ...e }
+    if (ran.deny !== undefined || input['operation'] === 'attach') return ran
+    if (!isNotAttached(JSON.stringify([ran.result ?? null, ran.text ?? null]))) return ran
+    standing = undefined
+    const again = await attach($, server ?? (await readServer($).catch(() => undefined)))
+    if (again.kind !== 'attached') return ran
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A session the model attached by hand is adopted: its children are registered from then on.
+  on('tool.call', { tool: ARLESH_TOOL }, async ($, e, next) => {
+    const ran = await next(e)
+    const input: Record<string, unknown> = { ...e }
+    if (e.agentId !== undefined || input['operation'] !== 'attach' || !e.tool.endsWith('__arlesh_agents')) return ran
+    if (ran.deny !== undefined || ran.isError === true) return ran
+    try {
+      await adopt($, input, ran.result ?? ran.text)
+    } catch (error) {
+      $.ui.log(`arlesh-notify: could not adopt the attach: ${String(error)}`, { to: 'debug' })
     }
     return ran
+  }).catch(($, e, next) => next(e))
+
+  // The session ends: its own Claim is paused, so another session may take the subtree, and a
+  // session that comes back (`claude --resume`) resumes it. Only when the process ends: after a
+  // /clear or a switch of session it goes on over the same connection, as the same agent.
+  on('session.end', async ($, e, next) => {
+    if (e.reason !== 'clear' && e.reason !== 'resume') await pauseOwnClaim($)
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // Every wait the session asks, raises or watches is recorded, whoever in it did.
@@ -497,9 +523,17 @@ async function attachTo($: Engine, connection: ServerEntry): Promise<Standing> {
       await $.mcp.call(connection.name, 'arlesh_agents', attachArguments({ sessionId, token, name, account })),
     )
     if (back !== undefined) {
-      return { kind: 'attached', name: back.name, claim: back.claim, automatic: true }
+      const resumed = back.claimStatus === 'paused' ? await resumeClaim($, connection) : undefined
+      return {
+        kind: 'attached',
+        name: back.name,
+        claim: back.claim,
+        ...(back.agentId === undefined ? {} : { agentId: back.agentId }),
+        ...(resumed?.refused === undefined ? {} : { resumeRefused: resumed.refused }),
+        automatic: true,
+      }
     }
-    await $.store.set(key, undefined) // the agent was removed: a PIN makes a new one
+    await $.store.delete(key) // the agent was removed: a PIN makes a new one
   }
   const port = doorPort(await environment($, 'ARLESH_DOOR_PORT'))
   let pin: string | undefined
@@ -525,6 +559,7 @@ async function attachTo($: Engine, connection: ServerEntry): Promise<Standing> {
     kind: 'attached',
     name: made.name,
     claim: made.claim,
+    ...(made.agentId === undefined ? {} : { agentId: made.agentId }),
     ...(made.claimRefused === undefined ? {} : { claimRefused: made.claimRefused }),
     automatic: true,
   }
@@ -732,5 +767,51 @@ async function childStopped($: Engine, id: string): Promise<void> {
     await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, paused)
   } catch (error) {
     $.ui.log(`arlesh-notify: could not pause a subagent's claim: ${String(error)}`, { to: 'debug' })
+  }
+}
+
+/** Resumes the Claim a session left paused when it ended; the reason if the server will not. */
+async function resumeClaim($: Engine, connection: ServerEntry): Promise<{ refused?: string }> {
+  const answered = await $.mcp.call(connection.name, 'arlesh_agents', { operation: 'resume' })
+  if (attachedFrom(answered) !== undefined) return {}
+  return { refused: refusalMessage(answered) ?? 'the server refused it' }
+}
+
+/** Pauses the session's own Claim. Never throws: an ending session must not be held up. */
+async function pauseOwnClaim($: Engine): Promise<void> {
+  try {
+    if (standing?.kind !== 'attached' || server === undefined) return
+    await $.mcp.call(server.name, 'arlesh_agents', { operation: 'pause' })
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not pause the session's claim: ${String(error)}`, { to: 'debug' })
+  }
+}
+
+/**
+ * Takes an attach the model made by hand as this session's standing: the agent's name and Claim,
+ * and its token (the answer's, or the one the call presented) stored as the mod's own attach stores
+ * it. An attach as a different agent than before forgets the children of the old one.
+ */
+async function adopt($: Engine, input: Record<string, unknown>, result: unknown): Promise<void> {
+  const made = attachedFrom(result)
+  if (made === undefined) return
+  const previous = standing
+  const rebound =
+    previous?.kind === 'attached' &&
+    (previous.agentId !== undefined && made.agentId !== undefined
+      ? previous.agentId !== made.agentId
+      : previous.name !== made.name)
+  if (rebound) await serially(() => saveChildren($, {}))
+  standing = {
+    kind: 'attached',
+    name: made.name,
+    claim: made.claim,
+    ...(made.agentId === undefined ? {} : { agentId: made.agentId }),
+    automatic: false,
+  }
+  const presented = typeof input['token'] === 'string' ? input['token'] : undefined
+  const token = made.token ?? presented
+  if (token !== undefined) {
+    await $.store.set(`agent:${await $.session.id()}`, { token, savedAt: await $.clock.now() })
   }
 }

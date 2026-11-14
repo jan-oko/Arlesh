@@ -121,10 +121,27 @@ marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
   the reason, when the server gave one). A resumed subagent keeps its child and its label; nothing
   is registered or claimed again.
 
-**Guarding the session's Claim.** A subagent with no `sub_token` runs as the session, so a `claim`
-or `release` it made would change the **session's** Claim. The mod therefore **denies** `claim` and
-`release` made inside a subagent's loop when that subagent has no child of its own (not registered:
-the session was not attached by the mod, or registration failed), with a message saying why.
+**Guarding the session.** A subagent with no `sub_token` runs as the session. Of the operations of
+`arlesh_agents`, `claim`, `release`, `pause` and `resume` would change the **session's** Claim,
+`attach` would rebind the whole session, `lock` and `unlock` would change its capacity lock,
+`report_usage` its account's usage, and `register_child` would add a child (a subagent cannot
+register children). The mod therefore **denies** all of them made inside a subagent's loop when that
+subagent has no child of its own (not registered: registration failed, or the mod does not know of
+an attach), with a message saying what the call would have changed. `status` only reads and passes.
+With a child the call carries the child's `sub_token` and the server answers for the child, which it
+refuses `attach`, `lock`, `unlock`, `report_usage` and `register_child` (`invalid_request`).
+
+**The session across restarts and endings** (the mod; revised 2026-11-14). A server that forgot the
+session (a restart, a deploy) answers every tool "not attached"; on any such answer, `arlesh_agents`
+included, the mod attaches again with its stored token (the PIN door if refused) and runs the call
+once more. When the session ends (`session.end` for an exit, logout or signal, within the engine's
+exit budget; not `/clear` or a switch of session, where the process goes on as the same agent) the
+mod pauses the **session's own** Claim, so another session may take the subtree, and a returning
+session (`claude --resume`, attached by its stored token) resumes it, or is told why it could not.
+Pausing the parent leaves the children as they are: they read Paused through it. A crash or kill
+raises no event and leaves the Claim active until it is paused or the agent removed in Settings. An
+attach the model makes by hand is adopted as the session's standing, so its subagents are
+registered.
 
 **The sub-token** is an optional argument, `sub_token`, on **every** tool. A call carrying it runs
 as that child: it sees and writes only the child's **sub-Claim**. A call without it runs as the

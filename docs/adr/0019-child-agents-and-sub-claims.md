@@ -249,8 +249,26 @@ Not run against a live terminal: hand test H6.
   `sub_token`, would have changed the **session's** Claim (it did, in the first hand test). The mod
   denies those two. `attach` (it would rebind the session), `pause`, `resume`, `lock`, `unlock` and
   `report_usage` have the same exposure and are not guarded yet.
-- **Not built**: live Active/Paused in the task list (the label is set once), a pane, and noticing
+- **Not built** (and since revised, see below): live Active/Paused in the task list (the label is set once), a pane, and noticing
   a session the model attached by hand (the mod registers children only when the mod attached).
+
+## Revision 2026-11-14 (later): the session across restarts, endings and hand attaches
+
+Four findings of the user's hand tests, all in the mod:
+
+1. **Re-attaching.** The mod's recovery skipped `arlesh_agents` calls, detected the refusal only in
+   some result shapes, never awaited its attach and never ran the call again, so the model always
+   saw the refusal; a refused stored token also threw (`$.store.set(key, undefined)` is not JSON
+   data, it must be `$.store.delete`), so the PIN fallback never ran. Now any "not attached"
+   answer, whatever its shape, makes the mod attach (token, then the PIN door) and run the call
+   once more.
+2. **Session end.** The mod pauses the session's own Claim at `session.end` for an exit, logout or
+   signal (not `clear` or `resume`, where the process continues as the same agent over the same
+   connection), and a returning session resumes it or is told why it could not. A kill leaves the
+   Claim active; no server timer was added.
+3. **Hand attaches** are adopted (PIN, token, and a rebind to another agent, which forgets the old
+   agent's children).
+4. **The guard** covers every operation of `arlesh_agents` except `status`.
 
 ## Consequences
 

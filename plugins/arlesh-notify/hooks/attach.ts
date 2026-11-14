@@ -82,6 +82,10 @@ export interface Attached {
   /** The claim as the server reports it, e.g. `goal 10`, or `undefined` when none is held. */
   claim?: string
   claimRefused?: string
+  /** The agent's id on the server: two attaches as different agents rebind the session. */
+  agentId?: number
+  /** Whether the Claim is held or paused, when there is one. */
+  claimStatus?: 'active' | 'paused'
 }
 
 /** Reads an `arlesh_agents` answer, or `undefined` when it is a refusal. */
@@ -98,8 +102,12 @@ export function attachedFrom(result: unknown): Attached | undefined {
       : undefined
   const token = text(payload, 'token')
   const claimRefused = text(payload, 'claim_refused')
+  const id = agent['id']
+  const status = isRecord(agent['claim']) ? agent['claim']['status'] : undefined
   return {
     name,
+    ...(typeof id === 'number' ? { agentId: id } : {}),
+    ...(status === 'active' || status === 'paused' ? { claimStatus: status } : {}),
     ...(token === undefined ? {} : { token }),
     ...(claim === undefined ? {} : { claim }),
     ...(claimRefused === undefined ? {} : { claimRefused }),
@@ -108,11 +116,21 @@ export function attachedFrom(result: unknown): Attached | undefined {
 
 /** Whether a tool's answer is the server turning an unattached session away. */
 export function isNotAttached(result: unknown): boolean {
-  const body = typeof result === 'string' ? parseJson(result) : undefined
-  const payload = isRecord(result) ? (result['structuredContent'] ?? body) : body
-  const fromBlocks = isRecord(result) && Array.isArray(result['content']) ? JSON.stringify(result['content']) : ''
-  const found = isRecord(payload) ? `${String(payload['kind'])} ${String(payload['message'])}` : fromBlocks
+  // Whatever the shape (the JSON the model reads, a result object, text with a prefix), the refusal
+  // names its kind and says the session is not attached: look at all of it.
+  const found = typeof result === 'string' ? result : JSON.stringify(result ?? '')
   return /not_permitted/.test(found) && /not attached/i.test(found)
+}
+
+/** The reason a refused `arlesh_agents` call gives, from whatever shape its answer has. */
+export function refusalMessage(result: unknown): string | undefined {
+  const structured = isRecord(result) ? result['structuredContent'] : undefined
+  const body = isRecord(structured) ? structured : typeof result === 'string' ? parseJson(result) : undefined
+  if (isRecord(body)) return text(body, 'message')
+  const blocks = isRecord(result) ? result['content'] : undefined
+  const first = Array.isArray(blocks) ? blocks[0] : undefined
+  const inner = isRecord(first) && typeof first['text'] === 'string' ? parseJson(first['text']) : undefined
+  return isRecord(inner) ? text(inner, 'message') : undefined
 }
 
 /** A plan-limit window as the session reports it. */
@@ -159,7 +177,16 @@ export function reportedFrom(limits: readonly Limit[], now: number): Reported {
 
 /** The state of this session's attach, as the context block tells it. */
 export type Standing =
-  | { kind: 'attached'; name: string; claim: string | undefined; claimRefused?: string; automatic: boolean }
+  | {
+      kind: 'attached'
+      name: string
+      claim: string | undefined
+      claimRefused?: string
+      /** Why the Claim paused when the last session ended could not be resumed, when it could not. */
+      resumeRefused?: string
+      agentId?: number
+      automatic: boolean
+    }
   | { kind: 'unattached'; reason: string }
 
 /**
@@ -178,7 +205,11 @@ export function contextBlock(standing: Standing): string {
     )
   }
   const held = standing.claim === undefined ? 'no claim yet' : `claim: ${standing.claim}`
-  const refused = standing.claimRefused === undefined ? '' : ` The claim asked for was refused: ${standing.claimRefused}.`
+  const refused =
+    (standing.claimRefused === undefined ? '' : ` The claim asked for was refused: ${standing.claimRefused}.`) +
+    (standing.resumeRefused === undefined
+      ? ''
+      : ` Its claim was paused when the last session ended and could not be resumed: ${standing.resumeRefused}.`)
   const verb = standing.automatic ? 'attached automatically' : 'attached'
   const subagents = 'To start a subagent already holding its Task, write [arlesh:<task id>] once in the Agent call\'s description or prompt.'
   return `This session tracks work on Arlesh: ${verb} as ${standing.name}, ${held}.${refused} ${how} ${subagents}`

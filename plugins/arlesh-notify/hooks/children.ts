@@ -220,19 +220,36 @@ export function taskFrom(result: unknown): { shortId: string; title: string } | 
   return typeof shortId === 'string' && typeof title === 'string' ? { shortId, title } : undefined
 }
 
-/** The operations that would change the session's own Claim when made with no `sub_token`. */
-const CLAIM_OPERATIONS = new Set(['claim', 'release'])
-
 /**
- * Whether an Arlesh call is a `claim` or `release` that carries no `sub_token`: made inside a
- * subagent's loop it would run as the session and change the session's Claim.
+ * The operations of `arlesh_agents` that act on the session's own agent, and what each would
+ * change. A call to one of these made inside a subagent's loop with no `sub_token` runs as the
+ * session. `status` is not here: it only reads, so it may run as either.
  */
-export function changesSessionClaim(tool: string, input: Record<string, unknown>): boolean {
+export const SESSION_OPERATIONS: Readonly<Record<string, string>> = {
+  claim: "the session's Claim",
+  release: "the session's Claim",
+  pause: "the session's Claim (it would pause it)",
+  resume: "the session's Claim (it would resume it)",
+  attach: 'which agent this whole session is',
+  lock: "the session's capacity lock",
+  unlock: "the session's capacity lock",
+  report_usage: "the session's account usage",
+  register_child: "the session's children (a subagent cannot register children)",
+}
+
+/** What the call would change for the session, or `undefined` when the call is not one of those. */
+export function changesSession(tool: string, input: Record<string, unknown>): string | undefined {
   const operation = input['operation']
+  if (!tool.endsWith('__arlesh_agents') || typeof operation !== 'string') return undefined
+  if (typeof input['sub_token'] === 'string') return undefined
+  return Object.hasOwn(SESSION_OPERATIONS, operation) ? SESSION_OPERATIONS[operation] : undefined
+}
+
+/** The refusal for a subagent with no child of its own that calls an operation of the session's. */
+export function noChildMessage(operation: string, effect: string): string {
   return (
-    tool.endsWith('__arlesh_agents') &&
-    typeof operation === 'string' &&
-    CLAIM_OPERATIONS.has(operation) &&
-    typeof input['sub_token'] !== 'string'
+    `arlesh-notify: this subagent has no child agent of its own, so \`${operation}\` here would run as the ` +
+    `session and change ${effect}, not yours. Ask the orchestrator to register you ` +
+    '(arlesh_agents.register_child, or name your Task with [arlesh:<task id>] in the Agent call).'
   )
 }
