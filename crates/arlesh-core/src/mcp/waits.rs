@@ -49,8 +49,8 @@ impl ArleshMcp {
     /// `hand_tests` (a list of what the user can try by hand). It is a question of its own kind:
     /// the Task reads Review until the user answers. A PR link makes their approval their word to
     /// merge it; Arlesh never talks to GitHub. The links show in the app as clickable links, only
-    /// for http and https URLs. The Task must be held by you (On Agent, or already Review): claim
-    /// it first, or the call is refused. Limits: title 200 characters, summary 10000, at most 20
+    /// for http and https URLs. The Task must be held by you (On Agent, which reads Review while a question is
+    /// open): claim it first, or the call is refused, a To Do Task with a question open included. Limits: title 200 characters, summary 10000, at most 20
     /// links (label 100 characters, URL 2000, every link needs both) and 30 hand tests (1000
     /// each). A blank title or summary, a link with a blank half or a URL that is not http or
     /// https is refused as `invalid_request` and says what to change; blank hand tests are
@@ -180,16 +180,19 @@ impl ArleshMcp {
             return access::refuse("task", &task_id, AccessLevel::Write);
         }
         if review.is_some() {
-            // A review hands work back, so the Task must be held by an agent: the board's own
-            // derived status says whether it is (On Agent, or already Review).
-            let held = board
+            // A review hands work back, so the Task must be held by an agent: what its row holds
+            // says whether it is. A To Do Task with a question open reads Review and is not held.
+            let shown = board
                 .load
                 .tasks
                 .iter()
                 .find(|task| task.id == task_id)
-                .map(|task| review_rules::require_held(&task.status));
-            if let Some(Err(refusal)) = held {
-                return result::refused(refusal.to_string());
+                .map(|task| task.status);
+            if let Some(shown) = shown {
+                let held = attempt!(super::tasks::stored_status(&mut db, &task_id, shown).await);
+                if let Err(refusal) = review_rules::require_held(&held) {
+                    return result::refused(refusal.to_string());
+                }
             }
         }
         let user_source = attempt!(db.undo().set_source(WriteSource::Mcp).await);

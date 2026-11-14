@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import { PHONE_LAYOUT_QUERY, useMediaQuery, usePhoneLayout, useShowsActionBar } from "./use-media-query";
+import { PHONE_LAYOUT_QUERY, useMediaQuery, usePhoneLayout, useTouchLayout } from "./use-media-query";
 
 type Listener = () => void;
 
@@ -36,9 +36,15 @@ describe("useMediaQuery", () => {
     expect(result.current).toBe(true);
   });
 
-  it("shows the action bar on a wide touch-only device", () => {
+  it("is on for a touch-only device at any width", () => {
     stubMatchMedia(new Set(["(any-pointer: coarse) and (not (any-pointer: fine))"]));
-    const { result } = renderHook(() => useShowsActionBar());
+    const { result } = renderHook(() => useTouchLayout());
     expect(result.current).toBe(true);
+  });
+
+  it("is off for a narrow window with a mouse: width alone never turns it on", () => {
+    stubMatchMedia(new Set([PHONE_LAYOUT_QUERY]));
+    const { result } = renderHook(() => useTouchLayout());
+    expect(result.current).toBe(false);
   });
 });

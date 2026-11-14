@@ -194,8 +194,10 @@ pub fn is_open_question(wait: &Expectation) -> bool {
         && wait.archival == ExpectationArchival::Live
 }
 
-/// Turns every On Agent Task in `tasks` with an open question beneath it, among `waits`, into
-/// Review.
+/// Turns every To Do or On Agent Task in `tasks` with an open question beneath it, among `waits`,
+/// into Review. A To Do one reads Review too: an agent that asks before claiming (a Task with no
+/// Spec cannot be claimed) is waiting on the user, and the board must say so. What the row holds
+/// does not change (see [`AgenticStatus::stored`]).
 pub fn derive(tasks: &mut [Task], waits: &[Expectation]) {
     let asking: HashSet<&NodeId> = waits
         .iter()
@@ -203,7 +205,11 @@ pub fn derive(tasks: &mut [Task], waits: &[Expectation]) {
         .map(|wait| &wait.parent_id)
         .collect();
     for task in tasks.iter_mut() {
-        if task.status == Status::Agentic(AgenticStatus::OnAgent) && asking.contains(&task.id) {
+        if matches!(
+            task.status,
+            Status::Agentic(AgenticStatus::Todo | AgenticStatus::OnAgent)
+        ) && asking.contains(&task.id)
+        {
             task.status = Status::Agentic(AgenticStatus::Review);
         }
     }

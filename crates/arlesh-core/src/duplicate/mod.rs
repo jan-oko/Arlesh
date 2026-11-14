@@ -689,3 +689,6 @@ async fn carry_block_reasons(
     db.block_reasons().set(owner_type, new_id, &reasons).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

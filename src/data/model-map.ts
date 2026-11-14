@@ -116,7 +116,7 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "Review",
-        is: "Never set: an On Agent Task with an open agent question or review beneath it. Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent.",
+        is: "Never set: a To Do or On Agent Task with an open agent question or review beneath it (a To Do one is a question asked before claiming). Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent, or To Do if it was never claimed.",
         why: "It is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait itself: the Task shows it and is where you answer.",
         without: "Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.",
         lives: "tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts",

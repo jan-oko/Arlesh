@@ -1304,7 +1304,9 @@ async fn dispatch(
         }
         Request::DeleteDomain { id } => {
             transaction(factory, async |db| {
-                db.domains().delete(DomainId(id)).await.wired()
+                arlesh_core::domains::delete_subtree(db, DomainId(id))
+                    .await
+                    .wired()
             })
             .await
         }

@@ -51,18 +51,21 @@ class MainActivity : TauriActivity() {
       // The bars' sizes even while hidden (Immersive), for the page to pad by where they peek.
       val peek = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
       val corners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) cornersOf(insets) else null
+      // Where the camera hole is, not just how far it pushes the bars in: the page keeps only the
+      // content that would sit under it clear (API 28+; empty before, and with no cutout).
+      val cutouts = cutoutBands(insets.displayCutout?.boundingRects.orEmpty(), view.width, view.height)
       when (mode) {
         BarsMode.STANDARD -> {
           view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
-          pushInsets(0, 0, 0, 0, NO_CORNERS, peek.top, peek.bottom)
+          pushInsets(0, 0, 0, 0, NO_CORNERS, peek.top, peek.bottom, NO_CUTOUT)
         }
         BarsMode.EDGE_TO_EDGE -> {
           view.setPadding(0, 0, 0, if (keyboard) ime.bottom else 0)
-          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right, corners, peek.top, peek.bottom)
+          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right, corners, peek.top, peek.bottom, cutouts)
         }
         BarsMode.IMMERSIVE -> {
           view.setPadding(0, 0, 0, ime.bottom)
-          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right, corners, peek.top, peek.bottom)
+          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right, corners, peek.top, peek.bottom, cutouts)
         }
       }
       WindowInsetsCompat.CONSUMED
@@ -137,10 +140,11 @@ class MainActivity : TauriActivity() {
 
   /**
    * Writes the insets, in CSS pixels, to the page's `--sat`, `--sab`, `--sal` and `--sar`, the bars' own sizes (hidden or not) to `--peek-top` and `--peek-bottom`, and the
-   * display's corner radii to `--corner-tl`, `--corner-tr`, `--corner-br` and `--corner-bl`. With
-   * no corners (an older Android) the page keeps its own fallback for them.
+   * display's corner radii to `--corner-tl`, `--corner-tr`, `--corner-br` and `--corner-bl`, and
+   * the display cutout's bands to `--cutout-<side>-start|end|depth`. With no corners (an older
+   * Android) the page keeps its own fallback for them.
    */
-  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int, corners: Corners?, peekTop: Int, peekBottom: Int) {
+  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int, corners: Corners?, peekTop: Int, peekBottom: Int, cutouts: CutoutBands) {
     val density = resources.displayMetrics.density
     fun css(px: Int) = "${px / density}px"
     var script = "(function(s){s.setProperty('--sat','${css(top)}');" +
@@ -153,7 +157,15 @@ class MainActivity : TauriActivity() {
         "s.setProperty('--corner-br','${css(corners.bottomRight)}');" +
         "s.setProperty('--corner-bl','${css(corners.bottomLeft)}');"
     }
-    script += "})(document.documentElement.style)"
+    // `--cutout-<side>-start|end|depth`: the span the cutout covers along that side and how far it
+    // reaches in, in CSS px (all 0 where there is none).
+    for ((side, band) in listOf("left" to cutouts.left, "top" to cutouts.top, "right" to cutouts.right, "bottom" to cutouts.bottom)) {
+      script += "s.setProperty('--cutout-$side-start','${css(band.start)}');" +
+        "s.setProperty('--cutout-$side-end','${css(band.end)}');" +
+        "s.setProperty('--cutout-$side-depth','${css(band.depth)}');"
+    }
+    // The page's layout reads these (`use-cutout-clearance.ts`), so it is told when they changed.
+    script += "})(document.documentElement.style);window.dispatchEvent(new Event('arlesh-insets'))"
     webView?.evaluateJavascript(script, null)
   }
 

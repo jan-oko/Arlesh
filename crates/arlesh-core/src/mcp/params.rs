@@ -651,7 +651,8 @@ pub enum TasksOperation {
     SetStatus {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
-        /// The status you last saw — `review` included.
+        /// The status you last saw — `review` included. A `todo` Task with a question open reads
+        /// `review`, so name `review` for it, not `todo`.
         expected: AgenticStatusParam,
         /// The status to set: `on_agent`, `done` or `todo`.
         status: AgenticStatusParam,

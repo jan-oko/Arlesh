@@ -688,7 +688,7 @@ impl Tree {
             .collect();
         let is_archived = |kind: Kind, id: &NodeId| archived.contains(&(kind.lifecycle_type(), id));
         let done_at = |id: &NodeId| rows.instants.get(id).copied();
-        // An On Agent Task with a question open beneath it will read Review, which the board
+        // A To Do or On Agent Task with a question open beneath it will read Review, which the board
         // derives only afterwards (`tasks::rules::review`); the user's rule for an Agentic Compound
         // Task reads it as Review already.
         let asking: HashSet<&NodeId> = rows
@@ -703,14 +703,22 @@ impl Tree {
             children: HashMap::new(),
         };
         for task in rows.tasks.iter().chain(rows.checks) {
+            let will_read_review = task.status == Status::Agentic(AgenticStatus::Review)
+                || (matches!(
+                    task.status,
+                    Status::Agentic(AgenticStatus::Todo | AgenticStatus::OnAgent)
+                ) && asking.contains(&task.id));
             tree.insert(
                 (Kind::Task, task.id.clone()),
                 (task.parent_type.as_str(), &task.parent_id),
                 Item {
-                    reading: task_reading(task.status),
-                    asking: task.status == Status::Agentic(AgenticStatus::Review)
-                        || (task.status == Status::Agentic(AgenticStatus::OnAgent)
-                            && asking.contains(&task.id)),
+                    reading: if will_read_review {
+                        // Review reads Started to everything but the Agentic rule.
+                        task_reading(Status::Agentic(AgenticStatus::Review))
+                    } else {
+                        task_reading(task.status)
+                    },
+                    asking: will_read_review,
                     agentic: task.status.is_agentic(),
                     archived: is_archived(Kind::Task, &task.id),
                     compound: task.compound,

@@ -328,8 +328,9 @@ details an agent reads the payload by.
 - **Statuses.** A task's `status` names its model and its value: `{"kind": "ordinary", "status":
   "todo" | "in_progress" | "started" | "done"}`, or — for a Task that reads as Agentic —
   `{"kind": "agentic", "status": "todo" | "on_agent" | "review" | "doing" | "done"}`. `review` is
-  derived on every read: an `on_agent` Task with a pending agentic **question** beneath it reads
-  `review`, and reads `on_agent` again once the question is released. The snapshot, `get` and
+  derived on every read: an `on_agent` or **`todo`** Task with a pending agentic **question** beneath it reads
+  `review` (a `todo` one is a question asked before claiming; the row stays `todo`), and reads
+  `on_agent` (or `todo`) again once the question is released. The snapshot, `get` and
   every write's echo all report it so.
 - **Parents.** A node under a domain-table row names its parent `project` (a Project) or `domain`
   (any other subtype), derived from the parent row; its subtype is on that row in `domains`.
@@ -440,7 +441,7 @@ the user raise a question (`arlesh_waits.ask`: a spec question) or, for finished
 (`arlesh_waits.raise_review`: a summary, links, hand tests); the Task reads `review` until the user
 answers, then `on_agent` again, and the agent reads the answer — or `approved` /
 `changes_requested` with the user's note — with `arlesh_waits.get`. A wait on something non-human (`question: false`, CI)
-leaves it `on_agent`. Finish with `done`, or hand it back unstarted with `todo`. The `start` preset
+leaves it `on_agent`. A question asked under a `todo` Task (say, that its Spec is missing) reads `review` too, until answered. Finish with `done`, or hand it back unstarted with `todo`. The `start` preset
 still offers `todo` Agentic Tasks to claim; an agent at capacity blocks every one of its Claim not `done`.
 
 **Asking for them.** `load` takes an `agentic` query beside `filter` (added to `Arlesh-rz0`,
@@ -535,8 +536,8 @@ filter, as `pills.agentic`; see *Filtering a read*.)
   (`AgenticStatusParam`): `todo`, `on_agent`, `review`, `doing`, `done` — no `in_progress`, no
   `started`. `expected` may name any of them, `review` included: it is compared with the status the
   board reads, derived Review and all, so an agent expecting `on_agent` while its question is open
-  is refused as `status_changed` with `details.current` `review`. `status` may be **`on_agent`** —
-  claiming the Task, from `todo` only, which needs a Spec as in the app — **`todo`** or **`done`**;
+  is refused as `status_changed` with `details.current` `review`. A `todo` Task with a question open also reads `review`: name `review` as `expected` (`todo` is `status_changed`), and the claim `review` → `on_agent` is allowed when the row holds `todo`, the Task still reading `review` while the question is open. `status` may be **`on_agent`** —
+  claiming the Task, from `todo` only (a Task reading `review` whose row holds `todo` counts), which needs a Spec as in the app — **`todo`** or **`done`**;
   `doing` (the user's) and `review` (derived: raise a question instead) are refused as
   `invalid_request`, and so is a claim from anything but `todo`.
 - **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
@@ -614,7 +615,7 @@ row ids or short ids.
   link makes the user's approval their word to merge it); `hand_tests` is a list of strings, one
   per thing the user can try by hand. The Task reads `review` until the user answers, and stays
   `review` while **any** other question or review under it is open. The Task must be **held by an
-  agent** — `on_agent`, or already `review`: raising one under an unclaimed (`todo`) Task is refused
+  agent** — `on_agent`, which reads `review` while a question is open: raising one under an unclaimed (`todo`) Task is refused, a `todo` Task reading `review` because of a question included
   (`invalid_request`, "claim it first"). Plain questions are not held to this. The content is
   checked: a blank title or summary, a link missing its label or URL, or a URL that is not http or
   https is refused with a message saying what to change; blank hand tests are dropped. Caps: title
