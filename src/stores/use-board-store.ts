@@ -178,7 +178,9 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       const board: SharedBoard = { load: data.load, now: data.now ?? now, personNames, stamp, digests: held.digests };
       if (hashChecks && data.hash !== undefined && held.digests.total !== data.hash) {
         hashChecks = false;
-        report("load", board, { seq: data.seq ?? null, hash: data.hash });
+        const said = { seq: data.seq ?? null, hash: data.hash };
+        // Name the collections that differ, from the head's sums, when it can be read.
+        void boardHead().then((head) => report("load", board, { ...said, ...(head === null ? {} : { sums: head.sums }) }));
       }
       hold(board);
       // The whole board, before any view narrows it to a subtree: the top bar's agent status.

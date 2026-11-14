@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MindmapLoad } from "@/api/mindmap";
-import { applyBoardChanges, differingCollections, entriesOf, indexBoard, recomputeHash } from "@/utils/board-changes";
+import { applyBoardChanges, compactJson, differingCollections, entriesOf, indexBoard, recomputeHash } from "@/utils/board-changes";
 
 /** A board as the producer's JSON gives it: rows are opaque to the apply path, which reads keys only. */
 function isLoad(value: unknown): value is MindmapLoad {
@@ -114,6 +114,19 @@ describe("applyBoardChanges", () => {
     applyBoardChanges(held, { tasks: { set: [["task-2", { id: 2, title: "TWO" }]], del: ["task-1"] } });
 
     expect(JSON.stringify(held.load)).toBe(before);
+  });
+});
+
+describe("compactJson", () => {
+  it("writes an integer past 2^53 in full, as the producer does", () => {
+    expect(compactJson({ position: -(2 ** 63) })).toBe('{"position":-9223372036854775808}');
+    expect(compactJson([2 ** 63])).toBe("[9223372036854775807]");
+  });
+
+  it("is JSON.stringify for everything else", () => {
+    const value = { a: [1, 2.5, "é\u2028", null, true], b: { c: 1234567890123456 - 1 } };
+
+    expect(compactJson(value)).toBe(JSON.stringify(value));
   });
 });
 

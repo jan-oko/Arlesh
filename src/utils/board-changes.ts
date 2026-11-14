@@ -193,7 +193,38 @@ const encoder = new TextEncoder();
  * zero byte and the entry's compact JSON. The same function the producer runs in Rust.
  */
 export function entryDigest(collection: CollectionName, key: string, value: unknown): number {
-  return digestOfJson(collection, key, JSON.stringify(value));
+  return digestOfJson(collection, key, compactJson(value));
+}
+
+const BIGGEST_I64 = "9223372036854775807";
+
+/**
+ * The compact JSON of `value` as the producer writes it. `JSON.stringify` agrees with it for every
+ * value but an integer past 2^53, which the producer writes in full and JavaScript rounds: a derived
+ * check Task's `position` is the least `i64`, `-9223372036854775808`, and prints as
+ * `-9223372036854776000`. Those are written as the whole integer here. (A number the parse has
+ * already rounded is exact only for a power of two such as that one; the greatest `i64` parses to
+ * 2^63 and is named by its own digits.)
+ */
+export function compactJson(value: unknown): string {
+  const plain = JSON.stringify(value);
+  // A number past 2^53 has sixteen digits or more; nothing else on a board has a run that long.
+  return /\d{16}/.test(plain) ? writeExactIntegers(value) : plain;
+}
+
+function writeExactIntegers(value: unknown): string {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || Math.abs(value) < Number.MAX_SAFE_INTEGER) return JSON.stringify(value);
+    return value >= 2 ** 63 ? BIGGEST_I64 : BigInt(value).toString();
+  }
+  if (Array.isArray(value)) return `[${value.map((item: unknown) => writeExactIntegers(item)).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const members = Object.entries(value)
+      .filter(([, member]) => member !== undefined)
+      .map(([key, member]) => `${JSON.stringify(key)}:${writeExactIntegers(member)}`);
+    return `{${members.join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 /** The digest of an entry whose compact JSON is already in hand. */

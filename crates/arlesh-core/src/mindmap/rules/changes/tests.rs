@@ -29,6 +29,8 @@ fn base() -> Value {
             task(10, "Step one", "todo", 1),
             task(11, "", "todo", 2),
             task_habit_occurrence(),
+            extreme_position("6f1d2c1e-8e0a-5b7e-9d57-3a1f0e6f7a11", i64::MIN),
+            extreme_position("6f1d2c1e-8e0a-5b7e-9d57-3a1f0e6f7a12", i64::MAX),
         ],
         "commitments": [
             {"id": 4, "title": "Commitment", "parent_type": "project", "parent_id": 2, "verdict": "unresolved",
@@ -100,6 +102,15 @@ fn task(id: i64, title: &str, status: &str, position: i64) -> Value {
     json!({"id": id, "title": title, "parent_type": "project", "parent_id": 2,
            "status": {"kind": "ordinary", "status": status}, "tag_ids": [],
            "position": position, "is_private": false})
+}
+
+/// A derived Task sorted first or last, as a check Task is: its position is the least or the
+/// greatest `i64`, which JavaScript cannot hold (it rounds them, and prints another number).
+fn extreme_position(id: &str, position: i64) -> Value {
+    let mut row = task(0, "Check", "todo", 0);
+    row["id"] = json!(id);
+    row["position"] = json!(position);
+    row
 }
 
 fn task_habit_occurrence() -> Value {

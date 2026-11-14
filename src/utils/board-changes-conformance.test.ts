@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/board-changes.json";
 import { fail, record, str } from "@/test/conformance-board";
 import type { MindmapLoad } from "@/api/mindmap";
-import { COLLECTIONS, applyBoardChanges, digestOfJson, indexBoard, keyOf } from "@/utils/board-changes";
+import { COLLECTIONS, applyBoardChanges, compactJson, digestOfJson, indexBoard, keyOf } from "@/utils/board-changes";
 import type { BoardChanges, CollectionName } from "@/utils/board-changes";
 
 /**
@@ -68,7 +68,7 @@ describe("board changes conformance corpus", () => {
     const json = str(entry.json, "json");
 
     it(`${collection} ${key}: its text survives a parse and a stringify, and its digest is the producer's`, () => {
-      expect(JSON.stringify(JSON.parse(json))).toBe(json);
+      expect(compactJson(JSON.parse(json))).toBe(json);
       expect(digestOfJson(collection, key, json)).toBe(num(entry.digest, "digest"));
     });
 
