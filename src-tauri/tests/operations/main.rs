@@ -25,6 +25,7 @@ mod list_sections_conformance;
 mod mcp;
 mod mcp_access;
 mod mcp_endpoint;
+mod mcp_waits;
 mod mcp_writes;
 mod mindmap_commands;
 mod multi_node_gestures;

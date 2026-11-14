@@ -165,6 +165,7 @@ fn edit(
     backlog: Option<bool>,
 ) -> TasksOperation {
     TasksOperation::Update {
+        verbose: Some(true),
         id: id.into(),
         title: title.map(str::to_string),
         brief,
@@ -366,6 +367,7 @@ async fn of_two_status_writes_expecting_the_same_status_exactly_one_wins() {
         .await,
     );
     let set = |status| TasksOperation::SetStatus {
+        verbose: Some(true),
         id: board.inside_task.into(),
         expected: AgenticStatusParam::Todo,
         status,
@@ -408,6 +410,7 @@ async fn claiming_an_agentic_task_needs_a_spec() {
     let started = run(
         &mcp(&pool),
         TasksOperation::SetStatus {
+            verbose: Some(true),
             id: board.inside_task.into(),
             expected: AgenticStatusParam::Todo,
             status: AgenticStatusParam::OnAgent,
@@ -436,6 +439,7 @@ async fn claimed(pool: &sqlx::SqlitePool) -> (ArleshMcp, i64) {
         &run(
             &mcp,
             TasksOperation::SetStatus {
+                verbose: Some(true),
                 id: board.inside_task.into(),
                 expected: AgenticStatusParam::Todo,
                 status: AgenticStatusParam::OnAgent,
@@ -455,6 +459,7 @@ async fn an_agent_never_sets_doing_or_review() {
         let refused_write = run(
             &mcp,
             TasksOperation::SetStatus {
+                verbose: Some(true),
                 id: id.into(),
                 expected: AgenticStatusParam::OnAgent,
                 status,
@@ -474,6 +479,7 @@ async fn an_agent_claims_only_from_to_do() {
         &run(
             &mcp,
             TasksOperation::SetStatus {
+                verbose: Some(true),
                 id: id.into(),
                 expected: AgenticStatusParam::OnAgent,
                 status: AgenticStatusParam::Done,
@@ -485,6 +491,7 @@ async fn an_agent_claims_only_from_to_do() {
     let reclaimed = run(
         &mcp,
         TasksOperation::SetStatus {
+            verbose: Some(true),
             id: id.into(),
             expected: AgenticStatusParam::Done,
             status: AgenticStatusParam::OnAgent,
@@ -501,6 +508,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let (mcp, id) = claimed(&pool).await;
     let asked = mcp
         .waits(Parameters(params::WaitsOperation::Ask {
+            verbose: Some(true),
             task_id: id.into(),
             title: "Review PR #1?".into(),
             note: None,
@@ -513,6 +521,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let stale = run(
         &mcp,
         TasksOperation::SetStatus {
+            verbose: Some(true),
             id: id.into(),
             expected: AgenticStatusParam::OnAgent,
             status: AgenticStatusParam::Done,
@@ -526,6 +535,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let open = run(
         &mcp,
         TasksOperation::SetStatus {
+            verbose: Some(true),
             id: id.into(),
             expected: AgenticStatusParam::Review,
             status: AgenticStatusParam::Done,
@@ -537,6 +547,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     // Answered, it reads On Agent again, and then it can be finished.
     succeeded(
         &mcp.waits(Parameters(params::WaitsOperation::Release {
+            verbose: Some(true),
             id: question.into(),
             answer: Some("Merged".to_string()),
             verdict: None,
@@ -547,6 +558,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let done = run(
         &mcp,
         TasksOperation::SetStatus {
+            verbose: Some(true),
             id: id.into(),
             expected: AgenticStatusParam::OnAgent,
             status: AgenticStatusParam::Done,
@@ -580,6 +592,7 @@ async fn a_task_moves_only_between_parents_it_could_be_created_under() {
     not_agentic(&pool, marked).await;
     let mcp = mcp(&pool);
     let move_to = |parent_type: &str, parent_id: i64| TasksOperation::Move {
+        verbose: Some(true),
         id: board.inside_task.into(),
         parent_type: parent_type.into(),
         parent_id: parent_id.into(),
@@ -618,6 +631,7 @@ async fn archive_puts_a_stored_agentic_task_away_by_hand_and_unarchive_brings_it
     let archived = run(
         &mcp,
         TasksOperation::Archive {
+            verbose: Some(true),
             id: board.inside_task.into(),
         },
     )
@@ -628,6 +642,7 @@ async fn archive_puts_a_stored_agentic_task_away_by_hand_and_unarchive_brings_it
     let unarchived = run(
         &mcp,
         TasksOperation::Unarchive {
+            verbose: Some(true),
             id: board.inside_task.into(),
         },
     )
@@ -646,6 +661,7 @@ async fn unarchive_is_refused_on_a_task_nobody_archived_by_hand() {
     let unarchived = run(
         &mcp(&pool),
         TasksOperation::Unarchive {
+            verbose: Some(true),
             id: board.inside_task.into(),
         },
     )
@@ -993,6 +1009,7 @@ async fn every_node_carries_a_short_id_and_the_agentic_query_keeps_a_matchs_wait
     let mcp = mcp(&pool);
     let asked = mcp
         .waits(Parameters(params::WaitsOperation::Ask {
+            verbose: Some(true),
             task_id: NodeIdParam::Short(short_id(&mcp, "tasks", flagged).await),
             title: "Which config?".into(),
             note: None,
@@ -1049,6 +1066,7 @@ mod agent_waits {
         let wait = waits(
             &mcp,
             params::WaitsOperation::Raise {
+                verbose: Some(true),
                 task_id: board.inside_task.into(),
                 title: if question {
                     "Which colour?"
@@ -1068,6 +1086,7 @@ mod agent_waits {
 
     fn release(id: i64, answer: Option<&str>) -> params::WaitsOperation {
         params::WaitsOperation::Release {
+            verbose: Some(true),
             id: id.into(),
             answer: answer.map(str::to_string),
             verdict: None,
@@ -1099,6 +1118,7 @@ mod agent_waits {
 
     fn review_request(task: i64, title: &str, summary: &str) -> params::WaitsOperation {
         params::WaitsOperation::RaiseReview {
+            verbose: Some(true),
             task_id: task.into(),
             title: title.into(),
             summary: summary.into(),
@@ -1113,6 +1133,7 @@ mod agent_waits {
         let review = waits(
             mcp,
             params::WaitsOperation::RaiseReview {
+                verbose: Some(true),
                 task_id: task.into(),
                 title: "Review #12".into(),
                 summary: "Adds the thing".into(),
@@ -1151,6 +1172,7 @@ mod agent_waits {
         let released = waits(
             &mcp,
             params::WaitsOperation::Release {
+                verbose: Some(true),
                 id: id.into(),
                 answer: Some("Fix the label".into()),
                 verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::ChangesRequested),
@@ -1171,6 +1193,7 @@ mod agent_waits {
         let mcp = mcp(&pool);
         let id = raised_review(&pool, &mcp, board.inside_task).await;
         let approve = |answer: &str, verdict| params::WaitsOperation::Release {
+            verbose: Some(true),
             id: id.into(),
             answer: Some(answer.into()),
             verdict: Some(verdict),
@@ -1211,6 +1234,7 @@ mod agent_waits {
         let task = board.inside_task;
         let with =
             |links: Vec<(&str, &str)>, hand_tests: Vec<&str>| params::WaitsOperation::RaiseReview {
+                verbose: Some(true),
                 task_id: task.into(),
                 title: "Review".into(),
                 summary: "Changed it".into(),
@@ -1267,6 +1291,7 @@ mod agent_waits {
         let question = waits(
             &mcp,
             params::WaitsOperation::Ask {
+                verbose: Some(true),
                 task_id: board.inside_task.into(),
                 title: "Which?".into(),
                 note: None,
@@ -1335,6 +1360,7 @@ mod agent_waits {
         let refusal = waits(
             &mcp,
             params::WaitsOperation::Release {
+                verbose: Some(true),
                 id: id.into(),
                 answer: Some("Blue".into()),
                 verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::Approved),
@@ -1635,6 +1661,7 @@ mod agent_waits {
         let bare = waits(
             &mcp,
             params::WaitsOperation::Release {
+                verbose: Some(true),
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
                 verdict: None,
@@ -1673,6 +1700,7 @@ mod agent_waits {
         let released = waits(
             &mcp,
             params::WaitsOperation::Release {
+                verbose: Some(true),
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
                 verdict: None,
@@ -1896,6 +1924,7 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
 
     let raised = mcp
         .waits(Parameters(params::WaitsOperation::Raise {
+            verbose: Some(true),
             task_id: NodeIdParam::Short(board.inside_task.to_string()),
             title: "CI on #86".into(),
             note: None,
@@ -1912,6 +1941,7 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
     assert_eq!(succeeded(&polled)["id"], wait);
     let released = mcp
         .waits(Parameters(params::WaitsOperation::Release {
+            verbose: Some(true),
             id: by_string(),
             answer: None,
             verdict: None,

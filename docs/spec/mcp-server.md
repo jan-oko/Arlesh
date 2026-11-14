@@ -210,9 +210,9 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items (`flow_goals`, `flow_tasks`, `flow_commitments`, `flow_expectations`), cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`; every write also takes `verbose?`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `raise_review(task_id, title, summary, links?, hand_tests?)`, `release(id, answer?, verdict?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user, a review for their verdict, or a wait on something else, released by the agent (a question only with its answer, a review only with the user's verdict) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `raise_review(task_id, title, summary, links?, hand_tests?)`, `release(id, answer?, verdict?)`, `list(status?, under?, question?, cursor?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user, a review for their verdict, or a wait on something else, released by the agent (a question only with its answer, a review only with the user's verdict) listed cheaply with `list` and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage; `register_child(name, client_id)` — registers a subagent as a child Agent and answers its `sub_token` once. With a `sub_token`, `status`, `claim`, `pause`, `resume` and `release` act on that child. See [Agents](agents.md) |
 
@@ -232,6 +232,15 @@ that filled in null defaults would otherwise clear every field it did not mentio
 `arlesh_infos.create` returns. An agentic wait's
 fields have one name everywhere — `agentic_note`, `question`, `answer` — in the snapshot and in
 every `arlesh_waits` operation, `get` returning the same row.
+
+**A write answers briefly.** `arlesh_tasks.create`, `update`, `set_status`, `move`, `archive` and
+`unarchive` answer with the Task's `id`, `short_id`, `full_id`, `title` and `status` (an `update`
+also names the fields it set, as `changed`), not its whole `agentic_brief`, which can run to
+thousands of tokens on a long Task. `arlesh_waits` writes (`raise`, `ask`, `raise_review`,
+`release`) likewise leave out the note and the answer: they answer with the ids, `title`, `status`,
+`question`, the Task's `task_id` and `task_short_id`, and for a review `review: true` and, once
+released, its `verdict`. `verbose: true` on any of them returns the whole row as `get` does. The
+default is one constant, `BRIEF_BY_DEFAULT` in `mcp/short.rs`.
 
 **Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table. A parent
 reference to one is stored and reported **one way**, `domain`, whatever its subtype (Task 13c,
@@ -393,7 +402,7 @@ narrowed as the List View narrows it: to the Task, Commitment and Expectation ro
 preset, Unblock or the Expectations option, tags, toggles and pills, each by the List View's rule
 (see [*List View*](list-view.md)) — together with every ancestor of one, the chain the row hangs
 from. Notes and Flows are not rows, and drop. Without a pill and with every kind, the read is
-narrowed as the Mindmap narrows it, as above. The rules are `crate::filters::pills`, held to the
+narrowed as the Mindmap narrows it, as above. That includes the **Expectations option**: it is the List View's, so it narrows the read only together with a pill or a narrower kind choice; alone it is ignored, as the Mindmap ignores it, and `{"expectations": true, "preset": "all"}` still returns every wait, released ones too. With a pill it keeps the non-agentic pending waits that pass, never an agentic one, which no view draws and which travels with the Task it hangs under (a Task is not a row under the option, so an `Under` pill finds no agent's wait). Agents find waits with `arlesh_waits.list`. The rules are `crate::filters::pills`, held to the
 frontend's by the same conformance corpus.
 
 ## Paging the snapshot
@@ -633,6 +642,14 @@ row ids or short ids.
   agentic is refused as `not_permitted`. A question or review that is **already released** is
   refused (`invalid_request`): the user's answer or verdict is never overwritten, and a second
   release is a mistake. A wait on something else is idempotent and passes.
+- **`list(status?, under?, question?, cursor?)`** is the cheap way to find waits. It returns agentic
+  waits, `pending` by default (`released` or `all` on request), in the order they were raised, cut
+  to the MCP roots. `under` is any node (a project, domain, goal or Task, by row id or short id):
+  only waits anywhere beneath it. `question` keeps questions and reviews (`true`) or the waits on
+  something else (`false`). Each row carries only `id`, `short_id`, `full_id`, `title`, `status`,
+  `question` and `task` (`id`, `short_id`, `full_id`, `title` of the Task it hangs under); the
+  note and the answer are `get`'s. It is paged like the snapshot: `next_cursor` is null on the
+  last page, and later pages take the same filters.
 - **`get(id)`** returns one visible wait's `status`, `question`, `note` and `answer` (with its
   short and full id, and the Task's `task_id` and `task_short_id` as `get_many` names them; wait
   ids and Task ids share one number space, so name nodes by short id), so an agent can poll for the user's answer without loading the snapshot. A

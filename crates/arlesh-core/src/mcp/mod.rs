@@ -61,8 +61,10 @@ mod result;
 mod schema;
 mod scopes;
 pub mod session;
+mod short;
 mod snapshot;
 mod tasks;
+mod wait_list;
 mod waits;
 
 use std::sync::Arc;
