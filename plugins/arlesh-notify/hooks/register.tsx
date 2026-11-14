@@ -62,15 +62,25 @@ let lastReport: Reported | undefined
 /** Which `Agent` call started each subagent, so its row can be found again. */
 const spawned = new Map<string, string>()
 
-/** A subagent the orchestrator started with a Task named, until its child is registered holding it. */
-interface Pending {
-  /** What the subagent list shows: the original description, then the Task. */
-  label: string
-  /** The description as the orchestrator wrote it, marker removed: the child's name. */
-  original: string
-  /** The Task's short id, which `register_child` claims. */
-  shortId: string
-}
+/** A subagent the orchestrator started with a Task named, until its child is registered. */
+type Pending =
+  | {
+      kind: 'task'
+      /** What the subagent list shows: the original description, then the Task. */
+      label: string
+      /** The description as the orchestrator wrote it, marker removed: the child's name. */
+      original: string
+      /** The Task's short id, which `register_child` claims. */
+      shortId: string
+    }
+  | {
+      kind: 'unreadable'
+      /** The description, which the call keeps: how the start finds it. */
+      label: string
+      original: string
+      /** What the marker named. */
+      ref: string
+    }
 const pendingByLabel = new Map<string, Pending>()
 const pendingByAgent = new Map<string, Pending>()
 
@@ -113,6 +123,7 @@ export const register: Register = (on) => {
     // Attached before the context is composed, with no action from the agent.
     const now = await attach($, server)
     void reportUsage($, undefined)
+    if (now.kind === 'attached') void sweepChildren($)
     return {
       ...started,
       additionalContext: [...(started.additionalContext ?? []), NOTES, contextBlock(now)],
@@ -163,9 +174,10 @@ export const register: Register = (on) => {
     return done
   }).catch(($, e, next) => next(e))
 
-  // An Arlesh call a subagent makes carries the `sub_token` of the child it works under, whether
-  // or not the model remembered the argument, and even when it passed a stale one (a child that
-  // was registered again has a new token its transcript never saw).
+  // An Arlesh call a subagent makes must carry the `sub_token` of the child it works under. The mod
+  // never rewrites the call (auto mode refuses a call whose input a hook changed after it was
+  // reviewed): a call without it, or with a stale one, is denied with a message that says where the
+  // token is and quotes it, so the subagent can call again.
   on('tool.call', { tool: ARLESH_TOOL }, async ($, e, next) => {
     const agentId = e.agentId
     const input: Record<string, unknown> = { ...e }
@@ -175,8 +187,10 @@ export const register: Register = (on) => {
       const effect = kids.changesSession(e.tool, input)
       return effect === undefined ? next(e) : { deny: kids.noChildMessage(String(input['operation']), effect) }
     }
-    if (input['sub_token'] === found.child.subToken) return next(e)
-    const ran = await next({ ...e, ...{ sub_token: found.child.subToken } })
+    if (input['sub_token'] !== found.child.subToken) {
+      return { deny: kids.passTokenMessage(found.child.name, found.child.subToken) }
+    }
+    const ran = await next(e)
     void noteAnswer($, found, e.tool, ran.result ?? ran.text)
     return ran
   }).catch(($, e, next) => next(e))
@@ -231,7 +245,10 @@ export const register: Register = (on) => {
   // session that comes back (`claude --resume`) resumes it. Only when the process ends: after a
   // /clear or a switch of session it goes on over the same connection, as the same agent.
   on('session.end', async ($, e, next) => {
-    if (e.reason !== 'clear' && e.reason !== 'resume') await pauseOwnClaim($)
+    if (e.reason !== 'clear' && e.reason !== 'resume') {
+      await pauseOwnClaim($)
+      await sweepChildren($)
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -657,9 +674,8 @@ async function noteAnswer($: Engine, found: kids.Governing, tool: string, result
  * attached session, not a plain subagent, already known, or resumed).
  */
 async function childStarted($: Engine, id: string): Promise<string | undefined> {
-  if (attaching !== undefined) await attaching
-  const connection = server
-  if (standing?.kind !== 'attached' || connection === undefined) return undefined
+  const connection = (await ensureAttached($)) ? server : undefined
+  if (connection === undefined) return undefined
   const agents = await $.agent.list()
   const info = agents.find((agent) => agent.id === id)
   if (info === undefined || info.teammateId !== undefined) return undefined
@@ -683,7 +699,7 @@ async function childStarted($: Engine, id: string): Promise<string | undefined> 
     return kids.contextBlock(ancestor.child.name, ancestor.child.subToken)
   }
   const pending = pendingFor(id, info.description)
-  const subtree: kids.TaskRef | undefined = pending === undefined ? undefined : { node_type: 'task', node_id: pending.shortId }
+  const subtree: kids.TaskRef | undefined = pending?.kind === 'task' ? { node_type: 'task', node_id: pending.shortId } : undefined
   const made = kids.registeredFrom(
     await $.mcp.call(
       connection.name,
@@ -707,6 +723,7 @@ async function childStarted($: Engine, id: string): Promise<string | undefined> 
     await showRow($, id, record)
     return kids.contextBlock(made.name, made.subToken, { holding: held })
   }
+  if (pending?.kind === 'unreadable') return kids.contextBlock(made.name, made.subToken, { unreadable: pending.ref })
   return kids.contextBlock(made.name, made.subToken, made.claimRefused === undefined ? {} : { refused: made.claimRefused })
 }
 
@@ -734,29 +751,57 @@ async function spawnRequest(
     if (e.resume !== undefined || e.isTeammate !== undefined || e.workflow !== undefined) return { request: e }
     const marker = kids.parseMarker(e.description, e.prompt)
     if (marker.kind === 'invalid') {
-      $.ui.log(`arlesh-notify: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
+      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
       return { request: e }
     }
     if (marker.kind === 'none') return { request: e }
     const stripped = { ...e, description: kids.stripMarker(e.description), prompt: kids.stripMarker(e.prompt) }
-    if (attaching !== undefined) await attaching
-    if (standing?.kind !== 'attached' || server === undefined) return { request: stripped }
-    const task = kids.taskFrom(await $.mcp.call(server.name, 'arlesh_tasks', { operation: 'get', id: marker.ref }))
-    if (task === undefined) {
-      $.ui.log(`arlesh-notify: could not read the Task ${marker.ref} named for a subagent`, { to: 'debug' })
+    const connected = await ensureAttached($)
+    if (!connected || server === undefined) {
+      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: marker ${marker.ref}, session not attached: no label`, { to: 'debug' })
       return { request: stripped }
     }
+    const task = kids.taskFrom(await $.mcp.call(server.name, 'arlesh_tasks', { operation: 'get', id: marker.ref }))
+    if (task === undefined) {
+      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the Task ${marker.ref}: no label`, { to: 'debug' })
+      const pending: Pending = { kind: 'unreadable', label: stripped.description, original: stripped.description, ref: marker.ref }
+      pendingByLabel.set(pending.label, pending)
+      return { request: stripped, pending }
+    }
     const label = kids.label(stripped.description, task.shortId, task.title)
-    const pending: Pending = { label, original: stripped.description, shortId: task.shortId }
+    const pending: Pending = { kind: 'task', label, original: stripped.description, shortId: task.shortId }
     pendingByLabel.set(label, pending)
+    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: labelled for Task ${task.shortId}`, { to: 'debug' })
     return { request: { ...stripped, description: label }, pending }
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not read a subagent's marker: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the marker: ${String(error)}`, { to: 'debug' })
     return { request: e }
   }
 }
 
-/** A subagent stopped: its Claim is paused, unless the child is gone or is not its own. */
+/**
+ * Whether the session is attached, attaching again from the stored token when this module forgot
+ * (a reload of the mod resets its variables, not the server's binding or the store). Never attaches
+ * by PIN here: with no stored token the session was never attached by the mod.
+ */
+async function ensureAttached($: Engine): Promise<boolean> {
+  if (attaching !== undefined) await attaching
+  if (standing?.kind === 'attached') return true
+  server ??= await readServer($).catch(() => undefined)
+  if (server === undefined || !(await hasStoredToken($))) return false
+  return (await attach($, server)).kind === 'attached'
+}
+
+async function hasStoredToken($: Engine): Promise<boolean> {
+  const stored = await $.store.get(`agent:${await $.session.id()}`)
+  return isRecord(stored) && text(stored, 'token') !== undefined
+}
+
+/**
+ * A subagent stopped: its Claim is paused, and the child is removed when it holds nothing open
+ * (the server decides: no Claim, or a Task not on an agent with no open wait). A child that still
+ * holds something stays, Paused. Nothing for a child that is gone or is not the subagent's own.
+ */
 async function childStopped($: Engine, id: string): Promise<void> {
   try {
     const known = (await loadChildren($))[id]
@@ -765,8 +810,39 @@ async function childStopped($: Engine, id: string): Promise<void> {
     const paused = await $.mcp.call(connection.name, 'arlesh_agents', { operation: 'pause', sub_token: known.subToken })
     if (kids.isChildGone(paused)) return await changeChild($, id, () => undefined)
     await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, paused)
+    await finishChild($, connection, id, (await loadChildren($))[id] ?? known)
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not pause a subagent's claim: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh-notify: could not stop a subagent's child: ${String(error)}`, { to: 'debug' })
+  }
+}
+
+/** Asks the server to remove the child of the stopped subagent `id`; forgets it when it did. */
+async function finishChild($: Engine, connection: ServerEntry, id: string, known: kids.Child): Promise<boolean> {
+  const finished = kids.finishedFrom(
+    await $.mcp.call(connection.name, 'arlesh_agents', { operation: 'finish_child', client_id: id }),
+  )
+  if (finished?.removed !== true) return false
+  await showRow($, id, { ...known, standing: 'finished' })
+  await changeChild($, id, () => undefined)
+  return true
+}
+
+/**
+ * Removes the children of subagents that are no longer running and hold nothing open: what a
+ * subagent killed without a clean stop left behind. Run when a session starts and when it ends.
+ */
+async function sweepChildren($: Engine): Promise<void> {
+  try {
+    const connection = server
+    if (connection === undefined) return
+    const running = new Set((await $.agent.list()).filter((agent) => agent.status === 'running').map((agent) => agent.id))
+    for (const [id, child] of Object.entries(await loadChildren($))) {
+      if (running.has(id)) continue
+      if (child.nested === true) await changeChild($, id, () => undefined)
+      else await finishChild($, connection, id, child)
+    }
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not sweep the children: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -780,7 +856,7 @@ async function resumeClaim($: Engine, connection: ServerEntry): Promise<{ refuse
 /** Pauses the session's own Claim. Never throws: an ending session must not be held up. */
 async function pauseOwnClaim($: Engine): Promise<void> {
   try {
-    if (standing?.kind !== 'attached' || server === undefined) return
+    if (server === undefined || (standing?.kind !== 'attached' && !(await hasStoredToken($)))) return
     await $.mcp.call(server.name, 'arlesh_agents', { operation: 'pause' })
   } catch (error) {
     $.ui.log(`arlesh-notify: could not pause the session's claim: ${String(error)}`, { to: 'debug' })

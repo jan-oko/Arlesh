@@ -2,12 +2,14 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   changesSession,
+  finishedFrom,
   contextBlock,
   governing,
   identityFrom,
   isChildGone,
   label,
   noChildMessage,
+  passTokenMessage,
   parseMarker,
   prune,
   registeredFrom,
@@ -151,4 +153,23 @@ test('the refusal for a subagent with no child says which call, what it would ch
   expect(said).toContain('`pause` here would run as the session')
   expect(said).toContain("change the session's Claim (it would pause it)")
   expect(said).toContain('register_child')
+})
+
+test('the denial for a subagent that left out its sub_token quotes it and says where it is', () => {
+  const said = passTokenMessage('helper', 'q3H')
+
+  expect(said).toContain('`sub_token: "q3H"`')
+  expect(said).toContain('starting context')
+  expect(said).toContain('helper')
+})
+
+test('a finish_child answer says whether the child was removed and what it holds', () => {
+  expect(finishedFrom({ content: [], isError: false, structuredContent: { removed: true } })).toEqual({ removed: true })
+  expect(finishedFrom({ content: [], isError: false, structuredContent: { removed: false, holds: 'task' } })).toEqual({ removed: false, holds: 'task' })
+  expect(finishedFrom({ content: [], isError: true })).toBeUndefined()
+})
+
+test('a starting context for an unreadable Task says nothing is held; a finished child\'s row says Finished', () => {
+  expect(contextBlock('h', 't', { unreadable: '282' })).toContain('you hold nothing')
+  expect(rowLine(child({ claimName: '077 X', standing: 'finished' }))).toBe('Arlesh · 077 X · Finished')
 })

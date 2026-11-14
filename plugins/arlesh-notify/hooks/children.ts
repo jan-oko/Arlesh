@@ -122,7 +122,11 @@ export function isChildGone(result: unknown): boolean {
  * holds, when the orchestrator named one and the server gave it; `refused` is why a Task the
  * orchestrator named could not be given.
  */
-export function contextBlock(name: string, subToken: string, extra: { holding?: string; refused?: string } = {}): string {
+export function contextBlock(
+  name: string,
+  subToken: string,
+  extra: { holding?: string; refused?: string; unreadable?: string } = {},
+): string {
   const who =
     `You are a subagent working on Arlesh as child agent \`${name}\` of this session's agent. ` +
     `Pass \`sub_token: "${subToken}"\` on every Arlesh tool call: it gives you your own view. `
@@ -130,7 +134,12 @@ export function contextBlock(name: string, subToken: string, extra: { holding?: 
   if (extra.holding !== undefined) {
     return `${who}You already hold your Claim, ${extra.holding}: do not call \`arlesh_agents.claim\`. ${stops}`
   }
-  const why = extra.refused === undefined ? '' : `The Task the orchestrator named could not be claimed for you (${extra.refused}). `
+  const why =
+    extra.unreadable !== undefined
+      ? `The orchestrator named the Task ${extra.unreadable} for you, but it could not be read (it lies outside the session's Claim, or the id is unknown), so you hold nothing. `
+      : extra.refused === undefined
+        ? ''
+        : `The Task the orchestrator named could not be claimed for you (${extra.refused}). `
   return (
     `${who}${why}First claim the Task your brief names with \`arlesh_agents.claim\` ` +
     '(`subtree: {node_type: "task", node_id: "<its short id>"}`) and the `sub_token`; ' +
@@ -165,7 +174,7 @@ export function governing(
 /** The line under a subagent's row: `Arlesh · <Task> · Active`, or `undefined` while there is none. */
 export function rowLine(child: Child): string | undefined {
   if (child.claimName === undefined) return undefined
-  const standing = child.standing === 'paused' ? 'Paused' : 'Active'
+  const standing = child.standing === 'paused' ? 'Paused' : child.standing === 'finished' ? 'Finished' : 'Active'
   return `Arlesh · ${child.claimName} · ${standing}`
 }
 
@@ -235,6 +244,7 @@ export const SESSION_OPERATIONS: Readonly<Record<string, string>> = {
   unlock: "the session's capacity lock",
   report_usage: "the session's account usage",
   register_child: "the session's children (a subagent cannot register children)",
+  finish_child: "the session's children",
 }
 
 /** What the call would change for the session, or `undefined` when the call is not one of those. */
@@ -252,4 +262,28 @@ export function noChildMessage(operation: string, effect: string): string {
     `session and change ${effect}, not yours. Ask the orchestrator to register you ` +
     '(arlesh_agents.register_child, or name your Task with [arlesh:<task id>] in the Agent call).'
   )
+}
+
+/** The message for a subagent whose Arlesh call did not carry its `sub_token`. */
+export function passTokenMessage(name: string, subToken: string): string {
+  return (
+    `arlesh-notify: you are subagent \`${name}\`, a child agent of this session's agent. Pass ` +
+    `\`sub_token: "${subToken}"\` on every Arlesh tool call (it is also in your starting context) ` +
+    'and call again: without it the call would run as the session.'
+  )
+}
+
+/** What `finish_child` answered. */
+export interface Finished {
+  removed: boolean
+  /** What the child still holds, when it was kept. */
+  holds?: string
+}
+
+/** Reads a `finish_child` answer, or `undefined` for a refusal. */
+export function finishedFrom(result: unknown): Finished | undefined {
+  const payload = payloadOf(result)
+  if (!isRecord(payload) || typeof payload['removed'] !== 'boolean') return undefined
+  const holds = payload['holds']
+  return { removed: payload['removed'], ...(typeof holds === 'string' ? { holds } : {}) }
 }

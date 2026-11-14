@@ -75,10 +75,19 @@ environment variables:
   with that Task as its sub-Claim, in one call, when the subagent starts, and the starting context
   says the subagent already holds it and must not call `claim`. The label is set once at spawn: it
   does not follow Active and Paused. A repeated or malformed marker counts as none (noted in the
-  debug log). Without a marker, with a Task the mod cannot read, or when the server refuses the
+  debug log). A Task the mod cannot read (outside the session's Claim, or an unknown id) leaves
+  the subagent holding nothing, and its starting context says so. Each spawn decision is written
+  to the debug log (marker, attached or not, Task found, labelled). Without a marker, or when the server refuses the
   Claim (outside the session's Claim, a sibling holds it), the subagent is registered unclaimed and
   told to claim the Task its brief names, with the reason. A resumed subagent keeps its child and
   its label.
+- **Removes a subagent's child when it has finished.** When a subagent stops the mod pauses its
+  Claim and calls `arlesh_agents.finish_child`: the child is removed unless it still holds something
+  open (a Task still On Agent, an open wait under it, a Claim on something that is not a Task), so
+  Settings lists only subagents that are running or still hold something. When a session starts and
+  when it ends, the mod does the same for every recorded child whose subagent is no longer running,
+  which covers a subagent that was killed. If the mod reloads and forgets its state it attaches
+  again from the stored token the next time a subagent needs it.
 - **Keeps a subagent from acting as the session.** A call to `claim`, `release`, `pause`, `resume`,
   `attach`, `lock`, `unlock`, `report_usage` or `register_child` made inside a subagent's loop with
   no `sub_token` would run as the session. When that subagent has no child of its own (the session
@@ -92,9 +101,10 @@ environment variables:
   the **sub-token** it answers (per session, 30 days), and adds to the subagent's starting context
   who it is, its `sub_token`, and that it should claim the Task its brief names with
   `arlesh_agents.claim`. The child shows in Settings → Agents nested under the session's agent,
-  with its Task as its Claim. Every Arlesh call a subagent makes without a `sub_token` gets its own
-  filled in, so it acts on its sub-Claim only; the session's own calls carry none and act on its
-  whole Claim.
+  with its Task as its Claim. Every Arlesh call a subagent makes must carry its `sub_token`; the mod
+  never rewrites a call (auto mode refuses a call a hook changed after review), so a call without
+  it, or with a stale one, is **denied** with a message that quotes the token and says where it is,
+  and the subagent calls again. The session's own calls carry none and act on its whole Claim.
   - When the subagent **stops**, the mod pauses its Claim (`arlesh_agents.pause` with the
     sub-token): the child reads Paused, still naming its Task. When it is **resumed**, the mod
     resumes the Claim. Nothing is asked of the orchestrating agent.

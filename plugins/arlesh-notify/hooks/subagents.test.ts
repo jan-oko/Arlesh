@@ -84,7 +84,7 @@ const attach = async ($: { classic: { SessionStart: (e: { source: 'startup' }) =
 }
 
 test('a session that has not attached registers nothing for its subagents', async ($, on) => {
-  const { calls } = session(on, [subagent('a1')])
+  const { calls } = session(on, [subagent('a1')], {}, undefined, { unattached: true })
 
   const started = await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
 
@@ -143,7 +143,7 @@ test('a pause the server refuses as a removed child drops the record', async ($,
   expect(stored['children:s1']).toEqual({})
 })
 
-test('a subagent\'s Arlesh call reaches the server with its own sub_token, whatever it passed; the session\'s carries none', async ($, on) => {
+test('a subagent\'s Arlesh call without its sub_token, or with a stale one, is denied with the token quoted and never rewritten', async ($, on) => {
   session(on, [subagent('a1')])
   const seen: Array<Record<string, unknown>> = []
   on('tool.call', (_, e) => {
@@ -153,11 +153,19 @@ test('a subagent\'s Arlesh call reaches the server with its own sub_token, whate
   await attach($)
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
 
-  await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1' })
-  await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
-  await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1', sub_token: 'own' })
+  const without = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1' })
+  const stale = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1', sub_token: 'own' })
+  const right = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1', sub_token: 'q3H' })
+  const session_ = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load' })
 
-  expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', undefined, 'q3H'])
+  for (const refused of [without, stale]) {
+    expect(refused.deny).toContain('sub_token: "q3H"')
+    expect(refused.deny).toContain('starting context')
+  }
+  expect(right.deny).toBeUndefined()
+  expect(session_.deny).toBeUndefined()
+  // The call reaches the bottom only when it carried the token itself, and as it was written.
+  expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', undefined])
 })
 
 test('a subagent started by a subagent is not registered and gets its ancestor\'s sub-token', async ($, on) => {
@@ -189,7 +197,7 @@ test('the subagent\'s Agent row gets a line naming its Task and whether its clai
   await attach($)
   await $.agent.spawn({ tool_use_id: 'tu1', prompt: 'p', description: 'Fix CI', subagentType: 'general-purpose' } as never)
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
-  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1' })
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1', sub_token: 'q3H' })
   const row = { plugin: 'arlesh-notify', component: 'ToolUse', requestId: 'tu1', surface: 'terminal' } as const
   const props = { tool: 'Agent', tool_use_id: 'tu1', input: {}, isRunning: false, isErrored: false, isInterrupted: false }
 
@@ -391,7 +399,7 @@ test('a claim or release made inside a subagent with no child of its own is deni
   expect(calls.filter((call) => call.args['operation'] === 'claim')).toEqual([])
 })
 
-test('a subagent that has a child may claim: its call carries the sub-token', async ($, on) => {
+test('a subagent that has a child may claim when its call carries the sub-token', async ($, on) => {
   session(on, [subagent('a1')])
   const seen: Array<Record<string, unknown>> = []
   on('tool.call', (_, e) => {
@@ -401,8 +409,10 @@ test('a subagent that has a child may claim: its call carries the sub-token', as
   await attach($)
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
 
-  const claim = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1' })
+  const without = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1' })
+  const claim = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1', sub_token: 'q3H' })
 
+  expect(without.deny).toContain('sub_token: "q3H"')
   expect(claim.deny).toBeUndefined()
   expect(seen.at(-1)?.['sub_token']).toBe('q3H')
 })
@@ -423,7 +433,7 @@ test('on the terminal the line is indented to the text of the result below it, o
   await attach($)
   await $.agent.spawn(spawnArgs('Fix CI', 'go'))
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
-  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1' })
+  await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1', sub_token: 'q3H' })
   const props = { tool: 'Agent', tool_use_id: 'tu1', input: {}, isRunning: false, isErrored: false, isInterrupted: false }
 
   for (const [surface, indent] of [['terminal', 5], ['desktop', 0]] as const) {
@@ -527,7 +537,7 @@ test('a subagent keeps working after the re-attach: its call still carries its s
   await attach($)
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
 
-  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1' })
+  const answered = await $.tool.call({ tool: 'mcp__arlesh__arlesh_snapshot', operation: 'load', agentId: 'a1', sub_token: 'q3H' })
 
   expect(answered.isError).not.toBe(true)
   expect(seen.map((call) => call['sub_token'])).toEqual(['q3H', 'q3H'])
@@ -665,10 +675,10 @@ test('an attach the server refused, or one made inside a subagent, is not adopte
 
 // What a subagent with no child of its own may not do as the session.
 
-const GUARDED = ['claim', 'release', 'pause', 'resume', 'attach', 'lock', 'unlock', 'report_usage', 'register_child'] as const
+const GUARDED = ['claim', 'release', 'pause', 'resume', 'attach', 'lock', 'unlock', 'report_usage', 'register_child', 'finish_child'] as const
 
 for (const operation of GUARDED) {
-  test(`${operation} from a subagent with no child of its own is denied, with a child it carries the sub-token`, async ($, on) => {
+  test(`${operation} from a subagent with no child of its own is denied, with a child it needs the sub-token`, async ($, on) => {
     const { calls } = session(on, [subagent('a1'), subagent('a9')])
     const seen: Array<Record<string, unknown>> = []
     on('tool.call', (_, e) => {
@@ -680,10 +690,12 @@ for (const operation of GUARDED) {
     const before = calls.length
 
     const orphan = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a9' })
-    const own = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a1' })
+    const without = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a1' })
+    const own = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation, agentId: 'a1', sub_token: 'q3H' })
     const session_ = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation })
 
     expect(orphan.deny).toContain(`\`${operation}\` here would run as the session`)
+    expect(without.deny).toContain('sub_token: "q3H"')
     expect(own.deny).toBeUndefined()
     expect(seen.filter((call) => call['agentId'] === 'a1').map((call) => call['sub_token'])).toEqual(['q3H'])
     expect(session_.deny).toBeUndefined()
@@ -709,4 +721,108 @@ test('a subagent that passes a sub-token of its own is left to the server', asyn
   const lock = await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'lock', agentId: 'a9', sub_token: 'x' })
 
   expect(lock.deny).toBeUndefined()
+})
+
+// A finished subagent's child is removed when it holds nothing open (the server decides).
+
+const stopped = { agentId: 'a1', reason: 'answer', answer: 'done', durationMs: 5, isAborted: false, turnId: 't1' } as const
+const finishes = (calls: Call[]) => calls.filter((call) => call.args['operation'] === 'finish_child')
+
+test('a subagent that stops has its child finished, and the child is forgotten when the server removed it', async ($, on) => {
+  const { calls, stored, intercept } = session(on, [subagent('a1', { description: LABEL })])
+  intercept.answer = (args) => (args['operation'] === 'finish_child' ? ok({ removed: true }) : undefined)
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  await attach($)
+  await $.agent.spawn(spawnArgs('Fix CI [arlesh:077]', 'go'))
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  await $.turn.complete(stopped)
+  await clock.settle()
+
+  expect(finishes(calls)).toEqual([{ tool: 'arlesh_agents', args: { operation: 'finish_child', client_id: 'a1' } }])
+  expect(stored['children:s1']).toEqual({})
+})
+
+test('a child that still holds something stays, with its record', async ($, on) => {
+  const { stored, intercept } = session(on, [subagent('a1')])
+  intercept.answer = (args) => (args['operation'] === 'finish_child' ? ok({ removed: false, holds: 'task' }) : undefined)
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  await attach($)
+  await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  await $.turn.complete(stopped)
+  await clock.settle()
+
+  expect(Object.keys(stored['children:s1'] as object)).toEqual(['a1'])
+})
+
+test('a session that starts finishes the children of subagents that are no longer running', async ($, on) => {
+  const old = { childId: 3, subToken: 'old', name: 'old', savedAt: 1 }
+  const { calls, stored, intercept } = session(on, [subagent('a2')], {
+    'children:s1': { dead: old, nest: { ...old, nested: true }, a2: { ...old, subToken: 'live' } },
+  })
+  intercept.answer = (args) => (args['operation'] === 'finish_child' ? ok({ removed: true }) : undefined)
+
+  await $.classic.SessionStart({ source: 'resume' })
+  await clock.settle()
+
+  expect(finishes(calls).map((call) => call.args['client_id'])).toEqual(['dead'])
+  expect(Object.keys(stored['children:s1'] as object)).toEqual(['a2'])
+})
+
+test('a session that ends finishes its children after pausing its own claim', async ($, on) => {
+  const { calls, intercept } = session(on, [], { 'children:s1': { dead: { childId: 3, subToken: 'old', name: 'old', savedAt: 1 } } })
+  intercept.answer = (args) => (args['operation'] === 'finish_child' ? ok({ removed: false, holds: 'open_waits' }) : undefined)
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await attach($)
+  await clock.settle()
+  const before = calls.length
+
+  await $.session.end(ended('prompt_input_exit'))
+
+  const after = calls.slice(before).map((call) => String(call.args['operation']))
+  expect(after).toEqual(['pause', 'finish_child'])
+})
+
+// A marked Task the mod cannot read.
+
+test('a marked Task that cannot be read is said in the starting context, and the child holds nothing', async ($, on) => {
+  const failed: Answer = { value: { content: [], isError: true, structuredContent: { kind: 'not_permitted', message: 'no' } } }
+  const { calls } = marked(on, [subagent('a1', { description: 'Fix CI' })], registeredOnly(), () => failed)
+  await attach($)
+
+  await $.agent.spawn(spawnArgs('Fix CI [arlesh:282]', 'go'))
+  const started = await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
+
+  const context = started.additionalContext?.join('\n') ?? ''
+  expect(context).toContain('named the Task 282 for you, but it could not be read')
+  expect(context).toContain('outside the session\'s Claim, or the id is unknown')
+  expect(context).toContain('you hold nothing')
+  expect(calls.find((call) => call.args['operation'] === 'register_child')?.args['subtree']).toBeUndefined()
+})
+
+// The mod reloaded: its variables are gone, the server's binding and the store are not.
+
+test('after a reload the spawn still labels the subagent: the mod attaches again from the stored token', async ($, on) => {
+  const { calls, spawns } = marked(on, [subagent('a1', { description: LABEL })], holding)
+
+  await $.agent.spawn(spawnArgs('Fix CI [arlesh:077]', 'go'))
+
+  expect(spawns[0]?.description).toBe(LABEL)
+  expect(attaches(calls).map((call) => call.args['token'])).toEqual(['agent-token'])
+})
+
+test('with no stored token the mod never attaches by itself at a spawn: the marker goes, the label does not', async ($, on) => {
+  const { calls } = session(on, [subagent('a1')], {}, undefined, { unattached: true })
+  const spawns: Array<{ description: string; prompt: string }> = []
+  on('agent.spawn', (_, e) => {
+    spawns.push({ description: e.description, prompt: e.prompt })
+    return { model: 'm', agentId: 'a1' }
+  })
+
+  await $.agent.spawn(spawnArgs('Fix CI [arlesh:077]', 'go'))
+
+  expect(spawns[0]).toEqual({ description: 'Fix CI', prompt: 'go' })
+  expect(attaches(calls)).toEqual([])
 })
