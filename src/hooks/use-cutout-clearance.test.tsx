@@ -104,3 +104,38 @@ describe("a strip marked data-cutout-row=children", () => {
     expect(getByTestId("strip").style.getPropertyValue("--clear-top")).toBe("30px");
   });
 });
+
+/** A strip whose pill sits `PILL_LEFT` px in from the strip's own left edge plus the left clearance, as padding does. */
+function MovingStrip() {
+  const ref = useRef<HTMLDivElement>(null);
+  useCutoutClearance(ref);
+  return (
+    <div data-cutout-row="children" data-testid="moving-strip" ref={(node) => {
+      ref.current = node;
+      if (node === null) return;
+      place(node, 0, 40);
+      const pill = node.firstElementChild;
+      if (pill === null) return;
+      pill.getBoundingClientRect = () => {
+        const padding = Number.parseFloat(node.style.getPropertyValue("--clear-left")) || 0;
+        return new DOMRect(6 + padding, 0, 100, 40);
+      };
+    }}><span /></div>
+  );
+}
+
+describe("a strip whose pills move with its clearance padding", () => {
+  it("keeps the same clearance however often it is measured, instead of dropping it and taking it back", () => {
+    const style = document.documentElement.style;
+    style.setProperty("--cutout-left-start", "0px");
+    style.setProperty("--cutout-left-end", "40px");
+    style.setProperty("--cutout-left-depth", "15px");
+    const { getByTestId } = render(<MovingStrip />);
+    const readings: string[] = [];
+    for (let measure = 0; measure < 4; measure += 1) {
+      act(() => { window.dispatchEvent(new Event("arlesh-insets")); });
+      readings.push(getByTestId("moving-strip").style.getPropertyValue("--clear-left"));
+    }
+    expect(readings).toEqual(["9px", "9px", "9px", "9px"]);
+  });
+});

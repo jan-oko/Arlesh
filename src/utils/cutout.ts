@@ -116,6 +116,19 @@ export function clearanceFor(box: Box, bands: CutoutBands, viewport: { width: nu
   };
 }
 
+/**
+ * Where a strip's item would sit with none of the strip's clearance padding: the padding moves its
+ * items (right and down), so measuring them as they are would count the clearance already given as
+ * room the corner does not take, drop it, and measure again without it. That is a flicker between
+ * the two layouts, and the one the screen is left on is whichever the last measurement made. A box
+ * that is the element's own does not move with its padding, so it needs none of this.
+ */
+function unpadded(box: DOMRect, strip: HTMLElement): Box {
+  const left = parsePx(strip.style.getPropertyValue(CLEARANCE_PROPERTIES.left));
+  const top = parsePx(strip.style.getPropertyValue(CLEARANCE_PROPERTIES.top));
+  return { left: box.left - left, right: box.right - left, top: box.top - top, bottom: box.bottom - top };
+}
+
 /** The larger clearance on each side. */
 function widest(a: Clearance, b: Clearance): Clearance {
   return { left: Math.max(a.left, b.left), right: Math.max(a.right, b.right), top: Math.max(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) };
@@ -140,7 +153,7 @@ export function writeClearance(element: HTMLElement, bands: CutoutBands): void {
   // whose items do not (a scrolling strip of pills): it is cleared by where its items are, so a
   // camera over empty strip pushes nothing, and one a pill scrolls under does.
   const boxes = element.dataset.cutoutRow === "children"
-    ? Array.from(element.children, (child) => child.getBoundingClientRect())
+    ? Array.from(element.children, (child) => unpadded(child.getBoundingClientRect(), element))
     : [element.getBoundingClientRect()];
   const clearance = hasCutout(bands)
     ? boxes.map((box) => clearanceFor(box, bands, viewport)).reduce(widest, NO_CLEARANCE)
