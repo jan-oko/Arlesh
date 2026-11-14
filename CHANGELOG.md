@@ -10,6 +10,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Help, with the concept map.** A new Help view shows how Arlesh fits together: the model map as one scrolling page, with a jump list to its groups, the pipeline diagram and each concept's card (what it is, why it exists, what would break without it), and the derivation graph in its place. In the graph, hover or focus a box to see what it reads, and click, tap or press Enter to pin its card; a button expands the graph to fill the whole view, and Esc or the same button brings you back to the page. Open Help with F1, from Settings on the desktop, or from the ☰ menu on the phone; the × button in the corner or Esc returns to the view you were on, exactly as you left it.
+
 - **Alt+S starts the highlighted result in Ctrl+O.** In the node search, `Alt+S` sets the highlighted Task to In Progress (Doing for an Agentic one, and a Done Task reopens), shows a toast naming it, and closes the search without moving the view. A Compound or blocked Task, and a row that is not a Task, say so in a toast instead. One `Ctrl+Z` undoes it.
 
 - **Agents, Claims and capacity per account.** An MCP session now attaches as an agent with a one-time PIN (from Settings -> Agents, or automatically with the arlesh-notify mod) and sees only the subtree it claims; no two agents can hold overlapping active Claims. A Claim lasts until released and can be paused so another agent can take the subtree. Usage is tracked per account: when an account's plan limit is used up only its agents' claimed work reads blocked, and it frees itself at the reset. Agents can also be locked by hand, singly or per account, and Settings -> Agents lists them apart from your devices.
