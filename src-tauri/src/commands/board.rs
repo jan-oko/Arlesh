@@ -9,7 +9,7 @@
 //! Tauri `board-changed` event, and the commands a window asks the backend through.
 
 use serde::Deserialize;
-use tauri::{Emitter, Runtime, State, WebviewWindow};
+use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
 
 use crate::backend::{
     revision::{BoardChange, BoardHead, BoardRevision},
@@ -25,6 +25,7 @@ use crate::error::WireError;
 /// changed, and a window that missed the event finds the gap at the next one or at its next check
 /// of the head, and loads the board whole.
 pub fn emit_board_change<R: Runtime>(app: &tauri::AppHandle<R>, change: &BoardChange) {
+    crate::commands::notifications::follow(app, change);
     if let Err(error) = app.emit(BOARD_CHANGED, change) {
         tracing::warn!(error = %error, "could not tell the windows the board changed");
     }
@@ -42,10 +43,20 @@ pub fn board_change_sink<R: Runtime>(app: &tauri::AppHandle<R>) -> crate::mindma
 
 /// The newest revision a write is known to have reached: what a window settles on after its own.
 #[tauri::command]
-pub async fn board_fence(
+pub async fn board_fence<R: Runtime>(
     backend: State<'_, AppBackend>,
+    notifications: tauri::AppHandle<R>,
 ) -> Result<Option<BoardRevision>, WireError> {
-    Ok(backend.board_fence().await)
+    let fence = backend.board_fence().await;
+    // A window asks for the fence to settle on a write of its own: that is how the notifications
+    // learn which writes are the user's.
+    if let (Some(fence), Some(service)) = (
+        &fence,
+        notifications.try_state::<std::sync::Arc<crate::notifications::Notifications>>(),
+    ) {
+        service.note_own_write(fence);
+    }
+    Ok(fence)
 }
 
 /// The latest publication's identity, for a window to check its board against.

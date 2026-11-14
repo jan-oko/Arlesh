@@ -3,7 +3,8 @@
 *One area of the [Arlesh design specification](../../SPEC.md).*
 
 Arlesh tells the user's phone when something on the board needs them, through **Firebase Cloud
-Messaging** (FCM), so a notification arrives with the app in the background or closed.
+Messaging** (FCM), so a notification arrives with the app in the background or closed. The desktop
+app shows the same events natively while it runs ([On the desktop](#on-the-desktop)).
 `arlesh-server` sends it; the phone runs only in Client mode ([Client Mode](client-mode.md)), so
 push needs a server. Settled with the user on 2026-10-31 and 2026-11-04; the reasons are in
 [ADR 0014](../adr/0014-phone-push-notifications.md).
@@ -83,3 +84,45 @@ OAuth token minted from the key. Every message is a high-priority **data** messa
   registers it with the server (and again when FCM rotates it).
 - **The tap** opens the app at the Task the notification names, selecting it in the active tab. The
   intent is explicit to Arlesh's own activity; there is no link another app could send.
+
+## On the desktop
+
+The desktop app shows a native notification for the same five events while it is running, tray
+included, in both modes. There is no FCM: the app is the device. Task `2df`; the user's ruling
+(2026-11-13) is "same as the phone": whatever the phone's rules notify for, the desktop does too,
+with the same defaults, generated Tasks included.
+
+- **Where it runs.** One service for the whole process (`src-tauri/src/notifications.rs`), fed from
+  the one place every window is told of a change event (`commands::board::emit_board_change`). A
+  window never triggers a notification, so several windows produce one.
+- **Both modes follow change events** ([ADR 0020](../adr/0020-changed-nodes-and-board-hash.md)).
+  In Standalone the publisher of #204 already derives after every write and every minute, so
+  time-based events (Overdue, a generated occurrence, a lock lifting) arrive as events without a
+  write. In Client mode the relayed events of the server's publisher are the same. No second
+  derivation and no extra board load beyond the first one.
+- **Rules.** The core's `arlesh_core::push::rules`. A `BoardView` keeps the few fields the rules
+  read (Task title, generated, done; Overdue and archival; open question; capacity blocks), is
+  built from the first board and kept true by each event's changed nodes, and reads its facts with
+  the same function the server's `observe` uses. `rules::desktop::DesktopNotifier` then runs
+  `plan` against the device's own told-record. The lock is read off the board: a node carrying the
+  derived `agent_capacity` block. (The server reads it off its agents; the two differ only for a
+  locked agent with no open Agentic Task in its Claim, which the board shows no sign of.)
+- **Told-already record.** Kept in memory in the one process, so a restart forgets it. The first
+  board after startup counts as already told, as a new phone does: nothing is announced for what
+  was true before. A fact is recorded when it is planned, whether or not it is shown (a switched-off
+  event, an own action), and forgotten when it stops holding, so holding again is news. A board
+  reload after a gap or a new run of the server is read like an event: what is new on it is told.
+- **Own actions.** The user's own writes on this device do not notify what they made true: a
+  window that settles on a write asks `board_fence`, which notes the revision; the first
+  publication holding it does not notify Overdue or generated Tasks. An agent's question and the
+  capacity lock always notify, since the user cannot cause them. (A fence the window asks for after
+  the publication has already arrived is not seen, and that notification is shown.)
+- **Switches.** Linux has no per-channel system toggle, so Settings → Notifications has one switch
+  per event, defaulting to on, in `notifications.json` in the app's data directory (the phone's are
+  Android's system channels; the server stores none). They are per device and never travel with the
+  board.
+- **Words.** The phone's (`push_strings.xml`), in English, titled *Arlesh*. Delivery is Tauri's
+  notification plugin, desktop builds only.
+- **Click.** Not supported: on the desktop the plugin shows the notification and reports no click
+  (its action callbacks are mobile only), so clicking does not open the Task. The notice carries
+  the Task's board key for the day a platform path reports one.

@@ -56,6 +56,9 @@ schemars = "1.2.2"
 # Manager, or the Secret Service on Linux (through libdbus, which Tauri already links). Android has
 # no keychain this crate reaches, so it keeps the token in a file in app-private storage instead.
 [target.'cfg(not(target_os = "android"))'.dependencies]
+# Native desktop notifications (task 2df). Desktop only: the Android app is told by FCM, and carrying
+# this crate there would add the plugin's Kotlin to the APK and put it in line to notify twice.
+tauri-plugin-notification = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 # Linux's tray is the StatusNotifierItem D-Bus protocol, and `ksni` speaks it directly. Tauri's

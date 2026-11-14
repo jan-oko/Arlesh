@@ -9,9 +9,13 @@ use crate::{
         model::{TaskArchival, TaskStatus},
         waits::WaitKind,
     },
+    tasks::{
+        lifecycle::ItemLifecycle,
+        model::{Status, Task},
+    },
 };
 
-fn task(id: i64, status: Status, origin: Origin) -> Task {
+pub(super) fn task(id: i64, status: Status, origin: Origin) -> Task {
     Task {
         id: id.into(),
         title: format!("task {id}"),
@@ -36,11 +40,11 @@ fn task(id: i64, status: Status, origin: Origin) -> Task {
     }
 }
 
-fn todo(id: i64) -> Task {
+pub(super) fn todo(id: i64) -> Task {
     task(id, Status::Ordinary(TaskStatus::Todo), Origin::Manual)
 }
 
-fn check(id: i64) -> Task {
+pub(super) fn check(id: i64) -> Task {
     let origin = Origin::Check(CheckOrigin {
         wait_kind: WaitKind::Stored,
         wait_id: 9.into(),
@@ -51,7 +55,7 @@ fn check(id: i64) -> Task {
     task(id, Status::Ordinary(TaskStatus::Todo), origin)
 }
 
-fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
+pub(super) fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
     let archival = serde_json::to_value(archival).unwrap();
     serde_json::from_value(serde_json::json!({
         "node_type": "task",
@@ -64,7 +68,7 @@ fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
     .unwrap()
 }
 
-fn asking(wait: i64) -> NodeFacts {
+pub(super) fn asking(wait: i64) -> NodeFacts {
     NodeFacts {
         open_question: Some(wait.into()),
         ..NodeFacts::default()
