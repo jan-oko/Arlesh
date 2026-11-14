@@ -10,6 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{Emitter, Runtime, State};
+// `restart` and `on_lifecycle` call `Manager` methods, and only the mobile build has them.
+#[cfg(mobile)]
+use tauri::Manager;
 
 use crate::{
     backend::http::{

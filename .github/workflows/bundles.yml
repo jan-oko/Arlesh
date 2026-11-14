@@ -469,6 +469,10 @@ jobs:
           target: ${{ matrix.arch }}
           manylinux: auto
           args: --release --locked --out dist
+          # ring (rustls, from the HTTP client) assembles its aarch64 code with the cross gcc in the
+          # manylinux2014 container, whose preprocessor does not define __ARM_ARCH, and ring's
+          # asm_base.h then stops with an #error. Define it for that target's C compiler only.
+          docker-options: ${{ matrix.arch == 'aarch64' && '-e CFLAGS_aarch64_unknown_linux_gnu=-D__ARM_ARCH=8' || '' }}
 
       # The wheel installs, with its server extra, and the command starts. Only where it can run.
       - name: Smoke test · install and run
