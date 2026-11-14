@@ -97,7 +97,7 @@ def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: 
 def test_a_duplicated_domain_with_a_sub_domain_and_a_task_is_deleted_with_its_content(
     server: TestClient, create: Create, domain: int, new_task: NewTask
 ) -> None:
-    create("/domains", {"title": "Inner", "subtype": "project", "parent_id": domain})
+    create("/domains", {"title": "Inner", "subtype": "domain", "parent_id": domain})
     new_task(domain)
     copy = server.post(f"/domains/{domain}/duplicate", params={"target_id": 1, "position": 0})
     copy_id = copy.json()["copy"]["id"]
