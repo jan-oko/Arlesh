@@ -30,6 +30,7 @@ Work is tracked as **Agentic Tasks under the ARLESH project** on the user's Arle
 | Find ready work | `arlesh_snapshot.load` with `agentic: {}` (or `{"max_priority": "A"}`) and `filter: {"preset": "start"}`; keep calling with `next_cursor` until it is null |
 | View one Task | `arlesh_tasks.get` |
 | Claim it | `arlesh_tasks.set_status` `todo` → `on_agent` (compare-and-set on the status you last saw; the brief needs a Spec) |
+| Read a Task's details | `arlesh_tasks.get` — its `infos` are the Info notes the user wrote under it (details live there, not in the title); the snapshot's Tasks carry `info_count`. Read them before working the Task |
 | Hand back to the user | `arlesh_waits.ask` under the Task, titled with what the user must do (e.g. "PR #n is green: review and merge?") — puts the Task in **Review** |
 | Finish it | `arlesh_tasks.set_status` → `done`, only once the user has answered the hand-back and nothing is left for them to do |
 | Record design, notes, acceptance | `arlesh_tasks.update` with `brief` |
