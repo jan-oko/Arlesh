@@ -20,6 +20,28 @@ describe("HelpView", () => {
     expect(boxes).toHaveLength(GRAPH_NODES.length);
   });
 
+  it("shows the whole map: a jump list, every group and every concept card", () => {
+    render(<HelpView onClose={vi.fn()} />);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("navigation", { name: "groups" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Node kinds" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Trustworthy history and a truthful board" })).toBeInTheDocument();
+  });
+
+  it("has no title bar: the close button is the only chrome, and the map's own heading leads", () => {
+    render(<HelpView onClose={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: "close" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "title" })).not.toBeInTheDocument();
+  });
+
+  it("jumps to a group from the jump list", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<HelpView onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "3Time" }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
   it("previews a box on hover and focus", () => {
     render(<HelpView onClose={vi.fn()} />);
     fireEvent.mouseEnter(box("Time Scope"));

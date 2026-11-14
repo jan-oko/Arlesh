@@ -1,11 +1,13 @@
 # How Arlesh fits together: the model map
 
-The agent-friendly mirror of [`model-map.html`](model-map.html). It has the same groups and cards,
+The agent-friendly mirror of the app's Help view, which draws the same map from
+[`src/data/model-map.ts`](../src/data/model-map.ts). It has the same groups and cards,
 in the same order, with fuller code pointers. It is a map, not the specification. The rules live in
 [`SPEC.md`](../SPEC.md) and `docs/spec/`, and each card links to the section that owns its rules.
 
-**Keep the two files in step.** A pull request that adds, removes or changes the meaning of a
-concept updates both files, as it updates the spec (see `AGENTS.md`).
+**Keep this file and the data files in step.** A pull request that adds, removes or changes the
+meaning of a concept updates this file and `src/data/model-map.ts`, as it updates the spec (see
+`AGENTS.md`).
 
 Paths are relative to the repo root. `crates/arlesh-core/src/` (the core crate, where every domain
 module lives; the desktop app's `commands/` stay in `src-tauri/src/`) is abbreviated to `rs:` and `src/` (the
@@ -38,7 +40,7 @@ archive reads as archived), then `rs:tasks/rules/review.rs::derive`, then the ag
 
 ## The derivation graph
 
-The HTML page draws this as an interactive graph, and the app's Help view (F1) shows the same graph on its own, with selectable concepts and their cards, from the data file [`src/data/derivation-graph.ts`](../src/data/derivation-graph.ts). These tables are the mirror of both. Every edge is a value the code reads to compute
+The HTML page draws this as an interactive graph, and the app's Help view (F1) draws the same graph from the data file [`src/data/derivation-graph.ts`](../src/data/derivation-graph.ts), with selectable concepts and their cards. These tables are the mirror of it. Every edge is a value the code reads to compute
 the state. Edges marked *(of another node)* read that value on a different node: a compound's
 sub-items, or a dependency's target. All of these states are worked out on every board load and
 never stored.

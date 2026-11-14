@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { GRAPH_CARDS, GRAPH_CARD_OF, GRAPH_NOTES } from "@/data/derivation-graph";
+import { GRAPH_CARD_OF, GRAPH_NOTES } from "@/data/derivation-graph";
+import { MODEL_MAP_CARDS } from "@/data/model-map";
+import { cardAnchor, scrollToAnchor } from "@/utils/model-map-anchors";
 import type { PlacedGraph, PlacedNode } from "@/utils/derivation-graph";
 import { labelsOf } from "@/utils/derivation-graph";
 import { kindLabel } from "@/utils/graph-kind-label";
@@ -18,7 +20,6 @@ export default function GraphCard({ node, graph, onDeselect }: Props) {
   const { t } = useTranslation("help");
   const note = GRAPH_NOTES[node.id];
   const conceptName = GRAPH_CARD_OF[node.id];
-  const hasConcept = conceptName !== undefined && GRAPH_CARDS[conceptName] !== undefined;
   return (
     <article className={styles.card}>
       <div className={styles.cardTop}>
@@ -43,7 +44,11 @@ export default function GraphCard({ node, graph, onDeselect }: Props) {
         )}
         <dt>{t("spec")}</dt><dd className={styles.mono}>{node.spec}</dd>
       </dl>
-      {hasConcept && <span className={styles.concept}>{t("onMapPage")}: {conceptName}</span>}
+      {conceptName !== undefined && MODEL_MAP_CARDS.has(conceptName) && (
+        <button type="button" className={styles.conceptLink} onClick={() => scrollToAnchor(cardAnchor(conceptName))}>
+          {t("onMapPage")}: {conceptName}
+        </button>
+      )}
     </article>
   );
 }

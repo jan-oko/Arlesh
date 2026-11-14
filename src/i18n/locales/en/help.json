@@ -1,8 +1,6 @@
 {
   "title": "Help",
   "close": "Close Help",
-  "graphTitle": "Arlesh derivation graph",
-  "graphIntro": "Stored inputs on the left, derived states in the middle, presets on the right. Hover or focus a box to preview it; click, tap, or press Enter to pin its card and keep its links. Pin as many as you like.",
   "graphLabel": "Derivation graph: each derived state with arrows from the facts it is computed from. Select a box to keep its card and links.",
   "legendStored": "stored input",
   "legendDerived": "derived on load",
@@ -21,9 +19,12 @@
   "why": "Why",
   "without": "Without",
   "lives": "Lives",
-  "onMapPage": "On the map page",
+  "onMapPage": "Concept",
   "selectedCount": "Selected ({{count}})",
   "clear": "Clear selection",
   "empty": "Nothing selected. Click or tap a box in the graph to pin its card here.",
-  "deselect": "Deselect {{name}}"
+  "deselect": "Deselect {{name}}",
+  "groups": "Groups",
+  "legendPipelineStored": "stored",
+  "legendReadSide": "read side"
 }

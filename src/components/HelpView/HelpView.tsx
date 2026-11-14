@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useInputCapture } from "@/hooks/use-input-capture";
-import { useDerivationGraph } from "@/hooks/use-derivation-graph";
+import { MODEL_MAP_FOOTER, MODEL_MAP_GROUPS, MODEL_MAP_PIPELINE_CAPTION } from "@/data/model-map";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
-import DerivationGraph from "./DerivationGraph";
-import GraphHint from "./GraphHint";
-import GraphCard from "./GraphCard";
+import { useInputCapture } from "@/hooks/use-input-capture";
+import DerivationSection from "./DerivationSection";
+import InlineText from "./InlineText";
+import MapGroup from "./MapGroup";
+import MapIntro from "./MapIntro";
+import PipelineDiagram from "./PipelineDiagram";
 import styles from "./HelpView.module.css";
 
 interface Props {
@@ -17,7 +19,9 @@ const CLOSE_GLYPH = "×";
 /**
  * Help: a full view, left like a modal. It takes the whole window and draws over the tab, which
  * stays mounted beneath it — so the close button or Esc returns to the view exactly as it was, with
- * its tab, selection and scroll. For now it holds the derivation graph only.
+ * its tab, selection and scroll. It shows the concept map as one scrolling page: how Arlesh fits
+ * together, with the derivation graph in its place. There is no bar: the close button floats over
+ * the corner.
  *
  * It holds the keyboard while open (`useInputCapture`), so the view's chords stay off behind it, and
  * takes Esc in the capture phase as the cheat-sheet does, so one press closes one thing.
@@ -26,8 +30,6 @@ export default function HelpView({ onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("help");
   const trap = useFocusTrap<HTMLDivElement>();
-  const state = useDerivationGraph();
-  const { graph, selected, clear, toggle } = state;
 
   // Leaving Help hands the keyboard back to whatever held it when Help opened.
   useEffect(() => {
@@ -48,44 +50,23 @@ export default function HelpView({ onClose }: Props) {
 
   return (
     <div ref={trap} className={styles.view} role="dialog" aria-modal="true" aria-label={t("title")}>
-      <header className={styles.header}>
-        <div className={styles.titles}>
-          <h2 className={styles.title}>{t("title")}</h2>
-          <h3 className={styles.subtitle}>{t("graphTitle")}</h3>
-        </div>
-        <button type="button" className={styles.close} aria-label={t("close")} title={t("close")} onClick={onClose} autoFocus>
-          {CLOSE_GLYPH}
-        </button>
-      </header>
-      <div className={styles.body}>
-        <p className={styles.intro}>{t("graphIntro")}</p>
-        <div className={styles.legend} aria-hidden="true">
-          <span><i className={`${styles.swatch} ${styles.swatchStored}`} />{t("legendStored")}</span>
-          <span><i className={`${styles.swatch} ${styles.swatchDerived}`} />{t("legendDerived")}</span>
-          <span><i className={`${styles.swatch} ${styles.swatchPreset}`} />{t("legendPreset")}</span>
-          <span><i className={`${styles.swatch} ${styles.swatchSelected}`} />{t("legendSelected")}</span>
-        </div>
-        <div className={styles.layout}>
-          <div className={styles.left}>
-            <DerivationGraph {...state} />
-            <GraphHint graph={graph} hovered={state.hovered} selected={selected} />
+      <button type="button" className={styles.close} aria-label={t("close")} title={t("close")} onClick={onClose} autoFocus>
+        {CLOSE_GLYPH}
+      </button>
+      <div className={styles.wrap}>
+        <MapIntro />
+        <figure className={styles.figure}>
+          <PipelineDiagram />
+          <figcaption className={styles.caption}>{MODEL_MAP_PIPELINE_CAPTION}</figcaption>
+          <div className={styles.legend} aria-hidden="true">
+            <span><i className={`${styles.swatch} ${styles.swatchStored}`} />{t("legendPipelineStored")}</span>
+            <span><i className={`${styles.swatch} ${styles.swatchDerived}`} />{t("legendDerived")}</span>
+            <span><i className={`${styles.swatch} ${styles.swatchPreset}`} />{t("legendReadSide")}</span>
           </div>
-          <aside className={styles.aside} aria-label={t("selectedCount", { count: selected.length })}>
-            <div className={styles.asideHead}>
-              <h3 className={styles.asideTitle}>{t("selectedCount", { count: selected.length })}</h3>
-              <button type="button" className={styles.clear} disabled={selected.length === 0} onClick={clear}>
-                {t("clear")}
-              </button>
-            </div>
-            {selected.length === 0 && <p className={styles.empty}>{t("empty")}</p>}
-            <div className={styles.cards}>
-              {selected.map((id) => {
-                const node = graph.nodes.find((candidate) => candidate.id === id);
-                return node === undefined ? null : <GraphCard key={id} node={node} graph={graph} onDeselect={() => toggle(id)} />;
-              })}
-            </div>
-          </aside>
-        </div>
+        </figure>
+        <DerivationSection />
+        {MODEL_MAP_GROUPS.map((group) => <MapGroup key={group.id} group={group} />)}
+        <footer className={styles.footer}><InlineText text={MODEL_MAP_FOOTER} /></footer>
       </div>
     </div>
   );

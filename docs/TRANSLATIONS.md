@@ -30,7 +30,7 @@ second locale — not because a translation is pending.
 | `settings`     | Settings modal pages, and the Agents page  |
 | `server`       | Client mode: the first-run chooser, Settings → Server, the offline banner |
 | `zenView`      | Zen View strips, empty state, preset refusal, its settings switch |
-| `help`         | Help view chrome: title, legend, hints, buttons (the graph's own prose is data, not a namespace) |
+| `help`         | Help view chrome: close button, legend, hints, buttons (the map's and graph's own prose is data in `src/data/`, not a namespace) |
 
 ---
 

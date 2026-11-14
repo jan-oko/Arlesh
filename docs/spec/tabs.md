@@ -90,10 +90,13 @@ it takes the whole window over the tab, and the close button (the on-screen ×) 
 view you came from exactly as it was — the tab stays mounted beneath it, so its view, selection and
 scroll are untouched. It is also opened from Settings → General on the desktop, and from the ☰ menu on
 the phone. Like the cheat-sheet it carries no guard, so it is reachable in every state; it holds the
-keyboard while open, so the view chords are off behind it. For now Help holds the derivation graph only
-(the model map's graph, drawn from `src/data/derivation-graph.ts`): hover or focus a box to preview
-its card, click, tap or `Enter` to pin it, Clear to let go; on touch a tap pins, there being no hover,
-and a narrow screen scrolls the graph sideways. The right-click menus are per node, row and tab, so
+keyboard while open, so the view chords are off behind it. Help shows the concept map as one scrolling page, with **no title bar**: the close button floats over
+the corner. The page is the map's prose and its pipeline diagram, a jump list to its eight groups, the
+derivation graph in its place, and the concept cards of each group — all drawn from
+`src/data/model-map.ts`, `src/data/model-map-pipeline.ts` and `src/data/derivation-graph.ts`, in the
+app's own fonts and theme, with no network request. In the graph, hover or focus a box to preview it,
+click, tap or `Enter` to pin its card, Clear to let go; on touch a tap pins, there being no hover, and
+a narrow screen scrolls the graph sideways. The right-click menus are per node, row and tab, so
 none of them carries a Help line.
 
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;
