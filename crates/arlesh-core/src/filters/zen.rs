@@ -148,7 +148,6 @@ pub fn contents<'a>(
             .expectations
             .iter()
             .filter(|row| list::passes_expectation_row(row.as_row(), &under_start))
-            .filter(|row| !row.node.agent_waiting)
             .collect()
     } else {
         Vec::new()

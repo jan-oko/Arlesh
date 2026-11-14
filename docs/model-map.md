@@ -56,7 +56,7 @@ never stored.
 | **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
 | **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)*; Agentic (own) | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. A Compound Task that reads as Agentic shows Done, Doing (any In Progress or Doing), Review (any Review), On Agent (any under way) or To Do, ignoring Done items. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
 | **Parent status** | own status, Agentic (own), sub-items' statuses, verdicts and waits; Archived *(of another node)* | An ordinary Task that is not Compound and has sub-items reads its own status raised to what they say, by Compound's counting: In Progress if any is, else Started if any is Started or Done. Never Done by itself, never lowered, and a Done Task stays Done. An Agentic Task is not derived. | `rs:tasks/rules/compound.rs::parent_reading`, `rs:tasks/rules/compound.rs::derive` |
-| **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
+| **Review** | Agentic, status, agent waits (questions and reviews) | On Agent with a pending, live agentic question or review beneath it. | `rs:tasks/rules/review.rs::derive` |
 | **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. | `rs:agents/rules/usage.rs::cause` |
 | **Capacity block** | Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and lies inside the active Claim of an Agent at capacity. There is no app-wide lock. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
@@ -167,13 +167,14 @@ How the presets read them:
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
 
 ### Review
-- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent.
-- **Why:** it is the only way an agent hands work back, and the question says what you need to do.
+- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent, whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: a question mark; a review: a checked page).
+- **Why:** it is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait of its own: the Task shows it, and is where it is answered.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
   - `rs:tasks/rules/review.rs` (`derive`, `is_open_question`).
-  - The board names each Task's open question (`rs:mindmap/rules/facts.rs`); `ts:utils/open-question.ts` finds that wait to draw and answer.
-  - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
+  - The board names each Task's open questions and reviews (`rs:mindmap/rules/facts.rs`, `open_questions`); `ts:utils/open-question.ts` finds those waits among the ones the Task holds off its tree, to draw and answer.
+  - `rs:filters/rules.rs::is_agentic_wait` (and its `ts:utils/filter-tree.ts` mirror, pinned by `conformance/preset-filters.json`) keeps agentic waits out of every view.
+  - The review's storage is `agentic_review` / `agentic_verdict` on `expectations` (`rs:tasks/expectations.rs`); the MCP side is `arlesh_waits.ask` and `raise_review`, in `rs:mcp/`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
 
 ### Compound
@@ -386,7 +387,7 @@ How the presets read them:
   - Agents see only inside the roots you open, and never anything private.
   - They write only Agentic Tasks, and create Tasks Agentic.
   - They read the same derived board you see, paged.
-  - They hand work back by asking a question.
+  - They hand work back by asking a question or raising a review.
 - **Why:** a clean, bounded context for an agent, on the same truth you see.
 - **Without:** agents read everything, or a separate copy that disagrees.
 - **Lives:**

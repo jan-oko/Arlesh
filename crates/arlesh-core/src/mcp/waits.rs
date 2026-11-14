@@ -28,8 +28,10 @@ use crate::{
     access::model::{AccessLevel, NodeTable},
     nodes::id::NodeId,
     tasks::model::{
-        CreateExpectationRequest, Expectation, ExpectationStatus, UpdateExpectationRequest,
+        CreateExpectationRequest, Expectation, ExpectationStatus, ReviewDetails,
+        UpdateExpectationRequest,
     },
+    tasks::review as review_rules,
     undo::model::WriteSource,
 };
 
@@ -42,13 +44,38 @@ impl ArleshMcp {
     /// non-human, like CI. `ask` is `raise` as a question. The note carries the question, or what
     /// is being waited on.
     ///
+    /// `raise_review` hands finished work back for a verdict: a `title`, a `summary` of what
+    /// changed, optional `links` (each a `label` and a `url`: a PR, a doc, a build) and optional
+    /// `hand_tests` (a list of what the user can try by hand). It is a question of its own kind:
+    /// the Task reads Review until the user answers. A PR link makes their approval their word to
+    /// merge it; Arlesh never talks to GitHub. The links show in the app as clickable links, only
+    /// for http and https URLs. The Task must be held by you (On Agent, or already Review): claim
+    /// it first, or the call is refused. Limits: title 200 characters, summary 10000, at most 20
+    /// links (label 100 characters, URL 2000, every link needs both) and 30 hand tests (1000
+    /// each). A blank title or summary, a link with a blank half or a URL that is not http or
+    /// https is refused as `invalid_request` and says what to change; blank hand tests are
+    /// dropped. The answer carries the wait's `id` and `short_id` and the Task's `task_id` and
+    /// `task_short_id`. Wait ids and Task ids share one number space, so name nodes by short id,
+    /// which cannot be mistaken for the other kind. A Task stays Review while any question or
+    /// review under it is open.
+    ///
     /// `release` releases an agentic wait under a Task you can write. A question wait needs an
     /// `answer` — ask the user yourself if you can, and record what they said — and is refused
-    /// without one; a non-question wait needs none. The user can release either from the app, a
-    /// question only with an answer too.
+    /// without one; a review needs the user's `verdict` (`approved` or `changes_requested`),
+    /// with their note as `answer` — only what the user told you in your session, never your own
+    /// verdict; a non-question wait needs none. The user can release any of them from the app, a
+    /// question only with an answer and a review only with a verdict.
+    ///
+    /// A wait already released is refused when released again (a question or a review): the
+    /// user's answer is never overwritten.
     ///
     /// `get` returns one wait as the snapshot's `expectations` carry it — `status`, `question`,
-    /// `agentic_note`, `answer` — so you can poll for the user's answer without the snapshot.
+    /// `agentic_note`, `answer`, and for a review the `review` object (`links`, `hand_tests` and,
+    /// once the user has answered, `verdict`) — so you can poll for the user's answer without the
+    /// snapshot. A wait is a review when `review` is present, a question when `question` is true
+    /// without it, and a wait on something else when `question` is false. After `verdict:
+    /// approved` merge the PR and set the Task Done; after `changes_requested` fix what the note
+    /// says and raise a new review.
     ///
     /// `watch` takes `ids` of waits you want to hear about. It only validates them (each must be an
     /// agentic wait you can see) and answers their current states: it changes nothing on the
@@ -85,13 +112,20 @@ impl ArleshMcp {
         let now = self.now();
         let board = attempt!(self.board(&mut db, now).await);
 
-        let (task_id, title, note, question) = match operation {
+        let (task_id, title, note, question, review) = match operation {
             WaitsOperation::Get { id } => return get(&board, &id),
             WaitsOperation::Watch { ids } => return watch(&board, &ids),
             WaitsOperation::GetMany { ids } => return get_many(&board, &ids),
-            WaitsOperation::Release { id, answer } => {
+            WaitsOperation::Release {
+                id,
+                answer,
+                verdict,
+            } => {
                 let id = found!(board.resolve(&id, "expectation"));
                 let wait = found!(released_wait(&board, &id));
+                if let Err(refusal) = review_rules::require_open_for_agent_release(wait) {
+                    return result::refused(refusal.to_string());
+                }
                 if !attempt!(board.writes_task(&mut db, &wait.parent_id, now).await) {
                     return access::refuse("expectation", &id, AccessLevel::Write);
                 }
@@ -103,6 +137,7 @@ impl ArleshMcp {
                         UpdateExpectationRequest {
                             status: Some(ExpectationStatus::Released),
                             answer: answer.map(Some),
+                            verdict,
                             ..Default::default()
                         },
                         now,
@@ -112,24 +147,50 @@ impl ArleshMcp {
                 attempt!(db.undo().set_source(user_source).await);
                 attempt!(db.commit().await);
                 (self.announce)(None);
-                return result::ok(board.names.stamped(released, NodeTable::Expectation));
+                return result::ok(stamped_wait(&board, &released));
             }
             WaitsOperation::Ask {
                 task_id,
                 title,
                 note,
-            } => (task_id, title, note, true),
+            } => (task_id, title, note, true, None),
+            WaitsOperation::RaiseReview {
+                task_id,
+                title,
+                summary,
+                links,
+                hand_tests,
+            } => (
+                task_id,
+                title,
+                Some(summary),
+                true,
+                Some(ReviewDetails { links, hand_tests }),
+            ),
             WaitsOperation::Raise {
                 task_id,
                 title,
                 note,
                 question,
-            } => (task_id, title, note, question),
+            } => (task_id, title, note, question, None),
         };
 
         let task_id = found!(board.resolve(&task_id, "task"));
         if !attempt!(board.writes_task(&mut db, &task_id, now).await) {
             return access::refuse("task", &task_id, AccessLevel::Write);
+        }
+        if review.is_some() {
+            // A review hands work back, so the Task must be held by an agent: the board's own
+            // derived status says whether it is (On Agent, or already Review).
+            let held = board
+                .load
+                .tasks
+                .iter()
+                .find(|task| task.id == task_id)
+                .map(|task| review_rules::require_held(&task.status));
+            if let Some(Err(refusal)) = held {
+                return result::refused(refusal.to_string());
+            }
         }
         let user_source = attempt!(db.undo().set_source(WriteSource::Mcp).await);
 
@@ -142,6 +203,7 @@ impl ArleshMcp {
                 agentic: true,
                 agentic_note: note,
                 question: Some(question),
+                review,
                 ..Default::default()
             },
             now,
@@ -153,8 +215,20 @@ impl ArleshMcp {
         attempt!(db.commit().await);
         (self.announce)(None);
 
-        result::ok(board.names.stamped(wait, NodeTable::Expectation))
+        result::ok(stamped_wait(&board, &wait))
     }
+}
+
+/// `wait` as the snapshot's `expectations` carry it, with the Task it hangs under named the way
+/// `get_many` names it: `task_id` and `task_short_id`.
+fn stamped_wait(board: &Board, wait: &Expectation) -> serde_json::Value {
+    let mut value = board.names.stamped(wait, NodeTable::Expectation);
+    let state = events::wait_state(board, wait);
+    if let Some(object) = value.as_object_mut() {
+        object.insert("task_id".into(), state.task_id.into());
+        object.insert("task_short_id".into(), state.task_short_id.into());
+    }
+    value
 }
 
 /// `get`: one visible wait, as an agent polls it.
@@ -164,7 +238,7 @@ fn get(board: &Board, id: &NodeIdParam) -> Answer {
         return access::refuse("expectation", &id, AccessLevel::Read);
     };
     // The wait's own row, as the snapshot's `expectations` carry it: the same field names.
-    result::ok(board.names.stamped(wait, NodeTable::Expectation))
+    result::ok(stamped_wait(board, wait))
 }
 
 /// One id of `watch` or `get_many`, answered: the wait's state, or that it is gone.

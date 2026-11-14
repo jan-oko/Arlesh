@@ -172,6 +172,10 @@ pub struct NodeFacts {
     /// The open agentic question beneath a Task — the wait that makes it read Review.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub open_question: Option<NodeId>,
+    /// Every open agentic question or review beneath a Task, in position order — the app draws
+    /// them on the Task, never as nodes of their own. [`Self::open_question`] is the first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_questions: Vec<NodeId>,
     /// Whether a Commitment's Verdict Window ran out before anything was recorded.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,

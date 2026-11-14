@@ -397,6 +397,7 @@ fn wait_under(
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }

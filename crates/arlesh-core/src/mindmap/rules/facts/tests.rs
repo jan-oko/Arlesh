@@ -97,6 +97,7 @@ fn wait_row(id: i64, task: i64, position: i64, agentic: bool, question: bool) ->
         agentic_note: None,
         question,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }
@@ -222,6 +223,11 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     ];
     let (facts, activity) = derive(&load, None);
     assert_eq!(facts["task-11"].open_question, Some(2.into()));
+    assert_eq!(
+        facts["task-11"].open_questions,
+        vec![NodeId::from(2), NodeId::from(1)],
+        "every open one, in position order"
+    );
     assert_eq!(
         activity.waits, 1,
         "a pending agentic wait that is not a question"

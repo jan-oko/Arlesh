@@ -57,8 +57,6 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
           ...(data.checkEvery !== null && data.checkStartingDate !== null
             ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
           ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
-          ...(data.agentic ? { agentic: true } : {}),
-          ...(data.agenticNote !== null ? { agentic_note: data.agenticNote } : {}),
         },
       }];
       if (data.isPrivate || data.archived || data.status !== EXPECTATION_STATUS.PENDING) {

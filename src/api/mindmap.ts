@@ -51,6 +51,8 @@ export interface NodeFacts {
   dependency_blocks?: DependencyBlock[];
   /** The open agentic question beneath a Task — the wait that makes it read Review. */
   open_question?: RowId;
+  /** Every open agentic question or review beneath a Task, in position order. */
+  open_questions?: RowId[];
   /** Whether a Commitment's Verdict Window ran out before anything was recorded. */
   expired?: boolean;
   /** Whether a Task reads In Progress (Doing) only from its sub-items rather than a status held by

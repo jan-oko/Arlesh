@@ -4,7 +4,7 @@ import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedContainer, isHiddenBacklog, isExcludedArchived,
   isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDroppedForDelegation,
-  isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
+  isLiveExpectation, isAgenticWait, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
@@ -554,7 +554,7 @@ export function filterExpectationList(
 
 /** One Expectation row against the filters — the predicate {@link filterExpectationList} applies. */
 function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, listFilter: ListFilterState): boolean {
-  if (listFilter.preset === "unblock") return false;
+  if (listFilter.preset === "unblock" || isAgenticWait(row.node)) return false;
   const onlyWaits = listFilter.preset === "expectations";
   // The Expectations option is itself the kind choice, so the selector does not answer under it.
   if (!onlyWaits && !listFilter.kinds.includes("expectation")) return false;

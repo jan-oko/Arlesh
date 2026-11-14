@@ -116,8 +116,8 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "Review",
-        is: "Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.",
-        why: "It is the only way an agent hands work back, and the question says what you need to do.",
+        is: "Never set: an On Agent Task with an open agent question or review beneath it. Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent.",
+        why: "It is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait itself: the Task shows it and is where you answer.",
         without: "Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.",
         lives: "tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts",
       },
@@ -305,7 +305,7 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "The MCP",
-        is: "Agents' door to the board. They see only inside the roots you open, never what is private, and write only Agentic Tasks. They hand work back by asking a question.",
+        is: "Agents' door to the board. They see only inside the roots you open, never what is private, and write only Agentic Tasks. They hand work back by asking a question or raising a review.",
         why: "A clean, bounded context for an agent, on the same derived board you see.",
         without: "Agents read everything, or a separate copy that disagrees.",
         lives: "mcp/ · access/ · capacity/",

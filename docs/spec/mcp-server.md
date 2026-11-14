@@ -201,7 +201,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `raise_review(task_id, title, summary, links?, hand_tests?)`, `release(id, answer?, verdict?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user, a review for their verdict, or a wait on something else, released by the agent (a question only with its answer, a review only with the user's verdict) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage. See [Agents](agents.md) |
 
@@ -308,7 +308,7 @@ details an agent reads the payload by.
   `check_every` schedules check tasks beneath it (`origin` `{"kind": "check", …}`). An
   `asynchronous` task's spawned wait (`{"kind": "spawned_wait", …}`) and a delegated task's wait
   (`{"kind": "delegation_wait", …}`) are expectations too. An agentic wait carries `agentic_note`,
-  `question` and `answer` (see *Agentic waits*).
+  `question`, `answer` and, on a review, `review` (see *Agentic waits*).
 - **Delegation.** A task's `delegate_to` is `null` or `{"kind": "person", "id": N}` (read the
   Person with `arlesh_kb`), independent of `agentic`; `arlesh_tasks` writes it (`delegate`, see
   *Writing tasks*). There is no Agent delegate (removed 2026-10-01): an agent holds a Task as
@@ -425,9 +425,10 @@ the app gives.
 `todo` (ready to claim) → `on_agent` (the agent holds it) → `done`, with `review` — `on_agent` and
 a question of the agent's open — derived, and `doing` meaning the **user** is on it. The work
 cycle an agent follows: claim it (`set_status` `todo` → `on_agent`), work, and to hand anything to
-the user raise a question (`arlesh_waits.ask`: a spec question, or "PR #n is green — review and
-merge?"); the Task reads `review` until the user answers, then `on_agent` again, and the agent
-reads the answer with `arlesh_waits.get`. A wait on something non-human (`question: false`, CI)
+the user raise a question (`arlesh_waits.ask`: a spec question) or, for finished work, a review
+(`arlesh_waits.raise_review`: a summary, links, hand tests); the Task reads `review` until the user
+answers, then `on_agent` again, and the agent reads the answer — or `approved` /
+`changes_requested` with the user's note — with `arlesh_waits.get`. A wait on something non-human (`question: false`, CI)
 leaves it `on_agent`. Finish with `done`, or hand it back unstarted with `todo`. The `start` preset
 still offers `todo` Agentic Tasks to claim; an agent at capacity blocks every one of its Claim not `done`.
 
@@ -596,24 +597,52 @@ row ids or short ids.
   question or context in `agentic_note`. `question` (default `true`) says it is **waiting on the
   user**; `false` says it waits on something non-human, like CI. **`ask`** is `raise` as a
   question, kept as the short form.
-- **`release(id, answer?)`** releases an agentic wait under a Task the agent can write. A
+- **`raise_review(task_id, title, summary, links?, hand_tests?)`** hands finished work back for a
+  verdict: an agentic wait with `question: true` and a `review` object. `summary` (what changed)
+  is the wait's `agentic_note`; `links` is a list of `{label, url}` (a PR, a doc, a build; a PR
+  link makes the user's approval their word to merge it); `hand_tests` is a list of strings, one
+  per thing the user can try by hand. The Task reads `review` until the user answers, and stays
+  `review` while **any** other question or review under it is open. The Task must be **held by an
+  agent** — `on_agent`, or already `review`: raising one under an unclaimed (`todo`) Task is refused
+  (`invalid_request`, "claim it first"). Plain questions are not held to this. The content is
+  checked: a blank title or summary, a link missing its label or URL, or a URL that is not http or
+  https is refused with a message saying what to change; blank hand tests are dropped. Caps: title
+  200 characters, summary 10000, 20 links (label 100, URL 2000), 30 hand tests (1000 each). The
+  app shows the links as clickable links (editor, Zen card, List row), http and https only. A
+  review exists only on an agentic wait, so a review given to any other wait — over REST, say —
+  is refused by the core rule.
+- **`release(id, answer?, verdict?)`** releases an agentic wait under a Task the agent can write. A
   **question** wait needs a non-blank `answer` — one the agent got from the user in its own
-  session — and is refused (`invalid_request`) without one, writing nothing. A wait that is not a
-  question needs none. A wait that is not agentic is refused as `not_permitted`.
+  session — and is refused (`invalid_request`) without one, writing nothing. A **review** needs
+  `verdict`, `approved` or `changes_requested`, with the user's note as `answer` (optional): what
+  an agent releasing a review itself must supply is the verdict the user gave it in its own
+  session, never one of its own — an agent has no business approving its own work. A `verdict` on
+  a wait that is not a review is refused. A wait that is neither needs nothing. A wait that is not
+  agentic is refused as `not_permitted`. A question or review that is **already released** is
+  refused (`invalid_request`): the user's answer or verdict is never overwritten, and a second
+  release is a mistake. A wait on something else is idempotent and passes.
 - **`get(id)`** returns one visible wait's `status`, `question`, `note` and `answer` (with its
-  short and full id), so an agent can poll for the user's answer without loading the snapshot.
+  short and full id, and the Task's `task_id` and `task_short_id` as `get_many` names them; wait
+  ids and Task ids share one number space, so name nodes by short id), so an agent can poll for the user's answer without loading the snapshot. A
+  **review** also carries `review: {links, hand_tests, verdict?}`: its presence is the kind (a
+  review when `review` is present, a question when `question` is true without it, a wait on
+  something else when `question` is false), and `verdict` appears once the user has answered.
 
 `raise` and `release` need **write** access to the Task: an Agentic Task inside an MCP root, or the
 call is refused as `not_permitted`. Like every MCP write they are transactional and journaled as the
 **agent's** write, so they never enter the user's Undo Stack, and every open window is told.
 
-**A question is how an agent hands a Task to the user.** A pending question under an `on_agent`
-Task makes it read `review` (see *Agentic tasks*); a wait with `question: false` does not. The user
-answers a question wait in the app from the **Review** card or the Task editor's answer field — or
-in the wait's own editor — which stores the **answer** and releases it in one write, and the Task
-reads `on_agent` again; the app refuses a release without an answer, from every release path. The
-agent reads the answer with `get`, or off the snapshot's `expectations`, which carry `question` and
-`answer`. Agentic waits are not drawn in the Zen View's Expectations strip. A wait blocks nothing
+**A question or a review is how an agent hands a Task to the user.** A pending question or review
+under an `on_agent` Task makes it read `review` (see *Agentic tasks*); a wait with `question: false`
+does not. The user answers in the app **on the Task** — the Review card or row, or the Task editor —
+which stores the **answer** (a review: the **verdict** and the note) and releases the wait in one
+write, and the Task reads `on_agent` again whichever the verdict; the app refuses a release without
+an answer (a review: without a verdict), from every release path. The agent reads the reply with
+`get`, or off the snapshot's `expectations`, which carry `question`, `answer` and, for a review,
+`review.verdict`. After `approved` the agent merges the PR and sets the Task `done`; after
+`changes_requested` it fixes what the note says and raises a new review. **The app draws no agentic
+wait** — not in the Mindmap, List, Start, Do or Zen — so it exists for agents alone; a filtered
+snapshot keeps an agentic wait whenever it keeps the Task it hangs under. A wait blocks nothing
 unless a Task depends on it.
 
 ## Being told a wait resolved

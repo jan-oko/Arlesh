@@ -317,7 +317,10 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         // under an agentic Task, or answer the question before releasing it.
         TaskError::AgenticSpecMissing
         | TaskError::AgenticWaitOutsideAgenticTask
-        | TaskError::AgenticAnswerMissing => WireErrorKind::InvalidRequest,
+        | TaskError::AgenticAnswerMissing
+        | TaskError::AgenticVerdictMissing
+        | TaskError::Review(_)
+        | TaskError::VerdictOnNonReview => WireErrorKind::InvalidRequest,
         // Change the sub-items, finish or archive what is open, or switch compound off; an iteration root or a check task
         // carries no flag.
         TaskError::CompoundStatus(_)

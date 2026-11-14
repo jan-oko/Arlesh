@@ -539,6 +539,7 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
         &mcp.waits(Parameters(params::WaitsOperation::Release {
             id: question.into(),
             answer: Some("Merged".to_string()),
+            verdict: None,
         }))
         .await
         .expect("the waits tool returned no result"),
@@ -1071,6 +1072,7 @@ mod agent_waits {
         params::WaitsOperation::Release {
             id: id.into(),
             answer: answer.map(str::to_string),
+            verdict: None,
         }
     }
 
@@ -1086,6 +1088,263 @@ mod agent_waits {
 
         assert_eq!(succeeded(&released)["status"], "released");
         assert_eq!(get(&mcp, id).await["status"], "released");
+    }
+
+    /// An agent holds the Task: what `arlesh_tasks.set_status` `todo` -> `on_agent` leaves.
+    async fn claim(pool: &sqlx::SqlitePool, task: i64) {
+        sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = ?")
+            .bind(task)
+            .execute(pool)
+            .await
+            .expect("claim the task");
+    }
+
+    fn review_request(task: i64, title: &str, summary: &str) -> params::WaitsOperation {
+        params::WaitsOperation::RaiseReview {
+            task_id: task.into(),
+            title: title.into(),
+            summary: summary.into(),
+            links: vec![],
+            hand_tests: vec![],
+        }
+    }
+
+    async fn raised_review(pool: &sqlx::SqlitePool, mcp: &ArleshMcp, task: i64) -> i64 {
+        helpers::make_agentic(pool, task).await;
+        claim(pool, task).await;
+        let review = waits(
+            mcp,
+            params::WaitsOperation::RaiseReview {
+                task_id: task.into(),
+                title: "Review #12".into(),
+                summary: "Adds the thing".into(),
+                links: vec![arlesh_lib::tasks::model::ReviewLink {
+                    label: "PR #12".into(),
+                    url: "https://example.test/pull/12".into(),
+                }],
+                hand_tests: vec!["Open the board".into(), "Press Enter".into()],
+            },
+        )
+        .await;
+        succeeded(&review)["id"].as_i64().expect("a stored wait")
+    }
+
+    #[tokio::test]
+    async fn a_review_is_raised_with_links_and_hand_tests_and_read_back_with_the_verdict() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        let id = raised_review(&pool, &mcp, board.inside_task).await;
+
+        let open = get(&mcp, id).await;
+        assert_eq!(open["question"], true, "a review asks the user");
+        assert_eq!(open["agentic_note"], "Adds the thing");
+        assert_eq!(open["review"]["links"][0]["label"], "PR #12");
+        assert_eq!(open["review"]["hand_tests"][1], "Press Enter");
+        assert!(open["review"].get("verdict").is_none(), "no verdict yet");
+
+        let bare = waits(&mcp, release(id, Some("looks fine"))).await;
+        assert_eq!(
+            refused(&bare),
+            "invalid_request",
+            "a review needs a verdict"
+        );
+
+        let released = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: id.into(),
+                answer: Some("Fix the label".into()),
+                verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::ChangesRequested),
+            },
+        )
+        .await;
+        assert_eq!(succeeded(&released)["status"], "released");
+
+        let answered = get(&mcp, id).await;
+        assert_eq!(answered["review"]["verdict"], "changes_requested");
+        assert_eq!(answered["answer"], "Fix the label");
+    }
+
+    #[tokio::test]
+    async fn a_released_review_is_not_released_again_and_the_verdict_stands() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        let id = raised_review(&pool, &mcp, board.inside_task).await;
+        let approve = |answer: &str, verdict| params::WaitsOperation::Release {
+            id: id.into(),
+            answer: Some(answer.into()),
+            verdict: Some(verdict),
+        };
+        use arlesh_lib::tasks::model::ReviewVerdict;
+
+        succeeded(&waits(&mcp, approve("ship it", ReviewVerdict::Approved)).await);
+        let again = waits(
+            &mcp,
+            approve("agent overwrite", ReviewVerdict::ChangesRequested),
+        )
+        .await;
+
+        assert_eq!(refused(&again), "invalid_request");
+        let kept = get(&mcp, id).await;
+        assert_eq!(kept["review"]["verdict"], "approved");
+        assert_eq!(kept["answer"], "ship it");
+    }
+
+    #[tokio::test]
+    async fn a_released_question_is_not_released_again_either() {
+        let (_pool, _app, mcp, id) = raised(true).await;
+        succeeded(&waits(&mcp, release(id, Some("Blue"))).await);
+
+        let again = waits(&mcp, release(id, Some("Red"))).await;
+
+        assert_eq!(refused(&again), "invalid_request");
+        assert_eq!(get(&mcp, id).await["answer"], "Blue");
+    }
+
+    #[tokio::test]
+    async fn a_review_with_bad_content_is_refused_and_nothing_is_stored() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        helpers::make_agentic(&pool, board.inside_task).await;
+        claim(&pool, board.inside_task).await;
+        let task = board.inside_task;
+        let with =
+            |links: Vec<(&str, &str)>, hand_tests: Vec<&str>| params::WaitsOperation::RaiseReview {
+                task_id: task.into(),
+                title: "Review".into(),
+                summary: "Changed it".into(),
+                links: links
+                    .into_iter()
+                    .map(|(label, url)| arlesh_lib::tasks::model::ReviewLink {
+                        label: label.into(),
+                        url: url.into(),
+                    })
+                    .collect(),
+                hand_tests: hand_tests.into_iter().map(str::to_string).collect(),
+            };
+        let long = "x".repeat(20_000);
+        for refused_request in [
+            review_request(task, "  ", "Changed it"),
+            review_request(task, "Review", ""),
+            with(vec![("PR", "javascript:alert(1)")], vec![]),
+            with(vec![("", "")], vec![]),
+            with(vec![], vec![long.as_str()]),
+        ] {
+            assert_eq!(
+                refused(&waits(&mcp, refused_request).await),
+                "invalid_request"
+            );
+        }
+
+        let kept =
+            succeeded(&waits(&mcp, with(vec![], vec!["", "  ", "Press Enter"])).await).clone();
+        assert_eq!(
+            kept["review"]["hand_tests"],
+            serde_json::json!(["Press Enter"])
+        );
+        let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM expectations")
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+        assert_eq!(stored, 1, "only the accepted review was stored");
+    }
+
+    #[tokio::test]
+    async fn a_review_is_refused_under_a_task_no_agent_holds_but_a_question_is_not() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        helpers::make_agentic(&pool, board.inside_task).await;
+
+        let review = waits(
+            &mcp,
+            review_request(board.inside_task, "Review", "Changed it"),
+        )
+        .await;
+        assert_eq!(refused(&review), "invalid_request");
+
+        let question = waits(
+            &mcp,
+            params::WaitsOperation::Ask {
+                task_id: board.inside_task.into(),
+                title: "Which?".into(),
+                note: None,
+            },
+        )
+        .await;
+        succeeded(&question);
+
+        claim(&pool, board.inside_task).await;
+        succeeded(
+            &waits(
+                &mcp,
+                review_request(board.inside_task, "Review", "Changed it"),
+            )
+            .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn the_answers_name_the_task_the_wait_hangs_under() {
+        let pool = helpers::test_pool().await;
+        let board = board(&helpers::command_host(&pool)).await;
+        let mcp = mcp(&pool);
+        let id = raised_review(&pool, &mcp, board.inside_task).await;
+
+        let polled = get(&mcp, id).await;
+
+        assert!(polled["task_id"]
+            .as_str()
+            .is_some_and(|task| !task.is_empty()));
+        assert!(polled["task_short_id"]
+            .as_str()
+            .is_some_and(|short| !short.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn a_review_is_refused_on_a_wait_that_is_not_agentic_whatever_the_entry_point() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+
+        let hand_made = expectation_commands::create_expectation(
+            app.state(),
+            arlesh_lib::tasks::model::CreateExpectationRequest {
+                title: "Review".into(),
+                parent_type: "task".into(),
+                parent_id: board.inside_task.into(),
+                agentic: false,
+                agentic_note: Some("Changed it".into()),
+                review: Some(arlesh_lib::tasks::model::ReviewDetails::default()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        assert!(
+            hand_made.is_err(),
+            "a review exists only on an agentic wait"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_verdict_is_refused_on_a_question() {
+        let (_pool, _app, mcp, id) = raised(true).await;
+
+        let refusal = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: id.into(),
+                answer: Some("Blue".into()),
+                verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::Approved),
+            },
+        )
+        .await;
+
+        assert_eq!(refused(&refusal), "invalid_request");
     }
 
     #[tokio::test]
@@ -1380,6 +1639,7 @@ mod agent_waits {
             params::WaitsOperation::Release {
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
+                verdict: None,
             },
         )
         .await;
@@ -1417,6 +1677,7 @@ mod agent_waits {
             params::WaitsOperation::Release {
                 id: NodeIdParam::Short(full_id.clone()),
                 answer: None,
+                verdict: None,
             },
         )
         .await;
@@ -1657,6 +1918,7 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
         .waits(Parameters(params::WaitsOperation::Release {
             id: by_string(),
             answer: None,
+            verdict: None,
         }))
         .await
         .expect("the waits tool returned no result");

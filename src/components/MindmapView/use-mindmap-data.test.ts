@@ -349,12 +349,12 @@ describe("buildTree", () => {
     const root = buildTree(
       [aspect], [], [task], [], [], [], [], [], [], [], [], [], [], [],
       (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
-      { "task-3": { inherited_agentic: true, inherited_time_scope: scope, open_question: 9 } },
+      { "task-3": { inherited_agentic: true, inherited_time_scope: scope, open_question: 9, open_questions: [9] } },
     );
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.inheritedAgentic).toBe(true);
     expect(node?.inheritedTimeScope).toEqual(scope);
-    expect(node?.openQuestionId).toBe(9);
+    expect(node?.openQuestionIds).toEqual([9]);
   });
 
   it("stores task tag_ids on the node", () => {

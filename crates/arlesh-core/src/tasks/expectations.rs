@@ -28,8 +28,9 @@ use crate::scopes::db::DbScopeKey;
 use super::error::TaskError;
 use super::model::{
     CreateExpectationRequest, DurationSpec, Expectation, ExpectationArchival, ExpectationId,
-    ExpectationStatus, TimeScope, UpdateExpectationRequest,
+    ExpectationStatus, Review, ReviewDetails, ReviewVerdict, TimeScope, UpdateExpectationRequest,
 };
+use super::rules::review as review_rules;
 use super::waits::{instant_column, instant_from_column};
 use super::{insertion_position, time_scope_columns, time_scope_from_row};
 
@@ -58,6 +59,10 @@ struct ExpectationRow {
     agentic_note: Option<String>,
     agentic_question: bool,
     agentic_answer: Option<String>,
+    /// A review's links and hand tests as JSON; NULL for any other wait.
+    agentic_review: Option<String>,
+    /// A review's verdict, as spelled in the column.
+    agentic_verdict: Option<String>,
     /// The latest completed check's time, from `wait_checks` — not the retired column of the
     /// same meaning (0045).
     checked_at: Option<String>,
@@ -68,6 +73,29 @@ const EXPECTATION_SELECT: &str = "SELECT e.*,
         (SELECT MAX(c.resolved_at) FROM wait_checks c
           WHERE c.wait_kind = 'stored' AND c.wait_id = e.id) AS checked_at
      FROM expectations e";
+
+/// A review's two columns as the model: `None` for a wait that is not one. A document that no
+/// longer parses reads as a review with nothing in it rather than as a plain question, so the
+/// wait still asks for a verdict.
+fn review_from_columns(document: Option<&str>, verdict: Option<&str>) -> Option<Review> {
+    let document = document?;
+    let details: ReviewDetails = serde_json::from_str(document).unwrap_or_default();
+    Some(Review {
+        links: details.links,
+        hand_tests: details.hand_tests,
+        verdict: verdict.and_then(ReviewVerdict::from_db),
+    })
+}
+
+/// A review's details as the JSON document its column holds.
+fn review_document(review: &Review) -> String {
+    let details = ReviewDetails {
+        links: review.links.clone(),
+        hand_tests: review.hand_tests.clone(),
+    };
+    // Plain strings and lists: serialising them cannot fail, and `{}` reads back as an empty review.
+    serde_json::to_string(&details).unwrap_or_else(|_| String::from("{}"))
+}
 
 impl From<ExpectationRow> for Expectation {
     fn from(row: ExpectationRow) -> Self {
@@ -99,6 +127,10 @@ impl From<ExpectationRow> for Expectation {
             agentic_note: row.agentic_note,
             question: row.agentic_question,
             answer: row.agentic_answer,
+            review: review_from_columns(
+                row.agentic_review.as_deref(),
+                row.agentic_verdict.as_deref(),
+            ),
             origin: crate::nodes::origin::Origin::Manual,
         }
     }
@@ -137,6 +169,8 @@ struct ExpectationWrite {
     question: bool,
     /// Final answer.
     answer: Option<String>,
+    /// Final review, with its verdict; `None` for a wait that is not one.
+    review: Option<Review>,
     /// Whether this write releases a question wait, which needs an answer.
     releases_question: bool,
     /// Whether this write makes the wait agentic or moves an agentic one, and so has to be under an
@@ -146,12 +180,31 @@ struct ExpectationWrite {
 }
 
 impl ExpectationWrite {
+    /// Refuses releasing a question with no answer, or a review with no verdict: what closes it.
+    fn require_release_answer(&self) -> Result<(), TaskError> {
+        if let Some(review) = &self.review {
+            return review
+                .verdict
+                .map(|_| ())
+                .ok_or(TaskError::AgenticVerdictMissing);
+        }
+        let answered = self
+            .answer
+            .as_deref()
+            .is_some_and(|answer| !answer.trim().is_empty());
+        if answered {
+            Ok(())
+        } else {
+            Err(TaskError::AgenticAnswerMissing)
+        }
+    }
+
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
     fn merge(
         stored: Expectation,
         request: UpdateExpectationRequest,
         now: NaiveDateTime,
-    ) -> Result<Self, crate::nodes::id::NotStored> {
+    ) -> Result<Self, TaskError> {
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => {
                 Some((parent_type, parent_id.require_stored()?))
@@ -169,7 +222,24 @@ impl ExpectationWrite {
             && status == ExpectationStatus::Released
             && stored.status != ExpectationStatus::Released;
         let places_agentic_wait = agentic && (!stored.agentic || reparent.is_some());
+        let review = match (stored.review, request.verdict) {
+            (None, Some(_)) => return Err(TaskError::VerdictOnNonReview),
+            (stored_review, None) => stored_review,
+            (Some(review), Some(verdict)) => Some(Review {
+                verdict: Some(verdict),
+                ..review
+            }),
+        };
+        // Taking a release back opens the review again, so its verdict goes.
+        let review = review.map(|review| match status {
+            ExpectationStatus::Pending => Review {
+                verdict: None,
+                ..review
+            },
+            ExpectationStatus::Released => review,
+        });
         Ok(Self {
+            review,
             places_agentic_wait,
             reparent,
             parent_type,
@@ -230,6 +300,20 @@ impl<'session> ExpectationOperator<'session> {
         request: CreateExpectationRequest,
         now: NaiveDateTime,
     ) -> Result<Expectation, TaskError> {
+        let mut request = request;
+        // Every entry point lands here, so the review rules hold for all of them: a review exists
+        // only on an agentic wait, and its content is checked and normalised before it is stored.
+        if let Some(details) = request.review.take() {
+            review_rules::require_agentic(request.agentic, true)?;
+            let (title, summary, details) = review_rules::normalise_review(
+                &request.title,
+                request.agentic_note.as_deref(),
+                details,
+            )?;
+            request.title = title;
+            request.agentic_note = Some(summary);
+            request.review = Some(details);
+        }
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let (every_n, every_kind) = every_columns(&request.check_every);
         let starting = request
@@ -240,8 +324,8 @@ impl<'session> ExpectationOperator<'session> {
             "INSERT INTO expectations
                 (title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
                  position, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, agentic, agentic_note, agentic_question)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, agentic, agentic_note, agentic_question, agentic_review)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(stored_reference(&request.parent_type))
@@ -256,7 +340,13 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&ts_kind)
         .bind(request.agentic)
         .bind(&request.agentic_note)
-        .bind(request.question.unwrap_or(true))
+        // A review is a question: it asks the user, and is released only with their word.
+        .bind(request.review.is_some() || request.question.unwrap_or(true))
+        .bind(
+            request
+                .review
+                .map(|details| review_document(&Review::raised(details))),
+        )
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -350,12 +440,12 @@ impl<'session> ExpectationOperator<'session> {
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
                  last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
-                 released_at)
+                 released_at, agentic_review, agentic_verdict)
              SELECT title, ?, ?, status, archival, position, is_private,
                     time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                     time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
                     last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
-                    released_at
+                    released_at, agentic_review, agentic_verdict
              FROM expectations WHERE id = ?",
         )
         .bind(stored_reference(parent_type))
@@ -427,7 +517,7 @@ impl<'session> ExpectationOperator<'session> {
                 check_every_n=?, check_every_kind=?, check_starting=?, position=?, is_private=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, agentic=?, agentic_note=?, agentic_question=?,
-                agentic_answer=?,
+                agentic_answer=?, agentic_review=?, agentic_verdict=?,
                 released_at = CASE WHEN ? = 'released'
                                    THEN CASE WHEN status = 'released' THEN released_at ELSE ? END
                                    ELSE NULL END
@@ -449,6 +539,14 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&write.agentic_note)
         .bind(write.question)
         .bind(&write.answer)
+        .bind(write.review.as_ref().map(review_document))
+        .bind(
+            write
+                .review
+                .as_ref()
+                .and_then(|review| review.verdict)
+                .map(|verdict| verdict.as_str()),
+        )
         // Released keeps the instant it was first released; pending again clears it.
         .bind(write.status.as_str())
         .bind(instant_column(now()))
@@ -544,12 +642,8 @@ pub async fn update_expectation(
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
     let write = ExpectationWrite::merge(stored, request, now())?;
-    let answered = write
-        .answer
-        .as_deref()
-        .is_some_and(|answer| !answer.trim().is_empty());
-    if write.releases_question && !answered {
-        return Err(TaskError::AgenticAnswerMissing);
+    if write.releases_question {
+        write.require_release_answer()?;
     }
     super::scope_rules::validate_expectation_scope(
         db,

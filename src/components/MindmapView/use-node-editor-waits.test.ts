@@ -71,7 +71,7 @@ describe("useNodeEditor — waits", () => {
     act(() => result.current.setEditorModal({ nodeId: spawnedWait.id, node: spawnedWait }));
     await act(() => result.current.onExpectationSave({
       title: "Chase the reviewer", status: "released", checkEvery: { n: 2, kind: "day" }, checkStartingDate: null,
-      timeScope: null, tagIds: [6], archived: true, isPrivate: true, agentic: false, agenticNote: null, agenticAnswer: null,
+      timeScope: null, tagIds: [6], archived: true, isPrivate: true,
     }));
     await settleLane();
     expect(updateExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", expect.objectContaining({
@@ -87,7 +87,7 @@ describe("useNodeEditor — waits", () => {
     act(() => result.current.setEditorModal({ nodeId: wait.id, node: wait }));
     await act(() => result.current.onExpectationSave({
       title: "wait", status: "pending", checkEvery: null, checkStartingDate: null, timeScope: null,
-      tagIds: [], archived: false, isPrivate: false, agentic: false, agenticNote: null, agenticAnswer: null,
+      tagIds: [], archived: false, isPrivate: false,
     }));
     await settleLane();
     const request = vi.mocked(updateExpectation).mock.calls[0]?.[1];

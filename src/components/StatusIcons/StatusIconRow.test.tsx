@@ -17,6 +17,10 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
+function wait(id: string, rowId: number, agentWaiting: NonNullable<MindmapNode["agentWaiting"]>): MindmapNode {
+  return { id, rowId, kind: "expectation", title: id, position: 0, tagIds: [], children: [], agentWaiting };
+}
+
 function renderRow(n: MindmapNode) {
   const { container } = render(
     <svg>
@@ -88,16 +92,31 @@ describe("StatusIconRow", () => {
     expect(renderRow(info)).toEqual(["a stack trace"]);
   });
 
-  it("says an agent is waiting on an agentic wait", () => {
-    expect(renderRow(node("expectation", { agentWaiting: { note: "Red or blue?", question: true, answer: null } })))
-      .toEqual(["agentWaitingNote"]);
-    expect(renderRow(node("expectation", { agentWaiting: { note: null, question: true, answer: null } })))
-      .toEqual(["agentWaiting"]);
+  it("says an agent has a question open on the Task, and a review in another voice", () => {
+    const question = wait("expectation-1", 1, { note: "Red or blue?", question: true, answer: null });
+    const review = wait("expectation-2", 2, { note: "Done", question: true, answer: null, review: { links: [], hand_tests: [] } });
+    const withQuestion = node("task", { agentWaits: [question], openQuestionIds: [1] });
+    const withReview = node("task", { agentWaits: [review], openQuestionIds: [2] });
+    expect(renderRow(withQuestion)).toEqual(["openQuestion"]);
+    expect(renderRow(withReview)).toEqual(["openReview"]);
+    expect(deriveStatusIndicators(withQuestion).map((indicator) => indicator.type)).not.toEqual(
+      deriveStatusIndicators(withReview).map((indicator) => indicator.type),
+    );
   });
 
-  it("says a wait that is not a question waits on something else", () => {
-    expect(renderRow(node("expectation", { agentWaiting: { note: "CI on #86", question: false, answer: null } })))
-      .toEqual(["agentWaitingElsewhereNote"]);
+  it("draws a different icon for an open review than for an open question", () => {
+    const iconOf = (n: MindmapNode) => render(
+      <svg><StatusIconRow node={n} indicators={deriveStatusIndicators(n)} top={36} /></svg>,
+    ).container.innerHTML;
+    const question = wait("expectation-1", 1, { note: null, question: true, answer: null });
+    const review = wait("expectation-2", 2, { note: null, question: true, answer: null, review: { links: [], hand_tests: [] } });
+    expect(iconOf(node("task", { agentWaits: [question], openQuestionIds: [1] })))
+      .not.toEqual(iconOf(node("task", { agentWaits: [review], openQuestionIds: [2] })));
+  });
+
+  it("says nothing of a wait that is not open", () => {
+    const ci = wait("expectation-1", 1, { note: "CI on #86", question: false, answer: null });
+    expect(renderRow(node("task", { agentWaits: [ci] }))).toEqual([]);
   });
 
   it("says the MCP can see a node, and through which root", () => {

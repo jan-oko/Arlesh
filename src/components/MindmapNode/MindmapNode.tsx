@@ -12,6 +12,7 @@ import type { ContextMenuAction } from "@/components/NodeContextMenu/context-act
 import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
 import NodeRect from "./NodeRect";
 import NodeLabel from "./NodeLabel";
+import { openWaits } from "@/utils/open-question";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 
 interface Props {
@@ -54,6 +55,10 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
     if (isEditing) setEditLineCount(displayLineCount);
   }
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
+
+  const openWaitsText = openWaits(node)
+    .map((wait) => (wait.agentWaiting?.note ? `${wait.title}\n${wait.agentWaiting.note}` : wait.title))
+    .join("\n\n");
 
   const iconR = (iconWidth - 8) / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, overdue, nodeOpacity } = computeNodeAppearance(node, position.depth);
@@ -111,6 +116,9 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       {/* A folded run says what it stands for on the node and *when* in its tooltip: the span is
           what tells this September's history from last September's, and it would not fit. */}
       {node.habitGroup !== undefined && <title>{node.habitGroup.spanLabel}</title>}
+      {/* A Task reading Review says what the agent has open for the user: its title and note, on the
+          card's hover. Answering is done from the Task's editor (double click). */}
+      {openWaitsText !== "" && <title>{openWaitsText}</title>}
       {overdue && <OverdueNote id={overdueNoteId} svg />}
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
