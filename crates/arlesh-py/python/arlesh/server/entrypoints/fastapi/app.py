@@ -78,7 +78,9 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
   approve`), and the device's next poll answers its own token, once.
 * **`/health`** answers the API version (`api_version`, bumped only on a breaking change) and
   the build commit: the desktop app's handshake before it uses the server.
-* **`/events/changes`** streams `board-changed` (Server-Sent Events) after every committed write.
+* **`/events/changes`** streams `board-changed` (Server-Sent Events) after every committed write,
+  carrying the changed nodes, and a `board-head` when quiet. **`/board/current`** is the latest
+  published board, as it is, for a client's full load.
 * **`/events/expectations`** is a long poll over the changes to the waits the MCP can see
   (`?agentic=true` keeps the agentic ones): what an agent's notifications follow. The core
   computes the answer.
@@ -208,7 +210,7 @@ class ArleshServer(FastAPI):
         )
         self.add_middleware(RequestLoggingMiddleware)
         self.add_middleware(
-            RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=board.epoch
+            RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=lambda: board.epoch
         )
         # Outermost, so it compresses the answer the stamp was put on.
         self.add_middleware(GzipExceptEventsMiddleware)

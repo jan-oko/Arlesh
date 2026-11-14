@@ -492,14 +492,12 @@ async fn adding_a_root_is_one_undoable_step() {
         .await
         .expect("open gesture");
     add_root(&app, NodeTable::Domain, board.inside).await;
-    undo_commands::close_gesture(helpers::window(&app), app.state())
+    undo_commands::close_gesture(app.state())
         .await
         .expect("close gesture");
     assert_eq!(roots(&app).await.len(), 1);
 
-    undo_commands::undo(helpers::window(&app), app.state())
-        .await
-        .expect("undo");
+    undo_commands::undo(app.state()).await.expect("undo");
 
     assert!(roots(&app).await.is_empty());
 }
@@ -517,7 +515,7 @@ async fn deleting_a_root_node_drops_the_root_and_undo_brings_both_back() {
     task_commands::delete_task(app.state(), board.inside_task.into())
         .await
         .expect("delete task");
-    undo_commands::close_gesture(helpers::window(&app), app.state())
+    undo_commands::close_gesture(app.state())
         .await
         .expect("close gesture");
     assert!(
@@ -525,9 +523,7 @@ async fn deleting_a_root_node_drops_the_root_and_undo_brings_both_back() {
         "a root on a deleted row would open whatever reuses its id"
     );
 
-    undo_commands::undo(helpers::window(&app), app.state())
-        .await
-        .expect("undo");
+    undo_commands::undo(app.state()).await.expect("undo");
 
     assert_eq!(
         serde_json::to_value(roots(&app).await).expect("serialise"),

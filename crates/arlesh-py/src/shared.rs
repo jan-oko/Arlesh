@@ -18,6 +18,7 @@ use arlesh_core::mcp::{
     events::{ChangeFeed, EventStreams, WaitLogs},
     session::Sessions,
 };
+use arlesh_core::mindmap::publisher::BoardPublisher;
 
 /// The board's revision: bumped once for every committed write, from any open of the file.
 pub(crate) type Changes = ChangeFeed;
@@ -34,6 +35,9 @@ pub(crate) struct Shared {
     /// The MCP sessions of this file, by the id `/mcp` issued: each is bound to an Agent once it
     /// attaches. In memory only, so a restart forgets them and the clients attach again.
     pub(crate) sessions: Sessions,
+    /// Derives and publishes the board's changes: started once per file by
+    /// [`crate::NativeDatabase::start_publisher`], on the first open that asks.
+    pub(crate) publisher: OnceLock<BoardPublisher>,
 }
 
 impl Shared {
@@ -64,6 +68,7 @@ pub(crate) fn for_database(path: &Path) -> Arc<Shared> {
             changes,
             logs: WaitLogs::default(),
             sessions: Sessions::default(),
+            publisher: OnceLock::new(),
         })
     }))
 }

@@ -9,14 +9,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{Emitter, Manager, Runtime, State};
+use tauri::{Emitter, Runtime, State};
 
 use crate::{
     backend::http::{
         compatibility, Connection, Health, HttpBackend, ReadOnlyReason, ServerStatus, StatusNotify,
         API_VERSION,
     },
-    board::recipients,
     client_mode::{
         settings::{self, Mode, Startup},
         vault,
@@ -212,11 +211,8 @@ fn save(state: &ClientModeState, mode: &Mode) -> Result<(), WireError> {
 pub fn status_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> StatusNotify {
     let app = app.clone();
     Arc::new(move |status: &ServerStatus| {
-        let open: Vec<String> = app.webview_windows().into_keys().collect();
-        for label in recipients(&open, None) {
-            if let Err(error) = app.emit_to(label, SERVER_STATUS_CHANGED, status) {
-                tracing::warn!(error = %error, label = %label, "could not tell a window the server's status");
-            }
+        if let Err(error) = app.emit(SERVER_STATUS_CHANGED, status) {
+            tracing::warn!(error = %error, "could not tell the windows the server's status");
         }
     })
 }

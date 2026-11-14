@@ -19,6 +19,11 @@ fn nowhere() -> (HttpBackend, Arc<AtomicUsize>) {
     (backend, count)
 }
 
+/// [`nowhere`], for the board tests beside this one.
+pub(super) fn nowhere_for_board_tests() -> (HttpBackend, Arc<AtomicUsize>) {
+    nowhere()
+}
+
 #[test]
 fn a_trailing_slash_is_dropped_from_the_url() {
     assert_eq!(

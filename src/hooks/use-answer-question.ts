@@ -7,7 +7,7 @@ import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import { getErrorMessage } from "@/api/errors";
 
 interface Options {
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -30,7 +30,7 @@ export type AnswerQuestion = (waitNodeId: string, waitRowId: RowId, reply: WaitR
  * snapshot. Resolves whether it landed; a refusal is said in a toast and leaves the controls as they
  * were.
  */
-export function useAnswerQuestion({ reload, showToast }: Options): AnswerQuestion {
+export function useAnswerQuestion({ settle, showToast }: Options): AnswerQuestion {
   const { t } = useTranslation("expectation");
   return useCallback(async (waitNodeId, waitRowId, reply) => {
     try {
@@ -43,7 +43,7 @@ export function useAnswerQuestion({ reload, showToast }: Options): AnswerQuestio
       showToast({ nodeId: waitNodeId, message: t("actionFailed", { message: getErrorMessage(error) }) });
       return false;
     }
-    await reload();
+    await settle();
     return true;
-  }, [reload, showToast, t]);
+  }, [settle, showToast, t]);
 }

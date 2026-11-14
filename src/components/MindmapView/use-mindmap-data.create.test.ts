@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { renderHook, waitFor, act } from "@testing-library/react";
+import type { BoardChange } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
@@ -11,12 +12,21 @@ import { useStatusCycle } from "@/hooks/use-status-cycle";
 import { settleLane } from "@/test/lane-helpers";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
+import { currentBoard } from "@/test/current-board";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
+// The change stream, held by the test: `emit` is the server's `board-changed` as the shell relays it.
+const listeners = new Set<(change: BoardChange | null) => void>();
+function emit(change: BoardChange | null): void {
+  for (const listener of [...listeners]) listener(change);
+}
 vi.mock("@/api/board", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/board")>()),
-  onBoardChanged: vi.fn(() => Promise.resolve(() => undefined)),
+  onBoardChanged: vi.fn((handler: (change: BoardChange | null) => void) => {
+    listeners.add(handler);
+    return Promise.resolve(() => { listeners.delete(handler); });
+  }),
 }));
 
 const SCOPE_LABELS = {
@@ -77,6 +87,15 @@ let refuseCreate: string | null;
 let nextId: number;
 /** While set, the server holds every create until the test opens the gate. */
 let gate: Promise<void> | null;
+/** The writes the server has committed: its revision, and the publication the board is at. */
+let revision: number;
+let seq: number;
+const EPOCH = "run1";
+
+/** The server publishes what it has committed: the window is told to take the board in. */
+async function published(): Promise<void> {
+  await act(async () => { emit({ epoch: EPOCH, seq, revision, reload: true }); });
+}
 
 function board(): MindmapLoad {
   return {
@@ -98,9 +117,14 @@ beforeEach(() => {
   refuseCreate = null;
   nextId = 10;
   gate = null;
+  revision = 0;
+  seq = 1;
+  listeners.clear();
   vi.mocked(invoke).mockImplementation((command: string, args?: unknown) => {
-    if (command === "load_mindmap") return Promise.resolve(board());
+    if (command === "load_mindmap") return Promise.resolve(currentBoard(board(), { epoch: EPOCH, seq, revision }));
+    if (command === "board_fence") return Promise.resolve({ epoch: EPOCH, revision });
     calls.push([command, args]);
+    if (["create_task", "update_task", "step_task_status"].includes(command)) { revision += 1; seq += 1; }
     if (command === "create_task") return (gate ?? Promise.resolve()).then(() => createTask(args));
     if (command === "step_task_status") {
       const { id } = args as { id: number };
@@ -157,6 +181,7 @@ describe("creating through the lane", () => {
     expect(names()).toEqual(["create_task"]);
     open();
     await settleLane();
+    await published();
     await waitFor(() => expect(store().writes).toHaveLength(0));
 
     expect(calls.filter(([command]) => command.endsWith("_task"))).toEqual([
@@ -244,6 +269,7 @@ describe("creating through the lane", () => {
 
     open();
     await settleLane();
+    await published();
     await waitFor(() => expect(store().writes).toHaveLength(0));
     expect(calls.filter(([command]) => command === "step_task_status")).toEqual([
       ["step_task_status", { id: 11, step: "advance", confirmed: undefined }],

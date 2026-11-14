@@ -13,7 +13,7 @@ backend memory, one pair for the whole application, so an edit made in one windo
 stack a Ctrl+Z in another window pops — which is exactly what the paragraph above asks for. Ctrl+Z
 anywhere reverses the most recent thing the user did anywhere; a new Gesture in one window clears
 the Redo Stack another was about to use, for the same reason it clears it within one window. The
-board-changed event is a signal to reload and nothing more, and a window reloading on receipt
+board-changed event carries the board's changed nodes and nothing more, and a window applying it
 neither pushes nor pops anything.
 
 One consequence is worth saying out loud. The **name** a Gesture was opened with is held
@@ -130,11 +130,12 @@ Gesture with no user entries and — as for every such Gesture — no press is e
 notice, naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened
 with, or **"Undid: update 1 item"** from the row counts when nobody named it. A redo says
 **"Redid: …"** of the same phrase — the toast names the Gesture, not the direction of travel. The
-board then reloads the way every other mutation already ends.
+board then settles the way every other mutation ends: its changed nodes arrive as an event
+([Client Mode](client-mode.md#live-sync), *Live sync*).
 
 The other two outcomes also speak, and the three must not look alike:
 
-| outcome | undo | redo | reloads |
+| outcome | undo | redo | board changes |
 |---|---|---|---|
 | applied | `Undid: paste 5 nodes` | `Redid: paste 5 nodes` | yes |
 | empty stack | `Nothing to undo` | `Nothing to redo` | no |

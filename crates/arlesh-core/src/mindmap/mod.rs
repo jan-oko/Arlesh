@@ -14,6 +14,7 @@
 
 pub mod model;
 pub mod plan_guard;
+pub mod publisher;
 pub mod rules;
 pub mod sources;
 
@@ -98,4 +99,18 @@ pub async fn board(
     load.facts = facts;
     load.agent_activity = Some(activity);
     Ok(load)
+}
+
+/// The board a host publishes, at wall-clock `now`: [`board`], blocked by the agents at capacity
+/// as the MCP's reads are.
+///
+/// The one derivation behind `/board`, the app's full load and the [`publisher`], so all three read
+/// alike.
+#[tracing::instrument(skip(db))]
+pub async fn current(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+) -> Result<MindmapLoad, AppError> {
+    let blocking = crate::agents::service::blocking(db, now).await?;
+    board(db, now, blocking).await
 }

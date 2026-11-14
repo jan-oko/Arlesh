@@ -1,55 +1,90 @@
-//! Tauri's side of the board-changed broadcast: the emit itself.
+//! Tauri's side of the board's changes: telling the windows, and the three calls a window makes
+//! to keep its board true (ADR 0020).
 //!
-//! The decision — which windows a change has to reach — is [`crate::board`], which is pure and
-//! tested. This file is the one place that turns it into an event, and it is deliberately the only
-//! thing in the crate that knows the event exists.
+//! The decision of *what* changed is not here: the core's publisher derives the board after every
+//! committed write, compares it with the one before and makes a change event (Standalone), or the
+//! server does and the follower relays it (Client mode). Either way the event reaches every
+//! window, the one that wrote included, because no window reloads after its own write any more:
+//! it applies the event like any other. This file is the one place that turns an event into the
+//! Tauri `board-changed` event, and the commands a window asks the backend through.
 
-use tauri::{Emitter, Manager, Runtime};
+use serde::Deserialize;
+use tauri::{Emitter, Runtime, State, WebviewWindow};
 
-use crate::backend::revision::BoardRevision;
-use crate::board::{recipients, Announce, BOARD_CHANGED};
+use crate::backend::{
+    revision::{BoardChange, BoardHead, BoardRevision},
+    AppBackend,
+};
+use crate::board::BOARD_CHANGED;
+use crate::error::WireError;
 
-/// Tells every window but `origin` that the board has changed.
+/// Tells every window that the board changed, with what changed.
 ///
-/// The event carries no revision: a window that hears it reloads (a Standalone write has none to
-/// say). See [`announce_revision`] for Client mode's.
-///
-/// Best-effort in one direction only: a window that cannot be reached is logged and the others
-/// still hear. A failure to announce must never turn into a failure of the write that caused it —
-/// the board has already changed, and the worst this can cost is a window that is briefly stale.
-pub fn announce<R: Runtime>(app: &tauri::AppHandle<R>, origin: Option<&str>) {
-    tell_windows(app, origin, None);
-}
-
-/// Tells every window that the server's board has changed, and the revision it reached.
-///
-/// Every window, the one that wrote included: in Client mode the server's change stream is the
-/// only announcement there is, so the window that made the change hears it too. It is the window
-/// that works out the event is not news when it already holds that revision
-/// (`src/stores/board-revision-store.ts`); it knows what it holds and the backend does not.
-pub fn announce_revision<R: Runtime>(app: &tauri::AppHandle<R>, revision: Option<BoardRevision>) {
-    tell_windows(app, None, revision.as_ref());
-}
-
-fn tell_windows<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    origin: Option<&str>,
-    revision: Option<&BoardRevision>,
-) {
-    let open: Vec<String> = app.webview_windows().into_keys().collect();
-    for label in recipients(&open, origin) {
-        if let Err(error) = app.emit_to(label, BOARD_CHANGED, revision) {
-            tracing::warn!(error = %error, label = %label, "could not tell a window the board changed");
-        }
+/// Best-effort: a window that cannot be reached is logged and the others still hear. A failure to
+/// announce must never turn into a failure of the write that caused it; the board has already
+/// changed, and a window that missed the event finds the gap at the next one or at its next check
+/// of the head, and loads the board whole.
+pub fn emit_board_change<R: Runtime>(app: &tauri::AppHandle<R>, change: &BoardChange) {
+    if let Err(error) = app.emit(BOARD_CHANGED, change) {
+        tracing::warn!(error = %error, "could not tell the windows the board changed");
     }
 }
 
-/// An [`Announce`] bound to `app`, for a caller that has no window of its own to exclude.
-///
-/// The MCP endpoint is that caller: an agent's write is not made *in* a window, so every window
-/// needs telling, and the endpoint gets a closure rather than an `AppHandle` so that nothing in
-/// [`crate::mcp`] has to know what a window is.
-pub fn announcer<R: Runtime>(app: &tauri::AppHandle<R>) -> Announce {
+/// The [`Sink`](crate::mindmap::publisher::Sink) of Standalone's publisher: each change event
+/// becomes the windows' `board-changed`.
+pub fn board_change_sink<R: Runtime>(app: &tauri::AppHandle<R>) -> crate::mindmap::publisher::Sink {
     let app = app.clone();
-    std::sync::Arc::new(move |origin: Option<&str>| announce(&app, origin))
+    std::sync::Arc::new(move |event| match BoardChange::from_event(event) {
+        Ok(change) => emit_board_change(&app, &change),
+        Err(error) => tracing::error!(error = %error, "a change event could not be read"),
+    })
+}
+
+/// The newest revision a write is known to have reached: what a window settles on after its own.
+#[tauri::command]
+pub async fn board_fence(
+    backend: State<'_, AppBackend>,
+) -> Result<Option<BoardRevision>, WireError> {
+    Ok(backend.board_fence().await)
+}
+
+/// The latest publication's identity, for a window to check its board against.
+#[tauri::command]
+pub async fn board_head(backend: State<'_, AppBackend>) -> Result<Option<BoardHead>, WireError> {
+    Ok(backend.board_head().await)
+}
+
+/// What a window found when its board disagreed with the producer's.
+#[derive(Debug, Deserialize)]
+pub struct DivergenceReport {
+    /// How the disagreement was found: `event`, `head`, `recompute` or `load`.
+    pub found_by: String,
+    /// The run both sides name.
+    pub epoch: String,
+    /// The publication the window holds.
+    pub window_seq: Option<u64>,
+    /// The publication the producer says is the latest.
+    pub head_seq: Option<u64>,
+    /// The window's board hash.
+    pub window_hash: u32,
+    /// The hash the producer says.
+    pub head_hash: u32,
+    /// The collections whose sums differ.
+    pub collections: Vec<String>,
+}
+
+/// Writes a board divergence, a bug, to the app's log. Answers nothing: the window reloads.
+#[tauri::command]
+pub fn report_board_divergence<R: Runtime>(window: WebviewWindow<R>, report: DivergenceReport) {
+    tracing::error!(
+        window = window.label(),
+        found_by = %report.found_by,
+        epoch = %report.epoch,
+        window_seq = ?report.window_seq,
+        head_seq = ?report.head_seq,
+        window_hash = report.window_hash,
+        head_hash = report.head_hash,
+        collections = ?report.collections,
+        "board divergence"
+    );
 }

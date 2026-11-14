@@ -137,7 +137,7 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
-    reload: vi.fn(),
+    settle: vi.fn(),
     onCycleStatus: vi.fn(),
     onToggleStarted: vi.fn(),
     renameNode: vi.fn(),

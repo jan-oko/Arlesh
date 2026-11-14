@@ -62,7 +62,7 @@ impl InstanceType {
 }
 
 /// A flow (template) row.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Flow {
     /// Primary key.
     pub id: i64,
@@ -118,7 +118,7 @@ pub struct Flow {
 }
 
 /// A flow-goal (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowGoal {
     /// Primary key.
     pub id: i64,
@@ -141,7 +141,7 @@ pub struct FlowGoal {
 }
 
 /// A flow-task (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowTask {
     /// Primary key.
     pub id: i64,
@@ -168,7 +168,7 @@ pub struct FlowTask {
 /// It carries what a stored Commitment's editor has, less what an occurrence's window gives it:
 /// its title, privacy and the **Verdict Window** every occurrence is copied (its tags are in
 /// `template`). Its Time Scope is its cycle's, else the iteration's window, so it has none here.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowCommitment {
     /// Primary key.
     pub id: i64,
@@ -208,7 +208,7 @@ pub struct FirstCheck {
 /// It carries what a stored wait's editor has, less what an occurrence's window gives it: its
 /// title, privacy, the **Check every** and when the first check falls ([`FirstCheck`], relative
 /// to each occurrence's window in place of a Starting day). Its tags are in `template`.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowExpectation {
     /// Primary key.
     pub id: i64,
@@ -503,7 +503,7 @@ pub struct UpdateFlowItemRequest {
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowItemCycle {
     /// Primary key.
     pub id: i64,
@@ -591,7 +591,7 @@ pub struct FlowOrigin {
 }
 
 /// An intra-flow dependency: `dependent` waits on `depends_on`.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowDependency {
     /// Primary key.
     pub id: i64,

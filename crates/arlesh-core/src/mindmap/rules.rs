@@ -370,5 +370,6 @@ pub fn derive_board(
     })
 }
 
+pub mod changes;
 pub mod facts;
 pub mod plans;

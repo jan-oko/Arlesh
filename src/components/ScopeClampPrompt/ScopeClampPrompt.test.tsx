@@ -32,7 +32,7 @@ const narrower = { start_id: testKey(1), end_id: testKey(1) };
  */
 function listViewSave() {
   render(<ScopeClampPrompt />);
-  const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [task], reload: vi.fn() }));
+  const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [task], settle: vi.fn() }));
   vi.mocked(scopeContainmentConflicts).mockResolvedValue([{ node_type: "task", node_id: 9 }]);
   let decision: Promise<boolean> = Promise.resolve(false);
   act(() => { decision = result.current.checkScopeClamp("task", 5, narrower); });

@@ -1,7 +1,7 @@
-//! Integration tests for the board-changed broadcast.
+//! Integration tests for the board's changes reaching the windows (ADR 0020).
 //!
-//! The contract is that **an edit made in one window reaches the others**, and the thing most
-//! likely to rot is where that announcement comes from. Arlesh does not put a line at the end of
+//! The contract is that **an edit made in one window reaches every window, the one that made it
+//! included, as the changed nodes**, and the thing most likely to rot is where that comes from. Arlesh does not put a line at the end of
 //! each of its 83 mutating commands — see `crate::board` for why — it derives the announcement from
 //! the Undo Journal those commands already write. So what these tests hold down is that
 //! derivation: a Gesture that wrote says so, a Gesture that only read does not, and the two writes
@@ -14,7 +14,8 @@
 
 mod helpers;
 
-use arlesh_lib::board::recipients;
+use arlesh_lib::backend::mindmap::BoardPort;
+use arlesh_lib::board::BOARD_CHANGED;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
@@ -25,8 +26,9 @@ use arlesh_lib::undo::GestureClose;
 use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
+use std::sync::{Arc, Mutex};
 use tauri::test::MockRuntime;
-use tauri::{App, Manager};
+use tauri::{App, Listener, Manager};
 
 /// Opens a Gesture through the command, as the frontend's `invoke` wrapper does for every command.
 async fn open(app: &App<MockRuntime>) {
@@ -265,26 +267,11 @@ async fn an_undo_announces_even_though_it_writes_no_journal() {
     // The replay runs with journalling suppressed, so the journal has nothing to report — which is
     // exactly why the command announces for itself. What the test can hold down without a second
     // real window is that the replay applied, which is the condition the announcement is on.
-    let applied = undo_commands::undo(helpers::window(&app), app.state())
-        .await
-        .expect("undo");
+    let applied = undo_commands::undo(app.state()).await.expect("undo");
     assert!(applied.is_some(), "an undo that applied announces");
 
-    let nothing = undo_commands::undo(helpers::window(&app), app.state())
-        .await
-        .expect("undo");
+    let nothing = undo_commands::undo(app.state()).await.expect("undo");
     assert!(nothing.is_none(), "an empty stack announces nothing");
-}
-
-#[test]
-fn a_change_reaches_every_window_but_the_one_that_made_it() {
-    let open: Vec<String> = ["main", "board-a", "board-b"]
-        .iter()
-        .map(|label| (*label).to_string())
-        .collect();
-
-    assert_eq!(recipients(&open, Some("main")), vec!["board-a", "board-b"]);
-    assert!(recipients(&open[..1], Some("main")).is_empty());
 }
 
 #[tokio::test]
@@ -352,4 +339,113 @@ async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
         "an abort takes back the user's writes; an agent's was never this Gesture's to reverse, \
          so it stands and the other windows still have to hear about it"
     );
+}
+
+/// What the windows hear as `board-changed`, each event's JSON.
+fn listening(app: &App<MockRuntime>) -> Arc<Mutex<Vec<serde_json::Value>>> {
+    let heard: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+    let sink = Arc::clone(&heard);
+    app.listen(BOARD_CHANGED, move |event| {
+        if let Ok(change) = serde_json::from_str(event.payload()) {
+            sink.lock().expect("lock").push(change);
+        }
+    });
+    heard
+}
+
+/// Waits for the publisher to tell the windows `count` events.
+async fn heard(heard: &Arc<Mutex<Vec<serde_json::Value>>>, count: usize) -> Vec<serde_json::Value> {
+    for _ in 0..200 {
+        if heard.lock().expect("lock").len() >= count {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    heard.lock().expect("lock").clone()
+}
+
+#[tokio::test]
+async fn a_gesture_that_wrote_reaches_every_window_as_the_changed_nodes_the_writer_included() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    // The first publication is the board as it stands: the events after it are what changed.
+    app.state::<arlesh_lib::backend::AppBackend>()
+        .current_board()
+        .await
+        .expect("the first publication");
+    let events = listening(&app);
+
+    open(&app).await;
+    let task_id = create_task(&app, project_id, "Told to every window").await;
+    close(&app).await;
+    let change = heard(&events, 1).await.remove(0);
+
+    assert_eq!(change["revision"], 1);
+    let key = format!("task-{task_id}");
+    let set = change["changes"]["tasks"]["set"].as_array().expect("tasks");
+    assert_eq!(set[0][0], key.as_str());
+    assert_eq!(set[0][1]["title"], "Told to every window");
+}
+
+#[tokio::test]
+async fn an_undo_reaches_the_windows_as_the_node_gone() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    app.state::<arlesh_lib::backend::AppBackend>()
+        .current_board()
+        .await
+        .expect("the first publication");
+    let events = listening(&app);
+    open(&app).await;
+    let task_id = create_task(&app, project_id, "To be taken back by undo").await;
+    close(&app).await;
+    heard(&events, 1).await;
+
+    undo_commands::undo(app.state()).await.expect("undo");
+    let undone = heard(&events, 2).await.remove(1);
+
+    let gone = undone["changes"]["tasks"]["del"].as_array().expect("del");
+    assert_eq!(gone[0], format!("task-{task_id}").as_str());
+}
+
+#[tokio::test]
+async fn an_agents_write_through_the_recorder_reaches_the_windows_too() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let sink_heard: Arc<Mutex<Vec<arlesh_lib::backend::revision::BoardChange>>> = Arc::default();
+    let collected = Arc::clone(&sink_heard);
+    let backend = arlesh_lib::backend::sqlite::SqliteBackend::new(
+        helpers::session_factory(&pool),
+        arlesh_lib::undo::stacks::UndoStacks::new(),
+        Arc::new(move |event| {
+            if let Ok(change) = arlesh_lib::backend::revision::BoardChange::from_event(event) {
+                collected.lock().expect("lock").push(change);
+            }
+        }),
+        tauri::async_runtime::handle().inner(),
+    );
+    backend
+        .current_board()
+        .await
+        .expect("the first publication");
+    let task_id = create_task(&app, project_id, "Written by an agent, in effect").await;
+
+    // The MCP endpoint is handed this and calls it after each write it commits.
+    backend.write_recorder()(None);
+    for _ in 0..200 {
+        if !sink_heard.lock().expect("lock").is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    let events = sink_heard.lock().expect("lock").clone();
+    assert_eq!(events.len(), 1);
+    assert!(events[0]
+        .changes
+        .as_ref()
+        .is_some_and(|raw| raw.get().contains(&format!("task-{task_id}"))));
 }

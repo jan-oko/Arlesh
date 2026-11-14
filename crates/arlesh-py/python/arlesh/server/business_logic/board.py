@@ -4,7 +4,9 @@ The server is the database's one writer while it runs. At startup it takes the *
 lock the desktop app takes while it runs — so another server or an app started meanwhile finds
 the database held. Holding it, the server opens past the open's own check, which would otherwise
 find the server's own hold. ``force`` starts it even though the database is held, and then it
-takes no hold.
+takes no hold. ``publish`` (on in the server) starts the board publisher; a test that reads the
+file with a second SQLite library in this same process turns it off, because two libraries mapping
+one WAL index is not safe while the publisher reads.
 
 The bindings fix a write-open's client when it opens, and the undo journal stamps every entry with
 it, so each client the server admits gets its own write-open, kept until shutdown. Each client's
@@ -14,7 +16,6 @@ MCP calls run on its own write-open too, so an agent's writes carry its client.
 from __future__ import annotations
 
 import asyncio
-import uuid
 from collections.abc import Awaitable, Callable
 
 from loguru import logger
@@ -46,21 +47,29 @@ class BoardNotOpen(RuntimeError):
 class Board:
     """The open databases: one to read through, one per client to write through."""
 
-    def __init__(self, open_as: OpenAs, take_hold: TakeHold, *, force: bool = False) -> None:
+    def __init__(
+        self,
+        open_as: OpenAs,
+        take_hold: TakeHold,
+        *,
+        force: bool = False,
+        publish: bool = True,
+    ) -> None:
         self._open_as = open_as
         self._take_hold = take_hold
         self._force = force
+        self._publish = publish
         self._hold: arlesh.Hold | None = None
         self._reader: arlesh.Database | None = None
         self._writers: dict[str, arlesh.Database] = {}
         self._lock = asyncio.Lock()
-        self._epoch = uuid.uuid4().hex
 
     @property
     def epoch(self) -> str:
-        """Names this run of the server. The board's revision starts again at 0 when the server
+        """Names this run of the server: the core's own, so the headers, the stream and the
+        publications all name one run. The board's revision starts again at 0 when the server
         restarts, so a revision means something only beside the epoch it was read under."""
-        return self._epoch
+        return self.reader.epoch
 
     @property
     def revision(self) -> int:
@@ -87,6 +96,9 @@ class Board:
             # every run clear, as the desktop app's does. The undo stacks are in memory and start
             # empty with it.
             await self._reader.reset_undo()
+            if self._publish:
+                # After the journal is cleared, so the first publication derives a clean board.
+                self._reader.start_publisher()
         except BaseException:
             self._release()
             raise

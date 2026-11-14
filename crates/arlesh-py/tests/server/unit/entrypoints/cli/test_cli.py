@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import arlesh
 import pytest
 from arlesh.server.business_logic.pairing import Pairing
 from arlesh.server.entrypoints.cli.app import app
@@ -31,6 +32,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "ARLESH_SERVER__HOST",
         "ARLESH_DATABASE_URL",
         "ARLESH_DATABASE_URL_FILE",
+        "ARLESH_TIME_ZONE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -230,3 +232,33 @@ def test_credentials_that_cannot_be_used_stop_the_server_rather_than_read_as_off
 
     with pytest.raises(typer.BadParameter, match="ARLESH_FCM_CREDENTIALS_FILE"):
         _sender(config)
+
+
+@pytest.fixture
+def host_zone() -> Any:
+    """Leaves the process on the machine's own zone, whatever a test told the server."""
+    yield
+    arlesh.set_time_zone(None)
+
+
+def test_a_time_zone_name_is_refused_when_no_zone_has_it(
+    tmp_path: Path, served: dict[str, Any]
+) -> None:
+    result = runner.invoke(app, ["--db", str(tmp_path / "a.db"), "--time-zone", "Mars/Olympus"])
+
+    assert result.exit_code == 2
+    assert "Mars/Olympus" in _plain(result.output)
+    assert "IANA" in _plain(result.output)
+    assert served == {}
+
+
+def test_the_time_zone_may_come_from_the_environment_and_a_flag_overrides_it(
+    tmp_path: Path, served: dict[str, Any], monkeypatch: pytest.MonkeyPatch, host_zone: Any
+) -> None:
+    monkeypatch.setenv("ARLESH_TIME_ZONE", "Not/AZone")
+    refused = runner.invoke(app, ["--db", str(tmp_path / "a.db")])
+    overridden = runner.invoke(app, ["--db", str(tmp_path / "a.db"), "--time-zone", "Asia/Tokyo"])
+
+    assert refused.exit_code == 2
+    assert "Not/AZone" in _plain(refused.output)
+    assert overridden.exit_code == 0, overridden.output

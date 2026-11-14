@@ -1,19 +1,28 @@
 //! Following the server's change stream (`GET /events/changes`): live sync between devices.
 //!
 //! Each `board-changed` event the server sends is relayed through `announce` — the shell wires it
-//! to the same Tauri event a Standalone write raises — with the revision the event carries, so a
-//! window that already holds that revision does not reload for it.
+//! to the same Tauri event a Standalone write raises — with its changed nodes as the server wrote
+//! them, so a window updates its board from the event alone (ADR 0020). A `board-head` event is
+//! kept as the backend's head, which a window compares its board with.
 //! The stream is reconnected for as long as the app runs, with `Last-Event-ID`, and the server
-//! sends one event at once when this device missed anything while it was away.
+//! replays the events this device missed while it was away. The id is kept across a suspend and a
+//! resume, so a phone that comes back to the front is caught up instead of reloading.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::HttpBackend;
-use crate::revision::BoardRevision;
+use crate::revision::{BoardChange, BoardHead};
 
-/// What the shell is told for each `board-changed`: the revision it carried, if it carried one.
-pub type Announce = Arc<dyn Fn(Option<BoardRevision>) + Send + Sync>;
+/// What the shell is told for each `board-changed`: the event, with its changes as raw JSON.
+pub type Announce = Arc<dyn Fn(BoardChange) + Send + Sync>;
+
+/// The id of the last event heard, kept by the [`Follower`] across reconnects, suspends and
+/// resumes.
+type LastEventId = Arc<Mutex<Option<String>>>;
+
+/// The name of the event that carries the latest publication's head.
+pub const BOARD_HEAD: &str = "board-head";
 
 /// The change stream's route on the server (`conformance/client-mode.json`, `streams`).
 pub const CHANGES_PATH: &str = "/events/changes";
@@ -21,7 +30,7 @@ pub const CHANGES_PATH: &str = "/events/changes";
 /// The longest wait between two reconnects.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
-/// How long the stream may say nothing before it is taken for dead. The server sends a comment
+/// How long the stream may say nothing before it is taken for dead. The server sends a `board-head`
 /// every 15 seconds, so this is three of them missed: a connection that has silently gone (the
 /// phone changed network) is dropped and made again rather than waited on for ever.
 const IDLE_LIMIT: Duration = Duration::from_secs(45);
@@ -38,9 +47,13 @@ pub struct Event {
 }
 
 impl Event {
-    /// The revision a `board-changed` event carries in its data, or `None` when it carries none
-    /// the app can read (an older server): the window then reloads, as it did before revisions.
-    pub fn revision(&self) -> Option<BoardRevision> {
+    /// A `board-changed` event as the windows are told it, or `None` when its data cannot be read.
+    pub fn board_change(&self) -> Option<BoardChange> {
+        BoardChange::parse(self.data.as_deref()?).ok()
+    }
+
+    /// A `board-head` event's head, or `None` when its data cannot be read.
+    pub fn board_head(&self) -> Option<BoardHead> {
         serde_json::from_str(self.data.as_deref()?).ok()
     }
 }
@@ -90,14 +103,16 @@ impl EventParser {
 ///
 /// A phone suspends the app when it goes to the background, and a connection held through that is
 /// one the system kills anyway. So the stream is dropped on [`suspend`](Self::suspend) and opened
-/// afresh on [`resume`](Self::resume), which checks `/health` again and reloads the windows, since
-/// the board may have changed while the app was away. A desktop never suspends, and so follows from
-/// the start to the end of the run.
+/// afresh on [`resume`](Self::resume), which checks `/health` again and asks the server for the
+/// events missed while the app was away (the last event id is kept across the gap), so the windows
+/// are caught up rather than reloaded. A desktop never suspends, and so follows from the start to
+/// the end of the run.
 pub struct Follower {
     backend: Arc<HttpBackend>,
     announce: Announce,
     runtime: tokio::runtime::Handle,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    last_event_id: LastEventId,
 }
 
 impl Follower {
@@ -114,6 +129,7 @@ impl Follower {
             announce,
             runtime,
             task: Mutex::new(None),
+            last_event_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -125,7 +141,8 @@ impl Follower {
         }
         let backend = Arc::clone(&self.backend);
         let announce = Arc::clone(&self.announce);
-        *task = Some(self.runtime.spawn(follow(backend, announce)));
+        let last_event_id = Arc::clone(&self.last_event_id);
+        *task = Some(self.runtime.spawn(follow(backend, announce, last_event_id)));
     }
 
     /// Drops the connection and stops reconnecting, until [`resume`](Self::resume).
@@ -148,16 +165,15 @@ impl Follower {
 }
 
 /// Follows the change stream until the process ends, calling `announce` for every
-/// `board-changed`. Reconnects after any failure, waiting longer each time up to
+/// `board-changed` and resuming from `last_event_id`. Reconnects after any failure, waiting longer each time up to
 /// [`MAX_BACKOFF`], and checks `/health` again on each reconnect. A dropped stream is a failed
 /// attempt, not yet an outage: the server is shown as unreachable only after
 /// [`super::FAILURES_BEFORE_UNREACHABLE`] in a row.
-pub async fn follow(backend: Arc<HttpBackend>, announce: Announce) {
-    let mut last_event_id: Option<String> = None;
+pub async fn follow(backend: Arc<HttpBackend>, announce: Announce, last_event_id: LastEventId) {
     let mut backoff = Duration::from_secs(1);
     loop {
         let mut connected = false;
-        match stream_once(&backend, &announce, &mut last_event_id, &mut connected).await {
+        match stream_once(&backend, &announce, &last_event_id, &mut connected).await {
             Ok(()) => tracing::info!("the change stream ended; reconnecting"),
             Err(error) => {
                 tracing::warn!(error = %error, "the change stream dropped");
@@ -176,7 +192,7 @@ pub async fn follow(backend: Arc<HttpBackend>, announce: Announce) {
 async fn stream_once(
     backend: &HttpBackend,
     announce: &Announce,
-    last_event_id: &mut Option<String>,
+    last_event_id: &LastEventId,
     connected: &mut bool,
 ) -> Result<(), String> {
     let connection = backend.connection();
@@ -184,7 +200,11 @@ async fn stream_once(
         .http
         .get(format!("{}{CHANGES_PATH}", connection.url))
         .bearer_auth(&connection.token);
-    if let Some(id) = last_event_id.as_deref() {
+    let resume_from = last_event_id
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    if let Some(id) = resume_from {
         request = request.header("Last-Event-ID", id);
     }
     let mut response = tokio::time::timeout(IDLE_LIMIT, request.send())
@@ -212,14 +232,42 @@ async fn stream_once(
         backend.set_reachable(true);
         for event in parser.feed(&String::from_utf8_lossy(&chunk)) {
             if event.id.is_some() {
-                last_event_id.clone_from(&event.id);
+                last_event_id
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .clone_from(&event.id);
             }
-            if event.name.as_deref() == Some(arlesh_core::board::BOARD_CHANGED) {
-                announce(event.revision());
+            match event.name.as_deref() {
+                Some(arlesh_core::board::BOARD_CHANGED) => relay(backend, announce, &event),
+                Some(BOARD_HEAD) => {
+                    if let Some(head) = event.board_head() {
+                        backend.set_head(head);
+                    }
+                }
+                _ => {}
             }
         }
     }
     Ok(())
+}
+
+/// Passes a `board-changed` event on to the windows. One whose data cannot be read is passed on
+/// as a reload, so a window never misses a change silently.
+fn relay(backend: &HttpBackend, announce: &Announce, event: &Event) {
+    let change = event.board_change().unwrap_or_else(|| {
+        tracing::warn!("a board-changed event could not be read; its windows will reload");
+        BoardChange {
+            epoch: String::new(),
+            seq: None,
+            revision: 0,
+            now: None,
+            hash: None,
+            changes: None,
+            reload: true,
+        }
+    });
+    backend.note_change(&change);
+    announce(change);
 }
 
 #[cfg(test)]

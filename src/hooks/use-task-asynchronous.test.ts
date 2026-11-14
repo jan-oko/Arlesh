@@ -16,13 +16,13 @@ function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const rendered = renderHook(() =>
-    useTaskAsynchronous({ findNode: (id) => byId.get(id), reload, showToast }),
+    useTaskAsynchronous({ findNode: (id) => byId.get(id), settle, showToast }),
   );
-  return { ...rendered, reload, showToast };
+  return { ...rendered, settle, showToast };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -30,12 +30,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskAsynchronous", () => {
   it("flags an unflagged task in one press", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, reload } = setup([node("task-5")]);
+    const { result, settle } = setup([node("task-5")]);
 
     act(() => { result.current.toggleAsynchronous("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { asynchronous: true }));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("unflags a flagged task in one press", async () => {

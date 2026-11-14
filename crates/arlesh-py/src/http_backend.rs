@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use arlesh_backend::{
     http::{events::Follower, pairing, Connection, HttpBackend},
-    revision::BoardRevision,
+    revision::{BoardChange, BoardRevision},
 };
 use arlesh_core::error::{WireError, WireErrorKind};
 use pyo3::prelude::*;
@@ -203,7 +203,10 @@ pub(crate) fn connect(py: Python<'_>, url: String, token: String) -> PyResult<Bo
         let announced = Arc::clone(&feed);
         let follower = Follower::new(
             Arc::clone(&backend),
-            Arc::new(move |revision| announced.publish(revision)),
+            // The Python side follows revisions only: a change's nodes are the app's to apply.
+            Arc::new(move |change: BoardChange| {
+                announced.publish(Some(change.stamp()).filter(|stamp| !stamp.epoch.is_empty()))
+            }),
             pyo3_async_runtimes::tokio::get_runtime().handle().clone(),
         );
         backend.check_health().await.map_err(raise)?;

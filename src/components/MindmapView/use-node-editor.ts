@@ -99,7 +99,7 @@ function tagSteps(kind: string, id: RowId, before: readonly number[], after: rea
 interface Options {
   tree: MindmapNode;
   allTasksAndGoals: MindmapNode[];
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
 }
 
 /**
@@ -134,7 +134,7 @@ export interface NodeEditorHandles {
   confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
 }
 
-export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): NodeEditorHandles {
+export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): NodeEditorHandles {
   const { t } = useTranslation("warnings");
   const { t: tUndo } = useTranslation("undo");
   const showToast = useMindmapStore((s) => s.showToast);
@@ -290,7 +290,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
     [editorModal, saveThroughLane, tUndo, showToast, t],
   );
 
-  const answerQuestion = useAnswerQuestion({ reload, showToast });
+  const answerQuestion = useAnswerQuestion({ settle, showToast });
   const onAnswer = useCallback(
     (wait: MindmapNode, reply: WaitReply) => answerQuestion(wait.id, rowIdOf(wait), reply),
     [answerQuestion],
@@ -445,10 +445,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
           ...recurrenceSteps(dbId),
         ]);
       }
-      await reload();
+      await settle();
       setEditorModal(null);
     },
-    [editorModal, reload, tUndo],
+    [editorModal, settle, tUndo],
   );
 
   const onFlowItemSave = useCallback(
@@ -489,10 +489,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         ...data.addedDeps.map((dep) => dependency(dep, true)),
         ...data.removedDeps.map((dep) => dependency(dep, false)),
       ]));
-      await reload();
+      await settle();
       setEditorModal(null);
     },
-    [editorModal, reload, tUndo],
+    [editorModal, settle, tUndo],
   );
 
   const onSimpleSave = useCallback(

@@ -705,7 +705,7 @@ pub async fn reopen_expectation_check(
 
 /// The wall-clock instant a write is stamped with.
 pub fn now() -> NaiveDateTime {
-    chrono::Local::now().naive_local()
+    crate::clock::now()
 }
 
 /// A Check every's two column values.

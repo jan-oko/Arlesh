@@ -17,13 +17,13 @@ function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const rendered = renderHook(() =>
-    useTaskCompound({ findNode: (id) => byId.get(id), reload, showToast }),
+    useTaskCompound({ findNode: (id) => byId.get(id), settle, showToast }),
   );
-  return { ...rendered, reload, showToast };
+  return { ...rendered, settle, showToast };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -31,12 +31,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskCompound", () => {
   it("makes a task consist purely of its sub-items in one press, children or none", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, reload } = setup([node("task-5")]);
+    const { result, settle } = setup([node("task-5")]);
 
     act(() => { result.current.toggleCompound("task-5"); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { compound: true }));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("switches it off with the flag alone, so the backend keeps the status it showed", async () => {
