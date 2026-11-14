@@ -162,6 +162,19 @@ impl ArleshMcp {
         Some(format!("{short} {title}"))
     }
 
+    /// The subagent `client_id` stopped: removes its child agent unless it holds something open.
+    async fn finish_child(&self, client_id: String) -> Result<CallToolResult, ErrorData> {
+        let parent = match self.attached() {
+            Ok(id) => id,
+            Err(refusal) => return refusal,
+        };
+        let mut db = attempt!(self.factory.begin().await);
+        let finished = attempt!(service::finish_child(&mut db, parent, &client_id).await);
+        attempt!(db.commit().await);
+        (self.announce)(None);
+        result::ok(finished)
+    }
+
     /// Registers (or registers again) the child for `client_id`, then, when the caller named a
     /// `subtree`, gives it that sub-Claim under the checks `claim` applies to a child. A Claim
     /// that is refused leaves the child registered and unclaimed, and the answer says why, so the
@@ -334,7 +347,10 @@ impl ArleshMcp {
     /// stops working. A child shares your account, cannot lock itself and cannot register
     /// children. It is paused while it is not running (a paused child reads, writes nothing, and
     /// you or the user resume it), and it is removed when its Task is set Done or you are removed.
-    /// A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
+    /// When a subagent stops, tell the server with `finish_child` (its `client_id`): the child is
+    /// removed unless it still holds something open (its Task still On Agent, a wait open under
+    /// it, a Claim on something that is not a Task), so only running subagents and ones that still
+    /// hold something are listed. A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
     /// reopened and the subagent starts again, `register_child` makes a fresh child with a new
     /// `sub_token`. A child the user brings back with Ctrl+Z returns paused. A client with the
     /// arlesh-notify mod does all of this for its subagents: write `[arlesh:<task id>]` once in an
@@ -377,6 +393,9 @@ impl ArleshMcp {
             AgentsOperation::RegisterChild { .. } if self.acting.is_some() => {
                 result::refused("a child agent cannot register children")
             }
+            AgentsOperation::FinishChild { .. } if self.acting.is_some() => {
+                result::refused("a child agent cannot finish children: only its parent can")
+            }
             AgentsOperation::Lock | AgentsOperation::Unlock if self.acting.is_some() => {
                 result::refused(
                     "a child agent's capacity follows its parent, so it cannot be locked",
@@ -400,6 +419,7 @@ impl ArleshMcp {
             AgentsOperation::Lock => self.act(AgentAction::Lock { locked: true }).await,
             AgentsOperation::Unlock => self.act(AgentAction::Lock { locked: false }).await,
             AgentsOperation::ReportUsage { windows } => self.report_usage(windows).await,
+            AgentsOperation::FinishChild { client_id } => self.finish_child(client_id).await,
             AgentsOperation::RegisterChild {
                 name,
                 client_id,

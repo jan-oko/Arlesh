@@ -270,6 +270,36 @@ Four findings of the user's hand tests, all in the mod:
    agent's children).
 4. **The guard** covers every operation of `arlesh_agents` except `status`.
 
+## Revision 2026-11-14 (third): a denial in place of the fill-in, children removed when finished
+
+Four findings from the user's real-terminal hand tests, ruled the same day:
+
+1. **No rewrite of a subagent's Arlesh call.** In auto mode the classifier refuses a call a hook
+   changed after it was reviewed, so the fill-in of `sub_token` (decision 4 above, and the earlier
+   revision that replaced a stale one) is **withdrawn**. A call from a subagent that has a child must
+   carry its token; otherwise the mod **denies** it with a message that names the subagent, says
+   where the token is (its starting context) and **quotes it**, so it can call again. *Why quote:*
+   a resumed or re-registered subagent holds a stale token, and a long run may have lost the
+   starting context; the denial is the only channel that reaches it, it goes only to the subagent
+   whose child that is, and the token is a convention rather than a wall (it is already in the
+   session's transcript). Other rewrites on the tool path: the re-attach retry runs the **same
+   input** again (nothing changed), and `agent.spawn`'s `description`/`prompt` rewrite is on the
+   `Agent` call, after its permission decision, not on an Arlesh tool; it was observed applying in
+   auto mode in the hand tests. The mod rewrites no Arlesh tool input.
+2. **A finished child is removed.** `arlesh_agents.finish_child(client_id)`, called by the mod when a
+   subagent stops, removes the child unless it still holds something open: a Claim on a Task still
+   On Agent, a pending live agentic wait under its Task, or a Claim on anything but a Task (rule in
+   `agents/rules/children.rs`; a child has no lock). Killed subagents raise no event, so the mod
+   sweeps the recorded children when the parent's session starts and ends. Nothing needs the row to
+   stay: the journal names no agent for a write (source `mcp`), and the removal is journaled.
+3. **An unreadable marked Task is said.** When the Task a marker names cannot be read (outside the
+   Claim, or an unknown id) the child is registered holding nothing and the starting context says so.
+4. **The label that sometimes did not show.** The likeliest cause is a defect: after the mod
+   reloaded its module variables were reset, `standing` read "not attached", and the spawn hook
+   returned the call without a label (and without a child). The mod now attaches again from the
+   stored token when it finds itself in that state, and logs each spawn decision to the debug log.
+   Not reproduced live.
+
 ## Consequences
 
 - A subagent dispatched with the mod shows in Settings → Agents under its parent, its Task as its

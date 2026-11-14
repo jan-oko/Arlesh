@@ -1185,3 +1185,121 @@ async fn a_tasks_get_answers_its_short_id_and_title_for_the_mod_to_label_a_subag
     assert!(task["short_id"].is_string(), "{answer}");
     assert_eq!(task["title"], "Docs", "{answer}");
 }
+
+// Finishing with a child (Task 077): removed unless it still holds something open.
+
+async fn finish(session: &ArleshMcp, client_id: &str) -> Value {
+    call(
+        session,
+        "arlesh_agents",
+        json!({ "operation": "finish_child", "client_id": client_id }),
+    )
+    .await
+}
+
+async fn children_listed(pool: &SqlitePool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM agents WHERE parent_id IS NOT NULL")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_child_with_no_claim_is_removed_when_its_subagent_finishes() {
+    let (mcp, pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+
+    let answer = finish(&session, "sub-1").await;
+
+    assert_eq!(structured(&answer)["removed"], true, "{answer}");
+    assert_eq!(children_listed(&pool).await, 0);
+    let gone = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "status", "sub_token": token }),
+    )
+    .await;
+    assert_eq!(structured(&gone)["kind"], "not_permitted", "{gone}");
+}
+
+#[tokio::test]
+async fn a_child_whose_task_is_still_on_an_agent_is_kept() {
+    let (mcp, pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+    sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = 100")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let answer = finish(&session, "sub-1").await;
+
+    assert_eq!(structured(&answer)["removed"], false, "{answer}");
+    assert_eq!(structured(&answer)["holds"], "task", "{answer}");
+    assert_eq!(children_listed(&pool).await, 1);
+}
+
+#[tokio::test]
+async fn a_child_whose_task_was_given_back_is_removed_unless_a_wait_is_open_under_it() {
+    let (mcp, pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "task", "100").await;
+    sqlx::query("INSERT INTO expectations (id, title, parent_type, parent_id, status, archival, agentic) VALUES (900, 'CI', 'task', 100, 'pending', 'live', 1)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let waiting = finish(&session, "sub-1").await;
+    sqlx::query("UPDATE expectations SET status = 'released' WHERE id = 900")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let released = finish(&session, "sub-1").await;
+
+    assert_eq!(structured(&waiting)["removed"], false, "{waiting}");
+    assert_eq!(structured(&waiting)["holds"], "open_waits", "{waiting}");
+    assert_eq!(structured(&released)["removed"], true, "{released}");
+    assert_eq!(children_listed(&pool).await, 0);
+}
+
+#[tokio::test]
+async fn a_claim_on_something_that_is_not_a_task_is_kept() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+    child_claims(&session, &token, "goal", "10").await;
+
+    let answer = finish(&session, "sub-1").await;
+
+    assert_eq!(structured(&answer)["holds"], "claim", "{answer}");
+}
+
+#[tokio::test]
+async fn finishing_a_child_that_is_already_gone_is_the_same_answer_and_a_child_may_not_finish() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let token = register(&session, "sub-1").await;
+
+    let unknown = finish(&session, "never-registered").await;
+    let by_child = call(
+        &session,
+        "arlesh_agents",
+        json!({ "operation": "finish_child", "client_id": "sub-1", "sub_token": token }),
+    )
+    .await;
+
+    assert_eq!(structured(&unknown)["removed"], true, "{unknown}");
+    assert_eq!(
+        structured(&by_child)["kind"],
+        "invalid_request",
+        "{by_child}"
+    );
+}

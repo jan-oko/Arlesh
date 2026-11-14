@@ -118,7 +118,10 @@ marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
   already holds it and must not call `claim`.
 - Without a marker, with a Task the mod cannot read, or when registration refuses the Claim, the
   child is registered unclaimed and the subagent is told to claim the Task its brief names (with
-  the reason, when the server gave one). A resumed subagent keeps its child and its label; nothing
+  the reason, when the server gave one). A marker whose Task cannot be read (outside the session's
+  Claim, or an unknown id) registers the child holding nothing, and the starting context says the
+  Task could not be read and that the subagent holds nothing. A resumed subagent keeps its child
+  and its label; nothing
   is registered or claimed again.
 
 **Guarding the session.** A subagent with no `sub_token` runs as the session. Of the operations of
@@ -190,12 +193,35 @@ could not see. A child may claim anything inside its parent's Claim, including n
 do not hold.
 
 **Finish and resume.** When the subagent stops, the mod pauses its sub-Claim (`arlesh_agents.pause`
-with the `sub_token`); the child stays listed as Paused, still naming its Task. When the subagent is
-resumed, the mod resumes it. Neither needs a step by the session's agent.
+with the `sub_token`) and then tells the server the subagent finished (`arlesh_agents.finish_child`
+with its `client_id`). The child is **removed unless it still holds something open** (below), so
+Settings lists only subagents that are running or still hold something; one that does stays listed
+as Paused, still naming its Task. When such a subagent is resumed, the mod resumes it. A subagent
+resumed after its child was removed is registered afresh. Neither needs a step by the session's
+agent.
+
+**What a stopped child still holds** (the rule, `agents/rules/children.rs`): a Claim on a **Task
+that is still On Agent**; a **pending, live agentic wait** (a question, a review, a wait on CI)
+hanging directly under its Task; or a Claim on **anything but a Task**, which has no "handed back"
+and is held until released. A child with **no Claim**, or one on a Task that was given back (To Do),
+taken by the user (Doing) or never Agentic, with nothing open under it, holds nothing and is
+removed. A child has no lock to hold: capacity is its parent's. `finish_child` answers `removed` and,
+when kept, `holds` (`task`, `open_waits` or `claim`); a child that is already gone answers removed.
+Only the session's own agent calls it.
+
+**A subagent killed without a clean stop** raises no event, so nothing finishes its child then. The
+mod sweeps when the parent's session **starts** (after it attaches) and when it **ends**: every
+recorded child whose subagent is no longer running goes through `finish_child`, so a child holding
+nothing is removed at the next of those and one that still holds something stays until its Task is
+Done, its wait is answered and the next sweep, or its parent goes. The attribution of past writes
+does not depend on the child row: an agent's writes are journaled under the `mcp` source, which
+names no agent, and the removal itself is journaled like any other agent row.
 
 **Removal.** A child is removed, in the same write and the same Gesture:
 
 - when its **parent is removed**, by hand or otherwise;
+- when its **subagent finishes** holding nothing open (`finish_child`, above), or a sweep finds it
+  so;
 - when the **stored status of the Task its sub-Claim names becomes Done** (`done` or
   `agentic_done`), whoever set it. A sub-Claim on a Goal, Commitment or Domain is not removed by its
   node's state, and a Compound Task's derived Done does not remove it.

@@ -1181,6 +1181,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "unlock",
                 "report_usage",
                 "register_child",
+                "finish_child",
             ],
             &[
                 "session_id",

@@ -146,6 +146,27 @@ impl<'session> AgentOperator<'session> {
         row.map(Agent::try_from).transpose()
     }
 
+    /// What a stored Task holds for a child agent that claimed it: its stored status, and how many
+    /// pending, live agentic waits hang directly under it. `None` when there is no such Task.
+    #[tracing::instrument(skip(self))]
+    pub async fn task_holding(&mut self, task: i64) -> Result<Option<(String, usize)>, AgentError> {
+        let status: Option<String> = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
+            .bind(task)
+            .fetch_optional(&mut *self.connection)
+            .await?;
+        let Some(status) = status else {
+            return Ok(None);
+        };
+        let waits: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM expectations WHERE parent_type = 'task' AND parent_id = ? \
+             AND agentic = 1 AND status = 'pending' AND archival = 'live'",
+        )
+        .bind(task)
+        .fetch_one(&mut *self.connection)
+        .await?;
+        Ok(Some((status, usize::try_from(waits).unwrap_or(0))))
+    }
+
     /// Replaces the digest of a child's sub-token, so the old token stops working.
     #[tracing::instrument(skip_all)]
     pub async fn set_child_token(

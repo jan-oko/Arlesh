@@ -329,6 +329,14 @@ pub enum AgentsOperation {
         #[serde(default)]
         subtree: Option<NodeRef>,
     },
+    /// Tells the server the subagent `client_id` has stopped: its child agent is removed unless it
+    /// still holds something open (its Task is still On Agent, a wait is open under its Task, or it
+    /// holds a Claim on something that is not a Task). Answers `removed` and, when kept, `holds`.
+    /// Only the session's own agent may call it, never a child.
+    FinishChild {
+        /// Your client's id for the subagent, as given to `register_child`.
+        client_id: String,
+    },
     /// Reports how much of the account's plan limits is used, so agents of the account are held
     /// back at the limit and freed at the reset. A host that can read its usage does this on its
     /// own.

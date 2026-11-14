@@ -17,6 +17,7 @@ use super::{
         CapacityCause, ClaimStatus, IssuedPin, UsageWindow,
     },
     rules::{
+        children,
         claims::{self, Held, Lineage, Refusal},
         names, pins,
         usage::{self, Window},
@@ -697,6 +698,58 @@ pub async fn register_child<M: SessionMode>(
         .await?;
     let child = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
     Ok((child, Some(token)))
+}
+
+/// What happened when a parent finished with the child of its stopped subagent.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Finished {
+    /// Whether the child was removed.
+    pub removed: bool,
+    /// What it still holds, when it was kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holds: Option<children::Holds>,
+}
+
+/// The parent is done with the subagent `client_id`, which has stopped: its child is **removed
+/// unless it still holds something open** (see [`children`]). A child of that name that is not
+/// there is already gone, which is the same answer.
+#[tracing::instrument(skip(db))]
+pub async fn finish_child<M: SessionMode>(
+    db: &mut Db<M>,
+    parent: AgentId,
+    client_id: &str,
+) -> Result<Finished, AgentError> {
+    let Some(child) = db
+        .agents()
+        .child_by_client(parent, client_id.trim())
+        .await?
+    else {
+        return Ok(Finished {
+            removed: true,
+            holds: None,
+        });
+    };
+    let claimed = match &child.claim {
+        None => children::Claimed::Nothing,
+        Some(claim) if claim.root.node_kind == crate::access::model::NodeTable::Task => {
+            match db.agents().task_holding(claim.root.node_id).await? {
+                Some((status, open_waits)) => children::Claimed::Task {
+                    on_agent: status == "on_agent",
+                    open_waits,
+                },
+                None => children::Claimed::Nothing,
+            }
+        }
+        Some(_) => children::Claimed::Other,
+    };
+    let holds = children::holds(claimed);
+    if holds.is_none() {
+        db.agents().delete(child.id).await?;
+    }
+    Ok(Finished {
+        removed: holds.is_none(),
+        holds,
+    })
 }
 
 /// The child of `parent` whose sub-token this is. Refused unless one is.
