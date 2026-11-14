@@ -22,11 +22,12 @@ pub(super) struct AgentRow {
     pub locked: bool,
     pub created_at: String,
     pub last_seen_at: Option<String>,
+    pub parent_id: Option<i64>,
 }
 
 /// The columns [`AgentRow`] reads.
 pub(super) const AGENT_COLUMNS: &str = "id, name, account, session_uuid, claim_kind, claim_id, \
-     claim_paused, claimed_at, locked, created_at, last_seen_at";
+     claim_paused, claimed_at, locked, created_at, last_seen_at, parent_id";
 
 impl TryFrom<AgentRow> for Agent {
     type Error = AgentError;
@@ -58,6 +59,7 @@ impl TryFrom<AgentRow> for Agent {
             locked: row.locked,
             created_at: row.created_at,
             last_seen_at: row.last_seen_at,
+            parent_id: row.parent_id.map(AgentId),
         })
     }
 }

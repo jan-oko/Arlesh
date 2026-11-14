@@ -118,6 +118,9 @@ pub struct ArleshMcp {
     callers: Callers,
     /// What a tool call needs of a connection when none is behind it — see [`detached`].
     detached: Arc<std::sync::OnceLock<detached::Detached>>,
+    /// The child agent this one call runs as, when it carried a `sub_token`. Set on a clone made
+    /// for that call alone: the session's [`session::Binding`] is never changed by it.
+    acting: Option<crate::agents::model::AgentId>,
 }
 
 /// A source of the current local time.
@@ -132,6 +135,7 @@ impl ArleshMcp {
         Self {
             factory,
             detached: Arc::default(),
+            acting: None,
             // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
@@ -168,6 +172,7 @@ impl ArleshMcp {
     fn flattened(mut router: ToolRouter<Self>) -> ToolRouter<Self> {
         for route in router.map.values_mut() {
             schema::flatten_tool(&mut route.attr);
+            schema::add_sub_token(&mut route.attr);
         }
         router
     }
@@ -309,14 +314,30 @@ impl ServerHandler for ArleshMcp {
     /// otherwise the tool's own answer.
     async fn call_tool(
         &self,
-        request: rmcp::model::CallToolRequestParams,
+        mut request: rmcp::model::CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
+        let sub_token = match take_sub_token(&mut request) {
+            Ok(token) => token,
+            Err(refusal) => return refusal.map(Into::into),
+        };
         if let Some(refusal) = self.admit(&request.name) {
             return refusal.map(Into::into);
         }
-        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        self.tool_router.call(tcc).await
+        let acting_as_child;
+        let handler = match sub_token {
+            None => self,
+            Some(token) => match self.as_child(&token).await {
+                Ok(child) => {
+                    acting_as_child = child;
+                    &acting_as_child
+                }
+                Err(refusal) => return refusal.map(Into::into),
+            },
+        };
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(handler, request, context);
+        let response = handler.tool_router.call(tcc).await?;
+        Ok(handler.explain_to_child(response).await)
     }
 
     /// The handshake, with the MCP roots added to the instructions — see
@@ -328,6 +349,27 @@ impl ServerHandler for ArleshMcp {
     ) -> Result<InitializeResult, ErrorData> {
         context.peer.set_peer_info(request.clone());
         self.initialize_result(&request).await
+    }
+}
+
+/// The name of the argument every tool takes to run as a child agent.
+pub(super) const SUB_TOKEN: &str = "sub_token";
+
+/// Takes `sub_token` out of the call's arguments, before anything else reads them: the tools'
+/// own parameter types do not know it. Refused `invalid_request` when it is not a string.
+fn take_sub_token(
+    request: &mut rmcp::model::CallToolRequestParams,
+) -> Result<Option<String>, Result<rmcp::model::CallToolResult, ErrorData>> {
+    let Some(value) = request
+        .arguments
+        .as_mut()
+        .and_then(|arguments| arguments.remove(SUB_TOKEN))
+    else {
+        return Ok(None);
+    };
+    match value {
+        serde_json::Value::String(token) => Ok(Some(token)),
+        _ => Err(result::refused("sub_token must be a string")),
     }
 }
 

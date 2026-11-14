@@ -312,10 +312,10 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "Agents and Claims",
-        is: "An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset.",
+        is: "An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset. A subagent is a Child Agent of the session's Agent, told apart by the sub-token on its calls: its sub-Claim lies inside the parent's Claim and is no overlap with it, its standing and capacity follow the parent, and it goes when its parent goes or its Task is set Done.",
         why: "Several agents can work one board without overlapping, each in a bounded context, and one agent reaching its plan limit blocks only its own work.",
         without: "Every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one.",
-        lives: "agents/ · mcp/agents.rs · migration 0101 · ADR 0018",
+        lives: "agents/ · mcp/agents.rs · mcp/mod.rs call_tool (sub_token) · migrations 0101, 0102, 0105, 0106 · plugins/arlesh-notify · ADR 0018, 0019",
       },
       {
         title: "The server",

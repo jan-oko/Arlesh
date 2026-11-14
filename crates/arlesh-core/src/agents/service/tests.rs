@@ -628,3 +628,287 @@ async fn the_connect_token_is_checked_by_digest_and_replaced_by_a_new_one() {
         .await
         .unwrap());
 }
+
+// Child agents (Task 077, ADR 0019).
+
+impl Board {
+    async fn register_child(
+        &self,
+        parent: AgentId,
+        client_id: &str,
+    ) -> Result<(Agent, Option<String>), AgentError> {
+        let mut db = self.db().await;
+        let registered = register_child(&mut db, parent, "helper", client_id, at(NOW)).await?;
+        db.commit().await.unwrap();
+        Ok(registered)
+    }
+
+    async fn child_of(&self, parent: AgentId, client_id: &str) -> AgentId {
+        self.register_child(parent, client_id).await.unwrap().0.id
+    }
+
+    async fn summary(&self, agent: AgentId) -> AgentSummary {
+        let mut db = self.db().await;
+        overview(&mut db, at(NOW))
+            .await
+            .unwrap()
+            .agents
+            .into_iter()
+            .find(|summary| summary.agent.id == agent)
+            .unwrap()
+    }
+
+    async fn agent_count(&self) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM agents")
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
+    }
+}
+
+/// A parent holding Arlesh (domain 902) and one child registered under it.
+async fn parent_and_child() -> (Board, AgentId, AgentId) {
+    let board = board().await;
+    let parent = board.attach("orchestrator", "work", NOW).await.agent.id;
+    board
+        .claim(parent, node(NodeTable::Domain, 902), NOW)
+        .await
+        .unwrap();
+    let child = board.child_of(parent, "sub-1").await;
+    (board, parent, child)
+}
+
+#[tokio::test]
+async fn registering_again_answers_the_same_child_with_a_new_token_and_the_old_one_stops() {
+    let board = board().await;
+    let parent = board.attach("orchestrator", "work", NOW).await.agent.id;
+
+    let (child, token) = board.register_child(parent, "sub-1").await.unwrap();
+    let (again, rotated) = board.register_child(parent, "sub-1").await.unwrap();
+
+    let (token, rotated) = (token.unwrap(), rotated.unwrap());
+    assert_ne!(token, rotated);
+    assert_eq!(child.parent_id, Some(parent));
+    assert_eq!(child.account, "work");
+    assert_eq!(again.id, child.id);
+    let mut db = board.db().await;
+    assert!(matches!(
+        child_for_sub_token(&mut db, parent, &token).await,
+        Err(AgentError::SubTokenInvalid)
+    ));
+    assert_eq!(
+        child_for_sub_token(&mut db, parent, &rotated)
+            .await
+            .unwrap(),
+        child.id
+    );
+}
+
+#[tokio::test]
+async fn a_child_cannot_register_children() {
+    let (board, _, child) = parent_and_child().await;
+
+    let outcome = board.register_child(child, "sub-2").await;
+
+    assert!(matches!(outcome, Err(AgentError::NotForChild(_))));
+}
+
+#[tokio::test]
+async fn a_child_claims_inside_its_parents_claim_and_not_outside_it() {
+    let (board, parent, child) = parent_and_child().await;
+    let outside_parent = board.attach("other", "work", NOW).await.agent.id;
+    board
+        .claim(outside_parent, node(NodeTable::Domain, 903), NOW)
+        .await
+        .unwrap();
+
+    let inside = board.claim(child, node(NodeTable::Task, 100), NOW).await;
+    let beyond = board.claim(child, node(NodeTable::Domain, 903), NOW).await;
+    let above = board.claim(child, node(NodeTable::Domain, 901), NOW).await;
+
+    assert_eq!(
+        inside.unwrap().claim.unwrap().root,
+        node(NodeTable::Task, 100)
+    );
+    assert!(matches!(beyond, Err(AgentError::OutsideParentClaim(_))));
+    assert!(matches!(above, Err(AgentError::OutsideParentClaim(_))));
+    assert_eq!(
+        board.view(parent).await.standing,
+        AgentStanding::Active,
+        "the parent keeps its Claim"
+    );
+}
+
+#[tokio::test]
+async fn a_child_is_refused_a_siblings_subtree() {
+    let (board, parent, child) = parent_and_child().await;
+    let sibling = board.child_of(parent, "sub-2").await;
+    board
+        .claim(child, node(NodeTable::Goal, 10), NOW)
+        .await
+        .unwrap();
+
+    let outcome = board.claim(sibling, node(NodeTable::Task, 100), NOW).await;
+    let free = board.claim(sibling, node(NodeTable::Goal, 11), NOW).await;
+
+    assert!(matches!(outcome, Err(AgentError::Overlaps { .. })));
+    assert!(free.is_ok());
+}
+
+#[tokio::test]
+async fn a_child_sees_only_its_sub_claim_and_the_parent_all_of_its_claim() {
+    let (board, parent, child) = parent_and_child().await;
+    board
+        .claim(child, node(NodeTable::Task, 100), NOW)
+        .await
+        .unwrap();
+
+    let child_view = board.view(child).await;
+    let parent_view = board.view(parent).await;
+
+    assert!(child_view.map.can_write(node(NodeTable::Task, 100)));
+    assert!(!child_view.map.can_read(node(NodeTable::Task, 101)));
+    assert!(parent_view.map.can_write(node(NodeTable::Task, 100)));
+    assert!(parent_view.map.can_write(node(NodeTable::Task, 101)));
+}
+
+#[tokio::test]
+async fn a_paused_parent_makes_the_child_read_paused_and_read_only() {
+    let (board, parent, child) = parent_and_child().await;
+    board
+        .claim(child, node(NodeTable::Task, 100), NOW)
+        .await
+        .unwrap();
+    board.act(parent, AgentAction::Pause).await.unwrap();
+
+    let view = board.view(child).await;
+    assert_eq!(view.standing, AgentStanding::Paused);
+    assert!(view.map.can_read(node(NodeTable::Task, 100)));
+    assert!(!view.map.can_write(node(NodeTable::Task, 100)));
+
+    board.act(parent, AgentAction::Resume).await.unwrap();
+    assert_eq!(board.view(child).await.standing, AgentStanding::Active);
+}
+
+#[tokio::test]
+async fn a_parent_that_claims_elsewhere_leaves_the_child_unreachable() {
+    let (board, parent, child) = parent_and_child().await;
+    board
+        .claim(child, node(NodeTable::Task, 100), NOW)
+        .await
+        .unwrap();
+    board
+        .claim(parent, node(NodeTable::Domain, 903), NOW)
+        .await
+        .unwrap();
+
+    let view = board.view(child).await;
+
+    assert_eq!(view.standing, AgentStanding::Unreachable);
+    assert!(!view.map.can_read(node(NodeTable::Task, 100)));
+}
+
+#[tokio::test]
+async fn a_locked_parent_puts_the_child_at_capacity_and_blocks_the_tasks_once() {
+    let (board, parent, child) = parent_and_child().await;
+    board
+        .claim(child, node(NodeTable::Task, 100), NOW)
+        .await
+        .unwrap();
+
+    board
+        .act(parent, AgentAction::Lock { locked: true })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        board.summary(child).await.at_capacity,
+        Some(CapacityCause::AgentLocked)
+    );
+    assert_eq!(
+        board.blocking(NOW).await.subtrees,
+        vec![node(NodeTable::Domain, 902)],
+        "the parent's Claim blocks, the sub-Claim adds nothing"
+    );
+}
+
+#[tokio::test]
+async fn a_child_cannot_be_locked_or_report_usage() {
+    let (board, _, child) = parent_and_child().await;
+
+    let lock = board.act(child, AgentAction::Lock { locked: true }).await;
+    let mut db = board.db().await;
+    let usage = report_usage(&mut db, child, &[], at(NOW)).await;
+
+    assert!(matches!(lock, Err(AgentError::NotForChild(_))));
+    assert!(matches!(usage, Err(AgentError::NotForChild(_))));
+}
+
+#[tokio::test]
+async fn removing_the_parent_removes_its_children() {
+    let (board, parent, _) = parent_and_child().await;
+    board.child_of(parent, "sub-2").await;
+    assert_eq!(board.agent_count().await, 3);
+
+    board.act(parent, AgentAction::Remove).await.unwrap();
+
+    assert_eq!(board.agent_count().await, 0);
+}
+
+#[tokio::test]
+async fn setting_the_claimed_task_done_removes_that_child_and_not_a_sibling() {
+    for done in ["done", "agentic_done"] {
+        let (board, parent, child) = parent_and_child().await;
+        let sibling = board.child_of(parent, "sub-2").await;
+        board
+            .claim(child, node(NodeTable::Task, 100), NOW)
+            .await
+            .unwrap();
+        board
+            .claim(sibling, node(NodeTable::Task, 101), NOW)
+            .await
+            .unwrap();
+
+        sqlx::query("UPDATE tasks SET status = ? WHERE id = 100")
+            .bind(done)
+            .execute(&board.pool)
+            .await
+            .unwrap();
+
+        let mut db = board.db().await;
+        assert!(view(&mut db, child).await.unwrap().is_none(), "{done}");
+        assert!(view(&mut db, sibling).await.unwrap().is_some(), "{done}");
+    }
+}
+
+#[tokio::test]
+async fn a_sub_token_is_not_an_agent_token() {
+    let board = board().await;
+    let parent = board.attach("orchestrator", "work", NOW).await.agent.id;
+    let (child, token) = board.register_child(parent, "sub-1").await.unwrap();
+    let token = token.unwrap();
+
+    let mut db = board.db().await;
+    assert_eq!(agent_for_token(&mut db, &token).await.unwrap(), None);
+    assert_eq!(
+        child_for_sub_token(&mut db, parent, &token).await.unwrap(),
+        child.id
+    );
+    assert!(matches!(
+        child_for_sub_token(&mut db, AgentId(parent.0 + 99), &token).await,
+        Err(AgentError::SubTokenInvalid)
+    ));
+    drop(db);
+    let attached = attach(
+        &board.factory,
+        at(NOW),
+        AttachRequest {
+            credential: Credential::Token(token),
+            session_uuid: "s".to_owned(),
+            name: None,
+            account: None,
+        },
+    )
+    .await;
+    assert!(matches!(attached, Err(AgentError::TokenInvalid)));
+}

@@ -186,6 +186,19 @@ choices to take back, and stay excluded.
 *Agents' own writes.* An agent's attach, claim, lock and usage report are journaled under source
 `mcp` like its board writes, and stay off every stack (below).
 
+*Child Agents* (Task `077`, [ADR 0019](../adr/0019-child-agents-and-sub-claims.md)). A child
+Agent is an `agents` row, journaled like any (migration 0106 adds `parent_id` to the triggers); the
+user can pause, resume, release and remove one in Settings, each a Gesture. A child is removed by
+database triggers when its parent is deleted or the Task its sub-Claim names is set Done, inside the
+write that causes it, so the removal joins that write's Gesture: Ctrl+Z on removing the parent, or
+on setting the Task Done, brings the child back too. The triggers are guarded on
+`undo_context.suppressed`, as `mcp_roots_forget_*` are, so a replay restores and removes rows from
+the journal alone and never twice. A child restored by undo is put back **Paused** (the statement
+that re-inserts an `agents` row with a `parent_id` writes `claim_paused = 1`), so it reads Active
+again only when its subagent resumes. A child removed by an **agent's** write (an agent set its Task
+Done) was journaled under `mcp`, which is on no stack, so the user's Ctrl+Z does not bring it back;
+the mod registers the subagent afresh when it starts again.
+
 *Overlap after an undo.* Undo restores the row as it was, which can leave two active Claims
 overlapping when another agent claimed the subtree meanwhile. The Claim rules already tolerate it:
 the older Claim keeps its place and the younger is shadowed until the overlap goes

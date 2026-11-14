@@ -33,7 +33,7 @@ function agent(id: number, cause: Cause): AgentSummary {
   return {
     agent: {
       id, name: `agent-${id}`, account: "work", session_uuid: "s", claim: null, locked: false,
-      created_at: "2026-11-07T09:00:00", last_seen_at: null,
+      created_at: "2026-11-07T09:00:00", last_seen_at: null, parent_id: null,
     },
     standing: "unclaimed",
     at_capacity: cause,

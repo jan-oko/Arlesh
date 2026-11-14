@@ -38,6 +38,9 @@ const DEFAULT_NAME: &str = "agent";
 /// The account an agent works under when it names none.
 const DEFAULT_ACCOUNT: &str = "default";
 
+/// The name a child agent gets when its subagent has no description.
+const DEFAULT_CHILD_NAME: &str = "subagent";
+
 /// The longest session id kept.
 const MAX_SESSION_ID: usize = 128;
 
@@ -265,6 +268,7 @@ impl Ground {
                 let claim = agent.claim.as_ref()?;
                 (claim.status == ClaimStatus::Active).then(|| Held {
                     agent: agent.id,
+                    parent: agent.parent_id,
                     root: claim.root,
                     claimed_at: claim.claimed_at.clone(),
                 })
@@ -279,18 +283,50 @@ impl Ground {
             .map_or_else(|| id.to_string(), |agent| agent.name.clone())
     }
 
-    /// Whether `agent` may hold an active Claim on `node`.
+    fn find(&self, id: AgentId) -> Option<&Agent> {
+        self.agents.iter().find(|agent| agent.id == id)
+    }
+
+    /// The parent of a child agent, if `agent` is one and its parent is still there.
+    fn parent_of(&self, agent: &Agent) -> Option<&Agent> {
+        agent.parent_id.and_then(|parent| self.find(parent))
+    }
+
+    /// Whether `agent` may hold an active Claim on `node`. A child may only claim inside its
+    /// parent's Claim, which plays for it the part the user's MCP roots play for an agent.
     fn permit(&self, agent: AgentId, node: NodeKey) -> Result<(), AgentError> {
         let readable = self.user_map.can_read(node);
-        claims::check(&self.lineage, node, readable, &self.held(), agent).map_err(|refusal| {
-            match refusal {
+        let parent = self.find(agent).and_then(|found| found.parent_id);
+        if parent.is_some() && !(readable && self.parent_claim_contains(agent, node)) {
+            return Err(AgentError::OutsideParentClaim(node));
+        }
+        claims::check(&self.lineage, node, readable, &self.held(), agent, parent).map_err(
+            |refusal| match refusal {
                 Refusal::OutsideRoots => AgentError::OutsideRoots(node),
                 Refusal::Overlaps { holder } => AgentError::Overlaps {
                     node,
                     holder: self.name_of(holder),
                 },
-            }
-        })
+            },
+        )
+    }
+
+    /// Whether `node` lies inside the Claim of `child`'s parent, while that Claim gives the parent
+    /// a view (active or paused).
+    fn parent_claim_contains(&self, child: AgentId, node: NodeKey) -> bool {
+        let Some(parent) = self.find(child).and_then(|found| self.parent_of(found)) else {
+            return false;
+        };
+        let shadowed = claims::shadowed(&self.lineage, &self.held());
+        let gives_view = matches!(
+            self.standing_of(parent, &shadowed),
+            AgentStanding::Active | AgentStanding::Paused
+        );
+        let inside = parent
+            .claim
+            .as_ref()
+            .is_some_and(|claim| self.lineage.within(node, claim.root));
+        gives_view && inside
     }
 
     /// Where an agent's Claim stands, given the Claims that are shadowed.
@@ -304,7 +340,28 @@ impl Ground {
             .claim
             .as_ref()
             .is_some_and(|claim| self.user_map.can_read(claim.root));
-        claims::standing(claim, readable, shadowed.contains(&agent.id))
+        let is_shadowed = shadowed.contains(&agent.id);
+        let Some(parent) = agent.parent_id else {
+            return claims::standing(claim, readable, is_shadowed);
+        };
+        let parent_standing = self
+            .find(parent)
+            .map_or(AgentStanding::Unreachable, |found| {
+                self.standing_of(found, shadowed)
+            });
+        let inside_parent = readable
+            && self
+                .parent_of(agent)
+                .and_then(|found| found.claim.as_ref())
+                .zip(agent.claim.as_ref())
+                .is_some_and(|(held, own)| self.lineage.within(own.root, held.root));
+        claims::child_standing(claim, inside_parent, parent_standing, is_shadowed)
+    }
+
+    /// The agent whose account and locks decide `agent`'s capacity: itself, or its parent for a
+    /// child.
+    fn capacity_basis<'ground>(&'ground self, agent: &'ground Agent) -> &'ground Agent {
+        self.parent_of(agent).unwrap_or(agent)
     }
 }
 
@@ -368,6 +425,11 @@ pub async fn act<M: SessionMode>(
             agent.claim.as_ref().ok_or(AgentError::NoClaim(id))?;
             db.agents().clear_claim(id).await?;
         }
+        AgentAction::Lock { .. } if agent.parent_id.is_some() => {
+            return Err(AgentError::NotForChild(
+                "a child agent's capacity follows its parent, so it cannot be locked",
+            ));
+        }
         AgentAction::Lock { locked } => db.agents().set_locked(id, locked).await?,
         AgentAction::Remove => {
             db.agents().delete(id).await?;
@@ -399,6 +461,11 @@ pub async fn report_usage<M: SessionMode>(
     now: NaiveDateTime,
 ) -> Result<(), AgentError> {
     let agent = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
+    if agent.parent_id.is_some() {
+        return Err(AgentError::NotForChild(
+            "a child agent's usage is its parent's account's",
+        ));
+    }
     for window in windows {
         let kind = names::tidy(&window.kind)
             .ok_or_else(|| AgentError::Invalid("a usage window needs a kind".to_owned()))?;
@@ -524,7 +591,7 @@ pub async fn overview<M: SessionMode>(
         .map(|agent| {
             Ok(AgentSummary {
                 standing: ground.standing_of(agent, &shadowed),
-                at_capacity: cause_for(agent, &accounts, now)?,
+                at_capacity: cause_for(ground.capacity_basis(agent), &accounts, now)?,
                 agent: agent.clone(),
             })
         })
@@ -548,7 +615,11 @@ pub async fn blocking<M: SessionMode>(
     let accounts = accounts(db).await?;
     let shadowed = claims::shadowed(&ground.lineage, &ground.held());
     let mut subtrees = Vec::new();
-    for agent in &ground.agents {
+    for agent in ground
+        .agents
+        .iter()
+        .filter(|agent| agent.parent_id.is_none())
+    {
         let Some(claim) = &agent.claim else { continue };
         if ground.standing_of(agent, &shadowed) != AgentStanding::Active {
             continue;
@@ -558,6 +629,88 @@ pub async fn blocking<M: SessionMode>(
         }
     }
     Ok(Blocking { subtrees })
+}
+
+/// Registers a subagent of the Agent `parent` as a child Agent, named `name` (made unique) and
+/// working under the parent's account, for the client's subagent `client_id`. Answers the child
+/// and its sub-token, shown this once. Registering the same `client_id` again answers the same
+/// child with a **new** sub-token and the old one stops working: the parent has lost the token and
+/// no one else can ask. A child cannot register children.
+#[tracing::instrument(skip(db))]
+pub async fn register_child<M: SessionMode>(
+    db: &mut Db<M>,
+    parent: AgentId,
+    name: &str,
+    client_id: &str,
+    now: NaiveDateTime,
+) -> Result<(Agent, Option<String>), AgentError> {
+    let client_id = client_id.trim();
+    if client_id.is_empty() || client_id.chars().count() > MAX_SESSION_ID {
+        return Err(AgentError::Invalid(
+            "client_id must be the client's id for the subagent, up to 128 characters".to_owned(),
+        ));
+    }
+    let owner = db
+        .agents()
+        .get(parent)
+        .await?
+        .ok_or(AgentError::NotFound(parent))?;
+    if owner.parent_id.is_some() {
+        return Err(AgentError::NotForChild(
+            "a child agent cannot register children",
+        ));
+    }
+    let stamp = format_time(now);
+    if let Some(known) = db.agents().child_by_client(parent, client_id).await? {
+        // The parent registering a subagent it already registered has lost the token (a mod that
+        // lost its record), and only the parent can ask: it gets a new one and the old stops.
+        let token = secret::random_token()?;
+        db.agents()
+            .set_child_token(known.id, &secret::digest(&token), &stamp)
+            .await?;
+        let known = db
+            .agents()
+            .get(known.id)
+            .await?
+            .ok_or(AgentError::NotFound(known.id))?;
+        return Ok((known, Some(token)));
+    }
+    let name = names::tidy(name).unwrap_or_else(|| DEFAULT_CHILD_NAME.to_owned());
+    let taken: Vec<String> = db
+        .agents()
+        .all()
+        .await?
+        .into_iter()
+        .map(|agent| agent.name)
+        .collect();
+    let token = secret::random_token()?;
+    let id = db
+        .agents()
+        .insert_child(
+            parent,
+            &names::unique(&name, &taken),
+            &owner.account,
+            client_id,
+            &secret::digest(&token),
+            &stamp,
+        )
+        .await?;
+    let child = db.agents().get(id).await?.ok_or(AgentError::NotFound(id))?;
+    Ok((child, Some(token)))
+}
+
+/// The child of `parent` whose sub-token this is. Refused unless one is.
+#[tracing::instrument(skip_all)]
+pub async fn child_for_sub_token<M: SessionMode>(
+    db: &mut Db<M>,
+    parent: AgentId,
+    token: &str,
+) -> Result<AgentId, AgentError> {
+    db.agents()
+        .child_by_token(parent, &secret::digest(token))
+        .await?
+        .map(|child| child.id)
+        .ok_or(AgentError::SubTokenInvalid)
 }
 
 /// The Agent whose token this is, when it still exists.

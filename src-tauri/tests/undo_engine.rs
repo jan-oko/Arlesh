@@ -286,6 +286,148 @@ async fn pausing_a_claim_from_settings_is_one_gesture_that_undo_and_redo_reverse
     assert_eq!(status(pool.clone(), agent).await, ClaimStatus::Paused);
 }
 
+/// A parent Agent with two children, each claiming one of `tasks`: the parent's id.
+async fn parent_with_children(pool: &SqlitePool, tasks: [i64; 2]) -> i64 {
+    sqlx::query(
+        "INSERT INTO agents (name, account, session_uuid, token_sha256, created_at) \
+         VALUES ('parent', 'default', 's', 'parent-digest', '2026-11-13T10:00:00')",
+    )
+    .execute(pool)
+    .await
+    .expect("insert the parent");
+    let parent: i64 = sqlx::query_scalar("SELECT id FROM agents WHERE name = 'parent'")
+        .fetch_one(pool)
+        .await
+        .expect("read the parent");
+    for (index, task) in tasks.into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO agents (name, account, session_uuid, token_sha256, claim_kind, claim_id, \
+             claimed_at, created_at, parent_id) \
+             VALUES (?, 'default', ?, ?, 'task', ?, '2026-11-13T10:01:00', '2026-11-13T10:00:30', ?)",
+        )
+        .bind(format!("child {index}"))
+        .bind(format!("sub-{index}"))
+        .bind(format!("child-digest-{index}"))
+        .bind(task)
+        .bind(parent)
+        .execute(pool)
+        .await
+        .expect("insert a child");
+    }
+    parent
+}
+
+async fn paused_flags(pool: &SqlitePool) -> Vec<bool> {
+    sqlx::query_scalar("SELECT claim_paused FROM agents ORDER BY id")
+        .fetch_all(pool)
+        .await
+        .expect("read the flags")
+}
+
+async fn agent_names(pool: &SqlitePool) -> Vec<String> {
+    sqlx::query_scalar("SELECT name FROM agents ORDER BY id")
+        .fetch_all(pool)
+        .await
+        .expect("read the agents")
+}
+
+#[tokio::test]
+async fn removing_a_parent_agent_removes_its_children_and_undo_and_redo_reverse_both() {
+    use arlesh_lib::agents::model::AgentAction;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let first = task_commands::create_task(app.state(), task_request("project", project_id, "a"))
+        .await
+        .expect("create task");
+    let second = task_commands::create_task(app.state(), task_request("project", project_id, "b"))
+        .await
+        .expect("create task");
+    let parent = parent_with_children(&pool, [first.id.sid(), second.id.sid()]).await;
+
+    open_gesture(&app).await;
+    arlesh_lib::commands::agents::apply_agent_action(
+        app.handle().clone(),
+        app.state(),
+        parent,
+        AgentAction::Remove,
+    )
+    .await
+    .expect("remove");
+    close_gesture(&app).await;
+    assert!(
+        agent_names(&pool).await.is_empty(),
+        "the children go with it"
+    );
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(agent_names(&pool).await, ["parent", "child 0", "child 1"]);
+    assert_eq!(
+        paused_flags(&pool).await,
+        [false, true, true],
+        "the children come back paused, not as active as they were"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert!(
+        agent_names(&pool).await.is_empty(),
+        "and redo removes them again"
+    );
+}
+
+#[tokio::test]
+async fn setting_a_childs_task_done_removes_it_and_undo_restores_the_status_and_the_child() {
+    use arlesh_lib::tasks::model::{Status, TaskStatus};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let first = task_commands::create_task(app.state(), task_request("project", project_id, "a"))
+        .await
+        .expect("create task");
+    let second = task_commands::create_task(app.state(), task_request("project", project_id, "b"))
+        .await
+        .expect("create task");
+    parent_with_children(&pool, [first.id.sid(), second.id.sid()]).await;
+
+    open_gesture(&app).await;
+    task_commands::update_task(
+        app.state(),
+        first.id.clone(),
+        UpdateTaskRequest {
+            status: Some(Status::Ordinary(TaskStatus::Done)),
+            ..Default::default()
+        },
+        None,
+    )
+    .await
+    .expect("set the Task done");
+    close_gesture(&app).await;
+    assert_eq!(
+        agent_names(&pool).await,
+        ["parent", "child 1"],
+        "only the child on that Task goes"
+    );
+
+    undo(&app).await.expect("there is something to undo");
+    assert_eq!(agent_names(&pool).await, ["parent", "child 0", "child 1"]);
+    assert_eq!(
+        paused_flags(&pool).await,
+        [false, true, false],
+        "the child comes back paused; its sibling was never touched"
+    );
+    let status: String = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
+        .bind(first.id.sid())
+        .fetch_one(&pool)
+        .await
+        .expect("read the status");
+    assert_ne!(status, "done", "one Ctrl+Z restores the Task's status too");
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(agent_names(&pool).await, ["parent", "child 1"]);
+}
+
 // ---------------------------------------------------------------------------------------------
 // One gesture, reversed and reapplied.
 // ---------------------------------------------------------------------------------------------

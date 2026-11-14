@@ -44,6 +44,12 @@ struct Identity {
     /// attach again after the server restarts or the session is resumed.
     #[serde(skip_serializing_if = "Option::is_none")]
     token: Option<String>,
+    /// The claimed node's short id and title, so a client can draw what the agent is on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    claim_name: Option<String>,
+    /// A child agent's sub-token, shown this once, by the `register_child` that made it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sub_token: Option<String>,
 }
 
 /// What `attach` answers: the identity, and why the claim asked for in the same call was refused,
@@ -67,8 +73,7 @@ impl ArleshMcp {
 
     /// The Agent this session is, or the refusal that says it must attach.
     fn attached(&self) -> Result<AgentId, Result<CallToolResult, ErrorData>> {
-        self.binding()
-            .and_then(Binding::agent)
+        self.acting_agent()
             .ok_or_else(|| result::failed(AgentError::NotAttached))
     }
 
@@ -122,11 +127,70 @@ impl ArleshMcp {
             .into_iter()
             .find(|summary| summary.agent.id == id)
             .ok_or(AgentError::NotAttached)?;
+        let claim_name = match &summary.agent.claim {
+            Some(claim) => self.claim_name(db, claim.root).await,
+            None => None,
+        };
         Ok(Identity {
             agent: summary.agent,
             standing: summary.standing,
             at_capacity: summary.at_capacity,
             token,
+            claim_name,
+            sub_token: None,
+        })
+    }
+
+    /// The short id and title of the claimed node `root`, read from the whole board the user's
+    /// roots open: the Claim's root is the agent's own, whatever its view.
+    async fn claim_name(&self, db: &mut Db<Transactional>, root: NodeKey) -> Option<String> {
+        let user_map = crate::access::access_map(db).await.ok()?;
+        let board = Board::read_with(db, self.now(), Blocking::default(), user_map)
+            .await
+            .ok()?;
+        let short = board
+            .names
+            .short_id(root.node_kind, &NodeId::Stored(root.node_id))?;
+        let title = db
+            .access()
+            .catalogue()
+            .await
+            .ok()?
+            .into_iter()
+            .find(|node| node.node_kind == root.node_kind && node.node_id == root.node_id)?
+            .title;
+        Some(format!("{short} {title}"))
+    }
+
+    /// Registers (or registers again) the child for `client_id`, then, when the caller named a
+    /// `subtree`, gives it that sub-Claim under the checks `claim` applies to a child. A Claim
+    /// that is refused leaves the child registered and unclaimed, and the answer says why, so the
+    /// subagent can claim for itself.
+    async fn register_child(
+        &self,
+        name: String,
+        client_id: String,
+        subtree: Option<NodeRef>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let parent = match self.attached() {
+            Ok(id) => id,
+            Err(refusal) => return refusal,
+        };
+        let mut db = attempt!(self.factory.begin().await);
+        let (child, sub_token) =
+            attempt!(service::register_child(&mut db, parent, &name, &client_id, self.now()).await);
+        attempt!(db.commit().await);
+        let claim_refused = match subtree {
+            Some(subtree) => self.try_claim(child.id, &subtree).await,
+            None => None,
+        };
+        (self.announce)(None);
+        let mut db = attempt!(self.factory.begin().await);
+        let mut identity = attempt!(self.identity(&mut db, child.id, None).await);
+        identity.sub_token = sub_token;
+        result::ok(Attachment {
+            identity,
+            claim_refused,
         })
     }
 
@@ -257,7 +321,25 @@ impl ArleshMcp {
     /// (or from the app's loopback door), then `attach` with it, your session id, a `name`, your
     /// `account` label and the `subtree` you were asked to work. The answer holds your **agent
     /// token**: keep it, and attach with it (`token` instead of `pin`) after a server restart or a
-    /// resumed session. Subagents share this connection and are covered by your attach.
+    /// resumed session.
+    ///
+    /// **Subagents** run over your connection. Register each one with `register_child` (its
+    /// description as `name`, its id as `client_id`): the answer holds its **sub_token**. Name the
+    /// Task it will work on as `subtree` and the child is created already holding that sub-Claim
+    /// (if that is refused it is registered unclaimed, and `claim_refused` says why). Hand it
+    /// to the subagent, which passes `sub_token` on every Arlesh tool call and sees only its own
+    /// **sub-Claim**. It takes one with `claim`: anything inside your Claim, replacing its own,
+    /// and nowhere else. A call without `sub_token` runs as you, on your whole Claim. Register the
+    /// same `client_id` again only if you lost the token: you get a new `sub_token` and the old one
+    /// stops working. A child shares your account, cannot lock itself and cannot register
+    /// children. It is paused while it is not running (a paused child reads, writes nothing, and
+    /// you or the user resume it), and it is removed when its Task is set Done or you are removed.
+    /// A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
+    /// reopened and the subagent starts again, `register_child` makes a fresh child with a new
+    /// `sub_token`. A child the user brings back with Ctrl+Z returns paused. A client with the
+    /// arlesh-notify mod does all of this for its subagents: write `[arlesh:<task id>]` once in an
+    /// Agent call's `description` or `prompt` and the subagent starts holding that Task, with its
+    /// label showing the Task; without the marker it is told to claim the Task its brief names.
     ///
     /// A **Claim** is a subtree and it is your whole view: you read and write only inside it, as
     /// if it were your own MCP root. Only one agent's active Claim may cover any node. `pause`
@@ -278,6 +360,9 @@ impl ArleshMcp {
         Parameters(operation): Parameters<AgentsOperation>,
     ) -> Result<CallToolResult, ErrorData> {
         match operation {
+            AgentsOperation::Attach { .. } if self.acting.is_some() => {
+                result::refused("attach is not for a child agent: the session is attached already")
+            }
             AgentsOperation::Attach {
                 session_id,
                 pin,
@@ -288,6 +373,17 @@ impl ArleshMcp {
             } => {
                 self.attach(session_id, pin, token, name, account, subtree)
                     .await
+            }
+            AgentsOperation::RegisterChild { .. } if self.acting.is_some() => {
+                result::refused("a child agent cannot register children")
+            }
+            AgentsOperation::Lock | AgentsOperation::Unlock if self.acting.is_some() => {
+                result::refused(
+                    "a child agent's capacity follows its parent, so it cannot be locked",
+                )
+            }
+            AgentsOperation::ReportUsage { .. } if self.acting.is_some() => {
+                result::refused("a child agent's usage is its parent's account's")
             }
             AgentsOperation::Status => {
                 let id = match self.attached() {
@@ -304,6 +400,11 @@ impl ArleshMcp {
             AgentsOperation::Lock => self.act(AgentAction::Lock { locked: true }).await,
             AgentsOperation::Unlock => self.act(AgentAction::Lock { locked: false }).await,
             AgentsOperation::ReportUsage { windows } => self.report_usage(windows).await,
+            AgentsOperation::RegisterChild {
+                name,
+                client_id,
+                subtree,
+            } => self.register_child(name, client_id, subtree).await,
         }
     }
 }

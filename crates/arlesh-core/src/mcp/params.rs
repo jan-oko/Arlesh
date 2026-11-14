@@ -294,6 +294,8 @@ pub enum AgentsOperation {
     Status,
     /// Claims a subtree, replacing any Claim held. The subtree must lie inside the user's MCP
     /// roots and overlap no other agent's active Claim; it becomes your whole view.
+    /// A child agent (calling with a `sub_token`) may claim anything inside its parent's Claim,
+    /// replacing its own; it overlaps only its siblings' sub-Claims.
     Claim {
         /// The subtree's root.
         subtree: NodeRef,
@@ -310,6 +312,23 @@ pub enum AgentsOperation {
     Lock,
     /// Unlocks yourself, as soon as there is room again.
     Unlock,
+    /// Registers a subagent of this session as a child agent and answers its `sub_token`. The
+    /// child may claim only inside your Claim, and sees only what it claims. Registering the same
+    /// `client_id` again answers the same child with a new `sub_token` and the old one stops
+    /// working, so register again only when you have lost the token. Name a `subtree` (a Task) to
+    /// start the subagent already holding it.
+    RegisterChild {
+        /// What to call it, e.g. the subagent's description; made unique.
+        name: String,
+        /// Your client's id for the subagent (Claude Code's agent id).
+        client_id: String,
+        /// A subtree to give the child as its sub-Claim straight away, so a subagent starts
+        /// already holding its Task. Checked as `claim` checks a child: inside your Claim, no
+        /// overlap with a sibling's. When it is refused the child is still registered, unclaimed,
+        /// and the answer's `claim_refused` says why.
+        #[serde(default)]
+        subtree: Option<NodeRef>,
+    },
     /// Reports how much of the account's plan limits is used, so agents of the account are held
     /// back at the limit and freed at the reset. A host that can read its usage does this on its
     /// own.

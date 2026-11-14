@@ -8,4 +8,5 @@
 pub mod claims;
 pub mod names;
 pub mod pins;
+pub mod refusals;
 pub mod usage;

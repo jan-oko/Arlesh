@@ -188,6 +188,17 @@ Claim reads and writes nothing new. The binding lasts as long as the session and
 server restarts; the agent attaches again with its token. In-process callers and tests that build a
 bare handler still see the user's roots.
 
+**Child Agents and `sub_token`** (2026-11-13, Task `077`; see [Agents](agents.md#child-agents) and
+[ADR 0019](../adr/0019-child-agents-and-sub-claims.md)). Every tool takes one more optional
+argument, `sub_token`, listed in each tool's input schema. The handler's one door (`call_tool`)
+takes it out of the arguments before the tool reads them, so no tool's own parameters change. A
+call carrying the sub-token of a **child Agent** of the session's Agent runs as that child, and
+every rule in this section applies with its **sub-Claim** as the one root; a call without it runs
+as the session's Agent. A sub-token of anything else is refused `not_permitted`, a `sub_token` that
+is not a string `invalid_request`, and in-process callers (no session) are refused it as
+`invalid_request`. The instructions on `initialize` stay the session's; the `arlesh_agents`
+description says how a subagent uses its sub-token.
+
 
 ## Tools
 
@@ -203,7 +214,7 @@ definition it loads.
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
-| `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage. See [Agents](agents.md) |
+| `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage; `register_child(name, client_id)` — registers a subagent as a child Agent and answers its `sub_token` once. With a `sub_token`, `status`, `claim`, `pause`, `resume` and `release` act on that child. See [Agents](agents.md) |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
 Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
@@ -791,7 +802,7 @@ change and every MCP write ends in that reload, so the row is live.
 ## What writes
 
 `arlesh_tasks`, `arlesh_waits` and `arlesh_infos` write to the board, and `arlesh_agents` writes
-the Agent tables (attach, Claim, lock, usage): journaled under source `mcp` like the rest, so off
+the Agent tables (attach, Claim, lock, usage, child Agents): journaled under source `mcp` like the rest, so off
 every stack, while the user's own Settings edits to them are Gestures on the user's stack (see
 [Undo](undo.md)); every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
