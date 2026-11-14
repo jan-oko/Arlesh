@@ -600,6 +600,7 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
                 onContextMenu={openRowMenu}
+                onAnswer={onAnswer}
               />
             );
           })}

@@ -321,12 +321,12 @@ fn dependency_blocks(
     blocks
 }
 
-/// The open agentic question beneath each Task: the first, in position order, of the waits
-/// directly beneath it that an agent raised as a question and is still pending and live.
+/// The open agentic questions beneath each Task: the waits directly beneath it that an agent raised
+/// as a question (or a review) and that are still pending and live, in position order.
 fn open_questions(
     load: &MindmapLoad,
     lifecycles: &HashMap<(&str, &NodeId), &ItemLifecycle>,
-) -> HashMap<Key, NodeId> {
+) -> HashMap<Key, Vec<NodeId>> {
     let mut asked: Vec<&Expectation> = load
         .expectations
         .iter()
@@ -337,7 +337,8 @@ fn open_questions(
     for wait in asked {
         questions
             .entry(format!("task-{}", wait.parent_id))
-            .or_insert_with(|| wait.id.clone());
+            .or_insert_with(Vec::new)
+            .push(wait.id.clone());
     }
     questions
 }
@@ -530,8 +531,10 @@ pub fn derive(
             facts.entry(key.clone()).or_default().met = true;
         }
     }
-    for (key, question) in open_questions(load, &lifecycles) {
-        facts.entry(key).or_default().open_question = Some(question);
+    for (key, questions) in open_questions(load, &lifecycles) {
+        let facts = facts.entry(key).or_default();
+        facts.open_question = questions.first().cloned();
+        facts.open_questions = questions;
     }
     sub_items_facts(load, &mut facts);
     for id in &load.derived_in_progress {

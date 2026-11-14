@@ -282,6 +282,7 @@ fn drawn_wait(
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         ..current.clone()
     })
 }

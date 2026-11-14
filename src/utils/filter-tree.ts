@@ -463,7 +463,7 @@ function passesStatus(
     return withArchivedOverride(node, f, passesCommitmentPreset(node, f));
   }
   if (node.kind === "expectation") {
-    return withArchivedOverride(node, f, passesExpectationPreset(node, f));
+    return !isAgenticWait(node) && withArchivedOverride(node, f, passesExpectationPreset(node, f));
   }
   switch (f.statusMode) {
     case "all":
@@ -620,6 +620,15 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
     case "backlog":
       return false;
   }
+}
+
+/**
+ * Whether an Expectation is an **agentic wait** — one an agent raised on a Task. No view draws one:
+ * the Task it hangs under shows its open question or review. Mirrors `is_agentic_wait` in
+ * `crates/arlesh-core/src/filters/rules.rs`.
+ */
+export function isAgenticWait(node: MindmapNode): boolean {
+  return node.kind === "expectation" && node.agentWaiting !== undefined;
 }
 
 /** Combined tag predicate per SPEC: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). Only judges taggable nodes. */
