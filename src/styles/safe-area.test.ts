@@ -125,8 +125,10 @@ describe("The List's sticky headers in full screen", () => {
     // Every side the same sliver, the bottom included: the card runs to the bottom edge.
     expect(zen).toMatch(/:global\(:root\[data-fs-bars\]\) \.container \{[^}]*--zen-edge: 6px;[^}]*padding: var\(--zen-edge\);/);
     expect(zen).toContain("--zen-r-bl: max(0px, calc(var(--corner-bl) - var(--zen-edge)));");
-    expect(zen).toMatch(/\.gridArea \{\s*border-radius: var\(--zen-r-tl\) var\(--zen-r-tr\) var\(--zen-r-br\) var\(--zen-r-bl\);/);
+    expect(zen).toMatch(/\.gridAreaScrolls \{\s*border-radius: var\(--zen-r-tl\) var\(--zen-r-tr\) var\(--zen-r-br\) var\(--zen-r-bl\);/);
     expect(zen).not.toContain("--peek-pad-bottom)\n");
+    // A grid that fits is not clipped (the clip wore the cards' own hairline away at the corners).
+    expect(zen).not.toMatch(/\.gridArea \{\s*border-radius/);
     // A card that touches a screen corner takes the device's radius for it, and its focus ring is inside the border.
     const card = read("src/components/ZenView/ZenTaskCard.module.css");
     for (const corner of ["tl", "tr", "br", "bl"]) expect(card).toContain(`.card[data-zen-corners~="${corner}"]`);

@@ -18,7 +18,7 @@
    `--zen-r-*` are the device's corner radii less that sliver; a card that touches a screen corner
    (`data-zen-corners`, see `zenCardCorners`) takes that radius for it in `ZenTaskCard.module.css`,
    so its border and its focus ring trace the whole card, corners included. The grid area is
-   clipped by the same radii for the one case the cards cannot follow, a grid that scrolls. Where
+   clipped by the same radii only for the one case the cards cannot follow, a grid that scrolls. Where
    no radii are known (no bridge) the guess is 16px. */
 :global(:root[data-fs-bars]) .container {
   --zen-edge: 6px;
@@ -29,7 +29,10 @@
   padding: var(--zen-edge);
 }
 
-:global(:root[data-fs-bars]) .gridArea {
+/* Only a grid that scrolls is clipped. A grid that fits has cards that already follow the radii, and
+   clipping it too put the clip's anti-aliased arc exactly on the cards' own 1px border at every
+   rounded corner, which wore the hairline away there (the focus ring, drawn inside, was spared). */
+:global(:root[data-fs-bars]) .gridAreaScrolls {
   border-radius: var(--zen-r-tl) var(--zen-r-tr) var(--zen-r-br) var(--zen-r-bl);
 }
 

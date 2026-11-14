@@ -299,7 +299,7 @@ export default function ZenView() {
 
       <div
         ref={(element) => { gridRef(element); gridScrollRef.current = element; }}
-        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}`}
+        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}${layout.scrolls ? ` ${styles.gridAreaScrolls}` : ""}`}
       >
         {contents.tasks.rows.length === 0 ? (
           <div className={styles.centered}>{t("zenView:empty")}</div>
