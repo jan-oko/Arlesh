@@ -11,8 +11,6 @@ from typing import Any
 
 import arlesh
 import pytest
-from arlesh.server.entrypoints.fastapi import shutdown
-from arlesh.server.entrypoints.fastapi.routers.events import board_changes
 from fastapi.testclient import TestClient
 
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
@@ -198,70 +196,6 @@ def test_a_write_moves_the_revision_and_a_read_does_not(
     assert read == before
     assert board.revision == before + 1
     asyncio.run(board.close())
-
-
-class _Changes:
-    """A database whose revision moves when the test says so."""
-
-    def __init__(self, revision: int) -> None:
-        self.revision = revision
-        self.moved: asyncio.Queue[int] = asyncio.Queue()
-
-    async def next_change(self, after: int) -> int:
-        return await self.moved.get()
-
-
-def _collect(changes: _Changes, *, last_event_id: str | None, count: int) -> list[str]:
-    async def run() -> list[str]:
-        stream = board_changes(
-            changes,  # type: ignore[arg-type]
-            epoch="e1",
-            last_event_id=last_event_id,
-            keepalive=0.01,
-        )
-        chunks: list[str] = []
-        async for chunk in stream:
-            chunks.append(chunk)
-            if chunk.startswith(": connected"):
-                changes.moved.put_nowait(changes.revision + 3)
-            if len(chunks) == count:
-                break
-        await stream.aclose()  # type: ignore[attr-defined]
-        return chunks
-
-    return asyncio.run(run())
-
-
-def test_a_change_is_an_event_with_its_revision_as_its_id() -> None:
-    chunks = _collect(_Changes(4), last_event_id=None, count=2)
-
-    assert chunks[0] == ": connected\n\n"
-    assert chunks[1].startswith("id: e1:7\nevent: board-changed\n")
-
-
-def test_a_quiet_stream_ends_when_the_server_goes_down(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(shutdown, "_going_down", True)
-
-    async def run() -> list[str]:
-        stream = board_changes(
-            _Changes(4),  # type: ignore[arg-type]
-            epoch="e1",
-            last_event_id=None,
-            keepalive=60,
-        )
-        return [chunk async for chunk in stream]
-
-    assert asyncio.run(asyncio.wait_for(run(), timeout=5)) == [": connected\n\n"]
-
-
-def test_a_client_behind_hears_at_once_and_one_up_to_date_does_not() -> None:
-    behind = _collect(_Changes(4), last_event_id="e1:2", count=1)
-    current = _collect(_Changes(4), last_event_id="e1:4", count=1)
-    restarted = _collect(_Changes(4), last_event_id="e0:9", count=1)
-
-    assert behind[0].startswith("id: e1:4\n")
-    assert current[0] == ": connected\n\n"
-    assert restarted[0].startswith("id: e1:4\n")
 
 
 def test_every_answer_carries_the_revision_and_epoch(

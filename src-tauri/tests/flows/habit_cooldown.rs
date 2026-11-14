@@ -6,7 +6,7 @@
 use crate::helpers;
 
 use arlesh_lib::block_reasons::model::DerivedBlock;
-use arlesh_lib::commands::{flows as flow_commands, mindmap as mindmap_commands};
+use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowRequest, FlowId, InstanceType, MissPolicy, SetRecurrenceRequest,
 };
@@ -107,7 +107,7 @@ fn root_key(flow_id: i64, iteration: ScopeKey) -> OccurrenceKey {
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    helpers::load_board_at(app, at(instant))
         .await
         .unwrap()
         .into_load()

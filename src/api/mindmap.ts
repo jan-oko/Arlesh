@@ -118,8 +118,6 @@ export interface FlowHabitEntry {
  * the backend's rules say about the board beside the rows.
  */
 export interface MindmapLoad {
-  /** The revision the server read the board at. Client mode only. */
-  revision?: BoardRevision;
   domains: Domain[];
   goals: Goal[];
   tasks: Task[];
@@ -151,17 +149,31 @@ export interface MindmapLoad {
 }
 
 /**
- * Loads the whole mindmap in one round trip, at `now` (a local wall-clock datetime, ISO
- * `YYYY-MM-DDTHH:MM:SS`).
- *
- * Replaces the `13 + 2N` calls this used to take for `N` flows — thirteen resource-wide lists
- * followed by a dependent wave of one iterations call and one statuses call per flow — a cost
- * paid again after every edit, since each mutation ends with a silent reload.
+ * The latest published board, with which publication it is: what a window takes in first, after a
+ * gap in the events, a new run of the producer, a hash mismatch, and when a wait for its own write
+ * runs out (ADR 0020). `load` is the board as the producer wrote it; the rest is absent for a
+ * server that predates changed nodes, and the window then treats every event as a reload.
+ */
+export interface CurrentBoard {
+  load: MindmapLoad;
+  /** The run and revision the publication holds at least. */
+  revision?: BoardRevision;
+  /** The publication's number within its run. */
+  seq?: number;
+  /** The instant the board was derived at: what "now" means on it. */
+  now?: string;
+  /** The board hash the publication carries. */
+  hash?: number;
+}
+
+/**
+ * Loads the whole mindmap in one round trip: the latest board the backend published. It derives
+ * nothing: the producer derived it after the last write, or at the last minute's tick, at its own
+ * clock.
  *
  * One flow's Habit derivation failing does not fail the load: that flow's entry carries the
  * failure and everything else still arrives.
  */
-export async function loadMindmap(now: string): Promise<MindmapLoad> {
-  return invoke<MindmapLoad>("load_mindmap", { now });
+export async function loadMindmap(): Promise<CurrentBoard> {
+  return invoke<CurrentBoard>("load_mindmap");
 }
-

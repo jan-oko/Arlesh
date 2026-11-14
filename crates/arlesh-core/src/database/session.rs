@@ -488,6 +488,27 @@ impl SessionFactory {
     }
 }
 
+impl SessionFactory {
+    /// Checks one connection out of the pool and opens a **read** transaction on it: a consistent
+    /// snapshot of the board that takes no writer lock and stamps nothing.
+    ///
+    /// For a derive that writes nothing and runs often (the [`publisher`](crate::mindmap::publisher)
+    /// derives after every write and every minute): [`Self::begin`] would hold the writer lock for
+    /// the whole derive, so every write waits on it, and would stamp the ambient client twice,
+    /// which writes to the file even though nothing is written to the board. Writing through the
+    /// session it returns is not what it is for: the transaction is deferred, so a write would
+    /// take the lock late, as `begin` was changed to avoid.
+    #[tracing::instrument(skip(self))]
+    pub async fn begin_read(&self) -> Result<Db<Transactional>, sqlx::Error> {
+        let handle = self.pool.begin_with("BEGIN").await?;
+        Ok(Db {
+            handle,
+            client: self.client.clone(),
+            restore_client: None,
+        })
+    }
+}
+
 /// Writes `client` into the ambient context, and returns the value it replaced.
 async fn stamp_client(
     connection: &mut SqliteConnection,

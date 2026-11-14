@@ -94,6 +94,13 @@ def serve(
         Path | None, typer.Option(help="Serve HTTPS with this certificate.")
     ] = None,
     tls_key: Annotated[Path | None, typer.Option(help="… and this key.")] = None,
+    time_zone: Annotated[
+        str | None,
+        typer.Option(
+            help="The IANA time zone the user's day is kept in, e.g. Europe/Berlin "
+            "(default: the machine's own; or $ARLESH_TIME_ZONE)."
+        ),
+    ] = None,
 ) -> None:
     """Serves the board until stopped."""
     if context.invoked_subcommand is not None:
@@ -103,6 +110,12 @@ def serve(
         server={"host": host, "port": port, "tls_cert": tls_cert, "tls_key": tls_key},
     )
     setup_logger()
+    zone = time_zone if time_zone is not None else config.time_zone
+    if zone is not None:
+        try:
+            arlesh.set_time_zone(zone)
+        except arlesh.InvalidRequest as refusal:
+            raise typer.BadParameter(refusal.message, param_hint="--time-zone") from None
     path = config.database.path
     tokens = DatabaseTokenStore(path)
     # Reading the token table opens the database for writing, which would migrate it: only once

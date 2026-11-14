@@ -12,11 +12,10 @@
 //! have to track the stacks itself — [`undo_status`] is there to label and disable a control, not
 //! to guard the call. Pressing Ctrl+Z with nothing to undo returns `None` and changes nothing.
 
-use tauri::{Manager, Runtime, State, WebviewWindow};
+use tauri::State;
 
 use crate::{
     backend::AppBackend,
-    commands::board::announce,
     error::WireError,
     undo::model::{GestureId, GestureSummary, UndoStatus},
 };
@@ -35,28 +34,18 @@ pub async fn open_gesture(backend: State<'_, AppBackend>) -> Result<GestureId, W
 /// can undo, and `None` otherwise — a nested close, or a Gesture whose only writes were an agent's
 /// or none at all. A Gesture that ends here becomes the next Ctrl+Z and clears the Redo Stack.
 ///
-/// It is also where a change **announces itself to the other windows**, when the journal says the
-/// Gesture wrote anything at all. This is the command boundary after the commit: the Gesture is
-/// over, its transaction has landed, and the journal rows exist. Doing it here rather than at the
-/// end of each of the 83 mutating commands is the whole of [`crate::board`]'s argument — a command
-/// that wrote nothing to the journal wrote nothing to the board, so no per-command obligation is
-/// left to forget.
-///
-/// The window that issued the command is excluded, because it reloads on the way back from the
-/// command itself — which is the path this reuses rather than replacing.
+/// The backend records a write when the journal says the Gesture wrote anything at all, and the
+/// board's publisher tells the windows what changed ([`crate::board`]): this is the command
+/// boundary after the commit, where the journal rows exist. Doing it here rather than at the end of
+/// each of the 83 mutating commands is the whole of that module's argument.
 ///
 /// Fails when nothing is open rather than doing nothing, so that a broken pairing is visible at
 /// the call site that broke it instead of at the next gesture, which would be closed early by it.
 #[tauri::command]
-pub async fn close_gesture<R: Runtime>(
-    window: WebviewWindow<R>,
+pub async fn close_gesture(
     backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    let closed = backend.close_gesture().await?;
-    if closed.wrote {
-        announce(window.app_handle(), Some(window.label()));
-    }
-    Ok(closed.undoable)
+    Ok(backend.close_gesture().await?.undoable)
 }
 
 /// Closes one [`open_gesture`] and takes back everything the Gesture wrote.
@@ -70,29 +59,14 @@ pub async fn close_gesture<R: Runtime>(
 /// close was a nested one. An error means the reversal itself failed, in which case the writes
 /// stand and the Gesture has been put on the Undo Stack so the user can still take it back.
 ///
-/// Like [`close_gesture`], it tells the other windows when the board moved — and an abort can
-/// still move it. The user's writes are taken back, but an agent's write that landed inside the
-/// same Gesture was never this Gesture's to reverse. A reversal that **fails** moves it too: the
-/// writes stand, which is exactly the case the error describes, so the announcement goes out
-/// before the error does rather than being lost with it.
+/// Like [`close_gesture`], the backend records the board's move, and an abort can still move it.
+/// The user's writes are taken back, but an agent's write that landed inside the same Gesture was
+/// never this Gesture's to reverse. A reversal that **fails** moves it too: the writes stand.
 #[tauri::command]
-pub async fn abort_gesture<R: Runtime>(
-    window: WebviewWindow<R>,
+pub async fn abort_gesture(
     backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    match backend.abort_gesture().await {
-        Ok(aborted) => {
-            if aborted.wrote {
-                announce(window.app_handle(), Some(window.label()));
-            }
-            Ok(aborted.taken_back)
-        }
-        Err(error) => {
-            // The reversal failed, so everything the Gesture wrote is still on the board.
-            announce(window.app_handle(), Some(window.label()));
-            Err(error)
-        }
-    }
+    Ok(backend.abort_gesture().await?.taken_back)
 }
 
 /// Reverses the most recent user Gesture, and returns what it reversed.
@@ -102,37 +76,16 @@ pub async fn abort_gesture<R: Runtime>(
 /// in one transaction, so there is no third outcome — and the Gesture stays on the stack, so the
 /// same press can be tried again once whatever blocked it is gone.
 #[tauri::command]
-pub async fn undo<R: Runtime>(
-    window: WebviewWindow<R>,
-    backend: State<'_, AppBackend>,
-) -> Result<Option<GestureSummary>, WireError> {
-    let applied = backend.undo().await?;
-    announce_replay(&window, applied.as_ref());
-    Ok(applied)
+pub async fn undo(backend: State<'_, AppBackend>) -> Result<Option<GestureSummary>, WireError> {
+    backend.undo().await
 }
 
 /// Reapplies the most recently undone Gesture, and returns what it reapplied.
 ///
 /// `None` and the error case mean exactly what they do for [`undo`].
 #[tauri::command]
-pub async fn redo<R: Runtime>(
-    window: WebviewWindow<R>,
-    backend: State<'_, AppBackend>,
-) -> Result<Option<GestureSummary>, WireError> {
-    let applied = backend.redo().await?;
-    announce_replay(&window, applied.as_ref());
-    Ok(applied)
-}
-
-/// Tells the other windows about an undo or a redo that actually applied.
-///
-/// A replay is the one write the journal cannot report, because it runs with journalling
-/// suppressed — reversing a change must not itself become a change to reverse. So the two commands
-/// that make one say so directly. `None` is an empty stack: nothing happened, and nobody is told.
-fn announce_replay<R: Runtime>(window: &WebviewWindow<R>, applied: Option<&GestureSummary>) {
-    if applied.is_some() {
-        announce(window.app_handle(), Some(window.label()));
-    }
+pub async fn redo(backend: State<'_, AppBackend>) -> Result<Option<GestureSummary>, WireError> {
+    backend.redo().await
 }
 
 /// What the next undo and the next redo would be, or `None` for each empty stack.

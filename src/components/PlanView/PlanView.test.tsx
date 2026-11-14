@@ -166,7 +166,7 @@ function row(node: MindmapNode, ancestors: MindmapNode[] = []): TaskListRow {
   };
 }
 
-const reload = vi.fn(() => Promise.resolve());
+const settleBoard = vi.fn(() => Promise.resolve());
 
 function mockRows(rows: TaskListRow[]): void {
   vi.mocked(useListData).mockReturnValue({
@@ -179,7 +179,7 @@ function mockRows(rows: TaskListRow[]): void {
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
-    reload,
+    settle: settleBoard,
     onCycleStatus: vi.fn(),
     onToggleStarted: vi.fn(),
     // The Plan View never cycles a status and never triages a virtual occurrence, so the
@@ -195,7 +195,7 @@ function mockRows(rows: TaskListRow[]): void {
   });
 }
 
-/** Lets the promise chain behind a write — open the Gesture, write, reload — settle. */
+/** Lets the promise chain behind a write — open the Gesture, write, settle the board — settle. */
 async function settle(): Promise<void> {
   for (let turn = 0; turn < 4; turn++) await act(async () => { await Promise.resolve(); });
   await settleLane();

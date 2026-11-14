@@ -17,19 +17,60 @@ fn an_event_ends_at_a_blank_line() {
 }
 
 #[test]
-fn an_event_carries_the_revision_its_data_names() {
+fn a_board_changed_event_carries_its_changes_as_the_server_wrote_them() {
+    let mut parser = EventParser::default();
+
+    let events = parser.feed(
+        "id: run1:3\nevent: board-changed\ndata: {\"epoch\":\"run1\",\"seq\":3,\"revision\":2,\"now\":\"2026-11-13T12:00:00\",\"hash\":77,\"changes\":{\"tasks\":{\"set\":[[\"task-1\",{\"id\":1}]],\"del\":[]}}}\n\n",
+    );
+
+    let change = events[0].board_change().expect("a change");
+    assert_eq!(change.epoch, "run1");
+    assert_eq!(
+        (change.seq, change.revision, change.hash),
+        (Some(3), 2, Some(77))
+    );
+    assert_eq!(
+        change.changes.as_ref().map(|raw| raw.get()),
+        Some("{\"tasks\":{\"set\":[[\"task-1\",{\"id\":1}]],\"del\":[]}}")
+    );
+    assert!(!change.reload);
+}
+
+#[test]
+fn an_older_servers_event_has_a_revision_and_no_sequence() {
     let mut parser = EventParser::default();
 
     let events = parser
         .feed("id: run1:3\nevent: board-changed\ndata: {\"revision\": 3, \"epoch\": \"run1\"}\n\n");
 
-    assert_eq!(
-        events[0].revision(),
-        Some(BoardRevision {
-            epoch: "run1".to_owned(),
-            revision: 3
-        })
+    let change = events[0].board_change().expect("a change");
+    assert_eq!(change.seq, None);
+    assert_eq!(change.stamp().revision, 3);
+}
+
+#[test]
+fn a_reload_event_says_so() {
+    let mut parser = EventParser::default();
+
+    let events = parser.feed(
+        "event: board-changed\ndata: {\"epoch\":\"e\",\"seq\":9,\"revision\":4,\"reload\":true}\n\n",
     );
+
+    assert!(events[0].board_change().is_some_and(|change| change.reload));
+}
+
+#[test]
+fn a_board_head_event_is_the_latest_publications_identity() {
+    let mut parser = EventParser::default();
+
+    let events = parser.feed(
+        "event: board-head\ndata: {\"epoch\":\"e\",\"seq\":9,\"revision\":4,\"hash\":5,\"sums\":{\"tasks\":5}}\n\n",
+    );
+
+    let head = events[0].board_head().expect("a head");
+    assert_eq!((head.seq, head.hash), (9, 5));
+    assert_eq!(head.sums.get("tasks"), Some(&5));
 }
 
 #[test]
@@ -45,18 +86,21 @@ fn data_split_over_lines_and_chunks_is_joined() {
         events[0].data.as_deref(),
         Some("{\"revision\": 4,\n\"epoch\": \"run1\"}")
     );
-    assert_eq!(events[0].revision().map(|r| r.revision), Some(4));
+    assert_eq!(
+        events[0].board_change().map(|change| change.revision),
+        Some(4)
+    );
 }
 
 #[test]
-fn an_event_whose_data_is_not_a_revision_has_none() {
+fn an_event_whose_data_is_not_a_change_has_none() {
     let mut parser = EventParser::default();
 
     let bare = parser.feed("event: board-changed\n\n");
     let odd = parser.feed("event: board-changed\ndata: soon\n\n");
 
-    assert_eq!(bare[0].revision(), None);
-    assert_eq!(odd[0].revision(), None);
+    assert!(bare[0].board_change().is_none());
+    assert!(odd[0].board_change().is_none());
 }
 
 #[test]
@@ -86,7 +130,7 @@ fn follower() -> Follower {
     .expect("a backend");
     Follower::new(
         Arc::new(backend),
-        Arc::new(|_| {}),
+        Arc::new(|_: BoardChange| {}),
         tokio::runtime::Handle::current(),
     )
 }

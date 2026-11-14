@@ -49,6 +49,12 @@ class Config(BaseSettings):
     ``ARLESH_FCM_CREDENTIALS_FILE`` (in a container, a mounted secret). Without it the server runs
     and sends no pushes."""
 
+    time_zone: str | None = None
+    """The IANA time zone the server keeps the user's day in (``Europe/Berlin``, ``UTC``):
+    ``ARLESH_TIME_ZONE``, or ``--time-zone``. "Today", the parts of the day, Overdue and Missed
+    are judged in it, and so is every board the server derives. Unset, it is the server machine's
+    own zone (in a container, UTC unless ``TZ`` says otherwise)."""
+
     backup_token: SecretStr | None = None
     """``ARLESH_BACKUP_TOKEN``: the administrator's secret for ``GET /backup``. Unset, there is no
     such route. Separate from the device tokens, which do not grant it."""

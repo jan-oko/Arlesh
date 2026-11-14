@@ -38,7 +38,7 @@ beforeEach(() => {
   vi.mocked(updateTask).mockReturnValue(new Promise<Task>(() => undefined));
   usePendingWritesStore.getState().reset();
   useMindmapStore.setState({ pendingToast: null });
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
 });
 
 describe("useSearchStart", () => {

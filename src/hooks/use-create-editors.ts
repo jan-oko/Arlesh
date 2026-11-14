@@ -29,7 +29,7 @@ interface Options {
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   /** Reloads the board — a new Habit's Recurrence is written after the reload `createFlow` does. */
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
 }
 
 /** The two create editors: which one is open, under what, and how each is saved or closed. */
@@ -59,7 +59,7 @@ export interface CreateEditors {
  * that takes the creation chords needs the same pending state and the same save path. It lived in
  * `MindmapView` until the Steps View became the second.
  */
-export function useCreateEditors({ tree, createFlow, createCommitment, reload }: Options): CreateEditors {
+export function useCreateEditors({ tree, createFlow, createCommitment, settle }: Options): CreateEditors {
   const { t } = useTranslation("undo");
   const [flowParent, setFlowParent] = useState<PendingFlowParent | null>(null);
   const [commitmentParent, setCommitmentParent] = useState<PendingCreateParent | null>(null);
@@ -133,11 +133,11 @@ export function useCreateEditors({ tree, createFlow, createCommitment, reload }:
             : []),
         ]));
       } finally {
-        await reload();
+        await settle();
       }
       setFlowParent(null);
     },
-    [flowParent, createFlow, reload, t, tree],
+    [flowParent, createFlow, settle, t, tree],
   );
 
   // Persists a brand-new commitment under the pending parent, then closes the create editor. A

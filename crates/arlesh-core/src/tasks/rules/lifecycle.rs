@@ -300,7 +300,7 @@ pub fn derive_item_state(
 }
 
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct ItemLifecycle {
     /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
     /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.

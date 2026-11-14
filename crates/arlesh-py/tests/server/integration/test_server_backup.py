@@ -35,7 +35,7 @@ def backup_server(server_db: Path, tokens: DatabaseTokenStore) -> Iterator[TestC
     """A server with a backup token, reached with no token of its own."""
     database = server_db
     server = ArleshServer(
-        board=Board(opener(database), holder(database), force=False),
+        board=Board(opener(database), holder(database), force=False, publish=False),
         tokens=tokens,
         pairs=DatabasePairingStore(database),
         connect=ConnectTokens(database),

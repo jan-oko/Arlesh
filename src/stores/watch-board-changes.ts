@@ -1,78 +1,63 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { onBoardChanged } from "@/api/board";
-import type { BoardRevision } from "@/api/board";
-import type { BoardRevisionTracker } from "@/stores/board-revision-store";
-import { isNews, latestOf } from "@/stores/board-revision-store";
+import type { BoardChange } from "@/api/board";
+
+/** How often a mounted, visible window looks at the producer's head. */
+export const HEAD_CHECK_MS = 60_000;
+
+/** How long after the last event it applied a window looks at the head, while it is quiet. */
+export const IDLE_HEAD_CHECK_MS = 5_000;
+
+/** How often a mounted, visible window works its board's digests out again from the values it holds. */
+export const RECOMPUTE_MS = 600_000;
+
+/** What the window's board does about what the watcher hears and the times it names. */
+export interface BoardWatch {
+  /** An event arrived (`null` for one that could not be read: the board is then loaded whole). */
+  applyChange: (change: BoardChange | null) => void;
+  /** Compare the board with the producer's head. */
+  checkHead: () => Promise<void>;
+  /** Work the digests out again from the values held, and compare them. */
+  recompute: () => Promise<void>;
+}
+
+function visible(): boolean {
+  return typeof document === "undefined" || document.visibilityState === "visible";
+}
 
 /**
- * How long an announced change waits before the window decides whether it is news.
+ * Keeps the window's board true while a view of it is mounted, and returns the function that stops.
  *
- * In Client mode the server announces a device's own write to that device too, and the
- * announcement can beat the write's response back across the Tauri bridge. The reload that follows
- * the write has not started yet, so the window holds the old revision and the echo looks like
- * news. A short wait lets the write's own reload start; the echo is then judged when that load
- * ends, and is not news. Another device's change pays this wait as latency, which it can afford.
+ * Three things, none of which reloads by itself (ADR 0020): every `board-changed` event is handed
+ * to the board to apply; the producer's head is checked every minute and five seconds after the
+ * last event, while the window is visible; and the digests are worked out again when the window
+ * becomes visible and every ten minutes. What a check finds is for the board to answer, because
+ * only it knows what it holds.
+ *
+ * Called **once per window**, by the shared board (`src/stores/use-board-store.ts`); a view of the
+ * board does not listen. There is one path for the changes whatever their source: this one hears
+ * the Tauri event, and `applyChange` is all the board needs.
  */
-export const SETTLE_MS = 150;
-
-/**
- * Reloads the board whenever the board changed somewhere else, and returns the function that stops
- * listening.
- *
- * This is the whole of cross-window consistency on the frontend, and it is deliberately one line
- * of behaviour: an edit made anywhere ends in the **same reload** that already runs after a local
- * edit. Inventing a second refresh path would mean two ways of getting the board onto the screen,
- * which is two things to keep agreeing.
- *
- * In Standalone the window that made the change is not told: it reloaded on the way back from
- * its own command, so this never fires for your own edits. In Client mode it does: the server
- * announces every committed write to every device, the writer's own included. Those events carry
- * the revision the board reached, and an event for a revision the window already holds is skipped
- * rather than reloaded for (`src/stores/board-revision-store.ts`). An event that carries none, or
- * from a server that has restarted since the board was loaded, always reloads.
- *
- * It is called **once per window**, by the shared board (`src/stores/use-board-store.ts`), with the
- * tracker of the one copy of the board the window holds. A view of the board does not listen.
- */
-export function watchBoardChanges(reload: () => Promise<void>, tracker: BoardRevisionTracker): () => void {
+export function watchBoardChanges(watch: BoardWatch): () => void {
   let subscribed = true;
   let unlisten: UnlistenFn | null = null;
-  // The newest change heard and not yet acted on, and the timer or the wait that will judge it.
-  let target: BoardRevision | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let stopWaiting: (() => void) | null = null;
+  let idle: ReturnType<typeof setTimeout> | null = null;
 
-  const settle = (): void => {
-    timer = null;
-    if (target === null) return;
-    const { held, inFlight } = tracker.getState();
-    if (!isNews(held, target)) {
-      target = null;
-      return;
-    }
-    if (inFlight > 0) {
-      // A load is under way: it may be the one that brings the change. Judge it when it ends.
-      stopWaiting ??= tracker.subscribe((state) => {
-        if (state.inFlight > 0) return;
-        stopWaiting?.();
-        stopWaiting = null;
-        settle();
-      });
-      return;
-    }
-    target = null;
-    void reload();
+  const check = (): void => {
+    if (visible()) void watch.checkHead();
+  };
+
+  const afterEvent = (): void => {
+    if (idle !== null) clearTimeout(idle);
+    idle = setTimeout(() => {
+      idle = null;
+      check();
+    }, IDLE_HEAD_CHECK_MS);
   };
 
   void onBoardChanged((change) => {
-    if (change === null) {
-      // No revision to compare (Standalone, or an older server): reload, as ever.
-      void reload();
-      return;
-    }
-    if (!isNews(tracker.getState().held, change)) return;
-    target = latestOf(target, change);
-    timer ??= setTimeout(settle, SETTLE_MS);
+    watch.applyChange(change);
+    afterEvent();
   }).then((stop) => {
     // The window can drop the board while the subscription is still being set up, in which case
     // there is nothing to keep and the listener has to be taken straight back down.
@@ -80,10 +65,23 @@ export function watchBoardChanges(reload: () => Promise<void>, tracker: BoardRev
     else stop();
   });
 
+  const heads = setInterval(check, HEAD_CHECK_MS);
+  const recomputes = setInterval(() => {
+    if (visible()) void watch.recompute();
+  }, RECOMPUTE_MS);
+  const onVisibility = (): void => {
+    if (!visible()) return;
+    void watch.recompute();
+    check();
+  };
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
+
   return () => {
     subscribed = false;
     unlisten?.();
-    if (timer !== null) clearTimeout(timer);
-    stopWaiting?.();
+    if (idle !== null) clearTimeout(idle);
+    clearInterval(heads);
+    clearInterval(recomputes);
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
   };
 }

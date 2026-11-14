@@ -9,6 +9,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { testKey } from "@/test/scope-key";
+import { currentBoard } from "@/test/current-board";
 
 // Nothing under `@/api` is mocked here, on purpose. The question is what Shift+C on a Habit
 // occurrence actually puts *on the wire*: the occurrence is a row with a UUID id (ADR 0008), and
@@ -94,7 +95,7 @@ const refusals = new Map<string, unknown>();
 const ipc = vi.fn((cmd: string, _args?: unknown): Promise<unknown> => {
   const refusal = refusals.get(cmd);
   if (refusal !== undefined) return Promise.reject(refusal);
-  if (cmd === "load_mindmap") return Promise.resolve(envelope());
+  if (cmd === "load_mindmap") return Promise.resolve(currentBoard(envelope()));
   if (cmd === "open_gesture") return Promise.resolve("gesture-under-test");
   if (cmd === "list_domains") return Promise.resolve([]);
   if (cmd === "create_commitment") return Promise.resolve({ id: NEW_COMMITMENT_ID });

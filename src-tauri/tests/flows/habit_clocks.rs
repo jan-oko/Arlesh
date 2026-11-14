@@ -6,9 +6,7 @@
 
 use crate::helpers;
 
-use arlesh_lib::commands::{
-    flows as flow_commands, mindmap as mindmap_commands, tasks as task_commands,
-};
+use arlesh_lib::commands::{flows as flow_commands, tasks as task_commands};
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowRequest, FlowId, InstanceType, MissPolicy, SetRecurrenceRequest,
 };
@@ -96,7 +94,7 @@ fn week(date: chrono::NaiveDate) -> ScopeKey {
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    helpers::load_board_at(app, at(instant))
         .await
         .unwrap()
         .into_load()

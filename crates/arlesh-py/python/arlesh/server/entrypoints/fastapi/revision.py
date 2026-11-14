@@ -47,7 +47,9 @@ READS = frozenset({"GET", "HEAD"})
 class RevisionHeadersMiddleware:
     """Stamps every HTTP answer with the board's revision and epoch."""
 
-    def __init__(self, app: ASGIApp, *, revision: Callable[[], int], epoch: str) -> None:
+    def __init__(
+        self, app: ASGIApp, *, revision: Callable[[], int], epoch: Callable[[], str]
+    ) -> None:
         self._app = app
         self._revision = revision
         self._epoch = epoch
@@ -61,11 +63,15 @@ class RevisionHeadersMiddleware:
 
         async def stamped(message: Message) -> None:
             if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                epoch = self._epoch_now()
+                if epoch is not None:
+                    headers[EPOCH_HEADER] = epoch
+                # A route that stamps its own revision (`/board/current`: the publication's, which
+                # can be behind the board as it stands) keeps it.
                 revision = arrived if is_read else self._read()
-                if revision is not None:
-                    headers = MutableHeaders(scope=message)
+                if revision is not None and REVISION_HEADER not in headers:
                     headers[REVISION_HEADER] = str(revision)
-                    headers[EPOCH_HEADER] = self._epoch
             await send(message)
 
         await self._app(scope, receive, stamped)
@@ -73,6 +79,12 @@ class RevisionHeadersMiddleware:
     def _read(self) -> int | None:
         try:
             return self._revision()
+        except BoardNotOpen:
+            return None
+
+    def _epoch_now(self) -> str | None:
+        try:
+            return self._epoch()
         except BoardNotOpen:
             return None
 

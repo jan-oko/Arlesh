@@ -135,7 +135,7 @@ impl ArleshMcp {
             // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
-            clock: Arc::new(|| chrono::Local::now().naive_local()),
+            clock: Arc::new(crate::clock::now),
             callers: Callers::Anyone,
             tool_router: Self::flattened(
                 Self::snapshot_router()

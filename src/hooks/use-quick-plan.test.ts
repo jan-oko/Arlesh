@@ -75,11 +75,11 @@ const JUNE: TimeScope = { start_id: { kind: "month", date: "2026-06-01" }, end_i
 const JUNE_3: TimeScope = { start_id: { kind: "day", date: "2026-06-03" }, end_id: { kind: "day", date: "2026-06-03" } };
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn(() => Promise.resolve());
+  const settle = vi.fn(() => Promise.resolve());
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const rendered = renderHook(() => useQuickPlan({ findNode: (id) => byId.get(id), reload, showToast }));
-  return { ...rendered, reload, showToast };
+  const rendered = renderHook(() => useQuickPlan({ findNode: (id) => byId.get(id), settle, showToast }));
+  return { ...rendered, settle, showToast };
 }
 
 /** The last toast's message, or undefined. */
@@ -139,11 +139,11 @@ describe("useQuickPlan — opening", () => {
 describe("useQuickPlan — writing", () => {
   it("sets the Plan through update_task, the editor's own write, and reloads", async () => {
     const backend = installBackend();
-    const { result, reload, showToast } = setup([node("task-5", "task")]);
+    const { result, settle, showToast } = setup([node("task-5", "task")]);
     act(() => { result.current.open(["task-5"]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(backend.writes).toEqual([{ command: "update_task", args: { id: 5, request: { plan: JUNE_3 } }, gesture: expect.any(String) }]);
-    expect(reload).toHaveBeenCalled();
+    expect(settle).toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
     expect(result.current.target).toBeNull();
   });
@@ -175,11 +175,11 @@ describe("useQuickPlan — writing", () => {
 
   it("shows the backend's refusal — a Plan outside the Task's Time Scope — and writes nothing", async () => {
     const backend = installBackend(() => "plan must fall within the task's time scope");
-    const { result, reload, showToast } = setup([node("task-5", "task", { title: "Ship it", timeScope: JUNE })]);
+    const { result, settle, showToast } = setup([node("task-5", "task", { title: "Ship it", timeScope: JUNE })]);
     act(() => { result.current.open(["task-5"]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(backend.writes).toEqual([]);
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
     expect(lastToast(showToast)).toBe(
       `warnings:quickPlanFailed {"title":"Ship it","message":"plan must fall within the task's time scope"}`,
     );

@@ -12,7 +12,7 @@ import { getErrorMessage } from "@/api/errors";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -39,7 +39,7 @@ function writeArchive(node: MindmapNode, archive: boolean): Promise<unknown> {
  * write — the stored archival of that node alone — so one undo step; the subtree reads as archived
  * through the backend's lifecycle and comes back untouched. A refusal is a toast, never silent.
  */
-export function useHandArchive({ findNode, reload, showToast }: Options): Result {
+export function useHandArchive({ findNode, settle, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
   const toggleArchive = useCallback(
@@ -47,11 +47,11 @@ export function useHandArchive({ findNode, reload, showToast }: Options): Result
       const node = findNode(nodeId);
       if (node === undefined || !canArchiveByHand(node)) return;
       void afterLane(() => writeArchive(node, !isArchivedByHand(node))).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => showToast({ nodeId, message: t("archiveFailed", { message: getErrorMessage(error) }) }),
       );
     },
-    [findNode, reload, showToast, t],
+    [findNode, settle, showToast, t],
   );
 
   return { toggleArchive };

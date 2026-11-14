@@ -25,8 +25,16 @@ from pydantic import BaseModel, TypeAdapter
 from pydantic_core import to_json
 
 from arlesh import _native
-from arlesh.backends import Backend, BoardRevision, NativeHandle, ServerStatus, SqliteBackend
-from arlesh.errors import InvalidRequest, from_native
+from arlesh.backends import (
+    Backend,
+    BoardHead,
+    BoardRevision,
+    CurrentBoard,
+    NativeHandle,
+    ServerStatus,
+    SqliteBackend,
+)
+from arlesh.errors import InvalidRequest, NotPermitted, from_native
 from arlesh.models import (
     AgentAction,
     AgentsOverview,
@@ -846,6 +854,48 @@ class Database(ABC):
     async def next_change(self, after: int) -> int:
         """Waits until the board's revision is past ``after``, and answers it."""
 
+    @property
+    @abstractmethod
+    def epoch(self) -> str:
+        """Names this run of the process: a revision or a publication means something only beside
+        the epoch it was read under. Raises :class:`NotPermitted` over HTTP."""
+
+    @abstractmethod
+    def start_publisher(self) -> None:
+        """Starts the board publisher over this database, once per database file: it derives the
+        board after every committed write and once a minute, and publishes what changed
+        (``docs/adr/0020-changed-nodes-and-board-hash.md``). Raises :class:`NotPermitted` over
+        HTTP, where the server publishes."""
+
+    @abstractmethod
+    async def board_current(self) -> CurrentBoard:
+        """The latest publication, as it is: the core's JSON, nulls included. Waits for the first
+        one. Needs :meth:`start_publisher`."""
+
+    @abstractmethod
+    async def board_events_after(self, after: int, wait: float) -> list[tuple[int, str]]:
+        """The change events after publication ``after`` as ``(seq, JSON)``, in order. When they
+        are no longer all kept, one ``reload`` event at the latest publication. Waits up to
+        ``wait`` seconds for the next one when there is none, and answers empty if it does not
+        come. Needs :meth:`start_publisher`."""
+
+    @abstractmethod
+    def board_head(self) -> BoardHead | None:
+        """The latest publication's identity, or ``None`` before the first. Needs
+        :meth:`start_publisher`."""
+
+
+def set_time_zone(name: str | None) -> None:
+    """Makes ``name``, an IANA time zone name such as ``Europe/Berlin``, the zone this process reads
+    its wall clock in: "today", the parts of the day, Overdue and Missed are judged in it, and so is
+    every board the process derives. Without it (or with ``None``) the machine's local zone is
+    used. Raises
+    :class:`InvalidRequest` for a name no zone has."""
+    try:
+        _native.set_time_zone(name)
+    except _native.NativeError as error:
+        raise from_native(error) from None
+
 
 class Arlesh(Database):
     """The :class:`Database` port over a backend you choose: ``Arlesh(backend=SqliteBackend(…))``
@@ -1543,6 +1593,48 @@ class Arlesh(Database):
     @property
     def revision(self) -> int:
         return self._native.revision
+
+    @property
+    def epoch(self) -> str:
+        epoch: str = self._publishing_native().epoch
+        return epoch
+
+    def start_publisher(self) -> None:
+        self._publishing_native().start_publisher()
+
+    async def board_current(self) -> CurrentBoard:
+        native = self._publishing_native()
+        try:
+            body, head, now = await native.board_current()
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        return CurrentBoard(body=body, head=BoardHead.model_validate_json(head), now=now)
+
+    async def board_events_after(self, after: int, wait: float) -> list[tuple[int, str]]:
+        native = self._publishing_native()
+        try:
+            events: list[tuple[int, str]] = await native.board_events_after(after, wait)
+            return events
+        except _native.NativeError as error:
+            raise from_native(error) from None
+
+    def board_head(self) -> BoardHead | None:
+        native = self._publishing_native()
+        try:
+            head = native.board_head()
+        except _native.NativeError as error:
+            raise from_native(error) from None
+        return None if head is None else BoardHead.model_validate_json(head)
+
+    def _publishing_native(self) -> _SqliteNative:
+        """The native database, which publishes; over HTTP the server does, and this refuses."""
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            raise NotPermitted(
+                "this is a client of a server; the server publishes the board",
+                {"reason": "not_in_client_mode"},
+            )
+        return native
 
     async def next_change(self, after: int) -> int:
         native = self._native

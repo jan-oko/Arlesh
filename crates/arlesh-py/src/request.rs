@@ -914,7 +914,7 @@ async fn transaction<T: Serialize>(
 
 /// The local wall clock, as every write the app makes reads it.
 pub(crate) fn now() -> NaiveDateTime {
-    chrono::Local::now().naive_local()
+    arlesh_core::clock::now()
 }
 
 /// Runs one request.
@@ -929,12 +929,9 @@ async fn dispatch(
             without_nulls: bare,
         } => {
             let at = at.unwrap_or_else(now);
-            transaction(factory, async |db| {
-                let blocking = agents::service::blocking(db, at).await.wired()?;
-                mindmap::board(db, at, blocking).await.wired()
-            })
-            .await
-            .map(|board| if bare { without_nulls(board) } else { board })
+            transaction(factory, async |db| mindmap::current(db, at).await.wired())
+                .await
+                .map(|board| if bare { without_nulls(board) } else { board })
         }
         Request::GetTask { id } => {
             transaction(factory, async |db| {

@@ -27,7 +27,7 @@ const CHANGE_KEYS = {
 
 interface Options {
   /** Re-reads the board, the way every other mutation already does. */
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   /** The app's existing anchored notice. */
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
@@ -75,7 +75,7 @@ function phraseGesture(summary: GestureSummary, t: TFunction<"undo">): string {
  * The stacks are never consulted before pressing. `undo_status` labels controls; it is not a guard,
  * and asking first would only add a round trip and a window for the answer to go stale.
  */
-export function useUndo({ reload, showToast }: Options): UndoActions {
+export function useUndo({ settle, showToast }: Options): UndoActions {
   const { t } = useTranslation("undo");
   // One at a time. Holding Ctrl+Z would otherwise start a second reversal against a board the first
   // has not finished changing, and the two toasts would race.
@@ -103,7 +103,7 @@ export function useUndo({ reload, showToast }: Options): UndoActions {
           const gesture = phraseGesture(summary, t);
           const message = direction === "undo" ? t("undid", { gesture }) : t("redid", { gesture });
           showToast({ nodeId: UNDO_TOAST_ANCHOR, message });
-          await reload();
+          await settle();
         })
         .catch((error: unknown) => {
           const message = getErrorMessage(error);
@@ -116,7 +116,7 @@ export function useUndo({ reload, showToast }: Options): UndoActions {
           isApplying.current = false;
         });
     },
-    [reload, showToast, t],
+    [settle, showToast, t],
   );
 
   // Ctrl+Z asks the window's pending writes first (ADR 0012, decision 9): a newest write that has

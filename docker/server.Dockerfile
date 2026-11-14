@@ -71,6 +71,8 @@ RUN useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin arle
 USER arlesh
 WORKDIR /data
 VOLUME /data
+# The user's day is kept in ARLESH_TIME_ZONE (an IANA name such as Europe/Berlin); unset it is this
+# container's own zone, UTC. The zone database is built into the server, so tzdata is not needed.
 # The default port; ARLESH_SERVER__PORT changes it (publish that one instead).
 EXPOSE 4750
 

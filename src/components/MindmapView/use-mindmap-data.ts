@@ -208,7 +208,8 @@ interface MindmapData {
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
   updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
-  reload: () => Promise<void>;
+  /** Resolves once the window holds the board its own latest write brought about (ADR 0020). */
+  settle: () => Promise<void>;
 }
 
 const VIRTUAL_ROOT: MindmapNode = {
@@ -839,16 +840,18 @@ export function buildTree(
 
   // Sort each parent's children by position so mixed-type siblings
   // (e.g. goals and tasks under the same project) respect insertion order
-  // rather than being grouped by entity type.
+  // rather than being grouped by entity type. Siblings at one position are told apart by their
+  // kind and id, never by where their row sits in the board: a board that has had changes applied
+  // holds its rows in another order than a fresh load's (ADR 0020, decision 12).
   for (const node of nodeMap.values()) {
-    node.children.sort((a, b) => a.position - b.position);
+    node.children.sort(bySiblingOrder);
   }
 
   const aspectNodes = domains
     .filter((d) => d.subtype === "aspect")
     .map((d) => nodeMap.get(`domain-${d.id}`)!)
     .filter((n) => n !== undefined)
-    .sort((a, b) => a.position - b.position);
+    .sort(bySiblingOrder);
 
   const root = { ...VIRTUAL_ROOT, children: aspectNodes };
   propagateAspectColor(root, undefined);
@@ -879,6 +882,22 @@ export interface LoadCondition {
 
 const NO_CONDITIONS: LoadCondition = { failedFlows: [], unrenderableCommitmentFlows: [] };
 
+/** The order kinds were built in, which tells apart siblings at one position (the order a fresh board lists them in). */
+const SIBLING_KIND_ORDER: readonly NodeKind[] = [
+  "aspect", "project", "domain", "tag", "goal", "task", "commitment", "expectation", "info",
+  "flow", "flow_goal", "flow_task", "flow_commitment", "flow_expectation", "habit_group",
+];
+
+/**
+ * Siblings by position; those at one position by kind, then by id. It reads nothing of where a row
+ * sits in the board's lists, which a board with changes applied does not keep.
+ */
+function bySiblingOrder(a: MindmapNode, b: MindmapNode): number {
+  if (a.position !== b.position) return a.position - b.position;
+  const kinds = SIBLING_KIND_ORDER.indexOf(a.kind) - SIBLING_KIND_ORDER.indexOf(b.kind);
+  return kinds !== 0 ? kinds : a.id.localeCompare(b.id, undefined, { numeric: true });
+}
+
 /**
  * Collects everything this load got wrong that the user did not cause: the flows whose Habit
  * iterations failed to derive, and the commitment Habits whose template cannot be rendered.
@@ -890,12 +909,15 @@ const NO_CONDITIONS: LoadCondition = { failedFlows: [], unrenderableCommitmentFl
  * The same holds for an unrenderable template: iterations that are not drawn are always said.
  */
 function collectLoadConditions(data: MindmapLoad): LoadCondition {
+  // Listed by flow id: the rows' own order is not meaningful (ADR 0020, decision 12).
   const failedFlows = data.habits
     .filter((entry) => entry.result.outcome === "failed")
-    .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }));
+    .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }))
+    .sort((a, b) => a.id - b.id);
   const unrenderableCommitmentFlows = data.flows
     .filter((flow) => flow.is_habit && holdsUnrenderableGoalItems(flow, data.flow_goals))
-    .map((flow) => ({ id: flow.id, title: flow.title }));
+    .map((flow) => ({ id: flow.id, title: flow.title }))
+    .sort((a, b) => a.id - b.id);
   return failedFlows.length === 0 && unrenderableCommitmentFlows.length === 0
     ? NO_CONDITIONS
     : { failedFlows, unrenderableCommitmentFlows };
@@ -938,7 +960,7 @@ async function createCommitmentUnderNode(
 }
 
 /** What a view needs beyond the shared board to turn it into a tree: words and labels in the active language. */
-interface TreeInputs {
+export interface TreeInputs {
   scopeLabels: ScopeLabelFns;
   /** A check task is titled `{prefix}{wait title}`, the prefix a display setting. */
   checkPrefix: string;
@@ -949,7 +971,7 @@ interface TreeInputs {
   cooldownReason: (until: string) => string;
 }
 
-const NOTHING_STAMP: BoardStamp = { read: 0, epoch: null, revision: null };
+const NOTHING_STAMP: BoardStamp = { read: 0, epoch: null, seq: null, revision: null, at: 0 };
 
 const builtTrees = new WeakMap<SharedBoard, WeakMap<TreeInputs, MindmapNode>>();
 
@@ -958,7 +980,7 @@ const builtTrees = new WeakMap<SharedBoard, WeakMap<TreeInputs, MindmapNode>>();
  * mutation reading the latest tree in the same tick get the same object, and a view whose inputs
  * did not change does not build again when another view's reload leaves the board as it was.
  */
-function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode {
+export function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode {
   const forBoard = builtTrees.get(board) ?? new WeakMap<TreeInputs, MindmapNode>();
   builtTrees.set(board, forBoard);
   const cached = forBoard.get(inputs);
@@ -988,7 +1010,8 @@ function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode {
  * The board itself is loaded once per window, by `useBoardStore`: any number of views mounted at
  * once share one fetch, one copy and one revision. What a view owns is only what it derives from
  * that copy: its tree (words in the active language, the pending writes drawn over it) and the
- * mutations, which write and then ask the shared store to reload.
+ * mutations, which write and then wait for the shared store to hold the board their write brought
+ * about.
  */
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation", "editor", "habits", "warnings", "nodeKinds"]);
@@ -1063,14 +1086,17 @@ export function useMindmapData(): MindmapData {
   });
 
   // Mounting a view asks for the window's board; the first of them starts its one load and its
-  // listeners (changes elsewhere, answered writes, the MCP roots), the rest share them.
+  // listeners (the change events and the checks of the board against the producer's head), the rest
+  // share them.
   useEffect(() => useBoardStore.getState().acquire(), []);
 
-  // Refreshes the board in place, WITHOUT the spinner: every caller is a post-mutation refresh
-  // (status toggles, edits, deletes, conversions). `MindmapView` early-returns a full-screen
-  // "Loading…" whenever `isLoading` is true, which unmounts the canvas and takes pan, zoom and
-  // focus with it. Only the initial mount shows it. The store coalesces concurrent calls.
-  const reload = useCallback(() => useBoardStore.getState().load(), []);
+  // Waits for the board to hold the write just made, WITHOUT the spinner: every caller is a
+  // post-mutation settle (status toggles, edits, deletes, conversions), and nothing is fetched: the
+  // change event the write brought about is applied to the board the window holds, and this resolves
+  // when it has been (ADR 0020). `MindmapView` early-returns a full-screen "Loading…" whenever
+  // `isLoading` is true, which unmounts the canvas and takes pan, zoom and focus with it. Only the
+  // initial mount shows it.
+  const settle = useCallback(() => useBoardStore.getState().settle(), []);
 
   /** The kind of node Tab makes under `parentId`, and *insert parent* makes above a node. */
   const defaultChildKind = useCallback(
@@ -1254,10 +1280,10 @@ export function useMindmapData(): MindmapData {
   const settleCreated = useCallback(
     async (placeholder: MindmapNode): Promise<MindmapNode | undefined> => {
       await usePendingWritesStore.getState().whenDrained();
-      await reload();
+      await settle();
       return findNodeInTree(currentTree(), usePendingWritesStore.getState().resolveId(placeholder.id));
     },
-    [reload, currentTree],
+    [settle, currentTree],
   );
 
   const createChild = useCallback(
@@ -1278,7 +1304,7 @@ export function useMindmapData(): MindmapData {
         const dbId = rowIdOfId(id);
         if (kind === "flow") await updateFlow(storedId(dbId), { title });
         else if (isFlowItemType(kind)) await updateFlowItem(kind, storedId(dbId), { title });
-        await reload();
+        await settle();
         return;
       }
       const node = findNodeInTree(currentTree(), id);
@@ -1303,7 +1329,7 @@ export function useMindmapData(): MindmapData {
         },
       });
     },
-    [reload, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
+    [settle, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
   );
 
   const reorderNode = useCallback(
@@ -1342,9 +1368,9 @@ export function useMindmapData(): MindmapData {
         setPos(nodeDbId, node.kind, neighborPos),
         setPos(neighborDbId, neighbor.kind, nodePos),
       ]);
-      await reload();
+      await settle();
     },
-    [reload, tree],
+    [settle, tree],
   );
 
   const moveNode = useCallback(
@@ -1413,9 +1439,9 @@ export function useMindmapData(): MindmapData {
           throw new Error(`moveNode has no branch for node kind "${String(unhandled)}"`);
         }
       }
-      await reload();
+      await settle();
     },
-    [reload, rowIdOfId],
+    [settle, rowIdOfId],
   );
 
   /**
@@ -1484,10 +1510,10 @@ export function useMindmapData(): MindmapData {
           throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
         }
       }
-      await reload();
+      await settle();
       return leftBehind;
     },
-    [reload, rowIdOfId],
+    [settle, rowIdOfId],
   );
 
   /**
@@ -1529,12 +1555,12 @@ export function useMindmapData(): MindmapData {
       const made = answers[0];
       const id: unknown = typeof made === "object" && made !== null ? Reflect.get(made, "id") : undefined;
       if (typeof id !== "number") throw new Error("insert parent made no node");
-      await reload();
+      await settle();
       if (childKind === "domain" || childKind === "project" || childKind === "tag") return `domain-${id}`;
       if (isFlowItemType(childKind)) return flowItemNodeId(childKind, id);
       return `${childKind}-${id}`;
     },
-    [defaultChildKind, reload, rowIdOfId, tree],
+    [defaultChildKind, settle, rowIdOfId, tree],
   );
 
   const pasteNodes = useCallback(
@@ -1548,10 +1574,10 @@ export function useMindmapData(): MindmapData {
         ? { op: "duplicate", kind, id: storedId(rowIdOfId(id)), parent_kind: targetKind, parent_id: storedId(target), position: position + index }
         : { op: "move", kind, id: rowIdOfId(id), parent_kind: targetKind, parent: target, position: position + index });
       const answers = await runGesture("paste", steps);
-      await reload();
+      await settle();
       return answers.flatMap(leftBehindOf);
     },
-    [reload, rowIdOfId],
+    [settle, rowIdOfId],
   );
 
   const removeNode = useCallback(
@@ -1566,9 +1592,9 @@ export function useMindmapData(): MindmapData {
       if (nodes.length > 0) {
         await withGesture(t("gestures.delete", { count: nodesToDelete.length }), () => deleteNodes(nodes));
       }
-      await reload();
+      await settle();
     },
-    [reload, rowIdOfId, t],
+    [settle, rowIdOfId, t],
   );
 
   /**
@@ -1589,27 +1615,27 @@ export function useMindmapData(): MindmapData {
       await awaitLane();
       const commitmentId = await createCommitmentUnderNode(rowIdOfId(parentId), parentKind, data);
       for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
-      await reload();
+      await settle();
     },
-    [reload, rowIdOfId],
+    [settle, rowIdOfId],
   );
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
       await awaitLane();
       const flow = await createFlow(request);
-      await reload();
+      await settle();
       return flow;
     },
-    [reload],
+    [settle],
   );
 
   const updateFlowNode = useCallback(
     async (id: number, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
-      await reload();
+      await settle();
     },
-    [reload],
+    [settle],
   );
 
   return {
@@ -1630,6 +1656,6 @@ export function useMindmapData(): MindmapData {
     createCommitment: createCommitmentNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
-    reload,
+    settle,
   };
 }

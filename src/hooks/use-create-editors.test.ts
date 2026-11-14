@@ -33,9 +33,9 @@ function setup() {
   const createFlow = vi.fn().mockResolvedValue({ id: 31 });
   apiCreateFlow.mockImplementation(createFlow);
   const createCommitment = vi.fn().mockResolvedValue(undefined);
-  const reload = vi.fn().mockResolvedValue(undefined);
-  const hook = renderHook(() => useCreateEditors({ tree, createFlow, createCommitment, reload }));
-  return { hook, createFlow, createCommitment, reload };
+  const settle = vi.fn().mockResolvedValue(undefined);
+  const hook = renderHook(() => useCreateEditors({ tree, createFlow, createCommitment, settle }));
+  return { hook, createFlow, createCommitment, settle };
 }
 
 const PLAIN_FLOW: FlowSaveData = {
@@ -60,7 +60,7 @@ describe("useCreateEditors", () => {
   });
 
   it("saves a new Habit as its Flow and its Recurrence, in one undoable gesture", async () => {
-    const { hook, createFlow, reload } = setup();
+    const { hook, createFlow, settle } = setup();
     act(() => hook.result.current.onNewHabit("goal-4"));
     await act(async () => {
       await hook.result.current.onCreateFlow({
@@ -77,7 +77,7 @@ describe("useCreateEditors", () => {
       start_scope_id: { kind: "week", date: "2026-09-27" }, gap_n: null, gap_kind: null, end_scope_id: null,
       clock: "window", miss_policy: "archive", cooldown_n: null, cooldown_kind: null,
     });
-    expect(reload).toHaveBeenCalled();
+    expect(settle).toHaveBeenCalled();
     expect(hook.result.current.flowParent).toBeNull();
   });
 

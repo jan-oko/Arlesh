@@ -630,7 +630,10 @@ Server-Sent Events stream; the wait route is a long poll (the Server-Sent Events
 on 2026-11-06, Task `688`: only its own tests followed it, the mod long-polls).
 
 - `GET /events/changes`: `board-changed` with the board's revision after every committed write.
-  Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*).
+  Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*). On
+  `arlesh-server` each event also carries the board's changed nodes and a `board-head` event
+  replaces the keepalive (ADR 0020); the desktop endpoint's stream stays revision-only, and readers
+  that look only at `revision` and `epoch` read both alike.
 - `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the
   changes to the waits inside the asking agent's Claim (it needs the agent's token in
   `X-Arlesh-Agent-Token`, and is refused `401` without one; see [Agents](agents.md)), as **one JSON answer** (the mod's `$.http.fetch` resolves
@@ -782,11 +785,12 @@ closes it. Each glyph is its own component, so the Review and the other waits ca
 one icon by swapping two files for one.
 
 The task counts cover the **whole board**, not the tab's subtree. They come from the load every
-view already makes: after each load, `use-mindmap-data` counts them over the whole tree it built
+view already holds: after each load or applied change, `use-mindmap-data` counts them over the whole tree it built
 (`agent-activity`) and hands them to an app-wide store the top bar reads — no request of its own.
 The capacity line reads the agents list (`list_agents`), kept fresh on `agents-changed` and
 `board-changed`, and again when the soonest plan limit resets. Every edit, every other window's
-change and every MCP write ends in that reload, so the row is live.
+change and every MCP write reaches it as changed nodes (`agent_activity` is one entry of the
+board), so the row is live.
 
 ## What writes
 

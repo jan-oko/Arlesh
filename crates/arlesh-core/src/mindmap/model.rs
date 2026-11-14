@@ -23,7 +23,7 @@ use crate::{
 /// than sniffing for present fields. The occurrences themselves are not here: they are ordinary
 /// rows of their kinds, and travel in [`MindmapLoad::tasks`], [`MindmapLoad::goals`] and
 /// [`MindmapLoad::commitments`] beside the stored ones.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum FlowHabitResult {
     /// Derived — or not a Habit at all, which is an answer, not a failure.
@@ -40,7 +40,7 @@ pub enum FlowHabitResult {
 ///
 /// Entries are in the same order as [`MindmapLoad::flows`]; `flow_id` is carried anyway so a
 /// consumer can key by it instead of trusting position.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowHabitEntry {
     /// The flow this entry describes.
     pub flow_id: i64,
@@ -48,6 +48,14 @@ pub struct FlowHabitEntry {
     pub flow_title: String,
     /// The payload, or the failure that replaced it.
     pub result: FlowHabitResult,
+}
+
+/// Writes a map with its keys in order, so the same board is always the same text.
+fn sorted_by_key<V: Serialize, S: serde::Serializer>(
+    map: &std::collections::HashMap<String, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_map(map.iter().collect::<std::collections::BTreeMap<_, _>>())
 }
 
 /// Everything one mindmap render reads, gathered in a single command round trip.
@@ -101,12 +109,18 @@ pub struct MindmapLoad {
     /// board keys a node (`task-12`): what the app names a dependency it is blocked by with.
     /// Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
     /// off the wire, everywhere else — the MCP names nodes among those it can see.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub short_ids: std::collections::HashMap<String, String>,
     /// What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
     /// which of its dependencies block it, what it inherits, its open question, whether it has
     /// expired. Filled by the app's load only, as [`Self::short_ids`] is.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub facts: std::collections::HashMap<String, NodeFacts>,
     /// What the agents are doing on the whole board. Filled by the app's load only.
     #[serde(skip_serializing_if = "Option::is_none")]

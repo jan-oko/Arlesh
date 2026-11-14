@@ -23,7 +23,7 @@ export interface BacklogPlanPrompt {
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -48,7 +48,7 @@ interface Result {
  * becomes a prompt offering to clear the Plan and set the task aside in one action. Declining
  * leaves both the plan and the backlog state exactly as they were, because nothing was written.
  */
-export function useTaskBacklog({ findNode, reload, showToast }: Options): Result {
+export function useTaskBacklog({ findNode, settle, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
   const [planPrompt, setPlanPrompt] = useState<BacklogPlanPrompt | null>(null);
 
@@ -67,7 +67,7 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
       const next = node.backlogged === true ? TASK_ARCHIVAL.LIVE : TASK_ARCHIVAL.BACKLOG;
       const rowId = rowIdOf(node);
       void updateTask(rowId, { archival: next }).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => {
           if (backlogNeedsPlanCleared(error)) {
             setPlanPrompt({ nodeId, rowId, title: node.title, plan: node.plan ?? null });
@@ -77,7 +77,7 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
         },
       );
     },
-    [findNode, reload, reportFailure],
+    [findNode, settle, reportFailure],
   );
 
   const confirmClearPlan = useCallback(() => {
@@ -87,10 +87,10 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
     // Both fields in one write: the plan going and the backlog arriving are the same decision, and
     // sending them separately would leave a moment where neither the old state nor the new holds.
     void updateTask(rowId, { archival: TASK_ARCHIVAL.BACKLOG, plan: null }).then(
-      () => reload(),
+      () => settle(),
       (error: unknown) => reportFailure(nodeId, error),
     );
-  }, [planPrompt, reload, reportFailure]);
+  }, [planPrompt, settle, reportFailure]);
 
   const cancelPlanPrompt = useCallback(() => setPlanPrompt(null), []);
 

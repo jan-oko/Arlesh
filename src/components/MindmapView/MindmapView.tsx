@@ -80,7 +80,7 @@ const KEYBOARD_PAN_STEP = 80;
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo", "touch"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode, createCommitment, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode, createCommitment, createFlow, settle } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
@@ -194,7 +194,7 @@ export default function MindmapView() {
     if (subtreeRootId !== null) canvasRef.current?.centerOnRoot();
   }, [subtreeRootId, activeTabId]);
 
-  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
+  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, settle });
   const {
     setEditorModal, allTags, domainNames, onDoubleClick,
     confirmScopeClamp,
@@ -205,7 +205,7 @@ export default function MindmapView() {
   const flowTargets = useMemo(() => flowTargetNodes(tree), [tree]);
   // Shift+F, Shift+H and Shift+C open a blank editor rather than creating a row; shared with the
   // Steps View.
-  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, reload });
+  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, settle });
   const { onNewFlow, onNewHabit, onNewCommitment } = createEditors;
   const startedFlowParent = useMemo(
     () => (startFlowNode === null ? null : targetSelectionFor(findParent(tree, startFlowNode.id))),
@@ -217,7 +217,7 @@ export default function MindmapView() {
     async (node: MindmapNode, keepDependencies: boolean, mapScopes: boolean) => {
       const dbId = storedId(rowIdOf(node));
       const flow = await convertToFlow(node.kind, dbId, keepDependencies, mapScopes);
-      await reload();
+      await settle();
       const flowNode: MindmapNode = {
         id: `flow-${flow.id}`,
         rowId: flow.id,
@@ -246,7 +246,7 @@ export default function MindmapView() {
       selectNode(flowNode.id);
       setEditorModal({ nodeId: flowNode.id, node: flowNode });
     },
-    [reload, selectNode, setEditorModal],
+    [settle, selectNode, setEditorModal],
   );
 
   // A subtree with children prompts (destructive); a childless node converts straight away.
@@ -306,9 +306,9 @@ export default function MindmapView() {
       // One gesture operation: the clamps only exist because of the move, so they and the move
       // are one request and one undo step.
       await withGesture(t("undo:gestures.move", { count: 1 }), () => runGesture("move-node", steps));
-      await reload();
+      await settle();
     },
-    [confirmScopeClamp, reload, t, tree],
+    [confirmScopeClamp, settle, t, tree],
   );
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart, onDragMove, onDragEnd } = useDrag({ tree, moveNode: guardedMoveNode });
@@ -353,13 +353,13 @@ export default function MindmapView() {
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
-    findNode: findNodeById, reload, showToast,
+    findNode: findNodeById, settle, showToast,
   });
 
-  const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
-  const { toggleArchive } = useHandArchive({ findNode: findNodeById, reload, showToast });
-  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: findNodeById, reload, showToast });
-  const { toggleCompound } = useTaskCompound({ findNode: findNodeById, reload, showToast });
+  const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, settle, showToast });
+  const { toggleArchive } = useHandArchive({ findNode: findNodeById, settle, showToast });
+  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: findNodeById, settle, showToast });
+  const { toggleCompound } = useTaskCompound({ findNode: findNodeById, settle, showToast });
   // The same hook the List View's tick and cross go through, so the canvas grows no second write
   // route: a real Commitment updates its row, a Habit iteration its Modification.
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
@@ -369,11 +369,11 @@ export default function MindmapView() {
   // `P`. Reads the drawn tree as a fallback so a selected fold of Habit history is refused by name
   // rather than dropped as an id the loaded tree does not hold.
   const quickPlan = useQuickPlan({
-    findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), reload, showToast,
+    findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), settle, showToast,
   });
   // `D`. The same drawn-tree fallback, so a fold is refused by name; the search reads the board.
   const quickDependency = useQuickDependency({
-    tree, findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), reload, showToast,
+    tree, findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), settle, showToast,
   });
 
   const handleConfirmDelete = useCallback(() => {
@@ -483,10 +483,10 @@ export default function MindmapView() {
         title: data.title, target_type: data.targetType, target_id: data.targetId, anchor_date: data.anchorDate,
       });
       setStartFlowNode(null);
-      await reload();
+      await settle();
       selectNode(`${result.root_type}-${result.root_id}`);
     },
-    [startFlowNode, reload, selectNode],
+    [startFlowNode, settle, selectNode],
   );
 
   const { onContextAction } = useContextAction({
@@ -509,7 +509,7 @@ export default function MindmapView() {
     }
   }, [selectedNodeId, displayRoot, selectNode, setSelection]);
 
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
 
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
@@ -603,7 +603,7 @@ export default function MindmapView() {
   }, [hasTouch, ready, toggleCollapsedOrGroup]);
   useTouchBoardCommands({
     selection: () => [...selectedNodeIds].flatMap((id) => findNodeById(id) ?? []),
-    reload,
+    settle,
     showToast,
   });
   // The action bar's New, with nothing selected: a Task under the subtree on screen, refused out

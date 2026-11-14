@@ -25,8 +25,16 @@
 
 from arlesh import errors, models, pairing, rules
 from arlesh._native import json_schema
-from arlesh.backends import Backend, BoardRevision, HttpBackend, ServerStatus, SqliteBackend
-from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open
+from arlesh.backends import (
+    Backend,
+    BoardHead,
+    BoardRevision,
+    CurrentBoard,
+    HttpBackend,
+    ServerStatus,
+    SqliteBackend,
+)
+from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open, set_time_zone
 from arlesh.errors import (
     AmbiguousId,
     ArleshError,
@@ -47,8 +55,10 @@ __all__ = [
     "Arlesh",
     "ArleshError",
     "Backend",
+    "BoardHead",
     "BoardRevision",
     "ContainmentViolated",
+    "CurrentBoard",
     "Database",
     "DatabaseError",
     "Hold",
@@ -71,4 +81,5 @@ __all__ = [
     "open",
     "pairing",
     "rules",
+    "set_time_zone",
 ]
