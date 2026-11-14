@@ -221,6 +221,37 @@ the rest:
 
 Settings → Agents folds a parent's children away, closed by default.
 
+## Revision 2026-11-14: the orchestrator starts a subagent already holding its Claim
+
+The user asked whether a mod can add details to Claude Code's subagents pane, and whether the
+orchestrator could plausibly start subagents with their Claims; the proposal below was accepted
+("sure"), the fallback kept. **This replaces part of ruling 5**: the mod no longer only registers
+and leaves the claim to the subagent. When the orchestrator names the Task, the mod registers the
+child *with* the Claim and the subagent claims only as a fallback.
+
+What the mod API gives (2.1.323 types): no render site draws the footer's task list, but
+`agent.spawn` lets a hook rewrite `description` (documented as "what the task shows as") and
+`prompt`, carries the pinned `tool_use_id`, and settles with the new `agentId`; `$.agent.list()`
+lists a subagent's `description` as the spawn hook left it. Whether `SubagentStart` fires before
+`agent.spawn`'s `next` resolves is not stated, so the mod ties them two ways: the settled `agentId`,
+and the rewritten label (unique, since it carries the Task's short id) found in `$.agent.list()`.
+Not run against a live terminal: hand test H6.
+
+- **Marker**, strict: `[arlesh:<id>]`, one only, in `description` or `prompt`; a repeated or
+  malformed one counts as none (debug log). Grammar and label in `docs/spec/agents.md`.
+- **Server**: `register_child` takes an optional `subtree`; the child is created and then claims in
+  its own transaction under the checks `claim` applies to a child, and a refusal leaves the child
+  registered, unclaimed, with `claim_refused`. No new rule, and no schema change: it is registration
+  followed by the existing claim.
+- **Fallback** unchanged: no marker, a Task that cannot be read, or a refused Claim register the
+  child unclaimed and tell the subagent to claim (with the reason).
+- **Guard**: a subagent with no child of its own, calling `claim` or `release` without a
+  `sub_token`, would have changed the **session's** Claim (it did, in the first hand test). The mod
+  denies those two. `attach` (it would rebind the session), `pause`, `resume`, `lock`, `unlock` and
+  `report_usage` have the same exposure and are not guarded yet.
+- **Not built**: live Active/Paused in the task list (the label is set once), a pane, and noticing
+  a session the model attached by hand (the mod registers children only when the mod attached).
+
 ## Consequences
 
 - A subagent dispatched with the mod shows in Settings → Agents under its parent, its Task as its

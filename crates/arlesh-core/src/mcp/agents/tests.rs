@@ -1045,3 +1045,143 @@ async fn a_node_outside_the_parents_claim_keeps_the_generic_refusal() {
     );
     assert!(!message(&read).contains("Claim"), "{}", message(&read));
 }
+
+/// `register_child` with a `subtree`: the answer.
+async fn register_holding(
+    session: &ArleshMcp,
+    client_id: &str,
+    node_type: &str,
+    id: &str,
+) -> Value {
+    call(
+        session,
+        "arlesh_agents",
+        json!({
+            "operation": "register_child",
+            "name": "helper",
+            "client_id": client_id,
+            "subtree": { "node_type": node_type, "node_id": id },
+        }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_child_registered_with_a_task_holds_it_at_once() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+
+    let answer = register_holding(&session, "sub-1", "task", "100").await;
+
+    assert!(!is_error(&answer), "{answer}");
+    let identity = structured(&answer);
+    assert!(identity["sub_token"].is_string(), "{answer}");
+    assert_eq!(identity["standing"], "active", "{answer}");
+    assert!(identity.get("claim_refused").is_none(), "{answer}");
+    assert_eq!(
+        identity["agent"]["claim"]["root"]["node_kind"], "task",
+        "{answer}"
+    );
+    assert!(
+        identity["claim_name"]
+            .as_str()
+            .is_some_and(|name| name.ends_with("Docs")),
+        "{answer}"
+    );
+    let token = identity["sub_token"].as_str().unwrap().to_owned();
+    let seen = call(
+        &session,
+        "arlesh_snapshot",
+        json!({ "operation": "load", "sections": ["tasks"], "sub_token": token }),
+    )
+    .await;
+    assert_eq!(task_titles(&seen), ["Docs"], "{seen}");
+}
+
+#[tokio::test]
+async fn a_task_outside_the_parents_claim_leaves_the_child_registered_and_unclaimed() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach(&session, "orchestrator", 10).await;
+
+    let answer = register_holding(&session, "sub-1", "task", "101").await;
+
+    assert!(!is_error(&answer), "the child is registered: {answer}");
+    let identity = structured(&answer);
+    assert!(identity["sub_token"].is_string(), "{answer}");
+    assert_eq!(identity["standing"], "unclaimed", "{answer}");
+    assert!(identity["agent"]["claim"].is_null(), "{answer}");
+    let why = identity["claim_refused"]
+        .as_str()
+        .expect("the answer says why");
+    assert!(
+        why.contains("not inside your parent agent's Claim"),
+        "{why}"
+    );
+}
+
+#[tokio::test]
+async fn a_task_a_sibling_holds_is_refused_naming_the_sibling_and_the_child_is_still_registered() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    register_holding(&session, "sub-1", "task", "100").await;
+
+    let answer = register_holding(&session, "sub-2", "task", "100").await;
+
+    assert!(!is_error(&answer), "{answer}");
+    let why = structured(&answer)["claim_refused"]
+        .as_str()
+        .expect("refused")
+        .to_owned();
+    assert!(why.contains("overlaps the active claim"), "{why}");
+    assert_eq!(structured(&answer)["standing"], "unclaimed", "{answer}");
+}
+
+#[tokio::test]
+async fn a_task_that_names_nothing_is_refused_without_saying_what_exists() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+
+    let answer = register_holding(&session, "sub-1", "task", "ffffff").await;
+
+    assert!(!is_error(&answer), "{answer}");
+    assert!(structured(&answer)["claim_refused"].is_string(), "{answer}");
+    assert_eq!(structured(&answer)["standing"], "unclaimed", "{answer}");
+}
+
+#[tokio::test]
+async fn registering_again_with_a_task_rotates_the_token_and_claims_it() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+    let first = register(&session, "sub-1").await;
+
+    let again = register_holding(&session, "sub-1", "task", "100").await;
+
+    let rotated = structured(&again)["sub_token"]
+        .as_str()
+        .expect("a new token");
+    assert_ne!(rotated, first);
+    assert_eq!(structured(&again)["standing"], "active", "{again}");
+}
+
+#[tokio::test]
+async fn a_tasks_get_answers_its_short_id_and_title_for_the_mod_to_label_a_subagent_by() {
+    let (mcp, _pool) = board().await;
+    let session = session(&mcp);
+    attach_on_project(&session, "orchestrator").await;
+
+    let answer = call(
+        &session,
+        "arlesh_tasks",
+        json!({ "operation": "get", "id": "100" }),
+    )
+    .await;
+
+    let task = &structured(&answer)["task"];
+    assert!(task["short_id"].is_string(), "{answer}");
+    assert_eq!(task["title"], "Docs", "{answer}");
+}

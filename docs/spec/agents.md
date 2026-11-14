@@ -91,7 +91,40 @@ the same child with a **new** sub-token and the old one stops working: only the 
 it asks when it has lost the token. A mod that still has its record resumes the child instead and
 never registers again, so it does not rotate the token. A child cannot register children. The arlesh-notify mod does all of
 this when a subagent starts, names the child from the subagent's description, and hands the
-subagent its sub-token in its starting context; the subagent then claims the Task its brief names.
+subagent its sub-token in its starting context. Either the child is **created already holding its
+Task** (below) or the subagent claims the Task its brief names.
+
+**Starting a subagent already holding its Task** (revised 2026-11-14, ADR 0019). `register_child`
+takes an optional `subtree` (a Task). The child is created and then given that sub-Claim in the
+same call, under exactly the checks `claim` applies to a child (a stored node inside the parent's
+Claim, no overlap with an active sibling's sub-Claim). If the Claim is refused the child is **still
+registered**, unclaimed, and the answer carries `claim_refused` with the reason, so the subagent
+falls back to claiming for itself. Registering again with a `subtree` rotates the token and claims
+as well. The arlesh-notify mod uses it when the orchestrator names the Task in the Agent call with a
+marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
+
+- The marker is `[arlesh:` + an id of 3 to 40 letters, digits or hyphens (a row id, a short id or a
+  full id) + `]`, case-sensitive. **Exactly one** in the `description` and `prompt` together counts;
+  a repeated one, or anything that starts `[arlesh:` and is not a whole marker, is treated as none
+  and noted in the debug log.
+- At `agent.spawn`, when the session is attached, the mod reads the Task (`arlesh_tasks.get`),
+  strips the marker from `description` and `prompt`, and rewrites `description` (what Claude Code's
+  subagent list shows) to `<description> · <short id> <title>`, the title cut at 28 characters and
+  ended with `…`: `Fix CI · 077 Subagents: register under t…`. The label is set once at spawn; it does
+  not follow Active and Paused.
+- The spawn is tied to the subagent's start by the agent id `agent.spawn` settles with, or, if the
+  start comes first, by the label the engine lists as the subagent's description. The mod registers
+  the child with the Task when the subagent starts, and the starting context says the subagent
+  already holds it and must not call `claim`.
+- Without a marker, with a Task the mod cannot read, or when registration refuses the Claim, the
+  child is registered unclaimed and the subagent is told to claim the Task its brief names (with
+  the reason, when the server gave one). A resumed subagent keeps its child and its label; nothing
+  is registered or claimed again.
+
+**Guarding the session's Claim.** A subagent with no `sub_token` runs as the session, so a `claim`
+or `release` it made would change the **session's** Claim. The mod therefore **denies** `claim` and
+`release` made inside a subagent's loop when that subagent has no child of its own (not registered:
+the session was not attached by the mod, or registration failed), with a message saying why.
 
 **The sub-token** is an optional argument, `sub_token`, on **every** tool. A call carrying it runs
 as that child: it sees and writes only the child's **sub-Claim**. A call without it runs as the

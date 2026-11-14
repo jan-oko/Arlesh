@@ -162,10 +162,15 @@ impl ArleshMcp {
         Some(format!("{short} {title}"))
     }
 
+    /// Registers (or registers again) the child for `client_id`, then, when the caller named a
+    /// `subtree`, gives it that sub-Claim under the checks `claim` applies to a child. A Claim
+    /// that is refused leaves the child registered and unclaimed, and the answer says why, so the
+    /// subagent can claim for itself.
     async fn register_child(
         &self,
         name: String,
         client_id: String,
+        subtree: Option<NodeRef>,
     ) -> Result<CallToolResult, ErrorData> {
         let parent = match self.attached() {
             Ok(id) => id,
@@ -174,11 +179,19 @@ impl ArleshMcp {
         let mut db = attempt!(self.factory.begin().await);
         let (child, sub_token) =
             attempt!(service::register_child(&mut db, parent, &name, &client_id, self.now()).await);
-        let mut identity = attempt!(self.identity(&mut db, child.id, None).await);
         attempt!(db.commit().await);
-        identity.sub_token = sub_token;
+        let claim_refused = match subtree {
+            Some(subtree) => self.try_claim(child.id, &subtree).await,
+            None => None,
+        };
         (self.announce)(None);
-        result::ok(identity)
+        let mut db = attempt!(self.factory.begin().await);
+        let mut identity = attempt!(self.identity(&mut db, child.id, None).await);
+        identity.sub_token = sub_token;
+        result::ok(Attachment {
+            identity,
+            claim_refused,
+        })
     }
 
     async fn attach(
@@ -311,7 +324,9 @@ impl ArleshMcp {
     /// resumed session.
     ///
     /// **Subagents** run over your connection. Register each one with `register_child` (its
-    /// description as `name`, its id as `client_id`): the answer holds its **sub_token**. Hand it
+    /// description as `name`, its id as `client_id`): the answer holds its **sub_token**. Name the
+    /// Task it will work on as `subtree` and the child is created already holding that sub-Claim
+    /// (if that is refused it is registered unclaimed, and `claim_refused` says why). Hand it
     /// to the subagent, which passes `sub_token` on every Arlesh tool call and sees only its own
     /// **sub-Claim**. It takes one with `claim`: anything inside your Claim, replacing its own,
     /// and nowhere else. A call without `sub_token` runs as you, on your whole Claim. Register the
@@ -322,7 +337,9 @@ impl ArleshMcp {
     /// A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
     /// reopened and the subagent starts again, `register_child` makes a fresh child with a new
     /// `sub_token`. A child the user brings back with Ctrl+Z returns paused. A client with the
-    /// arlesh-notify mod does all of this for its subagents.
+    /// arlesh-notify mod does all of this for its subagents: write `[arlesh:<task id>]` once in an
+    /// Agent call's `description` or `prompt` and the subagent starts holding that Task, with its
+    /// label showing the Task; without the marker it is told to claim the Task its brief names.
     ///
     /// A **Claim** is a subtree and it is your whole view: you read and write only inside it, as
     /// if it were your own MCP root. Only one agent's active Claim may cover any node. `pause`
@@ -383,9 +400,11 @@ impl ArleshMcp {
             AgentsOperation::Lock => self.act(AgentAction::Lock { locked: true }).await,
             AgentsOperation::Unlock => self.act(AgentAction::Lock { locked: false }).await,
             AgentsOperation::ReportUsage { windows } => self.report_usage(windows).await,
-            AgentsOperation::RegisterChild { name, client_id } => {
-                self.register_child(name, client_id).await
-            }
+            AgentsOperation::RegisterChild {
+                name,
+                client_id,
+                subtree,
+            } => self.register_child(name, client_id, subtree).await,
         }
     }
 }
