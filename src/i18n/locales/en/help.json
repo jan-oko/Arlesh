@@ -26,5 +26,7 @@
   "deselect": "Deselect {{name}}",
   "groups": "Groups",
   "legendPipelineStored": "stored",
-  "legendReadSide": "read side"
+  "legendReadSide": "read side",
+  "expandGraph": "Expand the graph to the full view",
+  "collapseGraph": "Back to the page"
 }

@@ -16,7 +16,7 @@ function box(label: string): HTMLElement {
 describe("HelpView", () => {
   it("draws every box of the graph", () => {
     render(<HelpView onClose={vi.fn()} />);
-    const boxes = screen.getAllByRole("button").filter((element) => element.hasAttribute("aria-pressed"));
+    const boxes = screen.getAllByRole("button").filter((element) => element.closest("svg") !== null);
     expect(boxes).toHaveLength(GRAPH_NODES.length);
   });
 
@@ -63,6 +63,29 @@ describe("HelpView", () => {
     fireEvent.click(screen.getByRole("button", { name: "clear" }));
     expect(screen.getByRole("heading", { name: "selectedCount:0" })).toBeInTheDocument();
     expect(box("Time Scope")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("expands the graph to the full view, and Esc leaves it before it closes Help", () => {
+    const onClose = vi.fn();
+    render(<HelpView onClose={onClose} />);
+    const expand = screen.getByRole("button", { name: "expandGraph" });
+    fireEvent.click(expand);
+    expect(screen.getByRole("button", { name: "collapseGraph" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(window, { code: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "expandGraph" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { code: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns from the expanded graph with the same button, keeping what was pinned", () => {
+    render(<HelpView onClose={vi.fn()} />);
+    fireEvent.click(box("Time Scope"));
+    fireEvent.click(screen.getByRole("button", { name: "expandGraph" }));
+    fireEvent.click(screen.getByRole("button", { name: "collapseGraph" }));
+    expect(box("Time Scope")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("closes from the close button and on Escape", () => {

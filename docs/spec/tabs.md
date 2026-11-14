@@ -96,7 +96,9 @@ derivation graph in its place, and the concept cards of each group — all drawn
 `src/data/model-map.ts`, `src/data/model-map-pipeline.ts` and `src/data/derivation-graph.ts`, in the
 app's own fonts and theme, with no network request. In the graph, hover or focus a box to preview it,
 click, tap or `Enter` to pin its card, Clear to let go; on touch a tap pins, there being no hover, and
-a narrow screen scrolls the graph sideways. The right-click menus are per node, row and tab, so
+a narrow screen scrolls the graph sideways. A button beside the graph's heading **expands it to fill
+the whole Help view**; the same button, or `Esc` (which leaves the expanded graph before it closes
+Help), returns to the page at the place it was left, with the pinned cards kept. The right-click menus are per node, row and tab, so
 none of them carries a Help line.
 
 **The board alone.** `F11` hides the tab strip and the top bar, leaving the view filling the window;

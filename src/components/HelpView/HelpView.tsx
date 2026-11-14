@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODEL_MAP_FOOTER, MODEL_MAP_GROUPS, MODEL_MAP_PIPELINE_CAPTION } from "@/data/model-map";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
@@ -19,7 +19,7 @@ const CLOSE_GLYPH = "×";
 /**
  * Help: a full view, left like a modal. It takes the whole window and draws over the tab, which
  * stays mounted beneath it — so the close button or Esc returns to the view exactly as it was, with
- * its tab, selection and scroll. It shows the concept map as one scrolling page: how Arlesh fits
+ * its tab, selection and scroll. (The graph can be expanded to fill it, and Esc leaves that first.) It shows the concept map as one scrolling page: how Arlesh fits
  * together, with the derivation graph in its place. There is no bar: the close button floats over
  * the corner.
  *
@@ -30,6 +30,7 @@ export default function HelpView({ onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("help");
   const trap = useFocusTrap<HTMLDivElement>();
+  const [graphExpanded, setGraphExpanded] = useState(false);
 
   // Leaving Help hands the keyboard back to whatever held it when Help opened.
   useEffect(() => {
@@ -42,11 +43,13 @@ export default function HelpView({ onClose }: Props) {
       if (event.code !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      onClose();
+      // The expanded graph is left first: one press closes one thing.
+      if (graphExpanded) setGraphExpanded(false);
+      else onClose();
     }
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [onClose]);
+  }, [onClose, graphExpanded]);
 
   return (
     <div ref={trap} className={styles.view} role="dialog" aria-modal="true" aria-label={t("title")}>
@@ -64,7 +67,7 @@ export default function HelpView({ onClose }: Props) {
             <span><i className={`${styles.swatch} ${styles.swatchPreset}`} />{t("legendReadSide")}</span>
           </div>
         </figure>
-        <DerivationSection />
+        <DerivationSection expanded={graphExpanded} onToggleExpanded={() => setGraphExpanded((now) => !now)} />
         {MODEL_MAP_GROUPS.map((group) => <MapGroup key={group.id} group={group} />)}
         <footer className={styles.footer}><InlineText text={MODEL_MAP_FOOTER} /></footer>
       </div>

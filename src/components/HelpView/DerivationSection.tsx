@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODEL_MAP_GRAPH_SECTION } from "@/data/model-map";
 import { useDerivationGraph } from "@/hooks/use-derivation-graph";
@@ -8,17 +9,49 @@ import GraphHint from "./GraphHint";
 import InlineText from "./InlineText";
 import styles from "./HelpView.module.css";
 
-/** The derivation graph in its place in the map: the graph, the hover line, and the pinned cards. */
-export default function DerivationSection() {
+interface Props {
+  /** Whether the graph fills the whole Help view instead of sitting in the page. */
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}
+
+const EXPAND_GLYPH = "⤢";
+const COLLAPSE_GLYPH = "⤡";
+
+/**
+ * The derivation graph in its place in the map: the graph, the hover line, and the pinned cards.
+ * The button beside its heading expands it to fill the whole Help view, and the same button, or
+ * Esc, returns to the page. The page stays mounted, and the graph's slot in it keeps its height
+ * while the graph is out, so the page is at the same place when it comes back.
+ */
+export default function DerivationSection({ expanded, onToggleExpanded }: Props) {
   const { t } = useTranslation("help");
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [slotHeight, setSlotHeight] = useState<number | null>(null);
+  // Measured as the graph leaves the page, and held only while it is out, so the page does not shrink under the reader.
+  function toggleExpanded() {
+    if (!expanded) setSlotHeight(slotRef.current?.offsetHeight ?? null);
+    onToggleExpanded();
+  }
+  const label = expanded ? t("collapseGraph") : t("expandGraph");
   const state = useDerivationGraph();
   const { graph, selected, clear, toggle } = state;
   return (
-    <section className={`${styles.group} ${styles["band-derived"] ?? ""}`} id={groupAnchor("graph")}>
-      <div className={styles.groupHead}>
-        <span className={styles.eyebrow}>{MODEL_MAP_GRAPH_SECTION.eyebrow}</span>
-        <h2 className={styles.h2}>{MODEL_MAP_GRAPH_SECTION.title}</h2>
-        <p className={styles.groupIntro}><InlineText text={MODEL_MAP_GRAPH_SECTION.intro} /></p>
+    <div ref={slotRef} {...(!expanded || slotHeight === null ? {} : { style: { minHeight: slotHeight } })}>
+    <section
+      className={`${styles.group} ${styles["band-derived"] ?? ""} ${expanded ? styles.expanded : ""}`}
+      id={groupAnchor("graph")}
+      {...(expanded ? { role: "region", "aria-label": MODEL_MAP_GRAPH_SECTION.title } : {})}
+    >
+      <div className={styles.graphHead}>
+        <div className={styles.groupHead}>
+          <span className={styles.eyebrow}>{MODEL_MAP_GRAPH_SECTION.eyebrow}</span>
+          <h2 className={styles.h2}>{MODEL_MAP_GRAPH_SECTION.title}</h2>
+          <p className={styles.groupIntro}><InlineText text={MODEL_MAP_GRAPH_SECTION.intro} /></p>
+        </div>
+        <button type="button" className={styles.expand} aria-label={label} title={label} aria-pressed={expanded} onClick={toggleExpanded}>
+          {expanded ? COLLAPSE_GLYPH : EXPAND_GLYPH}
+        </button>
       </div>
       <DerivationGraph {...state} />
       <div className={styles.legend} aria-hidden="true">
@@ -44,5 +77,6 @@ export default function DerivationSection() {
         </div>
       </div>
     </section>
+    </div>
   );
 }

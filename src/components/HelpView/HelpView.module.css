@@ -22,7 +22,7 @@
   position: fixed;
   top: calc(var(--safe-top) + var(--space-2));
   right: calc(var(--safe-right) + var(--space-2));
-  z-index: 1;
+  z-index: 3;
   min-width: 44px;
   min-height: 44px;
   background: var(--surface);
@@ -387,3 +387,38 @@
   cursor: pointer;
 }
 .conceptLink:hover { text-decoration: underline; }
+
+.graphHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.expand {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.expand:hover { background: var(--node-bg-hover); }
+.expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The graph taken out of the page to fill the Help view; the page keeps its place beneath. */
+.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--canvas-bg);
+  padding: calc(var(--safe-top) + var(--space-4)) calc(var(--safe-right) + var(--space-4)) calc(var(--safe-bottom) + var(--space-4)) calc(var(--safe-left) + var(--space-4));
+}
+/* Clear of the floating close button, which stays above it. */
+.expanded .graphHead { padding-right: 56px; }
