@@ -463,7 +463,7 @@ function passesStatus(
     return withArchivedOverride(node, f, passesCommitmentPreset(node, f));
   }
   if (node.kind === "expectation") {
-    return withArchivedOverride(node, f, passesExpectationPreset(node, f));
+    return !isAgenticWait(node) && withArchivedOverride(node, f, passesExpectationPreset(node, f));
   }
   switch (f.statusMode) {
     case "all":
@@ -563,7 +563,7 @@ export function passesDoStatus(node: MindmapNode, f: FilterState): boolean {
  * Whether a Commitment shows under the given preset.
  *
  * Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
- * round. Three presets — Plan, Start and Do — show what is **unresolved**: what you have yet to
+ * round. Three presets — Plan, Start and Do — show what is **unresolved** and not archived: what you have yet to
  * judge is what is still live, and a recorded verdict, Kept or Broken alike, is answered the way a
  * done Task is. All shows everything, including past verdicts, because looking back over what you
  * kept and broke is the point of keeping the record. (Plan once kept a Broken commitment on screen
@@ -577,11 +577,11 @@ export function passesCommitmentPreset(node: MindmapNode, f: FilterState): boole
     case "all":
       return true;
     case "plan":
-      return verdict === VERDICT.UNRESOLVED;
     case "start":
     case "do":
-      // An archived Commitment is not live now, whatever its verdict (ruled 2026-10-04); the
-      // Archived pill's Include brings it back through the caller's override.
+      // An archived Commitment — by hand, beneath a hand archive, or Expired — is not live,
+      // whatever its verdict (ruled 2026-10-04; Plan joined Start and Do after it kept showing
+      // one); the Archived pill's Include brings it back through the caller's override.
       return verdict === VERDICT.UNRESOLVED && !isArchived(node);
     case "backlog":
       return false;
@@ -620,6 +620,15 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
     case "backlog":
       return false;
   }
+}
+
+/**
+ * Whether an Expectation is an **agentic wait** — one an agent raised on a Task. No view draws one:
+ * the Task it hangs under shows its open question or review. Mirrors `is_agentic_wait` in
+ * `crates/arlesh-core/src/filters/rules.rs`.
+ */
+export function isAgenticWait(node: MindmapNode): boolean {
+  return node.kind === "expectation" && node.agentWaiting !== undefined;
 }
 
 /** Combined tag predicate per SPEC: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). Only judges taggable nodes. */

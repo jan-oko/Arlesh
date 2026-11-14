@@ -160,14 +160,13 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
     let app = tauri::test::mock_app();
     app.manage(SessionFactory::new(pool.clone()));
     // The Backend port every command calls through: the in-process core over `pool`, with its own
-    // Undo Stacks and the agent capacity lock, off, which `load_mindmap` reads to derive its block.
-    // The lock is managed beside it too, for a test that sets it the way the MCP would.
-    let capacity = arlesh_lib::capacity::AgentCapacity::in_memory();
-    app.manage(capacity.clone());
+    // Undo Stacks.
+    // Its change events reach the mock windows as `board-changed`, as the app's do.
     app.manage(AppBackend::new(SqliteBackend::new(
         SessionFactory::new(pool.clone()),
         UndoStacks::new(),
-        capacity,
+        arlesh_lib::commands::board::board_change_sink(app.handle()),
+        tauri::async_runtime::handle().inner(),
     )));
     // And every host has a window, because a command that announces a board change takes the
     // window that issued it — that is how the other windows are told and this one is not.
@@ -288,4 +287,16 @@ pub async fn total_changes(pool: &SqlitePool) -> i64 {
         .fetch_one(pool)
         .await
         .expect("total_changes")
+}
+
+/// The board derived at `now` through the backend port: what the tests that check a derivation read
+/// (the window's own load is the published board, which is derived at the producer's clock).
+pub async fn load_board_at(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    now: chrono::NaiveDateTime,
+) -> Result<arlesh_lib::backend::revision::BoardLoad, arlesh_lib::error::WireError> {
+    use tauri::Manager;
+
+    let backend = app.state::<AppBackend>();
+    backend.load_mindmap(now).await
 }

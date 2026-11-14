@@ -7,11 +7,13 @@ import ScopeClampPrompt from "@/components/ScopeClampPrompt/ScopeClampPrompt";
 import HotkeysModal from "@/components/HotkeysModal/HotkeysModal";
 import ServerBanner from "@/components/ServerBanner/ServerBanner";
 import FirstRunChooser from "@/components/FirstRunChooser/FirstRunChooser";
+import HelpView from "@/components/HelpView/HelpView";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import { runStandalone } from "@/api/client-mode";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { useClientModeSync } from "@/hooks/use-client-mode";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useHelpStore } from "@/stores/use-help-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
@@ -20,11 +22,12 @@ import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { activeTabStores, useSystemBack } from "@/hooks/use-system-back";
 import QuitConfirm from "@/components/QuitConfirm/QuitConfirm";
+import { usePushRegistration } from "@/hooks/use-push-registration";
+import { useOpenNotifiedTask } from "@/hooks/use-open-notified-task";
 import { useSystemBars } from "@/hooks/use-system-bars";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { useThreeFingerTap } from "@/hooks/use-three-finger-tap";
-import { useAgentCapacitySync } from "@/hooks/use-agent-capacity";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
@@ -39,6 +42,8 @@ export default function App() {
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   // Three fingers tapping anywhere is full screen, in every view and over a sheet alike.
   useThreeFingerTap(toggleFullscreen, hasTouch);
+  const helpOpen = useHelpStore((s) => s.isOpen);
+  const closeHelp = useHelpStore((s) => s.close);
   const closeHotkeys = useHotkeysStore((s) => s.close);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
@@ -49,11 +54,11 @@ export default function App() {
   const isInputCaptured = useIsInputCaptured();
 
   useCloseToTraySync();
-  // The agent capacity lock is the backend's, shared with every window and with agents over the
-  // MCP; this keeps this window's copy of it current.
-  useAgentCapacitySync();
   // Standalone or Client, and how the server is doing — for the top bar and the banner.
   useClientModeSync();
+  // The phone's push token, kept registered with the server; a tapped notification opens its Task.
+  usePushRegistration();
+  useOpenNotifiedTask();
   // Android's back button; a no-op elsewhere.
   useSystemBack(activeTabStores);
   const firstRun = useClientModeStore((s) => s.status?.first_run === true);
@@ -106,6 +111,9 @@ export default function App() {
       {/* Read once, as the sheet opens: the view chords are off while it holds the keyboard, so the
           view it opened over is the view it closes over. */}
       {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} view={active?.stores.view.getState().view} />}
+      {/* Help is a full view left like a modal: the tab stays mounted beneath it, so closing it
+          returns to exactly where you were. */}
+      {helpOpen && <HelpView onClose={closeHelp} />}
       {/* Any view's editor, drag or Plan writer may ask these, so they hang above them all. */}
       <PlanClampPrompt />
       <QuitConfirm />

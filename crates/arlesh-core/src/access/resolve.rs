@@ -35,6 +35,8 @@ struct Resolved {
 #[derive(Debug, Clone, Default)]
 pub struct AccessMap {
     resolved: HashMap<NodeKey, Resolved>,
+    /// Whether nothing is writable: a paused Claim reads its subtree and changes none of it.
+    read_only: bool,
 }
 
 impl AccessMap {
@@ -53,7 +55,17 @@ impl AccessMap {
         for node in nodes {
             resolve_chain(node.key, &by_key, &roots, &mut resolved);
         }
-        Self { resolved }
+        Self {
+            resolved,
+            read_only: false,
+        }
+    }
+
+    /// The same map with every write taken away: what is readable stays readable, and nothing may
+    /// be written or created. A paused Claim's view.
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
     }
 
     /// What the MCP may do with `node`: [`AccessLevel::None`] for a node that is not stored, is
@@ -89,7 +101,7 @@ impl AccessMap {
             parent.node_kind,
             NodeTable::Domain | NodeTable::Goal | NodeTable::Task | NodeTable::Commitment
         );
-        if !holds_tasks || self.visible(parent).is_none() {
+        if self.read_only || !holds_tasks || self.visible(parent).is_none() {
             return false;
         }
         let explicitly_not_agentic = parent.node_kind == NodeTable::Task
@@ -110,7 +122,10 @@ impl AccessMap {
         occurrence_private: bool,
         own_agentic: Option<bool>,
     ) -> bool {
-        self.visible(host).is_some() && !occurrence_private && own_agentic != Some(false)
+        !self.read_only
+            && self.visible(host).is_some()
+            && !occurrence_private
+            && own_agentic != Some(false)
     }
 
     /// The nearest MCP root at or above `node`, when the MCP can see `node` at all.
@@ -144,7 +159,7 @@ impl AccessMap {
         if resolved.private {
             return None;
         }
-        let level = if node.node_kind == NodeTable::Task && resolved.agentic {
+        let level = if !self.read_only && node.node_kind == NodeTable::Task && resolved.agentic {
             AccessLevel::Write
         } else {
             AccessLevel::Read

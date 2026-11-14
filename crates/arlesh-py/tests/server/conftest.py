@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import socket
+import threading
+import time
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -13,10 +16,14 @@ from typing import Any
 
 import arlesh
 import pytest
+import uvicorn
 from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.push.database_push_store import DatabasePushStore
+from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
@@ -62,16 +69,35 @@ def tokens(server_db: Path) -> DatabaseTokenStore:
 
 
 @pytest.fixture
-def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
-    """Builds the server over the test's database, as ``arlesh-server`` does."""
+def connect_token(server_db: Path, tokens: DatabaseTokenStore) -> str:
+    """The server's connect token, as ``arlesh-server connect-token issue`` prints it."""
+    return ConnectTokens(server_db).issue()
 
-    def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
+
+@pytest.fixture
+def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
+    """Builds the server over the test's database, as ``arlesh-server`` does.
+
+    The board publisher is off unless the test asks for it with ``publish=True``: many tests read
+    the file with Python's own ``sqlite3`` while the server runs, and that library and the core's
+    must not touch one WAL index at the same moment."""
+
+    def build(
+        *,
+        force: bool = False,
+        path: Path | None = None,
+        sender: PushSender | None = None,
+        publish: bool = False,
+    ) -> ArleshServer:
         database = path if path is not None else server_db
         return ArleshServer(
-            board=Board(opener(database), holder(database), force=force),
+            board=Board(opener(database), holder(database), force=force, publish=publish),
             tokens=DatabaseTokenStore(database) if path is not None else tokens,
             pairs=DatabasePairingStore(database),
+            connect=ConnectTokens(database),
             version="test",
+            pushes=DatabasePushStore(database),
+            sender=sender,
         )
 
     return build
@@ -141,3 +167,26 @@ def day(date: str) -> dict[str, Any]:
 def one_day() -> Callable[[str], dict[str, Any]]:
     """A one-Day Time Scope, by its date."""
     return day
+
+
+@pytest.fixture
+def live(start: Start) -> Iterator[str]:
+    """The server, listening on a loopback port; its base URL."""
+    app: ArleshServer = start(publish=True)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 20
+    while not server.started:
+        assert time.monotonic() < deadline, "the server did not start"
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=20)

@@ -13,7 +13,7 @@ backend memory, one pair for the whole application, so an edit made in one windo
 stack a Ctrl+Z in another window pops — which is exactly what the paragraph above asks for. Ctrl+Z
 anywhere reverses the most recent thing the user did anywhere; a new Gesture in one window clears
 the Redo Stack another was about to use, for the same reason it clears it within one window. The
-board-changed event is a signal to reload and nothing more, and a window reloading on receipt
+board-changed event carries the board's changed nodes and nothing more, and a window applying it
 neither pushes nor pops anything.
 
 One consequence is worth saying out loud. The **name** a Gesture was opened with is held
@@ -39,7 +39,9 @@ whole-database snapshots and `sqlite3session` changesets, and says why neither i
 
 **Not every table is journaled.** Derived and materialised rows are excluded, or undo would fight
 the code that regenerates them. The exclusion list is part of the design rather than an
-optimisation, and today it is exactly the journal's own two tables. (Scopes are not rows at all;
+optimisation, and today it is the journal's own two tables, the server's device tokens and pairing
+PINs, and the operational state of the agents — their PINs and failed PINs, the accounts' usage
+reports and the connect token (`undo::EXCLUDED_TABLES`). (Scopes are not rows at all;
 see [*Scopes are derived*](time-scopes.md).) Everything else on the board is journaled, including the link and dependency tables that a
 foreign-key cascade removes without any command naming them.
 
@@ -128,11 +130,12 @@ Gesture with no user entries and — as for every such Gesture — no press is e
 notice, naming what was reversed: **"Undid: paste 5 nodes"** from the name the Gesture was opened
 with, or **"Undid: update 1 item"** from the row counts when nobody named it. A redo says
 **"Redid: …"** of the same phrase — the toast names the Gesture, not the direction of travel. The
-board then reloads the way every other mutation already ends.
+board then settles the way every other mutation ends: its changed nodes arrive as an event
+([Client Mode](client-mode.md#live-sync), *Live sync*).
 
 The other two outcomes also speak, and the three must not look alike:
 
-| outcome | undo | redo | reloads |
+| outcome | undo | redo | board changes |
 |---|---|---|---|
 | applied | `Undid: paste 5 nodes` | `Redid: paste 5 nodes` | yes |
 | empty stack | `Nothing to undo` | `Nothing to redo` | no |
@@ -161,6 +164,46 @@ lists them without being told twice, and they are suppressed exactly as every ot
 is — inside a text field, where Ctrl+Z means the field undo the browser already gives, and behind
 any modal or inline editor, through the same input-capture registry. `Ctrl+Y` is a hidden alias of
 the redo binding: dispatchable, but not a second cheat-sheet row.
+
+## Agents and Claims
+
+Claim management is undoable (the user, hand-testing #196, 2026-11-08). The `agents` and
+`agent_accounts` tables are **journaled** (migration 0102), so every change the user makes in
+Settings → Agents — pausing, resuming or releasing a Claim, locking or unlocking an agent or an
+account, removing an agent — goes through the ordinary command door, is one Gesture on the user's
+stack, and Ctrl+Z / Ctrl+Shift+Z reverse and reapply it. The Settings modal holds the keyboard, so
+it carries its own undo binding (the same Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y) that is active while
+it is open and defers to the browser's own undo inside an input, a textarea or an editable field.
+After an undo or redo the Agents section reads again.
+
+*Why rows rather than a command.* The journal is trigger-written row images, so putting the two
+tables in it costs two sets of triggers and no new mechanism; a per-command inverse is the
+obligation ADR 0006 turned down. A removed agent comes back with its row, and its token digest
+sits in the session-scoped journal only (it is truncated at launch), never in a new place.
+
+*What stays out.* PINs, failed PINs, usage reports and the connect token are operational state, not
+choices to take back, and stay excluded.
+
+*Agents' own writes.* An agent's attach, claim, lock and usage report are journaled under source
+`mcp` like its board writes, and stay off every stack (below).
+
+*Child Agents* (Task `077`, [ADR 0019](../adr/0019-child-agents-and-sub-claims.md)). A child
+Agent is an `agents` row, journaled like any (migration 0106 adds `parent_id` to the triggers); the
+user can pause, resume, release and remove one in Settings, each a Gesture. A child is removed by
+database triggers when its parent is deleted or the Task its sub-Claim names is set Done, inside the
+write that causes it, so the removal joins that write's Gesture: Ctrl+Z on removing the parent, or
+on setting the Task Done, brings the child back too. The triggers are guarded on
+`undo_context.suppressed`, as `mcp_roots_forget_*` are, so a replay restores and removes rows from
+the journal alone and never twice. A child restored by undo is put back **Paused** (the statement
+that re-inserts an `agents` row with a `parent_id` writes `claim_paused = 1`), so it reads Active
+again only when its subagent resumes. A child removed by an **agent's** write (an agent set its Task
+Done) was journaled under `mcp`, which is on no stack, so the user's Ctrl+Z does not bring it back;
+the mod registers the subagent afresh when it starts again.
+
+*Overlap after an undo.* Undo restores the row as it was, which can leave two active Claims
+overlapping when another agent claimed the subtree meanwhile. The Claim rules already tolerate it:
+the older Claim keeps its place and the younger is shadowed until the overlap goes
+([Agents](agents.md)), so undo needs no check of its own.
 
 ## Sources, and not undoing undo
 

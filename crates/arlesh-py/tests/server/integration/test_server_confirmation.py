@@ -1,7 +1,8 @@
-"""The confirmation protocol: refused 422 naming what is at stake, then done when confirmed.
+"""An occurrence is not closed over work still open beneath it (a child added by hand included).
 
 The scenario of the Rust integration tests in ``src-tauri/tests/flows/occurrence_children.rs``:
-a daily Habit from 2026-01-05, a Task hung on its first occurrence, and that occurrence completed.
+a daily Habit from 2026-01-05, a Task hung on its first occurrence, and that occurrence
+completed: refused, whatever ``confirmed`` says.
 """
 
 from __future__ import annotations
@@ -42,27 +43,24 @@ def _occurrence_with_unfinished_child(server: TestClient, create: Create) -> str
     return occurrence
 
 
-def test_completing_an_occurrence_over_unfinished_work_asks_first_and_names_it(
+def test_completing_an_occurrence_over_unfinished_work_is_refused_and_says_so(
     server: TestClient, create: Create
 ) -> None:
     occurrence = _occurrence_with_unfinished_child(server, create)
 
     response = server.patch(f"/tasks/{occurrence}", json=DONE)
 
-    assert response.status_code == 422
+    assert response.status_code == 400
     body = response.json()
-    assert body["kind"] == "needs_confirmation"
-    assert body["details"]["reason"] == "unfinished_children"
-    assert "buy milk" in str(body["details"]["children"])
+    assert body["kind"] == "invalid_request"
+    assert "unfinished sub-item" in body["message"]
 
 
-def test_sent_again_confirmed_it_completes_the_occurrence(
+def test_naming_the_confirmation_does_not_close_an_occurrence_over_unfinished_work(
     server: TestClient, create: Create
 ) -> None:
     occurrence = _occurrence_with_unfinished_child(server, create)
-    server.patch(f"/tasks/{occurrence}", json=DONE)
 
     response = server.patch(f"/tasks/{occurrence}", params={"confirmed": True}, json=DONE)
 
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == {"kind": "ordinary", "status": "done"}
+    assert response.status_code == 400, response.text

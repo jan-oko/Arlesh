@@ -31,7 +31,7 @@ database, so it takes no hold.
 
 ```
 pip install 'arlesh[server]'
-arlesh-server --db <path> [--host <addr>] [--port N] [--tls-cert F --tls-key F] [--force]
+arlesh-server --db <path> [--host <addr>] [--port N] [--tls-cert F --tls-key F] [--time-zone ZONE] [--force]
 ```
 
 It is started by hand on whichever machine holds the database. There is no unit file and no
@@ -43,6 +43,17 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   file holding the URL instead, for a secret mounted as a file; giving both is refused. SQLite is
   the only scheme for now (Postgres comes later, through portable SQL). `--db` and
   `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
+
+- **The time zone.** The server keeps the user's day in one zone: "today", the parts of the day,
+  Overdue, Missed, the cooldown of a Habit and every `now` it derives the board at or stamps a
+  write with. `--time-zone <IANA name>` or `ARLESH_TIME_ZONE` (for example `Europe/Berlin`, or
+  `UTC`) sets it; the flag wins over the variable. Unset, it is the server machine's own zone,
+  which in a container is UTC unless `TZ` says otherwise, so **set it for a container**. A name no
+  zone has refuses to start, saying so. The zone database is built in (it does not need `tzdata`
+  in the image, and `TZ` is not read for the named zone). The desktop app deriving locally
+  (Standalone) keeps the device's zone, and a window's own reads still send the device's clock.
+  In a compose file: `environment: { ARLESH_TIME_ZONE: Europe/Berlin }` beside
+  `ARLESH_DATABASE_URL`.
 
 - **The backup endpoint.** `ARLESH_BACKUP_TOKEN` switches on `GET /backup`, an administrator's
   route for pulling a consistent snapshot of the database (see *Backup*). Unset, the route does not
@@ -105,11 +116,9 @@ one, so revoke it first. The table is read on every request, so a revoke takes e
 without a restart.
 
 The table is reached through the bindings, never Python's own `sqlite3`: two copies of SQLite in one
-process do not see each other's locks, and the WAL is corrupted under them. Tokens used to live in
-`<db>.tokens` beside the database. The first time the server or a `token` command runs, that file's
-tokens are moved into the table and the file is renamed `<db>.tokens.imported`, so a token revoked
-later cannot come back from it. Reading the table migrates the database if it is behind, so the
-server reads it at startup only when nothing holds the database (or it was forced).
+process do not see each other's locks, and the WAL is corrupted under them.
+Reading the table migrates the database if it is behind, so the server reads it at startup only
+when nothing holds the database (or it was forced).
 
 **The token decides the client.** The client is the name the undo journal records on every write
 (see [Undo](undo.md), *Clients, and a second writer*), so a request cannot write under another
@@ -151,8 +160,9 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | Path | What |
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
-| `GET /events` | The change stream (below) |
-| `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
+| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the agents' long poll, answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
+| `GET /board/current` | The latest **publication** as it is: the board's JSON, nulls included, with `X-Arlesh-Seq`, `X-Arlesh-Revision` (the publication's), `X-Arlesh-Hash` and `X-Arlesh-Board-Now`. Derives nothing. The app's full load (see *Live sync*) |
+| `GET /board?now=` | The whole board derived afresh at `now` (default: the server's clock): every node with its lifecycle, short id and facts. For agents and scripts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
 | `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check, `GET /{id}/dependency-candidates` (what the quick dependency picker offers) |
@@ -163,15 +173,15 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/flows` | read, create, update, delete, `/start`, `/recurrence` (`GET` too), `/habit-modifications`, `/fork`, `/duplicate`, `/dependencies`; `GET` the list, `/{id}/goals`, `/{id}/tasks`, `/{id}/completion-count`, `/instance-nodes`; `POST /origins` and `/scope-valid-targets` (reads, the body a list of nodes) |
 | `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate`; `GET /flow_goal`, `/flow_task`, `/cycles`, `/dependencies`: every Flow's |
 | `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons`, `POST /scope-containment-conflicts` (the body a Time Scope) and `GET /reparent-conflicts?parent_type=&parent_id=`: what-ifs that write nothing |
-| `/capacity` | The agent capacity lock: `GET`, and `PUT` with `{"at_capacity": …}`. One lock per database file, shared by every route and every client's MCP endpoint |
 | `/undo`, `/redo` | `GET /undo` (what the calling client's next undo and redo would be), `POST /undo`, `POST /redo`: the calling client's own stacks. `null` when there is nothing to take back |
 | `/gestures` | The gesture operations: each gesture the app makes over several commands, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`), and `POST /paste`, `/insert-parent`, `/move-node`, `/plan-tasks`, `/plan-move`, `/save-task`, `/save-goal`, `/save-commitment`, `/save-project`, `/save-wait`, `/save-flow`, `/save-flow-item`, `/new-flow` and `/archive-nodes`, each with the gesture's writes as its body and answering each write's result (see [Client Mode](client-mode.md), *Undo*) |
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
+| `/push`, `/devices/current/push` | `GET /push` (`enabled`, `project_id`: whether the server has FCM credentials), `PUT /devices/current/push` (body `{"fcm_token"}`: the asking device registers for phone notifications) and `DELETE`. See [Notifications](notifications.md) |
 | `/mcp` | Arlesh's MCP endpoint (below) |
 | `POST /pair`, `POST /pair/poll` | **Open without a token.** A new device asks for a PIN (body `{"name"}`, answers `id`, `pin`, `name`, `expires_at`; rate limited per address) and polls with `{"id", "pin"}` (answers `pending`, or `approved` with the device's `name` and `token`, once). See *Pairing* below |
-| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
+| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`, `push`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
 
 ## Pairing
 
@@ -205,17 +215,41 @@ between requests: a gesture the app makes over several nodes is one of the `/ges
 instead (see [Client Mode](client-mode.md), *Undo*). The stacks are in memory, one pair per client,
 and start empty with the server, which also clears the journal at startup as the app does.
 
-## Live sync: `/events`
+## Live sync: `/events/changes`
 
-`GET /events` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
-a write through any route as any client, the capacity lock, and an agent's write through `/mcp`.
-The revision is one per database file, shared by every open of it in the process, and it starts at
-0 when the server starts. The stream sends `event: board-changed` with `data: {"revision": n,
-"epoch": e}` when the revision moves past the last one it sent, so writes close together arrive as
-one event. Each event's id is `<epoch>:<revision>`, the epoch naming this run of the server. A
-client reconnecting with `Last-Event-ID` is sent one event at once if it missed anything: the
-revision moved past its own, or the server restarted. A comment goes out every 15 s of silence, so
-a proxy keeps the stream open.
+*Task `2d9`, [ADR 0020](../adr/0020-changed-nodes-and-board-hash.md).*
+
+Every committed write bumps the board's **revision**: a write through any route as any client, undo
+and redo, and an agent's write through `/mcp`. The revision is one per database file, shared by
+every open of it in the process, and it starts at 0 when the server starts; the **epoch** names
+this run of the server.
+
+**The publisher.** The server runs one publisher per database file (in the bindings' per-file
+state, beside the revision). When the revision moves, and once a minute (half a second past it), it
+reads the revision, derives the board at the server's clock in one read transaction (as `/board`
+does), compares it with the board it last published by value, and makes a **publication**: the
+next **sequence number** (`seq`, one per publication within the epoch), the revision it read, the
+instant it derived at, the [board hash](client-mode.md#the-board-hash) and the changed entries. A
+tick that changes nothing publishes nothing. Writes that land during a derive are taken by the next
+one. The revision is read before the derive begins and bumped only after a write commits, so a
+publication holds at least the writes its revision counts. The publisher keeps only the latest
+publication and the last 64 change events (at most 4 MiB); a restart starts afresh in a new epoch.
+
+**The stream.** `GET /events/changes` is a Server-Sent Events stream of two events:
+
+- `board-changed`, one per publication, with id `<epoch>:<seq>` and data `{epoch, seq, revision,
+  now, hash, changes}` ([Client Mode](client-mode.md#live-sync) describes `changes`), or `{epoch,
+  seq, revision, now, hash, reload: true}` when the changes would exceed 256 KiB or cannot be
+  replayed.
+- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums}` (`sums`: the hash per
+  collection), sent once on connecting and after every 15 s of silence, in place of a keepalive
+  comment, so a proxy keeps the stream open and a client can check its board for free.
+
+A client reconnecting with `Last-Event-ID: <epoch>:<seq>` of this epoch is sent the events after
+`seq` at once, from the 64 kept; when they are not all kept, or the id is another epoch's or cannot
+be read, it is sent one `reload` event at the latest publication. A client that reads only
+`revision` and `epoch` from the data, as apps before changed nodes did, treats each event as a
+signal to reload, as before.
 
 ## Revision on every answer, and gzip
 
@@ -225,9 +259,12 @@ stream sends, so a client holding a copy of the board can tell whether the next 
 a write landing mid-read can make the copy look older than it is and never newer: a client reloads
 once too often, never once too few. A **write** carries the revision after it committed. The
 headers are used rather than a body envelope so no response shape changes. The board's own body
-(`/board`) is unchanged.
+(`/board`) is unchanged. `GET /board/current` is the exception to the read rule: its
+`X-Arlesh-Revision` is the revision of the publication it answers, which can be behind the
+revision as it stood, since that publication may not hold the newest write yet; it also carries
+`X-Arlesh-Seq`, `X-Arlesh-Hash` and `X-Arlesh-Board-Now`.
 
-Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. `/events` never is: a
+Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. The event streams never are: a
 compressor holds a stream back until it has enough to compress, and an event must arrive as it
 happens.
 
@@ -253,7 +290,7 @@ does not know is answered as 500 `internal`. FastAPI's own 422 for a malformed r
 replaced, because 422 here means *confirm or add a window*.
 
 **The confirmation protocol is kept, not flattened.** A write the core will not make without
-consent, such as completing a Habit occurrence that still holds unfinished children, is refused
+consent, such as a Flow item's cycle change that would orphan recorded iterations, is refused
 422 `needs_confirmation`. Its `details` name what is at stake. The same request sent again with
 `?confirmed=true` goes ahead. Setting a Flow item's cycles is confirmed with `?reconcile=fork` or
 `discard`. A Commitment with no window is refused 422 `needs_time_scope`, and goes ahead when sent
@@ -264,27 +301,31 @@ names those Tasks, and the update goes ahead when sent again with `?descendant_p
 
 ## The MCP at `/mcp`
 
-The server serves Arlesh's MCP endpoint, with the core's own router, tools and rules (see
-[MCP Server](mcp-server.md)). The core router is served on a private loopback port through the
-bindings (`Database.serve_mcp`), and `/mcp` is a **streaming reverse proxy** to it:
+The server serves Arlesh's MCP endpoint, with the core's own tools and rules (see
+[MCP Server](mcp-server.md), *Spoken by the Python server*). FastAPI speaks the protocol and the
+core answers it: there is no second listener and no proxy.
 
-- **It sits behind the same token.** A request without a token is refused 401 before it reaches
-  the router, which has no authentication of its own.
-- **It passes `POST`, `GET` and `DELETE` through.** Responses stream back unbuffered, so
-  Server-Sent Events arrive as they are sent. `Accept`, `Content-Type`, `mcp-session-id`,
-  `mcp-protocol-version` and `Last-Event-ID` go upstream. `Content-Type`, `mcp-session-id`,
-  `mcp-protocol-version`, `Cache-Control` and `Content-Encoding` come back.
-- **It strips what the router refuses.** The router admits a loopback `Host` only and rejects any
-  request carrying an `Origin`. So the proxy sends a loopback `Host` and never forwards
-  `Authorization`, `Origin` or `Referer`.
-- **Each client gets its own endpoint.** It is served from that client's write-open on its first
-  MCP request. So an agent's writes are journaled as source `mcp` under the client its token
-  names, as every other route's are. Each endpoint stops when its database closes at shutdown.
+- **Stateless Streamable HTTP.** `POST /mcp` carries one JSON-RPC message (or a JSON array of them)
+  and is answered with plain JSON; a notification gets `202` with no body. `GET` and `DELETE` are
+  `405` (`Allow: POST`): the server has no stream to speak first on and no session to end, and it
+  issues and requires no `Mcp-Session-Id`. `Accept` may name `text/event-stream`; the answer is
+  still JSON.
+- **Methods:** `initialize`, `notifications/initialized`, `tools/list`, `tools/call` and `ping`.
+  Anything else is JSON-RPC `-32601`. A body that is not JSON is `-32700` with HTTP 400.
+- **It sits behind the same token.** A request without a token is refused 401 as every route is;
+  that is the only non-JSON-RPC answer. There is no `Host` or `Origin` rule of its own.
+- **Each client's calls run on its own write-open.** So an agent's writes are journaled as source
+  `mcp` under the client its token names, as every other route's are, and they bump the revision.
+- **Errors reach the client as JSON-RPC,** never a bare 500: a tool's failure is a result with
+  `isError: true`, an unknown tool `-32602`, and the core refusing outright `-32603`.
+- **`GET /events/expectations`** is the agents' long poll (see [MCP Server](mcp-server.md), *Being
+  told a wait resolved*), a route of its own beside `/events/changes` and behind the token. It has
+  no Server-Sent Events form.
 
 ## Code
 
 The server lives in the `arlesh` package as `arlesh.server`, installed by the optional extra
-`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, httpx, Typer). The extra also
+`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, Typer). The extra also
 installs the `arlesh-server` command. Its layout follows the user's Librarian project:
 `business_logic/`, `entrypoints/` (the ways in) and `ports/` (the ways out).
 
@@ -292,8 +333,13 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
   abstract class listing every operation. `arlesh.SqliteDatabase` is its implementation, the
   Rust core over the SQLite file, which `arlesh.open` returns. The server depends on the port
   only. Its composition root injects the implementation, and its unit tests inject a fake.
+  Through [ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md) the same port also
+  has an `arlesh.Arlesh` façade over the `HttpBackend` of the `arlesh-backend` crate. The server
+  stays on SQLite only: `Board.open` over an `HttpBackend` would be a relay, which could loop back
+  on itself and would stamp every device's writes as its own client.
+  See [Client Mode](client-mode.md#the-backend-crate-and-python).
 - **`business_logic/board.py`**: the `Board` holds which open database a request reads and writes
-  through. It takes the hold, keeps one write-open per client, and serves each client's MCP
+  through, and names the epoch (the bindings' change feed's, which the publisher stamps too). It takes the hold, keeps one write-open per client, and serves each client's MCP
   endpoint from that client's write-open. It is handed an `open_as(client)` answering the
   package's port, and a `take_hold()`.
 - **`entrypoints/`**, the ways in:
@@ -311,12 +357,12 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     - `logging/`: the request middleware, which stamps a transaction id, and the lifespan, which
       holds the startup guard.
     - `run.py`: starts uvicorn.
-  - `mcp/proxy.py`: `/mcp`, the streaming reverse proxy, mounted on the FastAPI app. Its way out
-    is an injected httpx client, so it needs no port of its own.
+  - `mcp/jsonrpc.py` (the protocol: which message is a request, the envelope, the protocol errors)
+    and `mcp/router.py` (`/mcp` and `/events/expectations`, mounted on the FastAPI app). Both reach
+    the core only through the `arlesh.Database` port's `mcp_*` and `expectations_poll` calls.
 - **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
-  `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
-  old `<db>.tokens` file once.
+  `token_call`); the tests' fake is the second adapter.
 - **`ports/pairing/`**: `PairingStore` and `DatabasePairingStore` over `pairing_pins`, through the
   same `token_call`. The rules (PIN, lifetime, attempts, names) are `business_logic/pairing.py`,
   over the two ports and a clock, so they are unit-tested with no database.

@@ -1,0 +1,13 @@
+<resources>
+    <!-- Apart from strings.xml, which box.py rewrites for a box build. -->
+    <string name="channel_agent_question">"Agent questions"</string>
+    <string name="channel_task_overdue">"Overdue tasks"</string>
+    <string name="channel_task_generated">"New tasks"</string>
+    <string name="channel_capacity_locked">"Capacity lock set"</string>
+    <string name="channel_capacity_cleared">"Capacity lock cleared"</string>
+    <string name="push_agent_question">"An agent is waiting for your answer: %1$s"</string>
+    <string name="push_task_overdue">"Overdue: %1$s"</string>
+    <string name="push_task_generated">"New task: %1$s"</string>
+    <string name="push_capacity_locked">"Agent capacity lock set"</string>
+    <string name="push_capacity_cleared">"Agent capacity lock cleared"</string>
+</resources>

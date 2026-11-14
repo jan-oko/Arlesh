@@ -5,10 +5,5 @@
 //! dates, bounds — is arithmetic over that key. Nothing in this module touches the database: a
 //! column referencing a scope holds the key's canonical text, written and read by the key itself.
 
-pub mod rules;
-use rules::derive;
 pub mod db;
-pub mod error;
-pub mod key;
-pub mod model;
-pub mod resolve;
+pub use arlesh_rules::scopes::{error, key, model, resolve};

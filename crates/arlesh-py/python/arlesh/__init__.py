@@ -10,6 +10,9 @@
         task = await db.create_task(CreateTaskRequest(title="Write it", parent_type="domain",
                                                       parent_id=7))
 
+- :class:`Arlesh` is the façade over a backend you choose: ``Arlesh(backend=SqliteBackend(path,
+  client=…))`` or ``Arlesh(backend=HttpBackend(url, token=…))``, the app's own two backends.
+  ``async for change in board.changes()`` follows the board.
 - :func:`open` opens a database: read-only by default, for writing when you name a ``client``.
 - :class:`Database` is the port holding every operation, each a coroutine;
   :class:`SqliteDatabase`, which :func:`open` returns, is its implementation over the core.
@@ -20,9 +23,18 @@
 - :mod:`arlesh.errors` holds the exceptions, one per ``WireError`` kind.
 """
 
-from arlesh import errors, models, rules
+from arlesh import errors, models, pairing, rules
 from arlesh._native import json_schema
-from arlesh.database import Database, NodeId, SqliteDatabase, open
+from arlesh.backends import (
+    Backend,
+    BoardHead,
+    BoardRevision,
+    CurrentBoard,
+    HttpBackend,
+    ServerStatus,
+    SqliteBackend,
+)
+from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open, set_time_zone
 from arlesh.errors import (
     AmbiguousId,
     ArleshError,
@@ -40,11 +52,17 @@ from arlesh.hold import Hold, hold
 
 __all__ = [
     "AmbiguousId",
+    "Arlesh",
     "ArleshError",
+    "Backend",
+    "BoardHead",
+    "BoardRevision",
     "ContainmentViolated",
+    "CurrentBoard",
     "Database",
     "DatabaseError",
     "Hold",
+    "HttpBackend",
     "InternalError",
     "InvalidRequest",
     "NeedsConfirmation",
@@ -52,6 +70,8 @@ __all__ = [
     "NodeId",
     "NotFound",
     "NotPermitted",
+    "ServerStatus",
+    "SqliteBackend",
     "SqliteDatabase",
     "StatusChanged",
     "errors",
@@ -59,5 +79,7 @@ __all__ = [
     "json_schema",
     "models",
     "open",
+    "pairing",
     "rules",
+    "set_time_zone",
 ]

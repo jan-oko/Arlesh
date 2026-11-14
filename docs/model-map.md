@@ -1,11 +1,13 @@
 # How Arlesh fits together: the model map
 
-The agent-friendly mirror of [`model-map.html`](model-map.html). It has the same groups and cards,
+The agent-friendly mirror of the app's Help view, which draws the same map from
+[`src/data/model-map.ts`](../src/data/model-map.ts). It has the same groups and cards,
 in the same order, with fuller code pointers. It is a map, not the specification. The rules live in
 [`SPEC.md`](../SPEC.md) and `docs/spec/`, and each card links to the section that owns its rules.
 
-**Keep the two files in step.** A pull request that adds, removes or changes the meaning of a
-concept updates both files, as it updates the spec (see `AGENTS.md`).
+**Keep this file and the data files in step.** A pull request that adds, removes or changes the
+meaning of a concept updates this file and `src/data/model-map.ts`, as it updates the spec (see
+`AGENTS.md`).
 
 Paths are relative to the repo root. `crates/arlesh-core/src/` (the core crate, where every domain
 module lives; the desktop app's `commands/` stay in `src-tauri/src/`) is abbreviated to `rs:` and `src/` (the
@@ -20,7 +22,7 @@ frontend) to `ts:`.
  parent tree              2 Habit occurrences, cooldown blocks       pills               Mindmap, List,
  Flow/Habit templates     3 waits, check tasks                       Rust + TS twins     Plan, Steps, Zen
  overlays                 4 compound status, Review                  shared corpus  ──►  MCP (agents)
- dependencies, reasons    5 blocks: reasons, deps, capacity lock                         roots, private,
+ dependencies, reasons    5 blocks: reasons, deps, capacity                           roots, private,
  statuses, done instants                                                                 Agentic writes
         ▲                                                                                     │
         └──────────── edits write stored rows and overlays only, never a derived value ───────┘
@@ -28,18 +30,17 @@ frontend) to `ts:`.
         └─► undo journal (SQL triggers on every journaled table)
 ```
 
-The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the capacity lock's
-blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
+The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the blocks of the agents at capacity). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
 then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
 `rs:flows/rules/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
 which also draws the waits, then `rs:tasks/rules/archival.rs::inherit` (what lies beneath a hand
-archive reads as archived), then `rs:tasks/rules/review.rs::derive`, then the capacity lock
+archive reads as archived), then `rs:tasks/rules/review.rs::derive`, then the agents' capacity blocks
 (`rs:capacity/rules/blocks.rs`) and the compound block, and every Task's effective Plan last
 (`rs:mindmap/rules/plans.rs`), once every row, Overdue flag and Archival is in. The MCP snapshot reads the same load (`rs:mcp/`).
 
 ## The derivation graph
 
-The HTML page draws this as an interactive graph, and [`model-graph.html`](model-graph.html) shows the same graph on its own, with selectable concepts and their cards. These tables are the mirror of both. Every edge is a value the code reads to compute
+The HTML page draws this as an interactive graph, and the app's Help view (F1) draws the same graph from the data file [`src/data/derivation-graph.ts`](../src/data/derivation-graph.ts), with selectable concepts and their cards. These tables are the mirror of it. Every edge is a value the code reads to compute
 the state. Edges marked *(of another node)* read that value on a different node: a compound's
 sub-items, or a dependency's target. All of these states are worked out on every board load and
 never stored.
@@ -53,9 +54,11 @@ never stored.
 | **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/rules/blocks.rs::reads_agentic` |
 | **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/rules/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
 | **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
-| **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
-| **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
-| **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
+| **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)*; Agentic (own) | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. A Compound Task that reads as Agentic shows Done, Doing (any In Progress or Doing), Review (any Review), On Agent (any under way) or To Do, ignoring Done items. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
+| **Parent status** | own status, Agentic (own), sub-items' statuses, verdicts and waits; Archived *(of another node)* | An ordinary Task that is not Compound and has sub-items reads its own status raised to what they say, by Compound's counting: In Progress if any is, else Started if any is Started or Done. Never Done by itself, never lowered, and a Done Task stays Done. An Agentic Task is not derived. | `rs:tasks/rules/compound.rs::parent_reading`, `rs:tasks/rules/compound.rs::derive` |
+| **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. A Child Agent is at capacity exactly when its parent is. | `rs:agents/rules/usage.rs::cause` |
+| **Review** | Agentic, status, agent waits (questions and reviews) | To Do or On Agent with a pending, live agentic question or review beneath it. | `rs:tasks/rules/review.rs::derive` |
+| **Capacity block** | Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and lies inside the active Claim of an Agent at capacity. There is no app-wide lock. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
 | **Habit iteration** | status of its occurrences, compound status, verdicts of its Commitment items, releases of its wait items, clock and miss policy, now | Resolved when every template occurrence is settled: done (a compound one by its derived status), a Commitment item's given a verdict, a wait item's released. Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
@@ -164,13 +167,14 @@ How the presets read them:
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
 
 ### Review
-- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent.
-- **Why:** it is the only way an agent hands work back, and the question says what you need to do.
+- **Is:** never set. A Task reads Review when it is To Do or On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it; a To Do one is a question asked before claiming (a Task with no Spec cannot be claimed), and its row stays To Do. Answering, which releases the wait, returns it to what its row holds (On Agent or To Do), whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: a question mark; a review: a checked page).
+- **Why:** it is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait of its own: the Task shows it, and is where it is answered.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
   - `rs:tasks/rules/review.rs` (`derive`, `is_open_question`).
-  - The board names each Task's open question (`rs:mindmap/rules/facts.rs`); `ts:utils/open-question.ts` finds that wait to draw and answer.
-  - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
+  - The board names each Task's open questions and reviews (`rs:mindmap/rules/facts.rs`, `open_questions`); `ts:utils/open-question.ts` finds those waits among the ones the Task holds off its tree, to draw and answer.
+  - `rs:filters/rules.rs::is_agentic_wait` (and its `ts:utils/filter-tree.ts` mirror, pinned by `conformance/preset-filters.json`) keeps agentic waits out of every view.
+  - The review's storage is `agentic_review` / `agentic_verdict` on `expectations` (`rs:tasks/expectations.rs`); the MCP side is `arlesh_waits.ask` and `raise_review`, in `rs:mcp/`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
 
 ### Compound
@@ -180,11 +184,14 @@ How the presets read them:
   - else Started if anything is Started or Done;
   - else To Do.
   
-  It is never stored, and manual status writes are refused. Habit occurrences can be compound too, and their derived status gates their iteration's resolution.
-- **Why:** a Task that is the sum of its steps should never disagree with them.
+  It is never stored, and manual status writes are refused. Habit occurrences can be compound too, and their derived status gates their iteration's resolution. A Compound Task that reads as Agentic shows the same tally in its own model: Doing, Review, On Agent or To Do, ignoring Done items.
+  
+  Any other ordinary Task with sub-items reads the same counting as a **floor**: its own status raised to Started or In Progress, never lowered, never Done by itself. It cannot be set Done while a counted item (a Backlogged child, a pending wait, an Unresolved Commitment) is not Done; a Task already Done stays Done. An Agentic Task's status says who holds it, so it is not derived unless it is Compound.
+- **Why:** a Task that is the sum of its steps should never disagree with them, and a parent should not read To Do over work under way or Done over work left.
 - **Without:** a parent reads Done while a step is open.
 - **Lives:**
-  - `rs:tasks/compound.rs` (`settle`, the shared rule).
+  - `rs:tasks/compound.rs` (`settle`, the shared rule; `require_closed`, the Done refusal) and `rs:tasks/rules/compound.rs` (the counting, the parent floor).
+  - `rs:tasks/rules/gestures.rs::status_after` (the press refusals).
   - `rs:flows/compound_readings.rs` (the Habit pass, before classification).
   - Frontend: `ts:utils/compound.ts`.
 - **Spec:** [Resources § Compound](spec/resources.md), [Habits § Added children](spec/habits.md).
@@ -326,14 +333,14 @@ How the presets read them:
 
 ### Derived blocks
 - **Is:** blocks no one writes:
-  - the agent capacity lock, on every Agentic Task not yet Done;
+  - an Agent at capacity, on the Agentic Tasks not yet Done of its Claim;
   - a Habit's cooldown;
   - a compound Task whose open sub-items are all blocked.
   
   They gate starting work and never change a status.
 - **Why:** one mechanism, so filters, badges and the MCP need nothing new for each.
 - **Without:** a special filter rule per feature, each one missing a view.
-- **Lives:** `rs:capacity/rules/blocks.rs` (the lock is stored in `agent-capacity.json`), `rs:flows/rules/cooldown.rs` and `rs:tasks/compound.rs`.
+- **Lives:** `rs:capacity/rules/blocks.rs` (capacity itself is derived from the agents' locks and usage reports), `rs:flows/rules/cooldown.rs` and `rs:tasks/compound.rs`.
 - **Spec:** [MCP § Agent capacity](spec/mcp-server.md#agent-capacity), [Habits § Cooldown](spec/habits.md#cooldown), [Filtering Logic](spec/filtering-logic.md).
 
 ## 7. Reading it out
@@ -350,10 +357,10 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`, added by [ADR 0012](adr/0012-optimistic-own-field-rendering.md)), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Is:** every rule the frontend must answer per render or per pointer move has one definition, in a Rust `rules` module, and reaches the frontend one of two ways: a TypeScript copy pinned by a shared case file under `conformance/`, run against both ends ([ADR 0010](adr/0010-business-rules-layer.md)), or — for the rules the optimistic lane predicts a write with — the Rust rule itself, compiled to wasm from the `arlesh-rules` crate (`arlesh-rules-wasm`, `src/wasm/rules.ts`; [ADR 0012](adr/0012-optimistic-own-field-rendering.md) decision 13), with the same corpus replayed through the wasm. The wasm-backed rules are the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`), the parenting table (`parenting.json`), and the Plan View's triage, refusal and take-out (`plan-triage.json`). The pinned TypeScript copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
 - **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
-- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.
+- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy or wasm call and by the Rust tests under `src-tauri/tests/`; the wasm lives in `crates/arlesh-rules`, `crates/arlesh-rules-wasm` and `src/wasm/`.
 - **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
 
 ### Pills and the focus exemption
@@ -380,19 +387,30 @@ How the presets read them:
   - Agents see only inside the roots you open, and never anything private.
   - They write only Agentic Tasks, and create Tasks Agentic.
   - They read the same derived board you see, paged.
-  - They hand work back by asking a question.
+  - They hand work back by asking a question or raising a review.
 - **Why:** a clean, bounded context for an agent, on the same truth you see.
 - **Without:** agents read everything, or a separate copy that disagrees.
 - **Lives:**
-  - `rs:mcp/` (snapshot, tasks, waits, `ids.rs`, `access.rs`, `capacity`) and `rs:access/` (`AccessMap`).
+  - `rs:mcp/` (snapshot, tasks, waits, agents, `ids.rs`, `access.rs`, `capacity`) and `rs:access/` (`AccessMap`).
   - The roots are stored in `mcp_roots`.
 - **Spec:** [MCP Server](spec/mcp-server.md).
+
+### Agents and Claims
+- **Is:** the identity behind an MCP session.
+  - A session starts unattached and sees nothing; a one-time PIN (or its agent token) makes it an **Agent**, bound for the connection.
+  - An Agent holds at most one **Claim**: a subtree inside your roots that is its whole view. One active Claim per node; a paused Claim frees the subtree and reads only.
+  - Agents declare an **Account**; usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset. Derived, so it lifts by itself.
+  - A subagent is a **Child Agent** under the session's Agent, told apart by a **Sub-token** on each call. Its **Sub-Claim** lies inside the parent's Claim and is no overlap with it; the parent's Claim is the child's roots. Its standing and capacity are derived from the parent's; it goes when its parent goes, its Task is set Done, or its subagent stops holding nothing open (no Task still On Agent, no open wait).
+- **Why:** several agents can work one board without overlapping, each in a bounded context, and one agent hitting its plan limit blocks only its own work. Child Agents give each subagent its own Task as its view and show it in Settings.
+- **Without:** every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one; a subagent sees and writes its orchestrator's whole Claim and shows nowhere.
+- **Lives:** `rs:agents/` (`rules/claims.rs` for claims, sub-Claims and standing, `rules/` for usage and PINs; `service.rs`), `rs:mcp/agents.rs`, `session.rs` and the `sub_token` door in `rs:mcp/mod.rs::call_tool`, the `agents` tables (migrations 0101, 0102 journaled, 0105 `parent_id` and the removal triggers, 0106), and `plugins/arlesh-notify/` for registering, pausing and resuming children.
+- **Spec:** [Agents](spec/agents.md), [ADR 0018](adr/0018-agents-claims-and-account-capacity.md), [ADR 0019](adr/0019-child-agents-and-sub-claims.md).
 
 ### The server
 - **Is:** `arlesh-server`, the board over HTTP. It is the first step toward multi-device, where the app becomes a client of it.
   - It runs the core through the Python bindings, and adds no rules of its own.
   - Every request carries a bearer token, and the token names the client the journal records.
-  - It serves the MCP too, at `/mcp`, behind the same token.
+  - It serves the MCP too, at `/mcp`, behind its own low-privilege connect token (device tokens do not work there).
   - It holds the database while it runs, as the app does, so there is one writer per database: it will not start while the app or another server holds it, unless forced.
 - **Why:** one copy of the board, reachable from more than one device, with one writer.
 - **Without:** the board lives only inside the running app on one machine.
@@ -402,13 +420,13 @@ How the presets read them:
 ### Client mode
 - **Is:** each device runs **Standalone** (its own database file, as the app always has) or as a **Client** of `arlesh-server`.
   - Every Tauri command goes through one **Backend port**: `SqliteBackend` in-process, or `HttpBackend` calling the server's routes, one route per method.
-  - The server's change stream (`/events`) reloads every device's windows as a local write would.
+  - The server's change stream (`/events/changes`) reloads every device's windows as a local write would.
   - Undo is per device: each device's token is its own client.
   - With the server unreachable, the last board stays on screen, read-only; nothing is queued.
   - People and the knowledge base stay Standalone-only.
 - **Why:** one board shared by several devices, with the app above the port unchanged.
 - **Without:** a second app for the server, or every component taught about HTTP; devices that each hold a different board.
-- **Lives:** `src-tauri/src/backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
+- **Lives:** `crates/arlesh-backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
 - **Spec:** [Client Mode](spec/client-mode.md).
 
 ### Pending writes

@@ -83,6 +83,18 @@ pub enum TaskError {
     /// closes the question, so a release without one would lose it.
     #[error("this wait is a question; write the answer before releasing it")]
     AgenticAnswerMissing,
+    /// A review — an agent handing back finished work — was released with no verdict. Only the
+    /// user's verdict closes it, so a release without one would lose the answer.
+    #[error(
+        "this wait is a review; give a verdict (approved or changes_requested) before releasing it"
+    )]
+    AgenticVerdictMissing,
+    /// A review, or the release of an agentic wait, was refused by the review rules.
+    #[error(transparent)]
+    Review(#[from] crate::tasks::rules::review::ReviewRefusal),
+    /// A verdict was written to a wait that is not a review.
+    #[error("only a review takes a verdict")]
+    VerdictOnNonReview,
     /// A status was written to a Task that **consists of its sub-items**: its status is derived
     /// from its subtree, so there is nothing for a manual write to set. Refused out loud; the
     /// answer is to change the sub-items, or to switch compound off.
@@ -91,6 +103,17 @@ pub enum TaskError {
          or turn compound off"
     )]
     CompoundStatus(i64),
+    /// A Task was set Done while counted sub-items are not: a Task is finished once what it holds
+    /// is. Refused out loud; the answer is to complete or archive what is left. Backlogged
+    /// sub-items, pending waits and Unresolved Commitments count as open.
+    #[error(
+        "this task still has {open} unfinished sub-item(s); finish or archive them before \
+         setting it done"
+    )]
+    OpenSubItems {
+        /// How many counted sub-items are not Done.
+        open: usize,
+    },
     /// A done date was given to a Task that is not Done: it has no completion to date.
     #[error("only a done task has a done date")]
     NotDone,

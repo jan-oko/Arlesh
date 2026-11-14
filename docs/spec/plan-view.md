@@ -484,6 +484,7 @@ three ways above, so they plan the whole selection and write one Gesture.
 - `Ctrl+O` — search every node and enter the one you pick; `Shift+Escape` / `Ctrl+Escape` — up one
   subtree level / back to the true root. All three are [global bindings](tabs.md): they act on the
   tab's subtree root, which every view shares
+- `Alt+S` in the `Ctrl+O` search starts the highlighted row — see [*Mindmap View*](mindmap-view.md).
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo, which cover a move like any other board change
 - `F` with nothing selected — the board alone
 

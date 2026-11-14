@@ -31,6 +31,9 @@ pub enum AppError {
     /// MCP access grant error.
     #[error(transparent)]
     Access(#[from] AccessError),
+    /// Agent attach, Claim or account error.
+    #[error(transparent)]
+    Agents(#[from] crate::agents::error::AgentError),
     /// Undo Journal context error.
     #[error(transparent)]
     Undo(#[from] UndoError),

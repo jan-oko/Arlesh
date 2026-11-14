@@ -2,6 +2,7 @@ import { isTemporaryId } from "@/utils/pending-writes";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { isOccurrence } from "@/utils/node-identity";
 import { ALL_NODE_KINDS } from "./tree-layout";
+import { mayParent } from "@/wasm/rules";
 
 export interface NodeSize {
   width: number;
@@ -130,7 +131,9 @@ export function isFlowKind(kind: NodeKind): boolean {
 }
 
 /**
- * Returns true if `sourceKind` is a valid child of `targetKind`.
+ * Returns true if `sourceKind` is a valid child of `targetKind`. There is no TypeScript copy of the
+ * table: this asks `nodes::rules::parenting::may_parent`, compiled to wasm (`src/wasm/rules.ts`), the
+ * one every writer asks. `conformance/parenting.json` writes the whole matrix down.
  *
  * Parent rules:
  *   aspect / domain / project  → domain, project, tag, goal, task, commitment, info children
@@ -143,61 +146,7 @@ export function isFlowKind(kind: NodeKind): boolean {
  *   aspect                     → cannot be moved (immutable)
  */
 export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): boolean {
-  if (sourceKind === "aspect") return false;
-
-  // A `habit_group` is a *drawing* of a run of iterations — a tally and a span — and is neither a
-  // thing to move nor a place to move one to. It is named here because it is exactly what the old
-  // fall-through let through: every source that reached the bottom of this function was permitted
-  // under a folded run of Habit history.
-  if (sourceKind === "habit_group" || targetKind === "habit_group") return false;
-
-  // Flows and flow items live in their own world — they never mix with real nodes.
-  if (isFlowKind(sourceKind) || isFlowKind(targetKind)) {
-    if (sourceKind === "flow") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
-    if (sourceKind === "flow_goal") return targetKind === "flow" || targetKind === "flow_goal";
-    // A Task, Commitment or wait item sits where the stored kind it draws does, the Flow standing
-    // for its root: under the Flow or a Goal, Task or Commitment item. A wait item holds nothing.
-    if (sourceKind === "flow_task" || sourceKind === "flow_commitment" || sourceKind === "flow_expectation") {
-      return targetKind === "flow" || targetKind === "flow_goal" || targetKind === "flow_task" ||
-        targetKind === "flow_commitment";
-    }
-    return false; // a real node can never drop onto a flow or flow item
-  }
-
-  // A Tag is a label, and the one thing you hang on a label is a note about it. The backend has
-  // always said so — `infos.parent_type` names `tag`. It sits above the `info` arms, so every other
-  // kind is refused before they are reached.
-  if (targetKind === "tag") return sourceKind === "info";
-  if (targetKind === "info") return sourceKind === "info";
-  // A wait holds notes about it and nothing else.
-  if (targetKind === "expectation") return sourceKind === "info";
-  if (sourceKind === "info") return true;
-  // A commitment lives anywhere a task can, plus inside another commitment; it holds only
-  // tasks, other commitments and waits. (Tag and info targets were already refused above.)
-  if (targetKind === "commitment") {
-    return sourceKind === "task" || sourceKind === "commitment" || sourceKind === "expectation";
-  }
-  if (sourceKind === "commitment") return true;
-  // A wait lives anywhere a Task can: under a domain-table kind, a Goal, a Task — or a Commitment,
-  // answered just above.
-  if (sourceKind === "expectation") {
-    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" ||
-      targetKind === "goal" || targetKind === "task";
-  }
-  if (sourceKind === "project") return targetKind === "aspect" || targetKind === "project";
-  if (sourceKind === "domain") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
-  if (sourceKind === "tag") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project";
-  if (sourceKind === "goal") {
-    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
-  }
-  // task: valid under aspect, domain, project, goal, or task. Stated rather than defaulted to, and
-  // the function ends in `false`: a kind added to `NodeKind` later is refused until someone teaches
-  // this rule about it, because "permitted unless named" is how a folded run came to take children.
-  if (sourceKind === "task") {
-    return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" ||
-      targetKind === "goal" || targetKind === "task";
-  }
-  return false;
+  return mayParent(sourceKind, targetKind);
 }
 
 /**

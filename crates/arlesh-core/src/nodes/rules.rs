@@ -9,5 +9,5 @@
 
 pub mod attach;
 pub mod capabilities;
-pub mod parenting;
+pub use arlesh_rules::nodes::rules::parenting;
 pub mod waits;

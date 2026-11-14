@@ -71,7 +71,7 @@ pub(super) struct Named {
     /// Its nearest ancestors the MCP can see, outermost first: `Growth › CODE › ARLESH`.
     pub path: String,
     #[serde(skip)]
-    table: NodeTable,
+    pub(super) table: NodeTable,
     #[serde(skip)]
     hex: String,
 }
@@ -321,6 +321,11 @@ impl NodeNames {
         let mut value = serde_json::to_value(value).unwrap_or(Value::Null);
         self.stamp(&mut value, table);
         value
+    }
+
+    /// The full id of every node the MCP can see.
+    pub fn full_ids(&self) -> std::collections::HashSet<String> {
+        self.nodes.iter().map(|node| node.id.clone()).collect()
     }
 
     /// The short id of one node, when the MCP can see it.

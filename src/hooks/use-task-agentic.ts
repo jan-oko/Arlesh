@@ -7,7 +7,7 @@ import { getErrorMessage } from "@/api/errors";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -27,7 +27,7 @@ interface Result {
  * the alternative is a press that reads as nothing happening. Detaching a task from the ancestor
  * deciding for it is now the editor's business, and so is putting it back.
  */
-export function useTaskAgentic({ findNode, reload, showToast }: Options): Result {
+export function useTaskAgentic({ findNode, settle, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
   const toggleAgentic = useCallback(
@@ -36,13 +36,13 @@ export function useTaskAgentic({ findNode, reload, showToast }: Options): Result
       // Any Task row, a Habit occurrence included: its flag lands on that occurrence alone.
       if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       void toggleTaskAgentic(rowIdOf(node)).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => {
           showToast({ nodeId, message: t("agenticFailed", { message: getErrorMessage(error) }) });
         },
       );
     },
-    [findNode, reload, showToast, t],
+    [findNode, settle, showToast, t],
   );
 
   return { toggleAgentic };

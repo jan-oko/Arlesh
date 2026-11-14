@@ -44,6 +44,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
 use crate::nodes::relations::RelationOperator;
+use crate::push::PushOperator;
 use crate::server_pairing::PairingPinOperator;
 use crate::server_tokens::ServerTokenOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
@@ -179,6 +180,11 @@ impl<M: SessionMode> Db<M> {
         AccessOperator::new(self.connection())
     }
 
+    /// Agents: their Claims, PINs and accounts' usage, and the server's connect token.
+    pub fn agents(&mut self) -> crate::agents::AgentOperator<'_> {
+        crate::agents::AgentOperator::new(self.connection())
+    }
+
     /// Block reasons — the reasons a task or goal is blocked.
     pub fn block_reasons(&mut self) -> BlockReasonOperator<'_> {
         BlockReasonOperator::new(self.connection())
@@ -187,6 +193,11 @@ impl<M: SessionMode> Db<M> {
     /// `arlesh-server`'s bearer tokens, kept as digests.
     pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
         ServerTokenOperator::new(self.connection())
+    }
+
+    /// `arlesh-server`'s push-notification devices and what each was told.
+    pub fn push(&mut self) -> PushOperator<'_> {
+        PushOperator::new(self.connection())
     }
 
     /// `arlesh-server`'s pending device pairings.
@@ -473,6 +484,27 @@ impl SessionFactory {
             handle,
             client: self.client.clone(),
             restore_client,
+        })
+    }
+}
+
+impl SessionFactory {
+    /// Checks one connection out of the pool and opens a **read** transaction on it: a consistent
+    /// snapshot of the board that takes no writer lock and stamps nothing.
+    ///
+    /// For a derive that writes nothing and runs often (the [`publisher`](crate::mindmap::publisher)
+    /// derives after every write and every minute): [`Self::begin`] would hold the writer lock for
+    /// the whole derive, so every write waits on it, and would stamp the ambient client twice,
+    /// which writes to the file even though nothing is written to the board. Writing through the
+    /// session it returns is not what it is for: the transaction is deferred, so a write would
+    /// take the lock late, as `begin` was changed to avoid.
+    #[tracing::instrument(skip(self))]
+    pub async fn begin_read(&self) -> Result<Db<Transactional>, sqlx::Error> {
+        let handle = self.pool.begin_with("BEGIN").await?;
+        Ok(Db {
+            handle,
+            client: self.client.clone(),
+            restore_client: None,
         })
     }
 }

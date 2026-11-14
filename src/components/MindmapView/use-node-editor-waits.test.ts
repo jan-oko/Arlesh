@@ -34,7 +34,7 @@ const task = node("task-5", "task", { rowId: 5 });
 const root = node("root", "domain", { children: [wait, task] });
 
 function setup() {
-  return renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+  return renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
 }
 
 describe("useNodeEditor — waits", () => {
@@ -49,7 +49,7 @@ describe("useNodeEditor — waits", () => {
   it("E on a spawned wait opens its own Expectation editor, not its Task's", () => {
     const spawnedWait = node("sw-5", "expectation", { rowId: "s-5", origin: { kind: "spawned_wait", task_id: 5 } });
     const tree = node("root", "domain", { children: [task, spawnedWait] });
-    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("sw-5"));
     expect(result.current.editorModal?.node).toBe(spawnedWait);
   });
@@ -57,7 +57,7 @@ describe("useNodeEditor — waits", () => {
   it("E on a delegation wait opens its own Expectation editor too", () => {
     const delegationWait = node("dw-5", "expectation", { rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 } });
     const tree = node("root", "domain", { children: [task, delegationWait] });
-    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("dw-5"));
     expect(result.current.editorModal?.node).toBe(delegationWait);
   });
@@ -67,11 +67,11 @@ describe("useNodeEditor — waits", () => {
       rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 }, tagIds: [4],
     });
     const tree = node("root", "domain", { children: [task, spawnedWait] });
-    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.setEditorModal({ nodeId: spawnedWait.id, node: spawnedWait }));
     await act(() => result.current.onExpectationSave({
       title: "Chase the reviewer", status: "released", checkEvery: { n: 2, kind: "day" }, checkStartingDate: null,
-      timeScope: null, tagIds: [6], archived: true, isPrivate: true, agentic: false, agenticNote: null, agenticAnswer: null,
+      timeScope: null, tagIds: [6], archived: true, isPrivate: true,
     }));
     await settleLane();
     expect(updateExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", expect.objectContaining({
@@ -87,7 +87,7 @@ describe("useNodeEditor — waits", () => {
     act(() => result.current.setEditorModal({ nodeId: wait.id, node: wait }));
     await act(() => result.current.onExpectationSave({
       title: "wait", status: "pending", checkEvery: null, checkStartingDate: null, timeScope: null,
-      tagIds: [], archived: false, isPrivate: false, agentic: false, agenticNote: null, agenticAnswer: null,
+      tagIds: [], archived: false, isPrivate: false,
     }));
     await settleLane();
     const request = vi.mocked(updateExpectation).mock.calls[0]?.[1];

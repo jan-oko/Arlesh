@@ -1,4 +1,5 @@
 use super::*;
+use crate::tasks::model::TaskAgentic;
 
 #[test]
 fn a_template_table_names_its_relation_rows_and_its_own_table() {

@@ -26,7 +26,7 @@ function parentTypeOf(parent: MindmapNode): string {
  * The editor `Shift+E` opens in the List View: a new **stored** Expectation under the selected row.
  * (A row has no inline title to fill, so the wait is configured before it exists.)
  */
-export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
+export function useWaitEditor(tree: MindmapNode, settle: () => Promise<void>) {
   const [create, setCreate] = useState<ExpectationCreate | null>(null);
 
   const dismiss = useCallback(() => setCreate(null), []);
@@ -57,8 +57,6 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
           ...(data.checkEvery !== null && data.checkStartingDate !== null
             ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
           ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
-          ...(data.agentic ? { agentic: true } : {}),
-          ...(data.agenticNote !== null ? { agentic_note: data.agenticNote } : {}),
         },
       }];
       if (data.isPrivate || data.archived || data.status !== EXPECTATION_STATUS.PENDING) {
@@ -78,9 +76,9 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
       await awaitLane();
       await withAtomicGesture(gestureName, () => runGesture("save-wait", steps));
       setCreate(null);
-      await reload();
+      await settle();
     },
-    [create, reload],
+    [create, settle],
   );
 
   return { create, dismiss, saveCreate, createUnder };

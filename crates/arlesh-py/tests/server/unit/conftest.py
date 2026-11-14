@@ -5,19 +5,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
-from unittest.mock import AsyncMock, create_autospec
+from unittest.mock import create_autospec
 
 import arlesh
 import pytest
 from arlesh.server.business_logic.board import OpenAs
 
 
-def fake_database(client: str, mcp_port: int = 5000) -> Any:
-    """A fake open database: every operation of the port, recorded; ``serve_mcp`` answers
-    ``mcp_port``."""
+def fake_database(client: str) -> Any:
+    """A fake open database: every operation of the port, recorded."""
     database = create_autospec(arlesh.Database, instance=True)
     database.client = client
-    database.serve_mcp = AsyncMock(return_value=mcp_port)
     return database
 
 
@@ -30,7 +28,7 @@ class FakeOpener:
 
     async def __call__(self, client: str) -> arlesh.Database:
         self.calls.append(client)
-        database = fake_database(client, mcp_port=5000 + len(self.opened))
+        database = fake_database(client)
         self.opened.append(database)
         opened: arlesh.Database = database
         return opened

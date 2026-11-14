@@ -173,6 +173,8 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         unmet_dependencies,
     } = index_blocked(load);
     let todo_parents = index_todo_parents(load);
+    let derived_in_progress: HashSet<&crate::nodes::id::NodeId> =
+        load.derived_in_progress.iter().collect();
     let dependencies = index_dependencies(load);
 
     let mut facts: Vec<NodeFacts> = Vec::new();
@@ -216,6 +218,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.has_todo_child = todo_parents.contains(&node.id);
         node.asynchronous = task.asynchronous;
         node.compound = task.compound;
+        node.derived_in_progress = derived_in_progress.contains(&task.id);
         node.dependencies = dependencies.get(&task.id).cloned().unwrap_or_default();
         apply_lifecycle(
             &mut node,
@@ -308,8 +311,16 @@ pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
         .retain(|task| keeps(&format!("task-{}", task.id)));
     load.commitments
         .retain(|commitment| keeps(&format!("commitment-{}", commitment.id)));
-    load.expectations
-        .retain(|expectation| keeps(&format!("expectation-{}", expectation.id)));
+    // An agentic wait is not drawn by any view, so no filter keeps it as a row; it travels with the
+    // Task it hangs under, which is what an agent reading the payload expects of it.
+    load.expectations.retain(|expectation| {
+        keeps(&format!("expectation-{}", expectation.id))
+            || (expectation.agentic
+                && keeps(&content_parent_id(
+                    &expectation.parent_type,
+                    &expectation.parent_id,
+                )))
+    });
     load.infos
         .retain(|info| keeps(&format!("info-{}", info.id)));
 

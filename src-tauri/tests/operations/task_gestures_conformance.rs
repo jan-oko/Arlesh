@@ -8,7 +8,8 @@
 
 use arlesh_lib::tasks::model::{AgenticStatus, Status, TaskStatus, Verdict};
 use arlesh_lib::tasks::rules::gestures::{
-    alt_step, next_status, status_after, verdict_after, StatusRefusal, StatusStep, VerdictPress,
+    alt_step, next_status, status_after, status_block, verdict_after, StatusBlock, StatusRefusal,
+    StatusStep, SubItems, VerdictPress,
 };
 use serde::Deserialize;
 
@@ -51,7 +52,18 @@ struct AfterCase {
     step: StatusStep,
     current: Status,
     compound: bool,
+    #[serde(default)]
+    sub_items: SubItems,
     result: Expected,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlockCase {
+    status: Status,
+    compound: bool,
+    #[serde(default)]
+    sub_items: SubItems,
+    block: Option<StatusBlock>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +78,7 @@ struct Corpus {
     next_status: Vec<NextCase>,
     alt_step: Vec<AltCase>,
     status_after: Vec<AfterCase>,
+    status_block: Vec<BlockCase>,
     verdict_after: Vec<VerdictCase>,
 }
 
@@ -115,12 +128,27 @@ fn alt_enter_does_what_the_corpus_says() {
 fn a_step_on_a_compound_or_an_ordinary_task_does_what_the_corpus_says() {
     for case in corpus().status_after {
         assert_eq!(
-            status_after(case.step, case.current, case.compound),
+            status_after(case.step, case.current, case.compound, case.sub_items),
             Result::from(case.result),
-            "{:?} on {:?} (compound: {})",
+            "{:?} on {:?} (compound: {}, sub-items: {:?})",
             case.step,
             case.current,
-            case.compound
+            case.compound,
+            case.sub_items
+        );
+    }
+}
+
+#[test]
+fn an_editor_greys_out_what_the_corpus_says() {
+    for case in corpus().status_block {
+        assert_eq!(
+            status_block(case.status, case.compound, case.sub_items),
+            case.block,
+            "{:?} (compound: {}, sub-items: {:?})",
+            case.status,
+            case.compound,
+            case.sub_items
         );
     }
 }

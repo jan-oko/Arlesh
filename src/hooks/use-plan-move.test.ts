@@ -4,7 +4,6 @@ import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { usePlanClampStore } from "@/stores/use-plan-clamp-store";
 import { applyPendingWrites } from "@/utils/apply-pending-writes";
-import { scopeKeyText } from "@/utils/scope-key";
 import { fixtureRowId } from "@/test/node-fixture";
 import type { ScopeKey } from "@/api/scopes";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -49,7 +48,7 @@ function setup() {
   const rendered = renderHook(() =>
     usePlanMove({
       targetScopeId: WEEK, targetWindow: WINDOW, targetLabel: "W39",
-      windows: new Map([[scopeKeyText(WEEK), WINDOW]]), showToast,
+      showToast,
     }),
   );
   return { ...rendered, showToast };
@@ -58,7 +57,7 @@ function setup() {
 beforeEach(() => {
   vi.clearAllMocks();
   usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
   usePlanClampStore.setState({ request: null });
   conflicts.mockResolvedValue([]);
 });
@@ -75,7 +74,7 @@ describe("planning through the lane", () => {
     expect(moved).toEqual(["task-1"]);
     expect(patchedFields()).toEqual([{ plan: PLAN }]);
     const board: MindmapNode = { id: "root", kind: "goal", title: "r", position: 0, tagIds: [], children: [task("task-1").node] };
-    const drawn = applyPendingWrites(board, { read: 0, epoch: null, revision: null }, lane(), new Map());
+    const drawn = applyPendingWrites(board, { read: 0, epoch: null, seq: null, revision: null, at: 0 }, lane(), new Map());
     expect(drawn.children[0]).toMatchObject({ plan: PLAN, pending: true });
 
     await act(async () => { held.resolve([{ id: 1 }]); await held.promise; });

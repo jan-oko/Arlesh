@@ -1,14 +1,21 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 
 /**
- * The open agentic **question** under a Task — the wait that makes an On Agent Task read Review.
- * Which wait that is, is the backend's rule (`tasks::rules::review`, served as the load's
- * `open_question` fact); this finds that wait among the Task's children, to draw and to answer.
- * `undefined` when there is none.
+ * The open agentic questions and reviews beneath a Task — the waits that make an On Agent Task read
+ * Review — in position order. Which waits those are is the backend's rule (`tasks::rules::review`,
+ * served as the load's `open_questions` fact); this finds them among the agentic waits the Task
+ * holds, to draw and to answer. Empty when there are none.
  */
-export function openQuestion(task: MindmapNode): MindmapNode | undefined {
-  if (task.openQuestionId === undefined) return undefined;
-  return task.children.find((child) => child.kind === "expectation" && child.rowId === task.openQuestionId);
+export function openWaits(task: MindmapNode): MindmapNode[] {
+  const open = task.openQuestionIds ?? [];
+  if (open.length === 0) return [];
+  const held = task.agentWaits ?? [];
+  return open.flatMap((id) => held.filter((wait) => wait.rowId === id));
+}
+
+/** Whether `wait` is a review — an agent's hand-back of finished work — rather than a question. */
+export function isReviewWait(wait: MindmapNode): boolean {
+  return wait.agentWaiting?.review !== undefined;
 }
 
 /** Whether an answer is something to send: anything but whitespace. */

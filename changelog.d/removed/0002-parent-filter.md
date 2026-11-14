@@ -1,1 +1,0 @@
-- **The List View's Parent filter and the parent label on each row.** The path header above each run of rows names the branch, and the **Under** filter covers everything Parent could ask. Tag labels stay on the row. A saved Parent filter is dropped on load.

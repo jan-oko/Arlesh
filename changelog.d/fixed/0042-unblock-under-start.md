@@ -1,1 +1,0 @@
-- **Unblock no longer comes back empty under Start.** It now replaces the status preset in the List View instead of combining with it, so it always shows what is blocking you; tags, toggles and pills still apply.

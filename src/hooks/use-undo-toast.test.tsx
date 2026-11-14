@@ -23,7 +23,7 @@ function Board({ press }: { press: "undo" | "redo" }) {
   const showToast = useMindmapStore((s) => s.showToast);
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const clearToast = useMindmapStore((s) => s.clearToast);
-  const { onUndo, onRedo } = useUndo({ reload: () => Promise.resolve(), showToast });
+  const { onUndo, onRedo } = useUndo({ settle: () => Promise.resolve(), showToast });
   return (
     <div>
       <button data-testid="press" onClick={press === "undo" ? onUndo : onRedo} />

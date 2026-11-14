@@ -18,6 +18,7 @@ import { useUndo } from "@/hooks/use-undo";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
+import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useZenGrid } from "@/hooks/use-zen-grid";
 import { useKeyboardZenView } from "@/hooks/use-keyboard-zen-view";
@@ -32,7 +33,7 @@ import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
 import { zenContents } from "@/utils/zen-contents";
 import type { ZenDirection, ZenNavigationModel } from "@/utils/zen-grid";
-import { zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize, ZEN_GAP_PX } from "@/utils/zen-grid";
+import { zenCardCorners, zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize, ZEN_GAP_PX } from "@/utils/zen-grid";
 import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 import CommitmentIcon from "@/components/NodeIcon/CommitmentIcon";
 import ExpectationIcon from "@/components/NodeIcon/ExpectationIcon";
@@ -46,8 +47,6 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import ZenStrip from "./ZenStrip";
 import ZenTaskCard from "./ZenTaskCard";
-import { isReview } from "@/utils/status-mapping";
-import { openQuestion } from "@/utils/open-question";
 import styles from "./ZenView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useViewGestures } from "@/hooks/use-view-gestures";
@@ -73,7 +72,7 @@ export default function ZenView() {
   const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "zenView", "listView"]);
   const {
-    tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, reload,
+    tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, settle,
     onCycleStatus, onToggleStarted, renameNode, createTask, deleteTask, removeNode, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useListData();
   const sharedFilter = useBoardFilter();
@@ -95,21 +94,22 @@ export default function ZenView() {
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
-  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
+  const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, settle });
   const { setEditorModal, onDoubleClick: openEditor } = nodeEditor;
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const find = (id: string) => findNode(tree, id);
-  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({ findNode: find, reload, showToast });
-  const { toggleAgentic } = useTaskAgentic({ findNode: find, reload, showToast });
-  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: find, reload, showToast });
-  const { toggleCompound } = useTaskCompound({ findNode: find, reload, showToast });
-  const quickPlan = useQuickPlan({ findNode: find, reload, showToast });
-  const quickDependency = useQuickDependency({ tree, findNode: find, reload, showToast });
+  const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({ findNode: find, settle, showToast });
+  const { toggleAgentic } = useTaskAgentic({ findNode: find, settle, showToast });
+  const { toggleAsynchronous } = useTaskAsynchronous({ findNode: find, settle, showToast });
+  const { toggleCompound } = useTaskCompound({ findNode: find, settle, showToast });
+  const quickPlan = useQuickPlan({ findNode: find, settle, showToast });
+  const quickDependency = useQuickDependency({ tree, findNode: find, settle, showToast });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({ findNode: find, showToast });
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
   const searchableNodes = useSearchableNodes(tree);
+  const startFromSearch = useSearchStart(tree);
 
   // Renaming only: the Zen View creates nothing, so `createTaskUnder` is never called and the
   // "Escape discards a new task" half of this hook never has a new task to discard.
@@ -299,16 +299,17 @@ export default function ZenView() {
 
       <div
         ref={(element) => { gridRef(element); gridScrollRef.current = element; }}
-        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}`}
+        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}${layout.scrolls ? ` ${styles.gridAreaScrolls}` : ""}`}
       >
         {contents.tasks.rows.length === 0 ? (
           <div className={styles.centered}>{t("zenView:empty")}</div>
         ) : (
           <div className={`${styles.grid}${isPhone ? ` ${styles.gridStacked}` : ""}`} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
-            {contents.tasks.rows.map((row) => (
+            {contents.tasks.rows.map((row, index) => (
               <ZenTaskCard
                 key={stableKey(row.node.id)}
                 row={row}
+                corners={zenCardCorners(index, contents.tasks.rows.length, layout.columns)}
                 width={layout.cardWidth}
                 height={isPhone ? null : layout.cardHeight}
                 text={text}
@@ -322,7 +323,6 @@ export default function ZenView() {
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onCycleStatus={onCycleStatus}
-                question={isReview(row.node.taskStatus) ? openQuestion(row.node) : undefined}
                 onAnswer={nodeEditor.onAnswer}
               />
             ))}
@@ -333,6 +333,7 @@ export default function ZenView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
+          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />

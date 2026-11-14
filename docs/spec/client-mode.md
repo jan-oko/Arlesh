@@ -111,7 +111,7 @@ Shown in Client mode. It lists the server's devices with their **name and when e
 
 ## The Backend port
 
-The seam is a Rust **Backend port** (`src-tauri/src/backend/`). Every Tauri command that reads or
+The seam is a Rust **Backend port** (`crates/arlesh-backend/src/`). Every Tauri command that reads or
 writes the board is a thin adapter that calls the `Backend` the app manages. There are two
 implementations:
 
@@ -125,15 +125,74 @@ so an implementation that misses an operation does not compile. The frontend kee
 
 **What stays out of the port** is the shell, which is the same in both modes: windows, tabs, the
 tray, close-to-tray, the window session, the local MCP endpoint's settings, and the pure scope
-computations (`scope_containing`, `resolve_scope` and the rest), which need no board. Telling the
-other windows that the board changed is the shell's as well: a backend reports *whether* a gesture
-wrote, and the command announces it.
+computations (`scope_containing`, `resolve_scope` and the rest), which need no board. Delivering
+the board's changes to the windows is the shell's as well: a backend hands each change event to a
+callback (`SqliteBackend` from its own publisher, `HttpBackend` from the server's stream), and the
+shell emits it to every window. The port's board reads are `current_board` (the latest
+publication), `board_fence` and `board_head` (both answered from memory, *Live sync*), and
+`load_mindmap`, which derives at a given `now` for Python scripts.
 
-**`now` is the device's for reads.** A read that derives the board at an instant (the board, the
-lists, the lifecycles, the dependency picker) is sent the device's clock in the device's time zone,
-so a server in another time zone still answers for the user's day. A write is stamped by the
-server's clock, as it would be by any other writer, so the server should run in the user's time
-zone (`TZ`).
+**`now` is the device's for reads, and the server's for the board.** A read that derives at an
+instant (the lists, the lifecycles, the dependency picker) is sent the device's clock in the
+device's time zone. The board the windows hold is the server's latest publication, derived at the
+server's clock (*Live sync*), and a write is stamped by the server's clock, as it would be by any
+other writer. So the server must keep the user's time zone: it is a server setting (`--time-zone`
+or `ARLESH_TIME_ZONE`, an IANA name; see [HTTP API](http-api.md), *Running*), and unset it is the server
+machine's own zone.
+
+## The Backend crate and Python
+
+*[ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md). Built: the crate, and
+`HttpBackend` from Python. Python's `SqliteBackend` is the existing `arlesh.open` path, not yet the
+shared Rust one.*
+
+**The port and both backends live in their own crate, `arlesh-backend`** (`crates/arlesh-backend`),
+which the app and the Python package both depend on. It has two cargo features, `sqlite` and `http`,
+both on by default. The app's `standalone` feature turns on `sqlite`, so a Client-only build (Android,
+`--no-default-features`) compiles no `SqliteBackend`. The crate knows nothing of Tauri: it reports a
+change of the server's status and a change of the board through callbacks, and the app's callbacks
+tell the windows. The change-stream follower runs on a tokio runtime handle its host gives it. What
+stays in the app is everything that knows what a window is: `AppBackend`, the commands, `mode.json`,
+the token vault, suspend and resume, the local MCP endpoint, windows, tabs and the tray.
+
+**A Python script picks a backend the way the app does.**
+
+```python
+import arlesh
+
+async with arlesh.Arlesh(backend=arlesh.HttpBackend(url, token=token)) as board:
+    load = await board.board()
+    async for change in board.changes():
+        load = await board.board()
+
+async with arlesh.Arlesh(backend=arlesh.SqliteBackend("arlesh.db", client="notebook")) as board:
+    ...
+```
+
+- `arlesh.SqliteBackend(path, *, client=None, force=False)` and `arlesh.HttpBackend(url, *,
+  token)` describe a backend and do no I/O. `Arlesh` opens it on `async with` or `await
+  ….open()`: the file is opened as `arlesh.open` always has (read-only without a `client`), and a
+  server is asked `/health`.
+- `Arlesh` implements the existing `arlesh.Database` port, with the same method names, every one a
+  coroutine, answering the same pydantic models and raising the same `arlesh.errors`.
+  `arlesh.open(path, client=…, force=…)` is a shortcut for an `Arlesh` over a `SqliteBackend`, and
+  `arlesh.SqliteDatabase` is another name for `Arlesh`, so existing scripts do not change.
+- Over HTTP a script gets what Client mode gets: the revision headers (`board.board_revision`),
+  gzip, the version handshake, and the board last loaded, read-only, while the server cannot be
+  reached (`board.server_status` says so; a write is refused with `server_unreachable`).
+- `board.changes()` is an async iterator over the board's changes: the server's `/events` stream
+  over HTTP, the process's own write counter over SQLite. It yields the newest revision only, never a
+  backlog, and holds a connection only while someone is iterating.
+- One read the port lacks is answered by the Python layer: `get_info`, from the list of infos.
+- Operations only a local file has (`serve_mcp`, `stop_mcp`, `reset_undo`, `arlesh.hold`) are
+  refused over HTTP with `not_permitted`, `details.reason = "not_in_client_mode"`.
+- `await arlesh.pairing.start(url, name)` asks for a PIN to show, and `await
+  arlesh.pairing.wait(url, started)` returns the token once a signed-in device approves it. The
+  package stores no token.
+
+`arlesh-server` runs on SQLite only, never on an `HttpBackend`: a server over a
+server is a relay, which could loop back on itself and would write every device's change as its own
+client (see the ADR, decision 8).
 
 ## REST parity
 
@@ -146,46 +205,120 @@ available in Client mode (`not_permitted`, `details.reason = "not_in_client_mode
 does not ask for them: a delegate Person is drawn unnamed. Their code and tables stay as they are.
 
 The mapping is `conformance/client-mode.json`, tested from both sides: the app's
-`backend/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
+`crates/arlesh-backend/src/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
 and the server's `test_server_parity.py` fails when a listed route is not served.
 
 ## Live sync
 
-The server streams changes over Server-Sent Events. `GET /events` sends `board-changed` with a
-**revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the
-windows as the same Tauri `board-changed` event a Standalone write raises, now carrying the event's
-`revision` and `epoch`. After a reconnect it reloads if the revision jumped.
+(The agents' wait stream, `GET /events/expectations`, is a long poll that answers JSON, served by the FastAPI server behind the same bearer token (it has no Server-Sent Events form); see [MCP](mcp-server.md), *Being told a wait resolved*.)
 
-**What a write costs, and the revision.** The server stamps `/board` and every other answer with
-its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
-`load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
-the board it holds in `src/stores/board-revision-store.ts`.
+*Task `2d9`, [ADR 0020](../adr/0020-changed-nodes-and-board-hash.md). This section describes both
+modes: Standalone runs the same path in process.*
 
-**One load per window.** The window holds one copy of the board, in `src/stores/use-board-store.ts`,
-with one tracker, one listener for `board-changed` and a single-flight `load()`. The views (the
-list, the filter display, the Mindmap, Steps) are views over that copy: each derives its own tree
-from it, and none loads or listens. So four views mounted together cost one fetch, and one event
-from another device costs one fetch for all of them, each of which then shows it. A reload asked
-while a fetch is in flight (a write's own reload, an event) waits for it and shares one follow-up,
-since the fetch under way may have been read before the news. Standalone takes the same path, with no revision to compare. Standalone has no server, so
-its loads carry none and its events carry none, and a window with none reloads on every event as it
-always has. The rules, in `src/stores/watch-board-changes.ts`:
+**A write answers at once, and its changed nodes follow as an event.** Nothing reloads the whole
+board after a write, in either mode. After every committed write, and once a minute for what time
+alone changes, the backend's **publisher** derives the board, compares it with the last one it
+published, and publishes only what changed: a **publication**, numbered by its **sequence** within
+the epoch. Every window of every device applies it to the board it holds. On a server the
+publisher is the server's, and the events reach a device on `GET /events/changes`
+([HTTP Server](http-api.md#live-sync-eventschanges)), which `HttpBackend` relays to the windows as
+the Tauri `board-changed` event; in Standalone the app's own backend runs the same publisher and
+emits the same event. The window cannot tell which.
 
-- An event whose revision is **at or below** the one the window holds is skipped. A device's own
-  write is announced to it too, and after its own reload it already holds that revision, so it
-  costs one board fetch, not two.
-- An event is judged after a short wait (150 ms), and, if a load is in flight, when that load ends:
-  the echo can beat the write's response across the Tauri bridge, before the write's own reload has
-  started.
-- **An epoch change always reloads**: the server restarted and its numbers start again.
-- An event carrying no revision always reloads.
-- **The reload after a write stays.** A write's response carries the node it wrote, not the board,
-  and the board derives more than that (rollups, what blocks what, inherited Plans), so applying it
-  locally would leave those stale. It is the echo that is skipped, never the reload. A later change
-  (optimistic UI, Task `288`) builds on the stored revision.
+**What a change event says.** `{epoch, seq, revision, now, hash, changes}`:
 
-A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the board shrinks
-several times over. `/events` is not.
+- `seq` numbers the publication; `revision` counts the committed writes its board holds (at least);
+  `now` is the instant it was derived at; `hash` is the [board hash](#the-board-hash) after it.
+- `changes` names entries by collection and key: `set` holds `[key, value]` pairs, each a whole
+  entry as the board holds it, and `del` holds keys. A collection that did not change is left out.
+  A removal is its key in `del`; a move is the moved row set again with its new parent and
+  position, beside whatever else the move changed. The views build their trees from rows, so
+  nothing more is needed to re-parent a node.
+- When the changes would exceed 256 KiB, the event carries `"reload": true` instead, and the window
+  does one full load.
+
+```json
+{"epoch":"18f3c2a-4d1","seq":57,"revision":42,"now":"2026-11-13T10:15:02","hash":3735928559,
+ "changes":{"tasks":{"set":[["task-12",{"id":12,"title":"Write the ADR","status":"done", "…":"…"}]]},
+            "lifecycles":{"set":[["task-12",{"node_type":"task","node_id":12,"timing":"current","resolution":"completed","archival":"live","archival_conflict":false}]]},
+            "facts":{"set":[["task-14",{"dependency_blocks":[]}]],"del":["task-13"]}}}
+```
+
+**The entries.** One collection per field of the board, named as the field. Rows are keyed by `id`;
+Tasks, Goals, Commitments and waits by their board key (`task-12`, or `task-<uuid>` for a Habit
+occurrence), as `short_ids` and `facts` are; lifecycles and flow instance nodes by
+`<node_type>-<node_id>`; Habit entries by `flow_id`; `short_ids` and `facts` by their map keys;
+`agent_activity` is one entry. Block reasons travel as one entry per owner
+(`<owner_type>-<owner_id>`, all its reasons in order) and Task dependencies as one entry per Task
+(`task-<task_id>`, all its edges in order), since neither has a key of its own. Order inside a
+collection carries no meaning on the client: an applied entry keeps its place or is appended, and
+anything that needs an order reads a field (`position`, `flow_id`).
+
+**The window's rules** (`src/stores/watch-board-changes.ts`, applying with
+`src/utils/board-changes.ts`, which knows nothing of where changes come from):
+
+- An event whose `seq` is the one after the window's is **applied**, and the window's hash is then
+  compared with the event's.
+- At or below the window's `seq`, it is **skipped**.
+- More than one past, of **another epoch**, marked `reload`, or carrying no `seq` (a server from
+  before changed nodes) makes **one full load**. Events heard during a full load wait for it and
+  are applied after it, those it already holds dropped.
+- A full load is `load_mindmap`, which answers the **latest publication** as it stands (in Client
+  mode `GET /board/current`), stamped with its epoch, `seq`, `revision`, `now` and `hash`. It is
+  made for the first view, a gap, an epoch change, a mismatch, and a write that does not settle.
+
+**A writer settles on its write's revision.** The backend keeps a **fence**, the newest revision it
+knows a write reached (`board_fence`: in Client mode the highest `X-Arlesh-Revision` of any answer
+in the epoch, in Standalone its own count). Where a write's caller used to reload, it now
+**settles**: it resolves once the window's board has reached the fence's revision. If that has not
+happened within 5 seconds it makes one full load, resolves, and warns in the console.
+
+**The board's `now` is the publisher's.** Every publication is derived at the host's clock, so in
+Client mode the windows show the board at the **server's** time, which is why the server must run
+in the user's time zone. A window's reads other than the board still send the device's clock.
+
+**One copy per window.** The window holds one copy of the board in `src/stores/use-board-store.ts`;
+its views (the list, the filter display, the Mindmap, Steps, the Plan View) derive their trees from
+it, and none loads or listens. Every window applies every event, the window that wrote included,
+in both modes. An applied event and the pending writes it retires (*When the server answers*,
+below) change in one step, so the screen goes from the patched value to the server's with nothing
+in between.
+
+### The board hash
+
+Each entry has a **digest**: FNV-1a 32-bit over the UTF-8 bytes of the collection's name, a zero
+byte, the key, a zero byte, and the entry's value as compact JSON (the core's `serde_json` on the
+publishing side, `JSON.stringify` of the value the window holds on the other; the two agree for
+every value the board holds, pinned by `conformance/board-changes.json`). The **board hash** is the
+sum of every entry's digest, wrapping at 2^32, and a sum per collection is kept beside it. It covers
+the derived board as published, at that publication's `now`, never the stored rows.
+
+- **Every event** is checked: after applying it the window's hash must equal the event's.
+- **The head** is the latest publication's `{epoch, seq, revision, hash, sums}`, read with
+  `board_head`, which answers from memory (in Client mode from what the stream last said: the
+  server sends the head as a `board-head` event in place of each keepalive). A window reads it
+  every minute and five seconds after the last event it applied, while it shows the board and is
+  visible. Another epoch reloads. A head ahead of the window is noted, and still ahead ten seconds
+  or more later means an event was missed: the window reloads, with a warning. A head at the
+  window's `seq` with another hash reloads and logs a bug.
+- **The whole hash is recomputed** from the values held, not the running sum, when the window
+  becomes visible and every ten minutes, and compared the same way.
+- **Right after a full load** the computed hash must equal the load's. A difference there can only
+  be a defect in the canonical form, so it is logged once and the window stops comparing hashes
+  until the app restarts; its sequence checks go on.
+- A bug is logged through `report_board_divergence`, which writes an error to the app's log naming
+  the window, the epoch, both sequences and hashes, and the collections whose sums differ.
+
+Since a hash is compared only at the same `seq`, and a tick that changes the board is a
+publication of its own, time passing never reads as divergence: a window that has not yet applied
+the tick is behind, not wrong.
+
+**Catching up.** The server keeps its last 64 change events. A stream that reconnects with
+`Last-Event-ID` is sent the ones it missed; if they are gone, or the epoch changed, it is sent one
+`reload` event. So a dropped connection costs the events, not the board.
+
+A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the event streams are
+not.
 
 ## Undo
 
@@ -233,7 +366,8 @@ write already, and needs no operation of its own.
 
 ## Offline
 
-When the server cannot be reached, the app shows the last board it loaded, **read-only**, under a
+When the server cannot be reached, each window keeps showing the board it holds, **read-only**
+(a window that loads meanwhile gets the last full load `HttpBackend` kept), under a
 *Server unreachable* banner with the time of the last sync. A write is refused, writing nothing,
 with `not_permitted` and `details.reason = "server_unreachable"`, which the window shows as any
 refusal; nothing is queued. Offline writes are a later feature. Any call that gets through, or the
@@ -246,7 +380,7 @@ drops are rolled back, not kept (see *Pending writes*, below).
 modes: Standalone runs the same path, only faster.*
 
 A few actions show their result **on the node at once**, before the write is answered, instead of
-waiting for the write and a reload. Until the answer comes, the board holds a **pending write**: the
+waiting for the write and its changed nodes. Until the answer comes, the board holds a **pending write**: the
 action's **patch**, a set of the node's own fields, drawn over the loaded board.
 
 ### Which actions
@@ -258,7 +392,7 @@ action's **patch**, a set of the node's own fields, drawn over the loaded board.
   by `conformance/task-gestures.json` (ADR 0012, decision 13).
 - **Rename and the editors' Save:** the Task, Goal, Commitment, wait, Project, Domain, Tag and Info
   editors. The editor closes as soon as its own prompts are answered. The Flow and flow-item
-  editors stay write-then-reload in v1 (ADR 0012, decision 16).
+  editors stay write-then-settle in v1 (ADR 0012, decision 16).
 - **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
   with no prompt.
 - **Planning in the Plan View:** planning an item into the scope being filled, or into one of its
@@ -270,7 +404,7 @@ action's **patch**, a set of the node's own fields, drawn over the loaded board.
   decision 17). The quick plan picker and the editor's Plan field are as before.
 
 Move, reorder, archive, delete, Plan elsewhere, paste, the Agentic key and every other write stay
-**write-then-reload**.
+**write-then-settle**: the result shows when the write's changed nodes arrive (*Live sync*, above).
 
 ### What a patch may change
 
@@ -278,8 +412,8 @@ Only the touched node's **own** fields, the ones read straight off its stored ro
 status, verdict, wait status, Agentic flag, Asynchronous flag, Time Scope, Plan, due, on scope exit,
 tags, block reasons, delegate, brief and notes. Nothing **derived** is patched: not an inherited
 Plan or Agentic reading, Timing, Overdue, Resolution, Expired, Archived, Review, a Compound Task's
-status, a rollup, Blocked, or a dependent's *met*. Those change when the server answers and the
-board reloads. A patch is worked out locally only from a rule already pinned by a corpus under
+status, a rollup, Blocked, or a dependent's *met*. Those change when the write's changed nodes
+arrive. A patch is worked out locally only from a rule already pinned by a corpus under
 `conformance/` (ADR 0012, decision 12). The views' per-render rules (the presets, the list
 sections, Zen's contents, the Habit fold) read the patched board as they read any board, so a Task
 marked Done leaves Start at once. The focus exemption still keeps the selected node on screen.
@@ -300,24 +434,30 @@ undo) **waits for the lane to empty** before it is sent, so it never overtakes a
 ### When the server answers
 
 - **Written.** The node's cue stops. Where the response carries the written row, its own fields
-  replace the predicted ones, so the server's value shows even before the reload. The board then
-  reloads for the derived values, unless the board on screen already reflects the write.
-- **Reconcile: the server wins.** Each fresh board is drawn with the still-pending patches applied
-  over it. An answered write's patch is dropped once a board that reflects it is on screen: one whose
-  read began after the answer, or whose revision has reached the write's in the same epoch. Until
-  then it stays, so a reload that was skipped or still in flight never shows the old value.
+  replace the predicted ones, so the server's value shows before the changed nodes arrive. The
+  answer's **revision** is the response's, or else the fence read as the answer arrives (*Live
+  sync*). Nothing is reloaded: the derived values come with the write's changed nodes.
+- **Reconcile: the server wins.** Each board the window takes in, a full load or an applied event,
+  is drawn with the still-pending patches applied over it. An answered write's patch is dropped once
+  the board's revision has reached the write's in the same epoch, in the same step that puts that
+  board on screen, so the screen never shows the old value in between. After a server restart (the
+  answer's epoch is not the board's) it is dropped by a full load begun after the answer: a
+  committed write survives a restart. An answer with no revision (the fence could not be read) is
+  dropped by the first board taken in at least 5 seconds after it. A full load alone no longer
+  retires a write of the same epoch, because it serves the latest publication, which may not yet
+  hold it.
 - **Refused.** That write's patch, and every later one on the **same node**, are rolled back. Those
   later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
   other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
   reason on its error line (ADR 0012, decision 14).
-- **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
+- **Asks first.** Marking a Goal occurrence achieved over unfinished children rolls back quietly and
   opens the occurrence prompt. Confirming applies the patch again and sends the write with the
-  confirmation.
+  confirmation. A Task occurrence over open work is refused outright, with a toast.
 - **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
   goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
   says whether it did. A write the server had already answered stays until a board reflects it. While the
   board is read-only no action is patched at all.
-- **A new epoch** (the server restarted) reloads the board, as every epoch change does. Queued
+- **A new epoch** (the server restarted) makes a full load, as every epoch change does. Queued
   writes carry on to the restarted server.
 
 ### New nodes
@@ -328,7 +468,7 @@ parent's last child). A kind the parent may not hold is refused before anything 
 on the placeholder, a rename or a child of its own, queue behind its create. When the create is
 answered, they are rewritten to the real id and sent. The selection, the inline editor and any other
 place the temporary id was held move to the real node, and the server's position replaces the
-placeholder's when the board reloads. A refused create removes the placeholder and everything queued
+placeholder's when the create's changed nodes arrive. A refused create removes the placeholder and everything queued
 on it or under it, with one toast. Nothing about this reaches the server: it only ever sees real
 ids.
 
@@ -339,14 +479,23 @@ locally while it is still queued, and otherwise waits for the lane and undoes on
 
 ## Shared and local state
 
-- **Shared, on the server:** the board, and the **agent capacity lock**, which has its own routes.
+- **Shared, on the server:** the board, and the agents with their Claims and accounts, which have their own routes (`/agents`).
 - **Local to each device:** preferences, and the window and tab session.
 
 ## MCP
 
 In Client mode the app serves **no** MCP endpoint, and Settings → Agents shows no endpoint section;
-the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly, each
-with its own token. This is the [HTTP Server](http-api.md)'s *the app serves none*.
+the MCP roots and the agents there are the server's. Agents talk to the server's `/mcp` directly. This is
+the [HTTP Server](http-api.md)'s *the app serves none*.
+
+**Agents** (2026-11-07, Task `7a0`; see [Agents](agents.md)). `/mcp` no longer takes a device token: every
+session connects with the server's one low-privilege **connect token** (`arlesh-server connect-token`),
+then attaches as an Agent with a one-time PIN. Settings → Agents lists the server's Agents, their Claims,
+accounts and usage, and asks for PINs, apart from the Devices list; the Agents are the server's, shared
+by every device. Pairing stays device-only: its six-digit PIN and an agent's eight-digit PIN are
+different things. Although the app serves no MCP endpoint in Client mode, it still serves the **loopback
+PIN door** (`POST /agents/pin`, loopback only, no `Origin`), which forwards the request to the server with
+the device's token, so an agent on the same machine can attach without anyone copying a PIN.
 
 ## Tokens on the device
 
@@ -372,13 +521,61 @@ release key; there is no Play Store.
 - **System back** closes the topmost sheet; otherwise leaves the stepped-into node; otherwise goes
   up a scope in the Plan View; and only at the root leaves the app. It never deselects.
 - **Foreground only.** When the app is suspended the change stream is dropped, so no connection is
-  held in the background. When it resumes the stream is opened again, `/health` is checked and the
-  windows reload.
+  held in the background. When it resumes the stream is opened again with the last event id it
+  had, `/health` is checked, and the server sends the events missed meanwhile, or one `reload`
+  event when it no longer has them all (*Live sync*); the windows are not reloaded otherwise.
 - **The soft keyboard** shrinks the page (the activity pads its content by the keyboard's inset),
   so sheets resize above it. Enter confirms in the editors, as on the desktop.
 - **Box builds** (`com.atai.arlesh.box.*`, from `npm run box`) are handed their server and token by
   the launcher and start connected; the release app takes no such input (*Trying it*).
 - **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
+
+## Running the server
+
+*Decided with the user 2026-11-04.* Every release (a `dev` → `master` merge, or a `vX.Y.Z` tag)
+ships the server two ways, both on the GitHub release or in ghcr.io:
+
+- **The container image** `ghcr.io/jan-oko/arlesh-server`, for linux/amd64 and linux/arm64, tagged
+  `latest`, the version and `sha-<short>`. It runs as a non-root user, keeps the database on the
+  volume `/data` (`ARLESH_DATABASE_URL=sqlite:////data/arlesh.db`), listens on `0.0.0.0:4750`
+  inside the container, and has a `HEALTHCHECK` on `/health`. Built from `docker/server.Dockerfile`.
+- **Python wheels** for linux x86_64 and aarch64 (manylinux), on the release page:
+  `pip install "arlesh-<version>-…whl[server]"`, then `arlesh-server --db ~/arlesh.db`.
+
+```sh
+docker run -d --name arlesh-server -p 4750:4750 -v arlesh-data:/data \
+  ghcr.io/jan-oko/arlesh-server:latest
+
+# the first token, printed once (or pair a device, below)
+docker exec arlesh-server arlesh-server token add phone
+```
+
+```yaml
+# compose.yaml
+services:
+  arlesh-server:
+    image: ghcr.io/jan-oko/arlesh-server:latest
+    restart: unless-stopped
+    ports:
+      - "4750:4750"
+    volumes:
+      - arlesh-data:/data
+volumes:
+  arlesh-data:
+```
+
+The server reads `ARLESH_DATABASE_URL` (default `sqlite:////data/arlesh.db`) and `ARLESH_SERVER__PORT`
+(default 4750, the port inside the container); `ARLESH_DATABASE_URL_FILE` takes the URL from a file
+(a Docker secret) instead. The `/data` folder must be writable by uid 10001.
+
+Then `docker compose exec arlesh-server arlesh-server token add phone`, and paste the URL and the
+token into Settings → Server. To **pair** instead, enter only the URL on the new device, which shows
+a PIN, and run `docker exec arlesh-server arlesh-server pin approve <pin> --name phone`
+(`pin list` shows those waiting). An existing `arlesh.db` is seeded by copying it into the volume
+(*Data*, below). The image speaks plain HTTP and binds every interface: put it behind a tailnet, a
+LAN you trust or a TLS proxy, or pass `--tls-cert` and `--tls-key` (mount them and add the flags
+after the image name). The image is private until the package is made public in GitHub's package
+settings; `docker login ghcr.io` with a token that can read packages until then.
 
 ## Versions
 
@@ -388,6 +585,11 @@ starts following the server and on every reconnect of the change stream, so a se
 underneath a running app is noticed. A route the server lacks answers 404 with `details.reason =
 "unknown_route"`, which the window shows as a refusal of that one action rather than a failure of
 the board.
+
+Changed nodes (ADR 0020) did not bump it: they are additive both ways. An app that knows only
+revisions reloads on each `board-changed` and ignores `board-head`; an app on a server without
+`GET /board/current` gets `unknown_route`, loads `/board?now=` instead, with no sequence or hash, and
+then treats every event as a signal to reload.
 
 ## Data
 

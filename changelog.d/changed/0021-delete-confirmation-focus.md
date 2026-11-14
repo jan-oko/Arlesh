@@ -1,1 +1,0 @@
-- **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.

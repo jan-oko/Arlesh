@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { SubItemsWire } from "@/wasm/rules";
 import type { BoardRevision } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
@@ -50,8 +51,16 @@ export interface NodeFacts {
   dependency_blocks?: DependencyBlock[];
   /** The open agentic question beneath a Task — the wait that makes it read Review. */
   open_question?: RowId;
+  /** Every open agentic question or review beneath a Task, in position order. */
+  open_questions?: RowId[];
   /** Whether a Commitment's Verdict Window ran out before anything was recorded. */
   expired?: boolean;
+  /** Whether a Task reads In Progress (Doing) only from its sub-items rather than a status held by
+   * hand: a Compound Task, or a parent raised to it. */
+  derived_in_progress?: boolean;
+  /** What a Task's sub-items say about it, when they say anything: the status they make it read at
+   * least, and how many of them are not Done. */
+  sub_items?: SubItemsWire;
   /** Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
    * Achieved, a wait no longer pending. */
   met?: boolean;
@@ -111,8 +120,6 @@ export interface FlowHabitEntry {
  * the backend's rules say about the board beside the rows.
  */
 export interface MindmapLoad {
-  /** The revision the server read the board at. Client mode only. */
-  revision?: BoardRevision;
   domains: Domain[];
   goals: Goal[];
   tasks: Task[];
@@ -144,17 +151,31 @@ export interface MindmapLoad {
 }
 
 /**
- * Loads the whole mindmap in one round trip, at `now` (a local wall-clock datetime, ISO
- * `YYYY-MM-DDTHH:MM:SS`).
- *
- * Replaces the `13 + 2N` calls this used to take for `N` flows — thirteen resource-wide lists
- * followed by a dependent wave of one iterations call and one statuses call per flow — a cost
- * paid again after every edit, since each mutation ends with a silent reload.
+ * The latest published board, with which publication it is: what a window takes in first, after a
+ * gap in the events, a new run of the producer, a hash mismatch, and when a wait for its own write
+ * runs out (ADR 0020). `load` is the board as the producer wrote it; the rest is absent for a
+ * server that predates changed nodes, and the window then treats every event as a reload.
+ */
+export interface CurrentBoard {
+  load: MindmapLoad;
+  /** The run and revision the publication holds at least. */
+  revision?: BoardRevision;
+  /** The publication's number within its run. */
+  seq?: number;
+  /** The instant the board was derived at: what "now" means on it. */
+  now?: string;
+  /** The board hash the publication carries. */
+  hash?: number;
+}
+
+/**
+ * Loads the whole mindmap in one round trip: the latest board the backend published. It derives
+ * nothing: the producer derived it after the last write, or at the last minute's tick, at its own
+ * clock.
  *
  * One flow's Habit derivation failing does not fail the load: that flow's entry carries the
  * failure and everything else still arrives.
  */
-export async function loadMindmap(now: string): Promise<MindmapLoad> {
-  return invoke<MindmapLoad>("load_mindmap", { now });
+export async function loadMindmap(): Promise<CurrentBoard> {
+  return invoke<CurrentBoard>("load_mindmap");
 }
-

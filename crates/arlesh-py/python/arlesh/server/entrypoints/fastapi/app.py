@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException
 
 from arlesh import ArleshError
 from arlesh.server.business_logic.board import Board
+from arlesh.server.business_logic.notifier import Notifier
 from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     handle_authentication_failure,
@@ -30,9 +31,9 @@ from arlesh.server.entrypoints.fastapi.revision import (
     RevisionHeadersMiddleware,
 )
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
+from arlesh.server.entrypoints.fastapi.routers.agents import AgentAccountsRouter, AgentsRouter
 from arlesh.server.entrypoints.fastapi.routers.backup import BackupRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
-from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
@@ -45,13 +46,21 @@ from arlesh.server.entrypoints.fastapi.routers.health import HealthRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.pair import PairRouter
+from arlesh.server.entrypoints.fastapi.routers.push import PushRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.undo import UndoRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
-from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
-from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
+from arlesh.server.entrypoints.fastapi.security_scheme import (
+    MCP_CLIENT,
+    BearerTokenSecurityScheme,
+    ConnectTokenSecurityScheme,
+)
+from arlesh.server.entrypoints.mcp.router import ExpectationsRouter, McpRouter
 from arlesh.server.ports.pairing.pairing_store import PairingStore
+from arlesh.server.ports.push.push_sender import PushSender
+from arlesh.server.ports.push.push_store import PushStore
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -69,14 +78,27 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
   approve`), and the device's next poll answers its own token, once.
 * **`/health`** answers the API version (`api_version`, bumped only on a breaking change) and
   the build commit: the desktop app's handshake before it uses the server.
-* **`/events`** streams `board-changed` (Server-Sent Events) after every committed write.
+* **`/events/changes`** streams `board-changed` (Server-Sent Events) after every committed write,
+  carrying the changed nodes, and a `board-head` when quiet. **`/board/current`** is the latest
+  published board, as it is, for a client's full load.
+* **`/events/expectations`** is a long poll over the changes to the waits the MCP can see
+  (`?agentic=true` keeps the agentic ones): what an agent's notifications follow. The core
+  computes the answer.
 * **Every answer** carries `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the board's revision (the
-  one `/events` sends) and the run of the server it counts in. Answers over 1 KB are gzipped when
-  the client accepts it; `/events` never is.
+  one `/events/changes` sends) and the run of the server it counts in. Answers over 1 KB are
+  gzipped when the client accepts it; the event streams never are.
+* **`/mcp`** is Arlesh's MCP endpoint (Streamable HTTP with sessions: `initialize` answers an
+  `Mcp-Session-Id`; `POST` a JSON-RPC message with it, get JSON). It takes the **connect token**
+  (`arlesh-server connect-token`), not a device token. A session is unattached until its agent
+  attaches with a one-time PIN (`POST /agents/pins`, signed in), and then sees only its Claim.
+* **`/agents`** lists the agents and accounts, issues PINs and changes an agent by hand (pause,
+  resume, release, lock, remove), behind a device token.
+* **`PUT /devices/current/push`** registers the asking device's FCM token, so the server can
+  notify it (an agent's question, a Task Overdue, a task generated, an agent put at capacity or
+  freed); **`DELETE`** drops it, and revoking the device does. **`GET /push`** says whether the
+  server has FCM credentials. Without them nothing is sent.
 * **`GET /backup`** exists only when the server has `ARLESH_BACKUP_TOKEN`: a consistent SQLite
   snapshot, for the administrator, behind that secret (a device's token does not open it).
-* **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
-  journaled under the token's client.
 """
 
 
@@ -96,17 +118,17 @@ class AppRouter(APIRouter):
         board: Board,
         client_context: ContextVar[str],
         security_scheme: BearerTokenSecurityScheme,
-        mcp_router: McpProxyRouter,
         tokens: TokenStore,
         pairing: Pairing,
         version: str,
+        pushes: PushStore | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
         routed = (board, client_context)
         self.include_router(HealthRouter(version), prefix="/health")
         self.include_router(BoardsRouter(*routed, tag="board"), prefix="/board")
-        self.include_router(EventsRouter(*routed, tag="events"), prefix="/events")
-        self.include_router(CapacityRouter(*routed, tag="capacity"), prefix="/capacity")
+        self.include_router(EventsRouter(*routed, tag="events"), prefix="/events/changes")
         self.include_router(McpAccessRouter(*routed, tag="mcp-access"), prefix="/mcp-access")
         self.include_router(UndoRouter(*routed, tag="undo"))
         self.include_router(GesturesRouter(*routed, tag="gestures"), prefix="/gestures")
@@ -121,8 +143,11 @@ class AppRouter(APIRouter):
         self.include_router(NodesRouter(*routed, tag="nodes"), prefix="/nodes")
         self.include_router(ScopesRouter(), prefix="/scopes")
         self.include_router(RulesRouter(), prefix="/rules")
-        self.include_router(mcp_router, prefix="/mcp")
-        self.include_router(DevicesRouter(tokens, pairing, client_context))
+        self.include_router(AgentsRouter(*routed, tag="agents"), prefix="/agents")
+        self.include_router(AgentAccountsRouter(*routed, tag="agents"), prefix="/agent-accounts")
+        self.include_router(DevicesRouter(tokens, pairing, client_context, pushes))
+        if notifier is not None:
+            self.include_router(PushRouter(notifier, client_context))
 
 
 class ArleshServer(FastAPI):
@@ -138,20 +163,36 @@ class ArleshServer(FastAPI):
         board: Board,
         tokens: TokenStore,
         pairs: PairingStore,
+        connect: ConnectTokens,
         version: str,
+        pushes: PushStore | None = None,
+        sender: PushSender | None = None,
         backup: Backup | None = None,
     ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
-        mcp_router = McpProxyRouter(board, client_context)
+        notifier = (
+            Notifier(board=board, store=pushes, sender=sender) if pushes is not None else None
+        )
+        self.notifier = notifier
         super().__init__(
             title="Arlesh",
             description=DESCRIPTION,
             version=version,
-            lifespan=lifespan(board, closers=[mcp_router.aclose]),
+            lifespan=lifespan(board, notifier=notifier),
         )
         pairing = Pairing(pairs, tokens)
         # The one route open without a token: how a device without one gets one.
         self.include_router(PairRouter(pairing), prefix="/pair")
+        # Behind the connect token, not a device token: what the agents' sessions connect with.
+        connected = ConnectTokenSecurityScheme(connect)
+        self.include_router(
+            McpRouter(board, MCP_CLIENT, dependencies=[Depends(connected.validate_connect)]),
+            prefix="/mcp",
+        )
+        self.include_router(
+            ExpectationsRouter(board, dependencies=[Depends(connected.validate_attached)]),
+            prefix="/events/expectations",
+        )
         # Open without a device token, behind its own secret; absent without one.
         if backup is not None:
             self.include_router(BackupRouter(backup.database, backup.token), prefix="/backup")
@@ -160,15 +201,16 @@ class ArleshServer(FastAPI):
                 board=board,
                 client_context=client_context,
                 security_scheme=BearerTokenSecurityScheme(tokens, client_context),
-                mcp_router=mcp_router,
                 tokens=tokens,
                 pairing=pairing,
                 version=version,
+                pushes=pushes,
+                notifier=notifier,
             )
         )
         self.add_middleware(RequestLoggingMiddleware)
         self.add_middleware(
-            RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=board.epoch
+            RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=lambda: board.epoch
         )
         # Outermost, so it compresses the answer the stamp was put on.
         self.add_middleware(GzipExceptEventsMiddleware)

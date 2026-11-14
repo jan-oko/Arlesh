@@ -12,6 +12,7 @@
   "menuPalette": "Commands",
   "menuSettings": "Settings",
   "menuHotkeys": "Keyboard shortcuts",
+  "menuHelp": "Help",
   "topBarSquare": "Tap to open a node, long-press for commands",
   "presetChipLabel": "Preset: {{preset}}",
   "presetSheetTitle": "Preset",

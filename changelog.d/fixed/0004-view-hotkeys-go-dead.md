@@ -1,1 +1,0 @@
-- **View shortcuts no longer go dead until you switch views.** A modal or inline rename that left the screen without closing could leave every Mindmap and List View shortcut disabled. What suppresses shortcuts now follows what is actually on screen.

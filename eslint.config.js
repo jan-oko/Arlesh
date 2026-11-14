@@ -54,7 +54,7 @@ const localPlugin = {
 };
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "src/wasm/pkg"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

@@ -28,7 +28,7 @@ export interface QuickPlanTarget {
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: PendingToast) => void;
 }
 
@@ -81,7 +81,7 @@ interface Outcome {
  * {@link withGesture}, as the Plan View's batch is: a Task the backend turns away does not take
  * back the ones it accepted, and the toast counts it instead.
  */
-export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPlan {
+export function useQuickPlan({ findNode, settle, showToast }: Options): QuickPlan {
   const { t } = useTranslation(["warnings", "undo"]);
   const [target, setTarget] = useState<QuickPlanTarget | null>(null);
   const askPlanClamp = usePlanClamp();
@@ -158,11 +158,11 @@ export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPla
         outcome.planned.push(node);
         if (plan !== null && node.backlogged === true) outcome.unbacklogged.push(node);
       });
-      if (outcome.planned.length > 0) await reload();
+      if (outcome.planned.length > 0) await settle();
       const message = headline(outcome, planning);
       if (message !== null) showToast({ nodeId: planning.anchorId, message });
     },
-    [target, askPlanClamp, reload, headline, showToast, t],
+    [target, askPlanClamp, settle, headline, showToast, t],
   );
 
   return { target, open, apply, close };

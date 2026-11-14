@@ -61,9 +61,19 @@ impl<'session> ServerTokenOperator<'session> {
         Ok(inserted == 1)
     }
 
-    /// Removes `client`'s token. Answers `false` when it had none.
+    /// Removes `client`'s token, and with it the device's push registration and its record of what
+    /// it was told, in the same transaction: a revoked device is sent nothing more. Answers `false`
+    /// when it had no token.
     #[tracing::instrument(skip(self))]
     pub async fn revoke(&mut self, client: &str) -> Result<bool, sqlx::Error> {
+        sqlx::query("DELETE FROM push_sent WHERE client = ?")
+            .bind(client)
+            .execute(&mut *self.connection)
+            .await?;
+        sqlx::query("DELETE FROM push_devices WHERE client = ?")
+            .bind(client)
+            .execute(&mut *self.connection)
+            .await?;
         let removed = sqlx::query("DELETE FROM server_tokens WHERE client = ?")
             .bind(client)
             .execute(&mut *self.connection)

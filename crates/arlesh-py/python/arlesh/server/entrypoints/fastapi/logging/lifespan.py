@@ -10,14 +10,17 @@ from loguru import logger
 
 from arlesh import ArleshError
 from arlesh.server.business_logic.board import Board
+from arlesh.server.business_logic.notifier import Notifier
 
 
 def lifespan(
-    board: Board, closers: Sequence[Callable[[], Awaitable[None]]] = ()
+    board: Board,
+    closers: Sequence[Callable[[], Awaitable[None]]] = (),
+    notifier: Notifier | None = None,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Opens the ``board`` for writing as the server starts — refused while the desktop app holds
-    the database, unless forced — and, as it stops, runs ``closers`` and closes it (which stops
-    every MCP endpoint they serve)."""
+    the database, unless forced — starts the ``notifier`` once it is open, and, as it stops, stops
+    it, runs ``closers`` and closes the board (which stops every MCP endpoint it serves)."""
 
     @asynccontextmanager
     async def run(app: FastAPI) -> AsyncIterator[None]:
@@ -26,10 +29,14 @@ def lifespan(
         except ArleshError as refusal:
             logger.critical("Refusing to start", reason=refusal.message, details=refusal.details)
             raise
+        if notifier is not None:
+            notifier.start()
         logger.info("Started up", title=app.title, version=app.version)
         try:
             yield
         finally:
+            if notifier is not None:
+                await notifier.stop()
             for close in closers:
                 await close()
             await board.close()

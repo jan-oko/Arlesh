@@ -33,7 +33,11 @@ def test_every_route_the_app_calls_is_served(server: TestClient) -> None:
     }
     wanted = {
         (route.split(" ", 1)[0], _shape(route.split(" ", 1)[1]))
-        for routes in (*_contract()["routes"].values(), *_contract()["pairing"].values())
+        for routes in (
+            *_contract()["routes"].values(),
+            *_contract()["pairing"].values(),
+            [_contract()["streams"]["changes"], _contract()["streams"]["expectations"]],
+        )
         for route in routes
     }
 
@@ -48,5 +52,5 @@ def test_the_api_version_is_the_apps(server: TestClient) -> None:
 def test_people_and_the_knowledge_base_have_no_routes(server: TestClient) -> None:
     paths = server.app.openapi()["paths"]  # type: ignore[attr-defined]
 
-    # `/events` is the change stream, not the knowledge base's Events.
+    # `/events/changes` is the change stream, not the knowledge base's Events.
     assert [path for path in paths if re.search(r"people|person|thread|knowledge", path)] == []

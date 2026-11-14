@@ -1,1 +1,0 @@
-- **Narrowing a Time Scope from the List View no longer hangs.** The prompt to clamp nested items or cancel appeared only on the Mindmap; it now appears in every view.

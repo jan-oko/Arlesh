@@ -37,12 +37,15 @@ import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { takesCompound } from "@/utils/compound";
+import { statusBlock } from "@/utils/task-gestures";
+import type { StatusBlock } from "@/utils/task-gestures";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
 } from "@/utils/status-mapping";
-import { openQuestion } from "@/utils/open-question";
-import AnswerField from "@/components/AnswerField/AnswerField";
+import { openWaits } from "@/utils/open-question";
+import type { WaitReply } from "@/hooks/use-answer-question";
+import OpenWaits from "@/components/AnswerField/OpenWaits";
 import { isOverdue } from "@/utils/overdue";
 import { blockedByText } from "@/utils/blocked-by";
 
@@ -102,6 +105,13 @@ export interface TaskSaveData {
   doneAt?: string;
 }
 
+/** The `editor` key that says why a status pill is greyed out. */
+const STATUS_BLOCK_HINT: Record<StatusBlock, "statusBlockCompound" | "statusBlockBelowSubItems" | "statusBlockOpenSubItems"> = {
+  compound: "statusBlockCompound",
+  below_sub_items: "statusBlockBelowSubItems",
+  open_sub_items: "statusBlockOpenSubItems",
+};
+
 /** The pills each model offers, in order. Review is never picked: it shows, disabled, while the
  * agent's question is open. */
 const ORDINARY_PILLS: readonly TaskStatus[] = Object.values(TASK_STATUS).map(ordinary);
@@ -140,7 +150,7 @@ interface Props {
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
-  onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
+  onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
   /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
   openAtTemplate?: boolean;
   onClose: () => void;
@@ -351,7 +361,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // is none, and the save is then refused by name.
   const pills = readsAgentic ? AGENTIC_PILLS : ORDINARY_PILLS;
   const shownStatus = convertedStatus(status, readsAgentic);
-  const question = readsAgentic && isReview(status) ? openQuestion(node) : undefined;
+  const hasOpenWaits = readsAgentic && isReview(status) && openWaits(node).length > 0;
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
@@ -389,11 +399,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             no clicks, and say why. Switching Compound off below frees them, starting from the
             status the task was showing. */}
         <div className={styles.statusPills}>
-          {pills.map((s) => (
-            <button key={s.status} type="button" disabled={isCompound} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
-              {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}
-            </button>
-          ))}
+          {pills.map((s) => {
+            const block = statusBlock(s, isCompound, node.subItems);
+            return (
+              <button key={s.status} type="button" disabled={block !== null} {...(block === null ? {} : { title: t(STATUS_BLOCK_HINT[block]) })} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
+                {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}
+              </button>
+            );
+          })}
           {shownStatus !== null && isReview(shownStatus) && (
             <button type="button" disabled className={`${styles.statusPill} ${styles.statusPillActive}`} title={t("statusReviewDerived")}>
               {t("status:agentic.review")}
@@ -519,7 +532,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={isArchivedByHand || agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
+        startOpen={isArchivedByHand || agentic !== TASK_AGENTIC.INHERIT || hasOpenWaits || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
         {takesArchive && <ArchivedField checked={isArchivedByHand} onChange={setArchivedAndClearBacklog} />}
         {/* Its short id — the one the MCP and a "Blocked by …" reason name it by — so the user can
@@ -545,9 +558,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           inherited={node.inheritedAgentic === true}
           onChange={setAgentic}
         />
-        {question !== undefined && onAnswer !== undefined && (
+        {hasOpenWaits && onAnswer !== undefined && (
           <div role="group" aria-label={t("agenticQuestionSection")}>
-            <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} />
+            <OpenWaits task={node} onAnswer={onAnswer} />
           </div>
         )}
         {readsAgentic && (

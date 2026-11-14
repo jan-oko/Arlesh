@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-core"
-version = "0.3.0"
+version = "1.0.0"
 description = "Arlesh's domain: the model, its rules, the session layer, undo and the MCP endpoint"
 edition = "2021"
 
@@ -8,6 +8,7 @@ edition = "2021"
 # host — the desktop app, the Python bindings — builds on, and a Python build must not compile a
 # webview. CI asserts it with `cargo tree` (see .github/workflows/ci.yml).
 [dependencies]
+arlesh-rules = { path = "../arlesh-rules" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
@@ -15,10 +16,17 @@ thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["net", "rt", "sync"] }
+# A server runs in the zone it is told, by IANA name, whatever its host or image has installed.
+chrono-tz = "0.10"
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
+futures-util = { version = "0.3", default-features = false }
 rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
 axum = "0.8.9"
+sha2 = "0.10"
+getrandom = "0.3"
 schemars = { version = "1.2.2", features = ["chrono04"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+arlesh-rules = { path = "../arlesh-rules", features = ["test-support"] }
+tokio = { version = "1", features = ["rt", "macros", "io-util", "net"] }

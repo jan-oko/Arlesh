@@ -12,7 +12,7 @@ import { getErrorMessage } from "@/api/errors";
 interface Options {
   /** The nodes selected now, read when a command asks whether it can act or runs. */
   selection: () => MindmapNode[];
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -28,7 +28,7 @@ function archiveWriteOf(node: MindmapNode, archive: boolean): ArchiveWrite {
  * the hand archive away as one undo step. A node the archive skips is said so, never dropped
  * silently. The calling view publishes them for as long as it is mounted.
  */
-export function useTouchBoardCommands({ selection, reload, showToast }: Options): void {
+export function useTouchBoardCommands({ selection, settle, showToast }: Options): void {
   const { t } = useTranslation(["touch", "warnings"]);
 
   function selectedWait(): MindmapNode | undefined {
@@ -48,7 +48,7 @@ export function useTouchBoardCommands({ selection, reload, showToast }: Options)
       const check = wait === undefined ? undefined : openCheckOf(wait);
       if (wait === undefined || check === undefined) return;
       void updateTask(rowIdOf(check), { status: { kind: "ordinary", status: "done" } }).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => showToast({ nodeId: wait.id, message: t("touch:checkDoneFailed", { message: getErrorMessage(error) }) }),
       );
     },
@@ -66,7 +66,7 @@ export function useTouchBoardCommands({ selection, reload, showToast }: Options)
       void archiveNodes(plan.nodes.map((node) => archiveWriteOf(node, plan.archive))).then(
         () => {
           if (plan.skipped > 0) showToast({ nodeId: first.id, message: t("touch:archiveSkipped", { count: plan.skipped }) });
-          return reload();
+          return settle();
         },
         (error: unknown) => showToast({ nodeId: first.id, message: t("warnings:archiveFailed", { message: getErrorMessage(error) }) }),
       );

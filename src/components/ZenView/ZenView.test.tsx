@@ -62,7 +62,7 @@ function mockBoard(children: MindmapNode[]): void {
     allTasksAndGoals: [],
     isLoading: false,
     error: null,
-    reload: vi.fn(() => Promise.resolve()),
+    settle: vi.fn(() => Promise.resolve()),
     onCycleStatus,
     onToggleStarted,
     renameNode: vi.fn(() => Promise.resolve()),

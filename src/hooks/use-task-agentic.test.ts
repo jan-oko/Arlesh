@@ -18,13 +18,13 @@ function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function setup(nodes: MindmapNode[]) {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const showToast = vi.fn();
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const rendered = renderHook(() =>
-    useTaskAgentic({ findNode: (id) => byId.get(id), reload, showToast }),
+    useTaskAgentic({ findNode: (id) => byId.get(id), settle, showToast }),
   );
-  return { ...rendered, reload, showToast };
+  return { ...rendered, settle, showToast };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -32,12 +32,12 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskAgentic", () => {
   it("sends the press for the task's own row and reloads", async () => {
     vi.mocked(toggleTaskAgentic).mockResolvedValue(Object.create(null));
-    const { result, reload } = setup([node("task-5")]);
+    const { result, settle } = setup([node("task-5")]);
 
     act(() => { result.current.toggleAgentic("task-5"); });
 
     await waitFor(() => expect(toggleTaskAgentic).toHaveBeenCalledWith(5));
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("declines every node that has no agentic column of its own", () => {

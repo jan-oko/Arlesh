@@ -21,7 +21,7 @@ pub mod generate;
 
 /// The last migration the baseline stands for. A migration with a higher number runs on top of it.
 ///
-/// Read from `baseline/version.txt`, which the master bot rewrites together with `schema.sql` when
+/// Read from `baseline/version.txt`, which the bot rewrites together with `schema.sql` when
 /// a migration lands (`scripts/recut-baseline.mjs`), so nobody re-cuts the baseline by hand.
 pub const BASELINE_VERSION: i64 = parse_version(include_str!("../../baseline/version.txt"));
 

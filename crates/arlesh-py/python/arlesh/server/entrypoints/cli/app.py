@@ -11,9 +11,14 @@
     arlesh-server token list --db ~/arlesh.db
     arlesh-server token revoke phone --db ~/arlesh.db
 
+    arlesh-server connect-token issue --db ~/arlesh.db  # the token every MCP session connects with
+
     arlesh-server pin list --db ~/arlesh.db             # devices showing a PIN, waiting
     arlesh-server pin approve 123456 --name phone --db ~/arlesh.db
     ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
+
+Push notifications to phones need a Firebase service-account key: ``ARLESH_FCM_CREDENTIALS_FILE``
+(see ``docs/spec/notifications.md``). Without it the server runs and sends none.
 
 Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and so on; see
 :mod:`arlesh.server.config`); a flag given wins.
@@ -37,8 +42,10 @@ from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer, Backup
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
+from arlesh.server.ports.push.database_push_store import DatabasePushStore
+from arlesh.server.ports.push.fcm_sender import CredentialsError, FcmSender, ServiceAccount
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
 PROGRAM = "arlesh-server"
@@ -51,6 +58,10 @@ app = typer.Typer(
 )
 token_app = typer.Typer(help="Manage the bearer tokens, one per client.", no_args_is_help=True)
 app.add_typer(token_app, name="token")
+connect_app = typer.Typer(
+    help="The connect token every MCP session connects with.", no_args_is_help=True
+)
+app.add_typer(connect_app, name="connect-token")
 pin_app = typer.Typer(
     help="Pair devices: list and approve the PINs they show.", no_args_is_help=True
 )
@@ -83,6 +94,13 @@ def serve(
         Path | None, typer.Option(help="Serve HTTPS with this certificate.")
     ] = None,
     tls_key: Annotated[Path | None, typer.Option(help="… and this key.")] = None,
+    time_zone: Annotated[
+        str | None,
+        typer.Option(
+            help="The IANA time zone the user's day is kept in, e.g. Europe/Berlin "
+            "(default: the machine's own; or $ARLESH_TIME_ZONE)."
+        ),
+    ] = None,
 ) -> None:
     """Serves the board until stopped."""
     if context.invoked_subcommand is not None:
@@ -92,12 +110,17 @@ def serve(
         server={"host": host, "port": port, "tls_cert": tls_cert, "tls_key": tls_key},
     )
     setup_logger()
+    zone = time_zone if time_zone is not None else config.time_zone
+    if zone is not None:
+        try:
+            arlesh.set_time_zone(zone)
+        except arlesh.InvalidRequest as refusal:
+            raise typer.BadParameter(refusal.message, param_hint="--time-zone") from None
     path = config.database.path
     tokens = DatabaseTokenStore(path)
     # Reading the token table opens the database for writing, which would migrate it: only once
     # it is known that this server will be its writer. A held database is refused at startup.
     if config.database.force or _unheld(path):
-        tokens = prepare(path)
         if not tokens.issued():
             typer.echo(
                 f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
@@ -108,7 +131,10 @@ def serve(
             board=board,
             tokens=tokens,
             pairs=DatabasePairingStore(path),
+            connect=ConnectTokens(path),
             version=version("arlesh"),
+            pushes=DatabasePushStore(path),
+            sender=_sender(config),
             backup=(
                 Backup(path, config.backup_token.get_secret_value())
                 if config.backup_token is not None and config.backup_token.get_secret_value()
@@ -146,6 +172,38 @@ def revoke_token(
         _tokens(db).revoke(client)
     except UnknownClient as refusal:
         _fail(refusal)
+
+
+@connect_app.command("issue")
+def issue_connect_token(db: Db = None) -> None:
+    """Issues the connect token and prints it. It replaces the old one, which stops working at
+    once, and is shown this once. Put it in the MCP configuration's Authorization header
+    (`Bearer <token>`); agents then attach with a PIN."""
+    path = _config(database={"path": db}).database.path
+    _tokens(db)
+    typer.echo(ConnectTokens(path).issue())
+
+
+@connect_app.command("info")
+def connect_token_info(db: Db = None) -> None:
+    """When the connect token was issued and last used."""
+    path = _config(database={"path": db}).database.path
+    _tokens(db)
+    info = ConnectTokens(path).info()
+    if info is None:
+        typer.echo(f"{PROGRAM}: no connect token: run `{PROGRAM} connect-token issue`", err=True)
+        raise typer.Exit(1)
+    used = f"{info.last_used:%Y-%m-%d %H:%M}" if info.last_used else "never"
+    typer.echo(f"issued {info.created:%Y-%m-%d %H:%M}\tlast used {used}")
+
+
+@connect_app.command("revoke")
+def revoke_connect_token(db: Db = None) -> None:
+    """Removes the connect token: no session can connect until a new one is issued."""
+    path = _config(database={"path": db}).database.path
+    _tokens(db)
+    if not ConnectTokens(path).revoke():
+        _fail(RuntimeError("there is no connect token"))
 
 
 @pin_app.command("list")
@@ -199,15 +257,6 @@ def holder(path: Path) -> TakeHold:
     return lambda: arlesh.hold(path)
 
 
-def prepare(path: Path) -> DatabaseTokenStore:
-    """The token store in the database at ``path``, with the tokens of an old ``<db>.tokens``
-    file carried over into it. Its first call migrates the database if it is behind."""
-    tokens = DatabaseTokenStore(path)
-    for client in tokens.carry_over(FileTokenStore.beside(path)):
-        typer.echo(f"{PROGRAM}: moved {client}'s token into the database", err=True)
-    return tokens
-
-
 def _unheld(path: Path) -> bool:
     """Whether nothing holds the database at ``path`` right now."""
     try:
@@ -217,8 +266,20 @@ def _unheld(path: Path) -> bool:
     return True
 
 
+def _sender(config: Config) -> FcmSender | None:
+    """The FCM sender the credentials file names, or ``None`` when none is named: pushes are off.
+    A file that cannot be used stops the server, so a mistake is not mistaken for 'off'."""
+    file = config.fcm_credentials_file
+    if file is None:
+        return None
+    try:
+        return FcmSender(ServiceAccount.read(file))
+    except CredentialsError as error:
+        raise typer.BadParameter(f"ARLESH_FCM_CREDENTIALS_FILE: {error}") from None
+
+
 def _tokens(db: Path | None) -> DatabaseTokenStore:
-    return prepare(_config(database={"path": db}).database.path)
+    return DatabaseTokenStore(_config(database={"path": db}).database.path)
 
 
 def _interactive() -> bool:
@@ -228,7 +289,7 @@ def _interactive() -> bool:
 
 def _pairing(db: Path | None) -> Pairing:
     path = _config(database={"path": db}).database.path
-    return Pairing(DatabasePairingStore(path), prepare(path))
+    return Pairing(DatabasePairingStore(path), DatabaseTokenStore(path))
 
 
 def _config(**sections: dict[str, Any]) -> Config:

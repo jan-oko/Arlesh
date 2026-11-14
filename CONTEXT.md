@@ -62,13 +62,15 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Agentic brief** — What an agent reads about an Agentic Task in place of an issue tracker's entry: a **Priority** (MW, A, B or C, most urgent first), **Spec**, **Design**, **Acceptance criteria** and **Notes**. The Task's own — it never inherits, where the flag does — and kept whatever the flag says (`task_agentic_briefs`). A Task that reads as Agentic cannot be started — claimed into On Agent, or taken into Doing — without a Spec: the move is refused out loud.
 
-**Agentic wait** — An Expectation an agent raised on the Agentic Task it is working: "the agent is waiting on you", the replacement for `bd human`. A boolean, an optional **note**, a **question** flag and an **answer** on the Expectation. A **question wait** (the default) asks the user: the note carries the question, and it is released only with an answer, by the user in the app or by the agent recording one it got itself. A wait that is **not a question** waits on something non-human, like CI, and is released with no answer, typically by the agent. Only a direct child of a Task that reads as Agentic can be one.
+**Agentic wait** — An Expectation an agent raised on the Agentic Task it is working: "the agent is waiting on you", the replacement for `bd human`. A boolean, an optional **note**, a **question** flag and an **answer** on the Expectation. A **question wait** (the default) asks the user: the note carries the question, and it is released only with an answer, by the user in the app or by the agent recording one it got itself. A **review** is its own kind of agentic wait (see **Review**). A wait that is **not a question** waits on something non-human, like CI, and is released with no answer, typically by the agent. Only a direct child of a Task that reads as Agentic can be one. **The app does not draw an agentic wait**: it stays an Expectation for agents through the MCP, and the Task it hangs under shows the open question or review and is where it is answered. A wait the user made by hand is drawn as ever.
+
+**Review** — An agentic wait with which an agent hands finished work back for a verdict. Carries a title, a summary of what changed, optional **links** (each a label and a URL: a PR, a doc, a build; Arlesh stores them and never follows them) and **hand tests**, a read-only list of what the user can try by hand. The user answers with a **verdict** stored as a value, `approved` or `changes_requested`, plus one free-text note; **Approve** is the user's explicit word to merge the PR when there is a PR link. Either verdict releases the review and the Task reads On Agent: the agent merges and sets Done after `approved`, or fixes and raises a new review after `changes_requested`. Not to be confused with the **Review** status, which a Task reads while any question or review of this kind is open.
 
 **Asynchronous** — A Task whose doing starts a **wait** rather than finishing something: send the email, order the part, kick off the build. A stored boolean on Tasks (`tasks.asynchronous`, NOT NULL, default false) that **does not inherit** — deliberately unlike **Agentic** — because "starts a wait" is a property of one concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the wait. Tasks only. While the flag is on the Task may carry an optional **Expectation template** (title, tags, a Time Scope rule, Check every; no status); while such a Task is done, a virtual **spawned** Expectation is derived from it. Without a template nothing is spawned. Set from a switch in the Task editor (the template fills the Expectation section below it) and the bare `W` key, badged in both views with an hourglass, filterable as its own List View pill dimension, and the flag the List View's opt-in **Asynchronous first** ordering reads.
 
-**Compound** — A Task set to **consist of its sub-items**: its status is derived from its whole subtree and never set by hand. A stored boolean on Tasks (`tasks.compound`, NOT NULL, default false) that does not inherit; stored Tasks only. Every Task (Habit occurrences and check tasks included), Goal, wait and Commitment beneath it counts unless it is effectively Archived; a Goal counts Done when Achieved, a pending wait or an Unresolved Commitment counts Started. The **progress rule**: all Done → Done; else any In Progress → In Progress; else any Started or Done → Started; else To Do. Derived on every board load, never stored; manual status writes are refused. When every open item beneath it is blocked, it is blocked too (a derived block reason). Set from a switch in the Task editor and the bare `V` key; its status glyph's outer ring is dashed. Switching it off keeps the derived status as the stored one.
+**Compound** — A Task set to **consist of its sub-items**: its status is derived from its whole subtree and never set by hand. A stored boolean on Tasks (`tasks.compound`, NOT NULL, default false) that does not inherit; stored Tasks only. Every Task (Habit occurrences and check tasks included), Goal, wait and Commitment beneath it counts unless it is effectively Archived; a Goal counts Done when Achieved, a pending wait or an Unresolved Commitment counts Started. The **progress rule**: all Done → Done; else any In Progress → In Progress; else any Started or Done → Started; else To Do. Derived on every board load, never stored; manual status writes are refused. When every open item beneath it is blocked, it is blocked too (a derived block reason). Set from a switch in the Task editor and the bare `V` key, offered on every Task that takes it (its switch reads *Extends beyond its children* off and *Consists purely of its child tasks* on). The Task editor greys out the statuses a Task cannot hold — anything on a Compound Task, below the floor its sub-items derive, Done over open ones; its status glyph's outer ring is dashed. Switching it off keeps the derived status as the stored one. Compound means the sub-items are **exhaustive**: Done is derived on completion and a manual In Progress is refused. When it reads as Agentic it shows On Agent, or Review, as its items say (Doing or In Progress beats both; Done items are ignored). Any **other** Task with sub-items reads at least Started or In Progress by the same counting, its own stored status raised and never lowered, and cannot be set Done while a counted item is not Done; Agentic status is not derived from sub-items.
 
-**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Never gates its iteration's resolution — marking the occurrence done while a child is unfinished asks for confirmation instead, and nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
+**Instance child** — A real node attached to one virtual Habit instance and no other, keyed by the same (instance, iteration scope) pair a **Modification** is. May be anything a Task can parent. Is not an instance and never gates resolution directly, but an open one blocks marking its occurrence done (refused, as for any Task with an open sub-item), so the occurrence stays open until it is finished or archived; nothing about that is stored. Archives with its occurrence as a unit, and counts as a divergence — so `delete instances and regenerate` removes it.
 
 **Path header** — A List View row's location, rendered once above the contiguous run of rows that share it (`Growth › CODE › ARLESH › Features`). Names every ancestor **not** rendered as a row above the task — always through to the Goal, and including any ancestor Task the active filter hides. Each segment is clickable and **enters** that node as the subtree, the same re-rooting `Ctrl+O` performs. Replaces the former Goal header and its visibility toggle.
 
@@ -85,6 +87,24 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 **Undo Journal** — The record of every journaled row change, written by database triggers rather than by the commands themselves, so a command cannot fail to be covered. Each entry carries its gesture, the row before and after, and the **source** of the write.
 
 **Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
+
+**Agent** — An AI session that attached to the MCP with a one-time PIN (or its agent token): a name, an **Account** label, a session id and at most one **Claim**. Kept in the database (`agents`), journaled: the user's Settings edits to it and its Claim are undoable, and its own writes are journaled as `mcp` and never enter the Undo Stack. Listed in Settings → Agents, apart from the Devices list. Not a device and not a person. An unattached MCP session is not an Agent: it may call only the attach tool. The MCP session is bound to its Agent; a subagent sharing the connection is told apart as a **Child Agent** by its **Sub-token**, and a call without one runs as the session's Agent. See ADR 0018.
+
+**Child Agent** — A subagent of an attached session, registered as an Agent of its own under the session's Agent (`agents.parent_id`) and listed nested under it in Settings → Agents, named from the subagent's description. It uses its parent's account, so capacity and locks follow the parent; it has no lock of its own and cannot have children. It holds at most one **Sub-Claim**. The arlesh-notify mod registers it when the subagent starts, pauses its Sub-Claim when the subagent stops and resumes it when the subagent is resumed. It is removed when its parent is removed, when the Task its Sub-Claim names is set Done (stored status), in the same Gesture, or when its subagent stops holding nothing open (no Task still On Agent, no open wait under it). See ADR 0019.
+
+**Sub-Claim** — A Child Agent's Claim. It must lie inside its parent's Claim, which plays for the child the part the user's MCP roots play for an Agent; it is not an overlap with the parent's Claim, and the parent keeps its whole Claim, the Sub-Claim included. Overlap and shadowing are judged among one parent's children only. It reads Paused while its own Claim or its parent's is paused, and Unreachable while the parent sees nothing or the Sub-Claim has left the parent's Claim.
+
+**Sub-token** — What a Child Agent's calls carry: the optional `sub_token` argument every MCP tool takes. A call with it runs as that child and sees only its Sub-Claim; without it, as the session's Agent. Answered once by `arlesh_agents.register_child`, kept as a digest, accepted only from the parent's own session. A convention between a session and its subagents, not a security wall, and not an agent token: it cannot attach and the wait stream refuses it.
+
+**Claim** — The subtree an Agent holds, and its whole view: it reads and writes only inside it, as if it were its own MCP root, within the user's MCP roots and with private nodes hidden. **Active**: held; no other active Claim may cover any node of it, ancestors and descendants included. **Paused**: set aside by the agent or by hand so another agent may claim the subtree; the Agent keeps its token and reads the subtree but writes nothing, and resuming is refused while an active Claim overlaps. A Claim lasts until released. Of two Claims that come to overlap (a node was moved), the older keeps its place and the younger is **shadowed**; a Claim whose root is gone or no longer inside the user's roots is **unreachable**. Either sees nothing.
+
+**Account** — The plan whose usage limits a group of Agents share, named by a label the Agent declares (not authenticated against Claude). Usage is kept per account as the last report of each limit window. An Agent is **at capacity** while any window of its account sits at 100% before its reset, or while it or its account is locked by hand; derived from the reports and now, so it lifts at the reset by itself. At capacity, the Agent's claimed Agentic Tasks read blocked. There is no app-wide capacity lock.
+
+**Connect token** — The one low-privilege bearer token of a server (`connect_tokens`, issued with `arlesh-server connect-token`) that admits an MCP session to `/mcp` and lets it call the attach tool, nothing else. Device tokens do not work on `/mcp`.
+
+**PIN (agent)** — A one-time, eight-digit code, valid five minutes, that a signed-in client asks for (Settings → Agents, or the desktop's loopback door) and hands to an agent so it can **attach**. Distinct from the six-digit pairing PIN of a device.
+
+**Attach** — The one thing an unattached MCP session may do: `arlesh_agents.attach` with a PIN (a new Agent) or an agent token (the same Agent again), optionally claiming a subtree. Binds the session to the Agent. The binding lives in memory, so a restarted server asks the agent to attach again with its token.
 
 **MCP root** — A stored node whose subtree the MCP endpoint may see. The MCP reads everything inside a root and nothing outside every root; with no roots it sees nothing. Inside a root an **Agentic** Task is writable too and everything else is read-only; private nodes stay hidden throughout. Stored on the board (`mcp_roots`), journaled, and set on the settings modal's *Agents* page (called *MCP access* until 2026-10-01).
 
@@ -150,6 +170,48 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 ---
 
+## Live sync
+
+How the board travels from where it is derived to the windows that draw it ([Client Mode](docs/spec/client-mode.md#live-sync), [ADR 0020](docs/adr/0020-changed-nodes-and-board-hash.md)). Transport terms, not concepts of the board.
+
+**Revision** — How many writes the board's host has committed in this run of it. Bumped after every committed write (undo, redo and an agent's write included), never by time passing. Every server answer carries it (`X-Arlesh-Revision`).
+
+**Epoch** — The name of one run of the host (the server, or the app in Standalone). Revisions and sequences start again in a new one, so they are compared only within one epoch, and a new epoch always means a full load.
+
+**Publication** — One derived board the **publisher** has given out: the board as derived at one instant (its `now`), with its **sequence**, the **revision** it holds at least, and its **board hash**. The publisher makes one after every burst of writes and when a minute's tick changes the board. `GET /board/current` and `load_mindmap` answer the latest.
+
+**Sequence** (`seq`) — The number of a publication within its epoch, one per publication. A window applies an event only when its `seq` is the next one; any other gap means a full load.
+
+**Changed nodes** — What a `board-changed` event carries: the board's **entries** (a row, a group of one owner's block reasons or one Task's dependency edges, or a map entry, each with a key) that differ from the previous publication, set or deleted. A move is the moved row set again; there is no move operation.
+
+**Board hash** — The sum, wrapping at 2^32, of every entry's digest (FNV-1a 32 of the collection, the key and the entry's compact JSON). Covers the derived board as published, compared only at the same sequence, so time passing is never divergence.
+
+**Head** — The latest publication's epoch, sequence, revision, hash and per-collection sums, which a window checks its board against periodically and when idle.
+
+**Settle** — What a window does after a write instead of reloading: it waits until its board has reached the revision the write reached (the backend's **fence**), then carries on.
+
+---
+
+## Replication
+
+Designed in [ADR 0017](docs/adr/0017-client-board-replica.md), not built yet.
+
+**Replica** — A client's own copy of the board, running the same core as the server. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
+
+**Prediction** — A write run on the Replica before the server has answered it. What it shows is what the board will look like if the server agrees. _Avoid_: optimistic patch, speculation.
+
+**Settling** — The moment the queue of writes drains: the Replica drops its Predictions and takes the server's rows. A correct Prediction changes nothing on screen.
+
+**Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
+
+**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas sync from. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
+
+**Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and falls back to one when it cannot prove it is current. _Avoid_: backup (that is the administrator's).
+
+**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show.
+
+---
+
 ## Not built yet
 
 Specced, and deliberately kept, but not in the app today. Nothing above depends on them.
@@ -171,7 +233,7 @@ Specced, and deliberately kept, but not in the app today. Nothing above depends 
 - A Task is never both backlogged and planned. Backlogging a planned Task asks first and offers to clear the Plan; planning a backlogged Task takes it out of the Backlog.
 - A forced **Archived** Resolution overrides a stored **Frozen** *or* **Backlog**, flagging the conflict either way — setting an item aside does not exempt it from its own window.
 - A Habit instance is never materialized by being diverged from. A per-instance child is recorded against the virtual instance; the instance stays virtual (ADR 0002).
-- An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances and never gate resolution; completing an occurrence over an unfinished child asks for confirmation instead.
+- An iteration is resolved when every one of its non-tombstoned instances is done. **Instance children** are not instances, but an open one blocks marking its occurrence done, so the iteration stays unresolved until it is finished or archived.
 - A List View row's **Path header** and its **Visible depth** partition its ancestors: every ancestor is named in exactly one of the two, never both and never neither.
 - A Commitment's Verdict is never derived. Neither its children nor the passing of its window ever sets it.
 - A Commitment's **Verdict Window** is the only automatic state change in the kind, and it moves **Archival**, never the Verdict: an unresolved Commitment whose window has run out archives *still unresolved*.

@@ -1,1 +1,0 @@
-- **Filtering by an Active Project status finds your Projects.** A Project never given a status was treated as Active everywhere except this filter. Every unset Project is now set to Active, and new Projects start Active.

@@ -48,13 +48,15 @@ def _app(counter: Counter) -> Starlette:
             Route("/read", read),
             Route("/write", write, methods=["POST"]),
             Route("/big", big),
-            Route("/events", big),
+            Route("/events/changes", big),
         ]
     )
 
 
 def _stamped(counter: Counter) -> TestClient:
-    app = RevisionHeadersMiddleware(_app(counter), revision=lambda: counter.revision, epoch="run1")
+    app = RevisionHeadersMiddleware(
+        _app(counter), revision=lambda: counter.revision, epoch=lambda: "run1"
+    )
     return TestClient(app)
 
 
@@ -78,7 +80,9 @@ def test_an_answer_before_the_board_is_open_carries_no_stamp() -> None:
     def closed() -> int:
         raise BoardNotOpen("the board is not open")
 
-    client = TestClient(RevisionHeadersMiddleware(_app(Counter()), revision=closed, epoch="run1"))
+    client = TestClient(
+        RevisionHeadersMiddleware(_app(Counter()), revision=closed, epoch=lambda: "run1")
+    )
     response = client.get("/read")
 
     assert response.status_code == 200
@@ -97,7 +101,7 @@ def test_a_big_answer_is_gzipped_when_the_client_accepts_it() -> None:
 def test_the_change_stream_is_never_gzipped() -> None:
     client = TestClient(GzipExceptEventsMiddleware(_app(Counter())))
 
-    response = client.get("/events", headers={"Accept-Encoding": "gzip"})
+    response = client.get("/events/changes", headers={"Accept-Encoding": "gzip"})
 
     assert "content-encoding" not in response.headers
     assert response.text == BIG

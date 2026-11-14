@@ -67,9 +67,7 @@ async fn delete_one(
         "flow_task" => delete_item(db, FlowItemType::FlowTask, node).await,
         "flow_commitment" => delete_item(db, FlowItemType::FlowCommitment, node).await,
         "flow_expectation" => delete_item(db, FlowItemType::FlowExpectation, node).await,
-        "domain" | "project" | "tag" => db
-            .domains()
-            .delete(DomainId(stored(node)?))
+        "domain" | "project" | "tag" => crate::domains::delete_subtree(db, DomainId(stored(node)?))
             .await
             .map_err(WireError::from_error),
         other => Err(WireError::invalid_request(format!(

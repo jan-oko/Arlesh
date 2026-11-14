@@ -29,7 +29,7 @@ interface ListData {
   allTasksAndGoals: MindmapNode[];
   isLoading: boolean;
   error: string | null;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   /** Cycles a row's status (todo → in_progress → done) — `useStatusCycle`'s gesture, so through
    * the occurrence completion guard and with the Backlog toast, exactly as on the Mindmap. */
   onCycleStatus: (nodeId: string) => void;
@@ -58,7 +58,7 @@ interface ListData {
 /** List View's data source: reuses the Mindmap's own tree (so the two views never drift out of
  * sync), plus the raw dependency edges the tree doesn't carry, flattened to one row per Task. */
 export function useListData(): ListData {
-  const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
+  const { tree, isLoading, error, settle, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const showToast = useMindmapStore((s) => s.showToast);
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
@@ -105,7 +105,7 @@ export function useListData(): ListData {
 
   return {
     tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease,
-    allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted,
+    allTasksAndGoals, isLoading, error, settle, onCycleStatus, onToggleStarted,
     renameNode, createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
@@ -14,6 +13,7 @@ import Select from "@/components/Select/Select";
 import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
 import { useDisplayStore } from "@/stores/use-display-store";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
+import { useSettingsStore } from "@/stores/use-settings-store";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import AgentStatus from "./AgentStatus";
 import styles from "./TopBar.module.css";
@@ -43,7 +43,10 @@ export default function TopBar() {
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = useSettingsStore((s) => s.isOpen);
+  const settingsPage = useSettingsStore((s) => s.page);
+  const showSettings = useSettingsStore((s) => s.show);
+  const hideSettings = useSettingsStore((s) => s.hide);
   const filterDot = useFilterDot();
 
   // Unblock is List-View-only and doesn't touch the shared status mode — so its "active" state must
@@ -81,14 +84,15 @@ export default function TopBar() {
             type="button"
             aria-label={t("common:settings")}
             aria-haspopup="dialog"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => showSettings()}
           >
             {GEAR_ICON}
           </button>
           {settingsOpen && (
             <SettingsModal
-              onClose={() => setSettingsOpen(false)}
-              onOpenHotkeys={() => { setSettingsOpen(false); toggleHotkeys(); }}
+              initialPage={settingsPage}
+              onClose={hideSettings}
+              onOpenHotkeys={() => { hideSettings(); toggleHotkeys(); }}
             />
           )}
           {/* A dropdown rather than a row of tabs. Four views already crowded the bar, and a row

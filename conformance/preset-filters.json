@@ -1828,7 +1828,7 @@
     },
     {
       "name": "agents at capacity: start drops every agentic task not done, with its subtree",
-      "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
+      "spec": "agents.md, Capacity per account — while an agent is at capacity, every Agentic Task not yet Done in its Claim is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
       "filter": {
         "preset": "start"
       },
@@ -2815,6 +2815,24 @@
       ]
     },
     {
+      "name": "plan drops an archived or expired commitment, as start and do do",
+      "spec": "filtering-logic.md — an archived Task or Commitment — by hand, beneath a hand archive, or derived (Expired) — drops out of Plan, Start and Do (Plan joined for Commitments 2026-11-04).",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "domain-a",
+        "task-live-doing",
+        "task-live-todo"
+      ],
+      "list": [
+        "task-live-doing",
+        "task-live-todo"
+      ],
+      "commitments": []
+    },
+    {
       "name": "start drops a task archived by hand, one beneath a hand archive, and an archived commitment",
       "spec": "filtering-logic.md — an archived Task or Commitment — archived by hand, beneath a hand archive, or derived — drops out of Start and Do, window or none (ruled 2026-10-04). Before hand archives every archived Task had a lapsed window, which Start already dropped.",
       "filter": {
@@ -3005,6 +3023,150 @@
         "task-in-live"
       ],
       "commitments": []
+    },
+    {
+      "name": "do shows a parent that reads in progress from its child, beside the child",
+      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "parent",
+      "mindmap": [
+        "domain-parent",
+        "task-child-active",
+        "task-parent-active"
+      ],
+      "list": [
+        "task-child-active",
+        "task-parent-active"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start shows a parent that reads in progress only while it has a to do child, and a started one by the setting",
+      "spec": "resources.md, Tasks — A parent reads what its sub-items say: an ordinary Task with sub-items is served with its derived status (at least Started or In Progress from them) and is judged exactly as that status, as a Compound Task is.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "parent",
+      "mindmap": [
+        "domain-parent",
+        "task-child-open",
+        "task-child-todo",
+        "task-idle-child",
+        "task-parent-active",
+        "task-parent-begun",
+        "task-parent-idle"
+      ],
+      "list": [
+        "task-child-open",
+        "task-child-todo",
+        "task-idle-child",
+        "task-parent-active",
+        "task-parent-begun",
+        "task-parent-idle"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "agentic waits are not drawn under All, and a hand-made wait is",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "agentic waits are not drawn under Start",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "agentic waits are not drawn under Plan",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "the expectations option leaves agentic waits out",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all",
+        "expectations": true
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
+    },
+    {
+      "name": "the Archived pill's include does not bring an agentic wait back",
+      "spec": "resources.md, Agentic waits — an agentic wait (a question, a review, or a wait on something else) stays an Expectation for agents, but no surface draws it: not the Mindmap, the List View's waits, Start, Do or Zen. A wait the user made by hand is drawn as before.",
+      "filter": {
+        "preset": "all",
+        "archived": "include"
+      },
+      "board": "agentic-waits",
+      "mindmap": [
+        "domain-board",
+        "expectation-by-hand",
+        "task-host"
+      ],
+      "list": [
+        "task-host"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-by-hand"
+      ]
     }
   ],
   "boards": {
@@ -4761,6 +4923,108 @@
               "id": "task-in-archived-project",
               "kind": "task",
               "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "parent": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-parent",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-parent-active",
+              "kind": "task",
+              "status": "in_progress",
+              "children": [
+                {
+                  "id": "task-child-active",
+                  "kind": "task",
+                  "status": "in_progress"
+                },
+                {
+                  "id": "task-child-open",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-parent-begun",
+              "kind": "task",
+              "status": "started",
+              "children": [
+                {
+                  "id": "task-child-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-child-todo",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-parent-idle",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "task-idle-child",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "agentic-waits": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-board",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-host",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "expectation-question",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "agentWaiting": true
+                },
+                {
+                  "id": "expectation-ci",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "agentWaiting": true
+                },
+                {
+                  "id": "expectation-answered",
+                  "kind": "expectation",
+                  "status": "released",
+                  "agentWaiting": true
+                }
+              ]
+            },
+            {
+              "id": "expectation-by-hand",
+              "kind": "expectation",
+              "status": "pending"
             }
           ]
         }

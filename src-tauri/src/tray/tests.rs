@@ -129,3 +129,38 @@ fn clicking_the_tray_with_every_window_hidden_shows_them() {
 fn clicking_the_tray_when_visibility_is_unreadable_shows_the_windows() {
     assert_eq!(activate_action(None), ActivateAction::Show);
 }
+
+#[test]
+fn close_follows_the_tray_host_coming_and_going() {
+    let preference = ClosePreference::new();
+    let availability = preference.tray_availability();
+
+    // Started before the watcher: nothing to hide into.
+    assert_eq!(preference.action(LAST), CloseAction::Close);
+    // The watcher appears.
+    availability.online();
+    assert_eq!(preference.action(LAST), CloseAction::HideToTray);
+    // The shell restarts and the watcher goes.
+    availability.offline();
+    assert_eq!(preference.action(LAST), CloseAction::Close);
+    // And returns.
+    availability.online();
+    assert_eq!(preference.action(LAST), CloseAction::HideToTray);
+}
+
+#[test]
+fn an_offline_tray_leaves_a_window_that_is_not_the_last_closing() {
+    let preference = with_tray();
+    preference.mark_tray_unavailable();
+
+    assert!(!preference.tray_available());
+    assert_eq!(preference.action(NOT_LAST), CloseAction::Close);
+}
+
+#[test]
+fn a_quit_wins_while_the_tray_is_online() {
+    let preference = with_tray();
+    preference.request_quit();
+
+    assert_eq!(preference.action(LAST), CloseAction::Close);
+}

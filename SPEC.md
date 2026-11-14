@@ -19,8 +19,8 @@ features arrive: a change to the List View touches `list-view.md` and a change t
 `habits.md`, so two features in flight no longer meet in one file the way they used to. This page
 is the front door — start here, then take one hop.
 
-For how the concepts fit together, and why each exists, read the [model map](docs/model-map.html)
-(an agent-friendly copy is [`docs/model-map.md`](docs/model-map.md)). It is a companion to the spec,
+For how the concepts fit together, and why each exists, read the model map: the app's Help view (F1), drawn from
+[`src/data/model-map.ts`](src/data/model-map.ts) (an agent-friendly copy is [`docs/model-map.md`](docs/model-map.md)). It is a companion to the spec,
 not part of it: the rules stay here.
 
 ### Resources and the rules they live by
@@ -56,8 +56,10 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | --- | --- |
 | [Windows & Tray](docs/spec/window-tray.md) | Tearing a tab into its own window, the board-changed broadcast, session restore; the tray icon, what the close button does, quitting, the monochrome tray mark |
 | [MCP Server](docs/spec/mcp-server.md) | The read-only endpoint an agent reaches the board through: tools, paging, errors |
+| [Agents](docs/spec/agents.md) | Who calls the MCP: Agents that attach with a PIN, the subtree Claim that is their whole view, pausing, and capacity per account |
 | [HTTP Server](docs/spec/http-api.md) | `arlesh-server`: the board over HTTP for multi-device, with bearer tokens per client, the routes, the error statuses, the hold that keeps one writer per database, and the MCP proxied at `/mcp` |
 | [Client Mode](docs/spec/client-mode.md) | Standalone or Client: the Backend port, REST parity, live sync over SSE, per-device undo, read-only offline, tokens in the keychain, the version handshake |
+| [Notifications](docs/spec/notifications.md) | Phone push through FCM: the five events, the server's per-device record, Android channels, registration, the tap that opens a Task |
 | [Undo](docs/spec/undo.md) | The journal, which gestures are one step, the two stacks, what is deliberately not undoable |
 
 Decisions with a rationale worth keeping live in [`docs/adr/`](docs/adr/) and are referenced from

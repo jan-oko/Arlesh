@@ -5,7 +5,10 @@ use super::*;
 use crate::{
     domains::model::Domain,
     scopes::key::test_key,
-    tasks::model::{Commitment, Goal, Task, TaskArchival, TaskDependencyEdge},
+    tasks::{
+        model::{Commitment, Goal, Task, TaskArchival, TaskDependencyEdge, TaskStatus},
+        rules::gestures::SubItems,
+    },
 };
 
 fn domain_row(id: i64, parent: Option<i64>) -> Domain {
@@ -94,6 +97,7 @@ fn wait_row(id: i64, task: i64, position: i64, agentic: bool, question: bool) ->
         agentic_note: None,
         question,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }
@@ -155,6 +159,30 @@ fn a_node_inherits_the_nearest_agentic_flag_and_time_scope_above_it() {
 }
 
 #[test]
+fn a_task_carries_what_its_sub_items_say_when_they_say_anything() {
+    let load = MindmapLoad {
+        domains: vec![domain_row(1, None), domain_row(2, Some(1))],
+        tasks: vec![
+            task_row(10, "project", 2, "todo", None),
+            task_row(11, "task", 10, "in_progress", None),
+            task_row(12, "task", 10, "todo", None),
+            task_row(13, "project", 2, "todo", None),
+        ],
+        ..MindmapLoad::default()
+    };
+    let (facts, _) = derive(&load, None);
+    let items = |key: &str| facts.get(key).and_then(|node| node.sub_items);
+    assert_eq!(
+        items("task-10"),
+        Some(SubItems {
+            floor: TaskStatus::InProgress,
+            open: 2
+        })
+    );
+    assert_eq!(items("task-13"), None, "no sub-items say nothing");
+}
+
+#[test]
 fn a_dependency_blocks_until_its_target_is_finished() {
     let mut load = board();
     load.goals.push(goal_row(30, "project", 2, "achieved"));
@@ -195,6 +223,11 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     ];
     let (facts, activity) = derive(&load, None);
     assert_eq!(facts["task-11"].open_question, Some(2.into()));
+    assert_eq!(
+        facts["task-11"].open_questions,
+        vec![NodeId::from(2), NodeId::from(1)],
+        "every open one, in position order"
+    );
     assert_eq!(
         activity.waits, 1,
         "a pending agentic wait that is not a question"

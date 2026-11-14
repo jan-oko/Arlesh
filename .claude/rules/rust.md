@@ -45,6 +45,13 @@
   into a row struct in persistence (`rows.rs`, or beside the operator) and converts with `From`; a
   value stored directly goes through a zero-cost newtype such as `DbScopeKey`. The same check
   holds the model files to it.
+- **The `arlesh-rules` crate** (`crates/arlesh-rules`) holds the rules and models the frontend's
+  optimistic lane also runs (the status gestures, Plan triage and the parenting table, with the
+  scope, node, flow-template and Task models they read). It has no `sqlx`, `tokio`, `tauri`, `axum`
+  or `rmcp` and compiles to wasm32 (`crates/arlesh-rules-wasm`). `arlesh-core` depends on it and
+  re-exports each module at its old path (`pub use arlesh_rules::tasks::model;`), so callers and
+  the integration tests did not change. A rule that joins the optimistic lane moves there, with
+  the models it reads. `check-rules-purity.sh` checks every file in it.
 - A new rule goes in its domain's `rules`, not inline in `mod.rs` beside the SQL. A frontend copy
   of a rule is allowed only for UX or speed, and only pinned to the Rust rule by a corpus under
   `conformance/`.

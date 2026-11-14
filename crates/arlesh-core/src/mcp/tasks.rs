@@ -54,7 +54,10 @@ impl ArleshMcp {
     /// Task reads the snapshot does not answer, and the writes an agent may make.
     ///
     /// Reads: `get` returns a task together with its block reasons — both the explicit ones and
-    /// those implied by its unmet dependencies, which the snapshot gives you only as raw edges.
+    /// those implied by its unmet dependencies, which the snapshot gives you only as raw edges —
+    /// and its `infos`: the Info notes directly under it (not under its sub-items), in board
+    /// order, each with its ids, `body` and `details`. **The user writes a Task's details as
+    /// Infos, so read them before you work a Task.**
     /// `containment_conflicts` asks which descendants would violate the containment invariant if a
     /// node were given a particular window; it is a what-if and changes nothing.
     ///
@@ -79,7 +82,11 @@ impl ArleshMcp {
     /// `todo` → `on_agent`, which needs a Spec in its brief, hand it back with `todo` and finish
     /// it with `done`; `doing` and `review` are refused. To leave it with the user, raise a
     /// question (`arlesh_waits.ask`): it reads `review` until answered, and `expected` may name
-    /// `review`. A Task that **consists of its sub-items**
+    /// `review`. That holds for a `todo` Task too: a question asked before claiming (the way to
+    /// say a Spec is missing) makes it read `review`, and the row stays `todo`. `expected` is
+    /// compared with the status the board shows, so name `review` for it, never `todo`; the
+    /// claim `review` → `on_agent` is then allowed because the row holds `todo`, and it keeps
+    /// reading `review` while the question is open. Answered, it reads `todo` again. A Task that **consists of its sub-items**
     /// (`compound`, set with `update`) has its status derived from its whole subtree, so
     /// `set_status` on it is refused; `update` with `compound: false` switches that off and
     /// keeps the status it showed. `move` needs create permission at both the old and
@@ -111,8 +118,7 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
         let now = self.now();
-        let board =
-            attempt!(Board::read(&mut db, now, self.capacity.get().await.at_capacity).await);
+        let board = attempt!(self.board(&mut db, now).await);
 
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,
@@ -265,7 +271,10 @@ impl ArleshMcp {
                     return result::status_changed(task.status.as_str());
                 }
                 let status = AgenticStatus::from(status);
-                if let Some(refusal) = refused_status_write(task.status, status) {
+                // A Task reading Review may hold To Do (a question asked before claiming) or On
+                // Agent; what the row holds decides whether it can be claimed.
+                let held = attempt!(stored_status(&mut db, &id, task.status).await);
+                if let Some(refusal) = refused_status_write(held, status) {
                     return result::refused(refusal);
                 }
                 Write::Update(
@@ -399,12 +408,36 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map, &names);
+    let infos = super::infos::as_read(
+        &super::infos::directly_under(&board.load, &id),
+        &board.names,
+    );
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
+    if let Value::Object(fields) = &mut found {
+        // The user writes a Task's details as Infos under it, so they come back with it.
+        fields.insert("infos".into(), infos);
+    }
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);
         super::snapshot::stamp_effective_plan(task, &board.load.plans, &names);
     }
     result::ok(found)
+}
+
+/// What the row of the Task `id` holds, given the `shown` status the board reads for it: the same
+/// unless it reads Review, which is derived and which a To Do or an On Agent row can read. An
+/// occurrence has no row of its own and reads as shown.
+pub(super) async fn stored_status(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    shown: Status,
+) -> Result<Status, crate::tasks::error::TaskError> {
+    match (id.stored(), shown) {
+        (Some(row), Status::Agentic(AgenticStatus::Review)) => {
+            Ok(db.tasks().get(TaskId(row)).await?.status)
+        }
+        _ => Ok(shown),
+    }
 }
 
 /// The Task `id` names, when the MCP may write it — with its row as the board shows it.
@@ -525,3 +558,6 @@ fn refused_status_write(current: Status, status: AgenticStatus) -> Option<String
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

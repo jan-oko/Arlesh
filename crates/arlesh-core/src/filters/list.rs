@@ -208,9 +208,12 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// Otherwise it answers [`rules::passes_expectation_preset`], with the same subtree gates the
 /// task rows and the commitments answer, so a branch the list has dropped takes its waits with it.
 ///
+/// An **agentic wait** is never a row, under any of these: the Task it hangs under answers for it
+/// (see [`rules::is_agentic_wait`]).
+///
 /// Of the pills, a wait answers Under, Scope and Private (see [`pills::expectation_passes`]).
 pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
-    if filter.unblock {
+    if filter.unblock || rules::is_agentic_wait(row.node) {
         return false;
     }
     if filter.expectations {

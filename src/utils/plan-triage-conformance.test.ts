@@ -8,9 +8,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
 import { keyForRef, keyStartDate, scopeKeyFrom, scopeKeyText } from "@/utils/scope-key";
-import { keyWindow } from "@/utils/scope-window";
-import type { ScopeWindows } from "@/utils/plan-triage";
-import { partitionForScope, planRefusal, referencedScopeIds } from "@/utils/plan-triage";
+import { partitionForScope, planRefusal } from "@/utils/plan-triage";
 import { takeOutTarget } from "@/utils/plan-take-out";
 import { parentRefs } from "@/utils/plan-scope";
 import { buildPlanSections } from "@/utils/plan-sections";
@@ -18,9 +16,9 @@ import type { Scope, ScopeKind as ApiScopeKind } from "@/api/scopes";
 import type { ScopeKeyText } from "@/utils/scope-key";
 
 /**
- * The Plan View's rules have two evaluators: `plan-triage.ts`, `plan-take-out.ts` and `parentRefs`,
- * which the Plan View re-runs per step through the calendar, and `tasks::rules::plan`, whose bounds
- * are the writer's own. `conformance/plan-triage.json` holds them together;
+ * The Plan View's rules have two ends: `plan-triage.ts` and `plan-take-out.ts`, which now ask
+ * `tasks::rules::plan` through the wasm module, and `parentRefs` and the section builder, which are
+ * still TypeScript and run through the calendar. The bounds are the writer's own. `conformance/plan-triage.json` holds them together;
  * `src-tauri/tests/operations/plan_triage_conformance.rs` is this file's other half.
  */
 
@@ -80,11 +78,6 @@ function row(value: unknown, what: string): TaskListRow {
   };
 }
 
-/** Every scope the rows and the target name, resolved to its window as the backend would. */
-function windowsFor(rows: readonly TaskListRow[], extra: readonly ScopeKey[]): ScopeWindows {
-  return new Map([...referencedScopeIds(rows), ...extra].map((k) => [scopeKeyText(k), keyWindow(k)]));
-}
-
 const top = record(corpusJson, "the corpus");
 
 /** Every scope the sections cases name, with the dates the backend gives it. */
@@ -115,10 +108,7 @@ describe("plan triage conformance corpus", () => {
       const rows = array(entry.rows, `${name}.rows`).map((r, i) => row(r, `${name}.rows[${i}]`));
       const target = key(entry.target, `${name}.target`);
       const parent = entry.parent === null ? null : key(entry.parent, `${name}.parent`);
-      const panes = partitionForScope(
-        rows, keyWindow(target), windowsFor(rows, [target]),
-        new Set(parent === null ? [] : [scopeKeyText(parent)]),
-      );
+      const panes = partitionForScope(rows, target, parent);
       expect(panes.unplanned.map((r) => r.node.id)).toEqual(ids(entry.unplanned, `${name}.unplanned`));
       expect(panes.planned.map((r) => r.node.id)).toEqual(ids(entry.planned, `${name}.planned`));
       expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(ids(entry.parentPlanned, `${name}.parentPlanned`));
@@ -131,7 +121,7 @@ describe("plan triage conformance corpus", () => {
     it(name, () => {
       const subject = row(entry.row, `${name}.row`);
       const target = key(entry.target, `${name}.target`);
-      expect(planRefusal(subject, keyWindow(target), windowsFor([subject], [target]))).toBe(entry.refusal);
+      expect(planRefusal(subject, target)).toBe(entry.refusal);
     });
   }
 

@@ -10,12 +10,12 @@ import AgentOnAgentIcon from "./AgentOnAgentIcon";
 import styles from "./AgentStatus.module.css";
 
 /**
- * The agents' status in the top bar: a small bot head with a row of icons under it — the capacity
- * lock, Agentic Tasks waiting on your Review, waits on something else, Agentic Tasks On Agent, in that
+ * The agents' status in the top bar: a small bot head with a row of icons under it — the agents' capacity
+ * padlock, Agentic Tasks waiting on your Review, waits on something else, Agentic Tasks On Agent, in that
  * order, each only while it applies, and no counts. Drawn only while at least one applies, and
  * never while the "Show agent status in the top bar" setting is off. The
- * tooltip spells each out with its count; a click opens a small menu with one line each — Clear on
- * the lock, Show on the others.
+ * tooltip spells each out with its count; a click opens a small menu with one line each — Open on
+ * the padlock (Settings, on the Agents section), Show on the others.
  */
 export default function AgentStatus() {
   const { t } = useTranslation("common");
@@ -33,7 +33,7 @@ export default function AgentStatus() {
   if (!shown || !status.isActive) return null;
 
   const lines: string[] = [
-    ...(status.atCapacity ? [t("agentStatus.capacity")] : []),
+    ...(status.atCapacity ? [t("agentStatus.capacity", { count: status.capacityCount })] : []),
     ...(status.review > 0 ? [t("agentStatus.review", { count: status.review })] : []),
     ...(status.waits > 0 ? [t("agentStatus.waits", { count: status.waits })] : []),
     ...(status.onAgent > 0 ? [t("agentStatus.onAgent", { count: status.onAgent })] : []),
@@ -65,7 +65,7 @@ export default function AgentStatus() {
           <div className={styles.backdrop} onClick={() => setOpen(false)} />
           <div className={styles.menu} role="menu" aria-label={t("agentStatus.menu")}>
             {status.atCapacity && (
-              <Line text={t("agentStatus.capacity")} action={t("agentStatus.clear")} onAct={act(status.clearCapacity)} />
+              <Line text={t("agentStatus.capacity", { count: status.capacityCount })} action={t("agentStatus.open")} onAct={act(status.openCapacity)} />
             )}
             {status.review > 0 && (
               <Line text={t("agentStatus.review", { count: status.review })} action={t("agentStatus.show")} onAct={act(status.showReview)} />

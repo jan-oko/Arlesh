@@ -2,27 +2,37 @@
   "about": [
     "Client mode's contract between the app and arlesh-server, written as data (Task 9f0).",
     "",
-    "`routes` maps every method of the app's Backend port (`src-tauri/src/backend/`) to the REST",
+    "`routes` maps every method of the app's Backend port (`crates/arlesh-backend/src/`) to the REST",
     "route(s) `HttpBackend` calls for it. `standalone_only` lists the methods with no route: People",
     "and the knowledge base, which HttpBackend refuses as not available in Client mode.",
+    "`streams` names the event routes: `changes` is the Server-Sent Event stream the app follows for",
+    "live sync (`crates/arlesh-backend/src/http/events.rs`), whose `board-changed` events carry the",
+    "changed nodes and whose `board-head` events carry the latest publication's identity; `expectations` is the agents' long poll",
+    "(`arlesh-notify`), which answers JSON and has no Server-Sent Event form.",
     "`api_version` is the integer `/health` answers, bumped only on a breaking change.",
     "",
-    "Both sides replay it. `src-tauri/src/backend/tests.rs` fails when a port method is in neither",
+    "Both sides replay it. `crates/arlesh-backend/src/tests.rs` fails when a port method is in neither",
     "list, or a listed method is not on the port; `crates/arlesh-py/tests/server/integration/",
     "test_server_parity.py` fails when a listed route is not served or the server's `API_VERSION`",
     "differs. See `docs/spec/client-mode.md`, *REST parity*.",
     "",
     "`local` lists the Gesture boundary: on a server every write is already one Gesture of its",
     "client, and a gesture over several nodes is one gesture operation with its own route, so",
-    "`HttpBackend` keeps the frontend's open and close on the device and sends nothing.",
+    "`HttpBackend` keeps the frontend's open and close on the device and sends nothing. It also",
+    "lists the two board calls the device answers itself: `board_fence`, the newest revision any",
+    "answer carried, and `board_head`, the head the change stream last said (ADR 0020).",
     "",
     "`pairing` lists the routes that are not the board's, so not Backend methods (Task 289): a",
     "device with no token asks `POST /pair` for a PIN and polls `POST /pair/poll`; a signed-in",
-    "device lists devices, approves a PIN and revokes a device. `src-tauri/src/backend/http/",
+    "device lists devices, approves a PIN and revokes a device. `crates/arlesh-backend/src/http/",
     "pairing.rs` calls each by the name it is listed under. The server's test replays them with",
     "the `routes`."
   ],
   "api_version": 1,
+  "streams": {
+    "changes": "GET /events/changes",
+    "expectations": "GET /events/expectations"
+  },
   "standalone_only": [
     "create_person",
     "get_person",
@@ -37,11 +47,16 @@
   "local": [
     "open_gesture",
     "close_gesture",
-    "abort_gesture"
+    "abort_gesture",
+    "board_fence",
+    "board_head"
   ],
   "routes": {
     "load_mindmap": [
       "GET /board"
+    ],
+    "current_board": [
+      "GET /board/current"
     ],
     "derive_scope_lifecycles": [
       "GET /board/lifecycles"
@@ -338,11 +353,17 @@
     "duplicate_flow_item": [
       "POST /flow-items/{item_type}/{id}/duplicate"
     ],
-    "agent_capacity": [
-      "GET /capacity"
+    "list_agents": [
+      "GET /agents"
     ],
-    "set_agent_capacity": [
-      "PUT /capacity"
+    "issue_agent_pin": [
+      "POST /agents/pins"
+    ],
+    "apply_agent_action": [
+      "POST /agents/{id}/action"
+    ],
+    "set_agent_account_locked": [
+      "PUT /agent-accounts/lock"
     ],
     "mcp_access_catalogue": [
       "GET /mcp-access/catalogue"
@@ -403,6 +424,15 @@
     ],
     "revoke_device": [
       "DELETE /devices/{name}"
+    ],
+    "push_state": [
+      "GET /push"
+    ],
+    "register_push": [
+      "PUT /devices/current/push"
+    ],
+    "unregister_push": [
+      "DELETE /devices/current/push"
     ]
   }
 }

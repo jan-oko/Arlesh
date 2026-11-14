@@ -6,7 +6,7 @@ import { usePaletteStore } from "@/stores/use-palette-store";
 import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { surfaceCommand } from "@/test/surface-command";
 import { LONG_PRESS_MS } from "@/utils/touch/gestures";
-import { PHONE_LAYOUT_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
+import { PHONE_LAYOUT_QUERY, TOUCH_ONLY_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/TopBar/TopBar", () => ({ default: () => <div data-testid="top-bar" /> }));
@@ -18,12 +18,17 @@ vi.mock("@/hooks/use-global-hotkeys", () => ({ useGlobalHotkeys: () => undefined
 vi.mock("@/hooks/use-tab-title", () => ({ useTabTitle: () => undefined }));
 vi.mock("@/hooks/use-two-finger-preset", () => ({ useTwoFingerPreset: () => undefined }));
 
-beforeEach(() => {
+/** Pretends the platform matches exactly these media queries. */
+function stubMedia(matching: readonly string[]): void {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+    matches: matching.includes(query),
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }));
+}
+
+beforeEach(() => {
+  stubMedia([TOUCH_QUERY, TOUCH_ONLY_QUERY, PHONE_LAYOUT_QUERY]);
   useFullscreenStore.setState({ isFullscreen: false });
   usePaletteStore.setState({ isOpen: false });
   useCommandSurfaceStore.setState({ tables: new Map(), revision: 0 });
@@ -73,5 +78,29 @@ describe("ActiveTab on the phone in full screen", () => {
     expect(screen.getByTestId("phone-top-bar")).toBeInTheDocument();
     expect(screen.getByTestId("bottom-chrome")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "topBarSquare" })).not.toBeInTheDocument();
+  });
+});
+
+describe("which layout shows follows touch, never width", () => {
+  it("shows the touch layout on a wide touch-only screen, such as a phone in landscape", () => {
+    stubMedia([TOUCH_QUERY, TOUCH_ONLY_QUERY]);
+    render(<ActiveTab />);
+    expect(screen.getByTestId("phone-top-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("bottom-chrome")).toBeInTheDocument();
+    expect(screen.queryByTestId("top-bar")).not.toBeInTheDocument();
+  });
+
+  it("shows the desktop layout in a narrow window with a mouse", () => {
+    stubMedia([PHONE_LAYOUT_QUERY]);
+    render(<ActiveTab />);
+    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("bottom-chrome")).not.toBeInTheDocument();
+  });
+
+  it("shows the desktop layout on a touch laptop, which also has a mouse", () => {
+    stubMedia([TOUCH_QUERY]);
+    render(<ActiveTab />);
+    expect(screen.getByTestId("top-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("bottom-chrome")).not.toBeInTheDocument();
   });
 });

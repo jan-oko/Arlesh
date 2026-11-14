@@ -6,10 +6,11 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from arlesh.server.entrypoints.fastapi.exceptions import AuthenticationFailed
+from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 _BEARER = HTTPBearer(
@@ -38,3 +39,37 @@ class BearerTokenSecurityScheme:
             return client
 
         self.validate_auth: Callable[..., Awaitable[str]] = validate_auth
+
+
+AGENT_TOKEN_HEADER = "X-Arlesh-Agent-Token"
+"""The header an attached agent's own token travels in, beside the connect token."""
+
+MCP_CLIENT = "agents"
+"""The client the MCP's writes are journaled under: sessions connect with the connect token, which
+names no device, so every agent's writes carry this one."""
+
+
+class ConnectTokenSecurityScheme:
+    """Admits a request that carries the server's connect token: ``/mcp`` and nothing a device
+    token reaches. A device token is not a connect token and is refused here."""
+
+    def __init__(self, connect: ConnectTokens) -> None:
+        async def validate_connect(
+            credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_BEARER)],
+        ) -> None:
+            if credentials is None:
+                raise AuthenticationFailed("missing_token")
+            if not connect.is_valid(credentials.credentials):
+                raise AuthenticationFailed("bad_connect_token")
+
+        async def validate_attached(
+            request: Request,
+            credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_BEARER)],
+        ) -> None:
+            await validate_connect(credentials)
+            token = request.headers.get(AGENT_TOKEN_HEADER)
+            if not token or not connect.agent_known(token):
+                raise AuthenticationFailed("not_attached")
+
+        self.validate_connect: Callable[..., Awaitable[None]] = validate_connect
+        self.validate_attached: Callable[..., Awaitable[None]] = validate_attached

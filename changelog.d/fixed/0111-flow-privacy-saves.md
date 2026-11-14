@@ -1,1 +1,0 @@
-- **Marking a Flow or a flow step Private now sticks**, in the Flow editor, the flow item editor and when creating a new Flow.

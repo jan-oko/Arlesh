@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  zenCardCorners,
   fitZenList,
   fitZenGrid, zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize,
   ZEN_GAP_PX, ZEN_MIN_CARD_HEIGHT_PX, ZEN_MIN_CARD_WIDTH_PX,
@@ -182,5 +183,25 @@ describe("fitZenList (the phone layout)", () => {
 
   it("scrolls at the minimum height when the cards outnumber the room", () => {
     expect(fitZenList(30, { width: 360, height: 600 })).toEqual({ columns: 1, cardWidth: 360, cardHeight: 48, scrolls: true });
+  });
+});
+
+describe("zenCardCorners", () => {
+  it("gives a lone card all four corners", () => {
+    expect(zenCardCorners(0, 1, 1).split(" ").sort()).toEqual(["bl", "br", "tl", "tr"]);
+  });
+
+  it("gives a stacked column's first card the top corners, its last the bottom ones, the middle none", () => {
+    expect(zenCardCorners(0, 3, 1).split(" ").sort()).toEqual(["tl", "tr"]);
+    expect(zenCardCorners(1, 3, 1)).toBe("");
+    expect(zenCardCorners(2, 3, 1).split(" ").sort()).toEqual(["bl", "br"]);
+  });
+
+  it("gives a full grid's four corner cards one corner each", () => {
+    expect([0, 1, 2, 3, 4, 5].map((index) => zenCardCorners(index, 6, 3))).toEqual(["tl", "", "tr", "bl", "", "br"]);
+  });
+
+  it("leaves the bottom corners alone when the last row is short and centred", () => {
+    expect([0, 1, 2, 3].map((index) => zenCardCorners(index, 4, 3))).toEqual(["tl", "", "tr", ""]);
   });
 });

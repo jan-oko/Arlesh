@@ -47,6 +47,7 @@ fn unstamped(value: &serde_json::Value) -> serde_json::Value {
                             | "effective_plan"
                             | "plan_inherited_from"
                             | "plan_conflict"
+                            | "info_count"
                     )
                 })
                 .map(|(key, value)| (key.clone(), unstamped(value)))
@@ -279,12 +280,12 @@ async fn every_tool_is_registered() {
     let pool = helpers::test_pool().await;
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    // `ArleshMcp::new` sums eight routers. Drop one and nothing fails to compile — the tool simply
+    // `ArleshMcp::new` sums nine routers. Drop one and nothing fails to compile — the tool simply
     // stops being served, which an agent would discover and this test does not let pass silently.
     assert_eq!(
         mcp.tool_names(),
         vec![
-            "arlesh_capacity",
+            "arlesh_agents",
             "arlesh_flows",
             "arlesh_infos",
             "arlesh_kb",
@@ -341,9 +342,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     }
     assert!(named > 0, "the snapshot names its nodes by short id");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
-        .await
-        .unwrap();
+    let expected = helpers::load_board_at(&app, now()).await.unwrap();
     // The app's load also carries every node's short id as a map, for its "Blocked by …" text; the
     // snapshot stamps each node with its own instead.
     let mut expected = serde_json::to_value(&expected).unwrap();
@@ -493,8 +492,12 @@ async fn tasks_get_returns_what_the_command_returns() {
             &format!("task:{task_id}")
         )
     );
+    // The Infos under the Task come back with it; the command knows nothing of them.
+    assert_eq!(got["infos"], serde_json::json!([]));
+    let mut got = got.clone();
+    got.as_object_mut().unwrap().remove("infos");
     assert_eq!(
-        unstamped(got),
+        unstamped(&got),
         serde_json::to_value(&expected).unwrap(),
         "tasks.get"
     );
@@ -947,9 +950,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
 
     assert!(pages > 1, "200 padded tasks should not fit in one page");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
-        .await
-        .unwrap();
+    let expected = helpers::load_board_at(&app, now()).await.unwrap();
     let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id.sid()).collect();
     assert_eq!(
         tasks_seen, expected_ids,
@@ -1139,11 +1140,56 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
         ),
         (
             "arlesh_waits",
-            &["ask", "raise", "release", "get"],
-            &["task_id", "title", "note", "question", "id", "answer"],
+            &[
+                "ask",
+                "raise",
+                "raise_review",
+                "release",
+                "get",
+                "watch",
+                "get_many",
+            ],
+            &[
+                "task_id",
+                "title",
+                "note",
+                "question",
+                "summary",
+                "links",
+                "hand_tests",
+                "id",
+                "answer",
+                "verdict",
+                "ids",
+            ],
         ),
         ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
-        ("arlesh_capacity", &["get", "set"], &["at_capacity"]),
+        (
+            "arlesh_agents",
+            &[
+                "attach",
+                "status",
+                "claim",
+                "pause",
+                "resume",
+                "release",
+                "lock",
+                "unlock",
+                "report_usage",
+                "register_child",
+                "finish_child",
+            ],
+            &[
+                "session_id",
+                "pin",
+                "token",
+                "name",
+                "account",
+                "subtree",
+                "windows",
+                "client_id",
+            ],
+        ),
     ];
     let tools = mcp.tools();
     assert_eq!(tools.len(), expected.len());
@@ -1195,7 +1241,8 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
         }
         assert_eq!(
             properties.len(),
-            parameters.len() + 1,
+            // `operation`, the tool's own parameters, and the `sub_token` every tool takes.
+            parameters.len() + 2,
             "{name} declares nothing else"
         );
         let description = tool.description.as_deref().unwrap_or("");

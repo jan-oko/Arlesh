@@ -126,7 +126,7 @@ beforeEach(() => {
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
     updateFlow: vi.fn(),
-    reload: vi.fn(),
+    settle: vi.fn(),
   } as unknown as ReturnType<typeof useMindmapData>);
   useFilterStore.setState({ filter: DEFAULT_FILTER });
   useDisplayStore.setState({ habitCollapseThreshold: DEFAULT_HABIT_COLLAPSE_THRESHOLD });

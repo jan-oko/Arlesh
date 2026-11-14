@@ -34,3 +34,11 @@
 -keepclassmembers class com.atai.arlesh.SystemBarsBridge {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# The page calls window.ArleshPush.* (PushBridge.kt) by name through the WebView's JavaScript bridge,
+# and Firebase starts PushService by the name in the manifest; nothing in Kotlin calls either, so R8
+# would strip or rename them and push would silently do nothing.
+-keepclassmembers class com.atai.arlesh.PushBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class com.atai.arlesh.PushService

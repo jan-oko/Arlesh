@@ -23,7 +23,7 @@ use crate::{
 /// than sniffing for present fields. The occurrences themselves are not here: they are ordinary
 /// rows of their kinds, and travel in [`MindmapLoad::tasks`], [`MindmapLoad::goals`] and
 /// [`MindmapLoad::commitments`] beside the stored ones.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum FlowHabitResult {
     /// Derived — or not a Habit at all, which is an answer, not a failure.
@@ -40,7 +40,7 @@ pub enum FlowHabitResult {
 ///
 /// Entries are in the same order as [`MindmapLoad::flows`]; `flow_id` is carried anyway so a
 /// consumer can key by it instead of trusting position.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowHabitEntry {
     /// The flow this entry describes.
     pub flow_id: i64,
@@ -48,6 +48,14 @@ pub struct FlowHabitEntry {
     pub flow_title: String,
     /// The payload, or the failure that replaced it.
     pub result: FlowHabitResult,
+}
+
+/// Writes a map with its keys in order, so the same board is always the same text.
+fn sorted_by_key<V: Serialize, S: serde::Serializer>(
+    map: &std::collections::HashMap<String, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_map(map.iter().collect::<std::collections::BTreeMap<_, _>>())
 }
 
 /// Everything one mindmap render reads, gathered in a single command round trip.
@@ -101,12 +109,18 @@ pub struct MindmapLoad {
     /// board keys a node (`task-12`): what the app names a dependency it is blocked by with.
     /// Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
     /// off the wire, everywhere else — the MCP names nodes among those it can see.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub short_ids: std::collections::HashMap<String, String>,
     /// What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
     /// which of its dependencies block it, what it inherits, its open question, whether it has
     /// expired. Filled by the app's load only, as [`Self::short_ids`] is.
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    #[serde(
+        skip_serializing_if = "std::collections::HashMap::is_empty",
+        serialize_with = "sorted_by_key"
+    )]
     pub facts: std::collections::HashMap<String, NodeFacts>,
     /// What the agents are doing on the whole board. Filled by the app's load only.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,6 +129,10 @@ pub struct MindmapLoad {
     /// the MCP and the write guard read. Never sent as it is.
     #[serde(skip)]
     pub plans: super::rules::plans::PlanAudit,
+    /// The Tasks that read In Progress only from their sub-items — a Compound Task's, or a
+    /// parent's raised to it. Never sent as it is: the facts carry it per node.
+    #[serde(skip)]
+    pub derived_in_progress: Vec<NodeId>,
 }
 
 /// A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
@@ -168,9 +186,21 @@ pub struct NodeFacts {
     /// The open agentic question beneath a Task — the wait that makes it read Review.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub open_question: Option<NodeId>,
+    /// Every open agentic question or review beneath a Task, in position order — the app draws
+    /// them on the Task, never as nodes of their own. [`Self::open_question`] is the first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_questions: Vec<NodeId>,
     /// Whether a Commitment's Verdict Window ran out before anything was recorded.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,
+    /// Whether a Task reads In Progress (Doing) only from its sub-items, not from a status held
+    /// by hand: a Compound Task, or a parent raised to it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub derived_in_progress: bool,
+    /// What a Task's sub-items say about it — the floor they derive and how many are open — when
+    /// they say anything: the editors grey out the statuses it cannot hold from it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_items: Option<crate::tasks::rules::gestures::SubItems>,
     /// Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
     /// Achieved, a wait no longer pending.
     #[serde(skip_serializing_if = "std::ops::Not::not")]

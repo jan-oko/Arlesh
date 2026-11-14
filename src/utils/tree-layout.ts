@@ -6,6 +6,8 @@ import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
+import type { SubItemsWire } from "@/wasm/rules";
+import type { Review } from "@/api/expectations";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -263,9 +265,12 @@ export interface MindmapNode {
   /** The nearest scoped ancestor's Time Scope — the window a node with none of its own inherits.
    * The backend's rule, read off the load's facts; absent when nothing above is scoped. */
   inheritedTimeScope?: TimeScope | null;
-  /** The open agentic question beneath a Task — the wait that makes it read Review — by its row id.
-   * The backend's rule, read off the load's facts. */
-  openQuestionId?: RowId;
+  /** Every open agentic question or review beneath a Task — the waits that make it read Review — by
+   * row id, in position order. The backend's rule, read off the load's facts. */
+  openQuestionIds?: RowId[];
+  /** The agentic waits an agent raised beneath this node. No view draws them as nodes of their own:
+   * they are held here, off the tree, so the Task can show its open question or review. */
+  agentWaits?: MindmapNode[];
   /** A Commitment whose Verdict Window ran out before anything was recorded. The backend's rule,
    * read off the load's facts. */
   expired?: boolean;
@@ -313,6 +318,13 @@ export interface MindmapNode {
    * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
    * status glyph draws its outer ring dashed while it is on. */
   compound?: boolean;
+  /** Present on a Task that reads In Progress (Doing) only from its sub-items, not from a status
+   * held by hand (a Compound Task, or a parent raised to it). The Zen View hides its card while the
+   * item beneath it that is being worked on is drawn. */
+  derivedInProgress?: boolean;
+  /** What the Task's sub-items say about it, when they say anything — the status they make it read
+   * at least and how many are open. The editors grey out the statuses it cannot hold from it. */
+  subItems?: SubItemsWire;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */
@@ -339,7 +351,13 @@ export interface MindmapNode {
   /** Present on an **agentic wait** (Expectations only): one an agent raised on the Agentic Task
    * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
    * the user writes one in. */
-  agentWaiting?: { note: string | null; question: boolean; answer: string | null };
+  agentWaiting?: {
+    note: string | null;
+    question: boolean;
+    answer: string | null;
+    /** Present on a **review**: what the agent handed back, and the verdict once given. */
+    review?: Review;
+  };
   /** The Expectations this Task depends on, stored or derived (a Habit wait item's occurrence), by row id (Tasks only). */
   expectationDependencyIds?: RowId[];
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations

@@ -1,1 +1,0 @@
-- **Convert to Flow no longer leaves block reasons and nested notes behind**, which a new item could later inherit when SQLite reused their ids. The conversion now removes the whole subtree and builds the template in one transaction. It also keeps the subtree's Commitments and waits as template items.

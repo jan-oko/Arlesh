@@ -7,9 +7,11 @@
 //! hosts over it, and it depends on neither — in particular not on Tauri, which CI checks.
 
 pub mod access;
+pub mod agents;
 pub mod block_reasons;
 pub mod board;
 pub mod capacity;
+pub mod clock;
 pub mod database;
 pub mod domains;
 pub mod duplicate;
@@ -21,9 +23,10 @@ pub mod knowledge_base;
 pub mod mcp;
 pub mod mindmap;
 pub mod nodes;
+pub mod push;
 pub mod scopes;
 pub mod server_pairing;
 pub mod server_tokens;
 pub mod tasks;
 pub mod undo;
-pub mod wire;
+pub use arlesh_rules::wire;

@@ -1,5 +1,8 @@
-// Where the Plan View sends work it takes back out of the scope being filled. Pure, so the rule can
-// be read — and tested — apart from the writes that carry it out.
+// Where the Plan View sends work it takes back out of the scope being filled. The rule is
+// `tasks::rules::plan::take_out`, compiled to wasm (`src/wasm/rules.ts`); this wraps its answer around
+// whatever the caller calls a scope.
+
+import { takeOut } from "@/wasm/rules";
 
 /**
  * What taking work out of the planned pane does to its Plan: moves it to a scope, or clears it.
@@ -22,7 +25,9 @@ export type TakeOutTarget<S> = { kind: "plan"; scope: S } | { kind: "clear" };
  *   to, so the Plan is cleared, and the work comes back as unplanned relevant work.
  */
 export function takeOutTarget<S>(split: boolean, filled: S, parent: S | null): TakeOutTarget<S> {
-  if (split) return { kind: "plan", scope: filled };
-  if (parent !== null) return { kind: "plan", scope: parent };
-  return { kind: "clear" };
+  switch (takeOut(split, parent !== null)) {
+    case "filled": return { kind: "plan", scope: filled };
+    case "parent": return parent === null ? { kind: "clear" } : { kind: "plan", scope: parent };
+    case "clear": return { kind: "clear" };
+  }
 }

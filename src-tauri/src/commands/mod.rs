@@ -2,9 +2,9 @@
 //! [`SessionFactory`](crate::database::session::SessionFactory) and delegate to a domain module.
 
 pub mod access;
+pub mod agents;
 pub mod block_reasons;
 pub mod board;
-pub mod capacity;
 pub mod client_mode;
 pub mod commitments;
 pub mod devices;
@@ -19,6 +19,7 @@ pub mod knowledge_base;
 pub mod mcp_endpoint;
 pub mod mindmap;
 pub mod node_gestures;
+pub mod push;
 pub mod scopes;
 pub mod tasks;
 /// The tray and close-to-tray are desktop-only; a phone has neither, and `mobile_shell` answers

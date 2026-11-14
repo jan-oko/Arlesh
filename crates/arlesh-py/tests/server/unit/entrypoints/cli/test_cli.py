@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import arlesh
 import pytest
 from arlesh.server.business_logic.pairing import Pairing
 from arlesh.server.entrypoints.cli.app import app
@@ -13,7 +14,6 @@ from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -32,6 +32,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "ARLESH_SERVER__HOST",
         "ARLESH_DATABASE_URL",
         "ARLESH_DATABASE_URL_FILE",
+        "ARLESH_TIME_ZONE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -140,19 +141,6 @@ def test_token_without_a_database_is_a_usage_error() -> None:
     assert runner.invoke(app, ["token", "list"]).exit_code == 2
 
 
-def test_an_old_token_file_is_carried_into_the_database_once(tmp_path: Path) -> None:
-    database = tmp_path / "arlesh.db"
-    old = FileTokenStore.beside(database)
-    token = old.add("phone")
-
-    listed = runner.invoke(app, ["token", "list", "--db", str(database)])
-
-    assert listed.stdout.startswith("phone\t")
-    assert DatabaseTokenStore(database).client_for(token) == "phone"
-    assert not old.path.exists()
-    assert old.path.with_name("arlesh.db.tokens.imported").exists()
-
-
 def test_a_database_url_names_the_database(
     tmp_path: Path, served: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -222,3 +210,55 @@ def test_pin_approve_of_an_unknown_pin_fails_plainly(tmp_path: Path) -> None:
 
     assert refused.exit_code == 1
     assert "no device is waiting" in refused.output
+
+
+def test_without_credentials_there_is_no_push_sender(tmp_path: Path) -> None:
+    from arlesh.server.config import Config
+    from arlesh.server.entrypoints.cli.app import _sender
+
+    assert _sender(Config(database={"path": tmp_path / "a.db"})) is None
+
+
+def test_credentials_that_cannot_be_used_stop_the_server_rather_than_read_as_off(
+    tmp_path: Path,
+) -> None:
+    import typer
+    from arlesh.server.config import Config
+    from arlesh.server.entrypoints.cli.app import _sender
+
+    bad = tmp_path / "fcm.json"
+    bad.write_text("{}")
+    config = Config(database={"path": tmp_path / "a.db"}, fcm_credentials_file=bad)
+
+    with pytest.raises(typer.BadParameter, match="ARLESH_FCM_CREDENTIALS_FILE"):
+        _sender(config)
+
+
+@pytest.fixture
+def host_zone() -> Any:
+    """Leaves the process on the machine's own zone, whatever a test told the server."""
+    yield
+    arlesh.set_time_zone(None)
+
+
+def test_a_time_zone_name_is_refused_when_no_zone_has_it(
+    tmp_path: Path, served: dict[str, Any]
+) -> None:
+    result = runner.invoke(app, ["--db", str(tmp_path / "a.db"), "--time-zone", "Mars/Olympus"])
+
+    assert result.exit_code == 2
+    assert "Mars/Olympus" in _plain(result.output)
+    assert "IANA" in _plain(result.output)
+    assert served == {}
+
+
+def test_the_time_zone_may_come_from_the_environment_and_a_flag_overrides_it(
+    tmp_path: Path, served: dict[str, Any], monkeypatch: pytest.MonkeyPatch, host_zone: Any
+) -> None:
+    monkeypatch.setenv("ARLESH_TIME_ZONE", "Not/AZone")
+    refused = runner.invoke(app, ["--db", str(tmp_path / "a.db")])
+    overridden = runner.invoke(app, ["--db", str(tmp_path / "a.db"), "--time-zone", "Asia/Tokyo"])
+
+    assert refused.exit_code == 2
+    assert "Not/AZone" in _plain(refused.output)
+    assert overridden.exit_code == 0, overridden.output

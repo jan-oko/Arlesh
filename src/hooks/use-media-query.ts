@@ -44,9 +44,11 @@ export function useHasTouch(): boolean {
   return useMediaQuery(TOUCH_QUERY);
 }
 
-/** Whether the action bar shows: in the phone layout, or on a device whose only pointer is touch. */
-export function useShowsActionBar(): boolean {
-  const isPhone = usePhoneLayout();
-  const isTouchOnly = useMediaQuery(TOUCH_ONLY_QUERY);
-  return isPhone || isTouchOnly;
+/**
+ * Whether the touch layout is on: the top bar, the action bar and the bottom navigation, with no
+ * tab strip (`docs/spec/touch.md`). It follows the pointer alone, never the window's width, so a
+ * phone in landscape keeps it and a narrow desktop window with a mouse does not.
+ */
+export function useTouchLayout(): boolean {
+  return useMediaQuery(TOUCH_ONLY_QUERY);
 }

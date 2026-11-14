@@ -469,6 +469,22 @@ async fn write_task(
         )
         .await?;
     }
+    // A Task is finished once what it holds is: Done is refused while a counted sub-item is not,
+    // for a stored Task and a Habit occurrence alike, a child added to an occurrence by hand
+    // included (ruled by the user, 2026-11-07).
+    let closing = request
+        .status
+        .as_ref()
+        .is_some_and(crate::tasks::model::Status::is_done);
+    if closing {
+        crate::tasks::compound::require_closed(db, id, now).await?;
+        // A Habit occurrence the board does not draw at `now` (a long-past iteration still owed)
+        // is counted by its own instance children, so it is not closed over them either.
+        let open = unfinished_children(db, id, now).await?;
+        if !open.is_empty() {
+            return Err(crate::tasks::error::TaskError::OpenSubItems { open: open.len() }.into());
+        }
+    }
     let derived = match id {
         NodeId::Stored(id) => {
             crate::tasks::compound::keep_derived_status(

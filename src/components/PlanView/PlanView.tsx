@@ -18,6 +18,7 @@ import { takeOutTarget } from "@/utils/plan-take-out";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubscopeLabel } from "@/hooks/use-subscope-label";
+import { useSearchStart } from "@/hooks/use-search-start";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useUndo } from "@/hooks/use-undo";
@@ -79,7 +80,7 @@ const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
  */
 export default function PlanView() {
   const { t } = useTranslation(["common", "planView"]);
-  const { tree, rows, allTasksAndGoals, isLoading, error, reload } = useListData();
+  const { tree, rows, allTasksAndGoals, isLoading, error, settle } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
@@ -95,7 +96,8 @@ export default function PlanView() {
   useSubtreeNav(tree);
   // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
   const searchableNodes = useSearchableNodes(tree);
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const startFromSearch = useSearchStart(tree);
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
 
   const scope = usePlanScope();
   const subscopeLabel = useSubscopeLabel();
@@ -106,7 +108,7 @@ export default function PlanView() {
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick, onTaskSave, onAnswer,
     checkScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, reload });
+  } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // The view always reads under the **Plan** preset, whatever the tab's is: it is read as Plan here
   // rather than written into the tab's filter, so the tab keeps its own preset for the other views.
@@ -145,12 +147,12 @@ export default function PlanView() {
   const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
   const panes = useMemo(
-    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parents.ids)),
-    [visibleRows, targetWindow, windows, parents.ids],
+    () => (targetScopeId === null ? NO_PANES : partitionForScope(visibleRows, targetScopeId, parents.parent?.key ?? null)),
+    [visibleRows, targetScopeId, parents.parent],
   );
 
   const { planInto, planIntoSubscope, takeOut } = usePlanMove({
-    targetScopeId, targetWindow, targetLabel: scope.label, windows, showToast,
+    targetScopeId, targetWindow, targetLabel: scope.label, showToast,
   });
 
   // The four kebab switches, app-wide like the List View's own (see `use-display-store`).
@@ -727,6 +729,7 @@ export default function PlanView() {
       {searchOpen && (
         <NodeSearchModal
           nodes={searchableNodes}
+          onStart={startFromSearch}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />

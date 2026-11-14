@@ -1,6 +1,5 @@
 //! Scope tools.
 
-use chrono::Local;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, ErrorData},
@@ -34,7 +33,7 @@ impl ArleshMcp {
     ) -> Result<CallToolResult, ErrorData> {
         // One clock read for the whole call, so two scopes either side of a boundary cannot
         // disagree about which of them is active.
-        let now = Local::now().naive_local();
+        let now = crate::clock::now();
         match operation {
             ScopesOperation::Get { id } => {
                 result::respond(ScopeKey::try_from(id).map(|key| key.scope()))

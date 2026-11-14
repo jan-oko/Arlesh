@@ -1,0 +1,30 @@
+# The image build needs the Cargo workspace (it lists src-tauri as a member), the Python package
+# and the pinned toolchain; it needs none of the frontend, the docs or any build output.
+.git
+.github
+.claude
+.codex
+.cursor
+.beads
+.serena
+.gitignore
+node_modules
+dist
+coverage
+**/target
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+*.db
+*.whl
+src
+public
+index.html
+docs
+conformance
+changelog.d
+scripts
+*.md

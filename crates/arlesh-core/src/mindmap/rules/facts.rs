@@ -18,7 +18,12 @@ use crate::{
             AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, TimeScope,
             Verdict,
         },
-        rules::{plan_inheritance::EffectivePlan, review::is_open_question},
+        rules::{
+            compound::{subtrees_of, Rows},
+            gestures::SubItems,
+            plan_inheritance::EffectivePlan,
+            review::is_open_question,
+        },
     },
 };
 
@@ -316,12 +321,12 @@ fn dependency_blocks(
     blocks
 }
 
-/// The open agentic question beneath each Task: the first, in position order, of the waits
-/// directly beneath it that an agent raised as a question and is still pending and live.
+/// The open agentic questions beneath each Task: the waits directly beneath it that an agent raised
+/// as a question (or a review) and that are still pending and live, in position order.
 fn open_questions(
     load: &MindmapLoad,
     lifecycles: &HashMap<(&str, &NodeId), &ItemLifecycle>,
-) -> HashMap<Key, NodeId> {
+) -> HashMap<Key, Vec<NodeId>> {
     let mut asked: Vec<&Expectation> = load
         .expectations
         .iter()
@@ -332,7 +337,8 @@ fn open_questions(
     for wait in asked {
         questions
             .entry(format!("task-{}", wait.parent_id))
-            .or_insert_with(|| wait.id.clone());
+            .or_insert_with(Vec::new)
+            .push(wait.id.clone());
     }
     questions
 }
@@ -458,6 +464,29 @@ fn plan_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
     }
 }
 
+/// Each Task's [`SubItems`](crate::tasks::rules::gestures::SubItems), where its sub-items say
+/// anything: it reads at least Started, or has one open.
+fn sub_items_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
+    let rows = Rows {
+        tasks: &load.tasks,
+        checks: &[],
+        goals: &load.goals,
+        commitments: &load.commitments,
+        expectations: &load.expectations,
+        waits: &[],
+        lifecycles: &load.lifecycles,
+        wait_lifecycles: &[],
+        settled: &HashSet::new(),
+        instants: &HashMap::new(),
+    };
+    let ids: Vec<NodeId> = load.tasks.iter().map(|task| task.id.clone()).collect();
+    for (id, items) in subtrees_of(&rows, &ids) {
+        if items != SubItems::default() {
+            facts.entry(format!("task-{id}")).or_default().sub_items = Some(items);
+        }
+    }
+}
+
 /// Every node's facts on `load`, and what the agents are doing — what the app's load serves
 /// beside the rows. `access` is what the MCP roots make visible, when it could be read.
 pub fn derive(
@@ -502,8 +531,17 @@ pub fn derive(
             facts.entry(key.clone()).or_default().met = true;
         }
     }
-    for (key, question) in open_questions(load, &lifecycles) {
-        facts.entry(key).or_default().open_question = Some(question);
+    for (key, questions) in open_questions(load, &lifecycles) {
+        let facts = facts.entry(key).or_default();
+        facts.open_question = questions.first().cloned();
+        facts.open_questions = questions;
+    }
+    sub_items_facts(load, &mut facts);
+    for id in &load.derived_in_progress {
+        facts
+            .entry(format!("task-{id}"))
+            .or_default()
+            .derived_in_progress = true;
     }
     let expired: HashSet<&NodeId> = load
         .commitments

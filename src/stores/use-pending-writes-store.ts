@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { boardFence } from "@/api/board";
 import { getErrorMessage, isWireError } from "@/api/errors";
 import type { RowId } from "@/api/node-id";
 import {
@@ -91,7 +92,8 @@ interface PendingWritesStore {
   writes: Lane;
   /** Temporary node id to real node id, for the life of the window (decision 8). */
   aliases: ReadonlyMap<string, string>;
-  /** The window's board-read counter: bumped at the start of every board read (decision 5). */
+  /** The window's board-intake counter: bumped each time the window takes a board in, a load or an
+   * event (ADR 0020, decision 14). */
   reads: number;
   /** How many writes have been rolled back, so undo can tell that the write it waited for was. */
   rollbacks: number;
@@ -115,7 +117,7 @@ interface PendingWritesStore {
   whenDrained: () => Promise<void>;
   /** Cancels the newest write when it has not been sent; `null` when it cannot be. */
   cancelTail: () => CancelledWrite | null;
-  /** A board read is about to begin: returns its number. */
+  /** The window is taking a board in: returns the intake's number. */
   beginRead: () => number;
   /** The window's one board, drawn at `stamp`, is on screen; `null` when it is gone. */
   reportBoard: (stamp: BoardStamp | null) => void;
@@ -184,14 +186,27 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
     }
     if (!isInFlight(write.seq)) return;
     if (result.outcome === "refused") rollBackFrom(write, entry, result.message);
-    else answer(write, result.response);
+    else {
+      // The revision the write reached: the response's, or else the backend's fence as the answer
+      // arrives (ADR 0020, decision 14). The board retires the patch when it reaches it.
+      const response = await withRevision(result.response);
+      if (!isInFlight(write.seq)) return;
+      answer(write, response);
+    }
     pump();
+  };
+
+  /** `response` with the revision it reached: its own when it has one, else the backend's fence. */
+  const withRevision = async (response: WriteResponse): Promise<WriteResponse> => {
+    if (response.epoch !== null && response.revision !== null) return response;
+    const fence = await boardFence();
+    return fence === null ? response : { ...response, epoch: fence.epoch, revision: fence.revision };
   };
 
   const isInFlight = (seq: number): boolean => get().writes.some((w) => w.seq === seq && w.state === "sending");
 
   const answer = (write: PendingWrite, response: WriteResponse): void => {
-    let lane = markAnswered(get().writes, write.seq, { afterRead: get().reads, ...response });
+    let lane = markAnswered(get().writes, write.seq, { afterRead: get().reads, answeredAt: Date.now(), ...response });
     let aliases = get().aliases;
     let origins = get().origins;
     const { createdId } = response;

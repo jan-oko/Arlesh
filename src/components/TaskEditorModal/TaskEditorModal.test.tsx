@@ -595,13 +595,13 @@ describe("TaskEditorModal — the Agentic status model", () => {
     };
     const onAnswer = vi.fn().mockResolvedValue(true);
     // The board names the open question (the load's `open_question` fact); the editor draws it.
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { children: [question], openQuestionId: 9 })} onAnswer={onAnswer} />);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [9] })} onAnswer={onAnswer} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "agentAnswer" }), { target: { value: "Yes, merge." } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "agentAnswer" }), { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, "Yes, merge."));
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, { answer: "Yes, merge." }));
   });
 
   it("converts the status shown when the flag changes the model", async () => {
@@ -769,6 +769,22 @@ describe("TaskEditorModal — Compound", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "started" }, compound: false });
+  });
+
+  it("greys out the statuses its sub-items rule out, saying why", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "started", subItems: { floor: "started", open: 1 } })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: "status:task.todo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "status:task.todo" })).toHaveAttribute("title", "statusBlockBelowSubItems");
+    expect(screen.getByRole("button", { name: "status:task.done" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "status:task.done" })).toHaveAttribute("title", "statusBlockOpenSubItems");
+    expect(screen.getByRole("button", { name: "status:task.in_progress" })).toBeEnabled();
+  });
+
+  it("offers the switch on a task with no sub-items too", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode()} />);
+    expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
   });
 
   it("offers the switch on an occurrence of a flow Task item, which may override its item", () => {

@@ -13,7 +13,7 @@ import type { Task } from "@/api/tasks";
 export type StatusStep = "advance" | "alt";
 
 /** Why a status gesture wrote nothing. */
-export type StatusRefusal = "compound" | "alt_enter_agentic_not_doing";
+export type StatusRefusal = "compound" | "alt_enter_agentic_not_doing" | "open_sub_items" | "below_sub_items";
 
 /** How a status write took a Task out of the Backlog. */
 export type BacklogCleared = "by_started" | "by_start";

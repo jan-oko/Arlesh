@@ -25,11 +25,11 @@ function summary(over: Partial<GestureSummary> = {}): GestureSummary {
   return { gesture: "g1", rows: 1, inserted: 0, updated: 1, deleted: 0, tables: ["tasks"], ...over };
 }
 
-const reload = vi.fn(() => Promise.resolve());
+const settle = vi.fn(() => Promise.resolve());
 const showToast = vi.fn();
 
 function renderUndo() {
-  return renderHook(() => useUndo({ reload, showToast }));
+  return renderHook(() => useUndo({ settle, showToast }));
 }
 
 beforeEach(() => {
@@ -51,7 +51,7 @@ describe("useUndo", () => {
       nodeId: UNDO_TOAST_ANCHOR,
       message: 'undid({"gesture":"paste 5 nodes"})',
     });
-    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(settle).toHaveBeenCalledTimes(1));
   });
 
   it("falls back to the row counts for a gesture nobody named", async () => {
@@ -95,7 +95,7 @@ describe("useUndo", () => {
       nodeId: UNDO_TOAST_ANCHOR,
       message: "nothingToUndo",
     });
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it("says there is nothing to redo when the redo stack is empty", async () => {
@@ -109,7 +109,7 @@ describe("useUndo", () => {
       nodeId: UNDO_TOAST_ANCHOR,
       message: "nothingToRedo",
     });
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   // An empty stack and a refused apply must not look alike: this one changed nothing *and* the
@@ -125,7 +125,7 @@ describe("useUndo", () => {
       nodeId: UNDO_TOAST_ANCHOR,
       message: 'undoFailed({"message":"locked"})',
     });
-    expect(reload).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it("reports a failed redo as a redo failure", async () => {

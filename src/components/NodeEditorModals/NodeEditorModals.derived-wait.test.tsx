@@ -40,7 +40,7 @@ const tree = node("root", "domain", { children: [task, stored, delegated] });
 
 /** A view's editor wiring, as the Mindmap, List and Steps views have it: `E` calls `onDoubleClick`. */
 function Harness() {
-  const editor = useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) });
+  const editor = useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) });
   return (
     <>
       {[spawned, task, stored, delegation].map((n) => (

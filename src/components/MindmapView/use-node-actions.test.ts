@@ -103,7 +103,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     pasteNodes: vi.fn().mockResolvedValue([]),
     insertParent: vi.fn().mockResolvedValue("domain-99"),
     onRequestDelete: vi.fn(),
-    reload: vi.fn().mockResolvedValue(undefined),
+    settle: vi.fn().mockResolvedValue(undefined),
     renameNode: vi.fn().mockResolvedValue(undefined),
     createNode: vi.fn().mockResolvedValue(mkNode("domain-99", "domain")),
     createChild: vi.fn().mockResolvedValue(mkNode("domain-99", "domain")),

@@ -7,12 +7,15 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { isAndroid } from "@/utils/platform";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
+import { undo } from "@/api/gesture";
+import { useHelpStore } from "@/stores/use-help-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@/hooks/use-mcp-roots");
+vi.mock("@/api/gesture", () => ({ gestureName: () => undefined, undo: vi.fn(() => Promise.resolve(null)), redo: vi.fn(() => Promise.resolve(null)), invoke: vi.fn() }));
 vi.mock("@/utils/platform", () => ({ isAndroid: vi.fn(() => false) }));
 // The endpoint section has its own test; here it only has to render quietly.
 vi.mock("@/hooks/use-mcp-endpoint", () => ({
@@ -54,6 +57,7 @@ describe("SettingsModal", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.zen", "page.windows",
       "page.expectations", "page.mcp", "page.server", "page.devices",
+      "page.notifications",
     ]);
   });
 
@@ -75,7 +79,7 @@ describe("SettingsModal", () => {
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.mindmap" }), { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.general" }), { key: "ArrowUp" });
-    expect(screen.getByRole("tab", { name: "page.devices" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "page.notifications" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("closes on Escape", () => {
@@ -100,6 +104,16 @@ describe("SettingsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "keyboardShortcuts" }));
 
     expect(onOpenHotkeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes itself and opens Help from General", () => {
+    useHelpStore.setState({ isOpen: false });
+    const { onClose } = open();
+
+    fireEvent.click(screen.getByRole("button", { name: "help" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useHelpStore.getState().isOpen).toBe(true);
   });
 
   it("toggles the theme on General", () => {
@@ -335,5 +349,13 @@ describe("SettingsModal", () => {
     goTo("mcp");
 
     expect(screen.getByText("settings:mcp.none")).toBeInTheDocument();
+  });
+
+  it("undoes on Ctrl+Z while it is open, though it holds the keyboard", () => {
+    open();
+
+    fireEvent.keyDown(window, { code: "KeyZ", ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(1);
   });
 });

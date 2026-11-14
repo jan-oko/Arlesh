@@ -20,6 +20,7 @@ export default defineConfig({
     // Sibling git worktrees live under .claude/worktrees/ and carry their own full source
     // copy — without this, a run from the repo root also re-runs every test in each of
     // them, doubling load and causing unrelated timeouts.
-    exclude: [...configDefaults.exclude, ".claude/worktrees/**"],
+    // `plugins/**` tests run under `claude plugin test`, not vitest.
+    exclude: [...configDefaults.exclude, ".claude/worktrees/**", "plugins/**"],
   },
 });
