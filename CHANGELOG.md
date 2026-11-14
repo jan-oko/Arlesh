@@ -277,6 +277,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **Deleting a Project that holds a sub-Project no longer fails.** Deleting a Project or Domain from the server (or the API) with a Project, Domain or Tag inside it was refused with a database error, and one with Tasks, Goals, waits, notes or Flows left them behind with no parent. It now deletes the whole subtree, children first, in one step; a duplicated Project is deleted like any other. Aspects are still refused.
+
 - **The Linux tray icon appears when the panel starts after Arlesh.** Started at login before the shell's tray host (such as DankMaterialShell) was up, Arlesh gave up on its tray icon for the whole session and closing the window quit. It now waits for the tray host, shows the icon when the host appears, and brings it back after the shell restarts. While a host is there, closing the window hides it to the tray; while none is, closing quits.
 
 - **Archived Commitments no longer appear under Plan.** A Commitment that was archived, put away by hand or Expired (its Verdict Window ran out unanswered) still showed under the Plan preset in the List View and on the Mindmap. Plan now hides it as Start and Do already did; the Archived pill's Include still brings it back.
