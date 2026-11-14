@@ -47,6 +47,7 @@ fn unstamped(value: &serde_json::Value) -> serde_json::Value {
                             | "effective_plan"
                             | "plan_inherited_from"
                             | "plan_conflict"
+                            | "info_count"
                     )
                 })
                 .map(|(key, value)| (key.clone(), unstamped(value)))
@@ -491,8 +492,12 @@ async fn tasks_get_returns_what_the_command_returns() {
             &format!("task:{task_id}")
         )
     );
+    // The Infos under the Task come back with it; the command knows nothing of them.
+    assert_eq!(got["infos"], serde_json::json!([]));
+    let mut got = got.clone();
+    got.as_object_mut().unwrap().remove("infos");
     assert_eq!(
-        unstamped(got),
+        unstamped(&got),
         serde_json::to_value(&expected).unwrap(),
         "tasks.get"
     );
