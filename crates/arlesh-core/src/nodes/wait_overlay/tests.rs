@@ -41,6 +41,7 @@ fn drawn() -> Expectation {
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Origin::SpawnedWait(WaitOrigin { task_id: 7.into() }),
     }
 }

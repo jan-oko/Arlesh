@@ -239,9 +239,21 @@ describe("deriveStatusIndicators — visible to the MCP", () => {
 });
 
 describe("deriveStatusIndicators — an agent waiting on you", () => {
-  it("marks an agentic wait, and nothing else", () => {
-    expect(types(node("expectation", { agentWaiting: { note: "Red or blue?", question: true, answer: null } }))).toContain("agentWaiting");
-    expect(types(node("expectation"))).not.toContain("agentWaiting");
+  const wait = (rowId: number, review: boolean): MindmapNode => ({
+    id: `expectation-${rowId}`, rowId, kind: "expectation", title: "w", position: 0, tagIds: [], children: [],
+    agentWaiting: { note: null, question: true, answer: null, ...(review ? { review: { links: [], hand_tests: [] } } : {}) },
+  });
+
+  it("marks a Task with an open question or review, each in its own way", () => {
+    expect(types(node("task", { agentWaits: [wait(1, false)], openQuestionIds: [1] }))).toEqual(["openQuestion"]);
+    expect(types(node("task", { agentWaits: [wait(2, true)], openQuestionIds: [2] }))).toEqual(["openReview"]);
+    expect(types(node("task", { agentWaits: [wait(1, false), wait(2, true)], openQuestionIds: [1, 2] })))
+      .toEqual(["openQuestion", "openReview"]);
+  });
+
+  it("marks nothing for a wait that is not open, and never an Expectation itself", () => {
+    expect(types(node("task", { agentWaits: [wait(1, false)] }))).toEqual([]);
+    expect(types(node("expectation", { agentWaiting: { note: null, question: true, answer: null } }))).toEqual([]);
   });
 });
 

@@ -43,8 +43,9 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
 } from "@/utils/status-mapping";
-import { openQuestion } from "@/utils/open-question";
-import AnswerField from "@/components/AnswerField/AnswerField";
+import { openWaits } from "@/utils/open-question";
+import type { WaitReply } from "@/hooks/use-answer-question";
+import OpenWaits from "@/components/AnswerField/OpenWaits";
 import { isOverdue } from "@/utils/overdue";
 import { blockedByText } from "@/utils/blocked-by";
 
@@ -149,7 +150,7 @@ interface Props {
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
-  onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
+  onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
   /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
   openAtTemplate?: boolean;
   onClose: () => void;
@@ -360,7 +361,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // is none, and the save is then refused by name.
   const pills = readsAgentic ? AGENTIC_PILLS : ORDINARY_PILLS;
   const shownStatus = convertedStatus(status, readsAgentic);
-  const question = readsAgentic && isReview(status) ? openQuestion(node) : undefined;
+  const hasOpenWaits = readsAgentic && isReview(status) && openWaits(node).length > 0;
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
@@ -531,7 +532,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={isArchivedByHand || agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
+        startOpen={isArchivedByHand || agentic !== TASK_AGENTIC.INHERIT || hasOpenWaits || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
         {takesArchive && <ArchivedField checked={isArchivedByHand} onChange={setArchivedAndClearBacklog} />}
         {/* Its short id — the one the MCP and a "Blocked by …" reason name it by — so the user can
@@ -557,9 +558,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           inherited={node.inheritedAgentic === true}
           onChange={setAgentic}
         />
-        {question !== undefined && onAnswer !== undefined && (
+        {hasOpenWaits && onAnswer !== undefined && (
           <div role="group" aria-label={t("agenticQuestionSection")}>
-            <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} />
+            <OpenWaits task={node} onAnswer={onAnswer} />
           </div>
         )}
         {readsAgentic && (

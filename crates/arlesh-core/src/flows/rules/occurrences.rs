@@ -1360,6 +1360,7 @@ pub(in crate::flows) fn wait_row(
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: occurrence.origin.clone(),
     };
     overlay.apply(&mut row);
