@@ -2,6 +2,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { isOccurrence } from "@/utils/node-identity";
 import { isAgentic } from "@/utils/agentic";
 import { isDelegated } from "@/utils/filter-tree";
+import { isReviewWait, openWaits } from "@/utils/open-question";
 
 /** The status badges that can appear in a node's indicator row, in display order. */
 export type StatusIndicatorType =
@@ -13,7 +14,8 @@ export type StatusIndicatorType =
   | "agentic"
   | "delegated"
   | "asynchronous"
-  | "agentWaiting"
+  | "openQuestion"
+  | "openReview"
   | "info"
   | "flowInstance"
   | "tags"
@@ -94,11 +96,12 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.asynchronous === true) {
     indicators.push({ type: "asynchronous" });
   }
-  // An agentic wait: an agent raised it on the Task it is working and is waiting on the user. The
-  // bot head, because it is the agent that is waiting; the tooltip carries its question.
-  if (node.agentWaiting !== undefined) {
-    indicators.push({ type: "agentWaiting" });
-  }
+  // What an agent has open for the user on this Task. An agentic wait is never drawn as a node, so
+  // the Task says it: a question mark for a question, a checked page for a review — two marks, so
+  // the row tells them apart. The tooltip carries the titles.
+  const open = openWaits(node);
+  if (open.some((wait) => !isReviewWait(wait))) indicators.push({ type: "openQuestion" });
+  if (open.some(isReviewWait)) indicators.push({ type: "openReview" });
   // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
   // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out
   // — so a badge underneath would state the same fact a few pixels away. Every other indicator

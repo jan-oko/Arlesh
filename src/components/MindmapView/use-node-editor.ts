@@ -34,6 +34,7 @@ import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { isBegun, storedStatus } from "@/utils/status-mapping";
 import { useAnswerQuestion } from "@/hooks/use-answer-question";
+import type { WaitReply } from "@/hooks/use-answer-question";
 import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 import { awaitLane } from "@/stores/use-pending-writes-store";
 import { usePendingWrite } from "@/hooks/use-pending-write";
@@ -117,7 +118,7 @@ export interface NodeEditorHandles {
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   /** Answers an agent's open question from the Task editor: stores the answer, releases the wait. */
-  onAnswer: (question: MindmapNode, answer: string) => Promise<boolean>;
+  onAnswer: (wait: MindmapNode, reply: WaitReply) => Promise<boolean>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
   onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
@@ -291,7 +292,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
 
   const answerQuestion = useAnswerQuestion({ reload, showToast });
   const onAnswer = useCallback(
-    (question: MindmapNode, answer: string) => answerQuestion(question.id, rowIdOf(question), answer),
+    (wait: MindmapNode, reply: WaitReply) => answerQuestion(wait.id, rowIdOf(wait), reply),
     [answerQuestion],
   );
 
@@ -353,9 +354,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
             time_scope: data.timeScope,
             archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
             is_private: data.isPrivate,
-            agentic: data.agentic,
-            agentic_note: data.agenticNote,
-            answer: data.agenticAnswer,
           };
           await runGesture("save-wait", [
             { op: "update_expectation", id: dbId, request },

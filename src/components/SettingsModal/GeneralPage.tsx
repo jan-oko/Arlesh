@@ -9,13 +9,15 @@ import styles from "./SettingsModal.module.css";
 interface Props {
   /** Closes the settings and opens the keyboard cheat-sheet in their place. */
   onOpenHotkeys: () => void;
+  /** Closes the settings and opens Help in their place. */
+  onOpenHelp: () => void;
 }
 
 /** Appearance, how the Plan preset's scope matches, whether Start hides a wait that has checks,
  * whether Start and Do show Started tasks, how
  * much Habit history the Mindmap and the Steps View fold, whether the node searches offer archived
- * nodes, and the way to the keyboard cheat-sheet. App-wide. */
-export default function GeneralPage({ onOpenHotkeys }: Props) {
+ * nodes, and the ways to the keyboard cheat-sheet and Help. App-wide. */
+export default function GeneralPage({ onOpenHotkeys, onOpenHelp }: Props) {
   const { t } = useTranslation("common");
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -51,6 +53,11 @@ export default function GeneralPage({ onOpenHotkeys }: Props) {
       <div>
         <button className={styles.button} type="button" onClick={onOpenHotkeys}>
           {t("keyboardShortcuts")}
+        </button>
+      </div>
+      <div>
+        <button className={styles.button} type="button" onClick={onOpenHelp}>
+          {t("help")}
         </button>
       </div>
     </div>

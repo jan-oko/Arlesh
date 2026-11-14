@@ -413,6 +413,14 @@ pub fn is_live_expectation(node: &NodeFacts) -> bool {
     node.status_str() == EXPECTATION_PENDING && !node.archived
 }
 
+/// Whether an Expectation is an **agentic wait** — one an agent raised on a Task: a question, a
+/// review, or a wait on something else. The app does not draw one anywhere: it stays an Expectation
+/// for the agents that read it through the MCP, while the Task it hangs under shows its open
+/// question or review on its own card and editor. A wait the user made by hand is not one.
+pub fn is_agentic_wait(node: &NodeFacts) -> bool {
+    node.kind == NodeKind::Expectation && node.agent_waiting
+}
+
 /// Whether an Expectation shows under the active preset.
 ///
 /// A wait is not work, so it answers to its own rule. **All** shows every one. A **pending**, live
@@ -474,7 +482,8 @@ pub fn passes_status(
         return with_archived_override(node, filter, passes_commitment_preset(node, filter));
     }
     if node.kind == NodeKind::Expectation {
-        return with_archived_override(node, filter, passes_expectation_preset(node, filter));
+        return !is_agentic_wait(node)
+            && with_archived_override(node, filter, passes_expectation_preset(node, filter));
     }
     match filter.preset {
         // The Archived pill's `Exclude` hides an archived item under All too, but that is the

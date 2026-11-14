@@ -31,6 +31,7 @@ fn stored() -> Expectation {
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Default::default(),
     }
 }
@@ -141,6 +142,8 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         agentic_note: None,
         agentic_question: true,
         agentic_answer: None,
+        agentic_review: None,
+        agentic_verdict: None,
     };
     let expectation = Expectation::from(row);
     assert_eq!(expectation.status, ExpectationStatus::Pending);

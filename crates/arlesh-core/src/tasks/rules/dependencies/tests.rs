@@ -70,6 +70,7 @@ fn wait(id: NodeId) -> Expectation {
         agentic_note: None,
         question: false,
         answer: None,
+        review: None,
         origin: Origin::Manual,
     }
 }

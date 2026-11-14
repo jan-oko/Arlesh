@@ -37,8 +37,29 @@ export interface Expectation {
   question?: boolean;
   /** The answer a question wait was, or is being, released with. */
   answer?: string | null;
+  /** Present on an agentic review: its links, hand tests and, once answered, the verdict. */
+  review?: Review;
   /** Where the row came from; absent reads as `manual`. */
   origin?: Origin;
+}
+
+/** The user's answer to a review. `approved` with a PR link is their word to merge it. */
+export const REVIEW_VERDICT = { APPROVED: "approved", CHANGES_REQUESTED: "changes_requested" } as const;
+export type ReviewVerdict = (typeof REVIEW_VERDICT)[keyof typeof REVIEW_VERDICT];
+
+/** A link a review carries — a PR, a doc, a build. Arlesh stores it and never follows it. */
+export interface ReviewLink {
+  label: string;
+  url: string;
+}
+
+/** What an agent hands back with a review. Present on a review and absent on a question. */
+export interface Review {
+  links: ReviewLink[];
+  /** What the user can try by hand, shown read only. */
+  hand_tests: string[];
+  /** The user's verdict; absent while the review is open. */
+  verdict?: ReviewVerdict;
 }
 
 export interface CreateExpectationRequest {
@@ -71,6 +92,8 @@ export interface UpdateExpectationRequest {
   agentic_note?: string | null;
   // Absent = leave unchanged, null = clear, value = set. Releasing a question wait needs one.
   answer?: string | null;
+  // The user's verdict on a review; releasing a review needs one.
+  verdict?: ReviewVerdict;
 }
 
 export async function listExpectations(now: string): Promise<Expectation[]> {

@@ -13,6 +13,9 @@ import CalendarIcon from "@/components/StatusIcons/CalendarIcon";
 import IceIcon from "@/components/StatusIcons/IceIcon";
 import BacklogIcon from "@/components/StatusIcons/BacklogIcon";
 import AgenticIcon from "@/components/StatusIcons/AgenticIcon";
+import QuestionIcon from "@/components/StatusIcons/QuestionIcon";
+import ReviewIcon from "@/components/StatusIcons/ReviewIcon";
+import { isReviewWait, openWaits } from "@/utils/open-question";
 import DelegatedIcon from "@/components/StatusIcons/DelegatedIcon";
 import AsyncIcon from "@/components/StatusIcons/AsyncIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
@@ -71,15 +74,16 @@ export default function TaskRowBadges({ node, indicators }: Props) {
           tooltip: t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
           icon: <DelegatedIcon cx={R} cy={R} r={R} color={MUTED} />,
         };
-      case "agentWaiting": {
-        // A question waits on the user and takes the accent; a wait on something else, like CI,
-        // is the agent's business and stays quiet.
-        const note = node.agentWaiting?.note ?? null;
-        const onYou = node.agentWaiting?.question !== false;
-        const tooltip = onYou
-          ? note === null ? t("agentWaiting") : t("agentWaitingNote", { note })
-          : note === null ? t("agentWaitingElsewhere") : t("agentWaitingElsewhereNote", { note });
-        return { tooltip, icon: <AgenticIcon cx={R} cy={R} r={R} color={onYou ? ACCENT : MUTED} /> };
+      case "openQuestion":
+      case "openReview": {
+        const review = indicator.type === "openReview";
+        const titles = openWaits(node).filter((wait) => isReviewWait(wait) === review).map((wait) => wait.title).join(", ");
+        return {
+          tooltip: review ? t("openReview", { titles }) : t("openQuestion", { titles }),
+          icon: review
+            ? <ReviewIcon cx={R} cy={R} r={R} color={ACCENT} />
+            : <QuestionIcon cx={R} cy={R} r={R} color={ACCENT} />,
+        };
       }
       case "asynchronous":
         return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={R} cy={R} r={R} color={MUTED} /> };

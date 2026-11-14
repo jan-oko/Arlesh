@@ -11,6 +11,7 @@
   "searchIncludesArchived": "Include archived nodes in search (Ctrl+O, and nodes in Ctrl+F and the Filter menu)",
   "closeToTray": "Close to tray",
   "keyboardShortcuts": "Keyboard shortcuts",
+  "help": "Help",
   "verticalLayout": "Vertical layout",
   "asynchronousFirst": "Asynchronous first",
   "overdueFirst": "Overdue first under Start",
