@@ -110,7 +110,7 @@ marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
 - At `agent.spawn`, when the session is attached, the mod reads the Task (`arlesh_tasks.get`),
   strips the marker from `description` and `prompt`, and rewrites `description` (what Claude Code's
   subagent list shows) to `<description> · <short id> <title>`, the title cut at 28 characters and
-  ended with `…`: `Fix CI · 077 Subagents: register under t…`. The label is set once at spawn; it does
+  ended with `…`: `Fix CI · 077 Subagents: register under th…`. The label is set once at spawn; it does
   not follow Active and Paused.
 - The spawn is tied to the subagent's start by the agent id `agent.spawn` settles with, or, if the
   start comes first, by the label the engine lists as the subagent's description. The mod registers

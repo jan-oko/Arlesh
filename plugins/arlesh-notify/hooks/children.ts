@@ -50,17 +50,28 @@ export function prune(children: Children, now: number): Children {
   return Object.fromEntries(Object.entries(children).filter(([, child]) => now - child.savedAt < KEEP_MS))
 }
 
-/** The arguments of `arlesh_agents.register_child`. */
-export function registerArguments(name: string, clientId: string): Record<string, unknown> {
-  return { operation: 'register_child', name, client_id: clientId }
+/** The Task a subagent is to hold, as `register_child` takes it. */
+export interface TaskRef {
+  node_type: 'task'
+  node_id: string
+}
+
+/** The arguments of `arlesh_agents.register_child`, with the Task to hold from the start if one is named. */
+export function registerArguments(name: string, clientId: string, subtree?: TaskRef): Record<string, unknown> {
+  return { operation: 'register_child', name, client_id: clientId, ...(subtree === undefined ? {} : { subtree }) }
 }
 
 /** What `register_child` answered. */
 export interface Registered {
   childId: number
   name: string
-  /** Only the first registration of a subagent answers its sub-token. */
   subToken?: string
+  /** Whether the child holds a sub-Claim now. */
+  holds: boolean
+  /** The claimed Task as the server names it (`077 Subagents: …`). */
+  claimName?: string
+  /** Why the Claim asked for with the registration was refused, when it was. */
+  claimRefused?: string
 }
 
 /** Reads a `register_child` answer, or `undefined` when it is a refusal. */
@@ -70,7 +81,16 @@ export function registeredFrom(result: unknown): Registered | undefined {
   const { id, name } = payload['agent']
   if (typeof id !== 'number' || typeof name !== 'string') return undefined
   const subToken = payload['sub_token']
-  return { childId: id, name, ...(typeof subToken === 'string' ? { subToken } : {}) }
+  const claimName = payload['claim_name']
+  const claimRefused = payload['claim_refused']
+  return {
+    childId: id,
+    name,
+    holds: isRecord(payload['agent']['claim']),
+    ...(typeof subToken === 'string' ? { subToken } : {}),
+    ...(typeof claimName === 'string' ? { claimName } : {}),
+    ...(typeof claimRefused === 'string' ? { claimRefused } : {}),
+  }
 }
 
 /** The claimed Task's name and the standing, as an `arlesh_agents` answer gives them. */
@@ -97,15 +117,24 @@ export function isChildGone(result: unknown): boolean {
   return /not_permitted/.test(text) && /(sub_token names no child|not attached)/i.test(text)
 }
 
-/** The block added to a registered subagent's starting context. */
-export function contextBlock(name: string, subToken: string): string {
-  return (
+/**
+ * The block added to a registered subagent's starting context. `holding` is the Task it already
+ * holds, when the orchestrator named one and the server gave it; `refused` is why a Task the
+ * orchestrator named could not be given.
+ */
+export function contextBlock(name: string, subToken: string, extra: { holding?: string; refused?: string } = {}): string {
+  const who =
     `You are a subagent working on Arlesh as child agent \`${name}\` of this session's agent. ` +
-    `Pass \`sub_token: "${subToken}"\` on every Arlesh tool call: it gives you your own view. ` +
-    'First claim the Task your brief names with `arlesh_agents.claim` ' +
+    `Pass \`sub_token: "${subToken}"\` on every Arlesh tool call: it gives you your own view. `
+  const stops = 'When you stop, your Claim is paused for you; it resumes when you are resumed.'
+  if (extra.holding !== undefined) {
+    return `${who}You already hold your Claim, ${extra.holding}: do not call \`arlesh_agents.claim\`. ${stops}`
+  }
+  const why = extra.refused === undefined ? '' : `The Task the orchestrator named could not be claimed for you (${extra.refused}). `
+  return (
+    `${who}${why}First claim the Task your brief names with \`arlesh_agents.claim\` ` +
     '(`subtree: {node_type: "task", node_id: "<its short id>"}`) and the `sub_token`; ' +
-    'you can claim only inside the session\'s Claim. ' +
-    'When you stop, your Claim is paused for you; it resumes when you are resumed.'
+    `you can claim only inside the session's Claim. ${stops}`
   )
 }
 
@@ -138,4 +167,72 @@ export function rowLine(child: Child): string | undefined {
   if (child.claimName === undefined) return undefined
   const standing = child.standing === 'paused' ? 'Paused' : 'Active'
   return `Arlesh · ${child.claimName} · ${standing}`
+}
+
+/** What an Agent call's marker said. */
+export type Marker = { kind: 'none' } | { kind: 'one'; ref: string } | { kind: 'invalid'; reason: string }
+
+const MARKER = /\[arlesh:([0-9A-Za-z-]{3,40})\]/g
+const MARKER_START = '[arlesh:'
+
+/**
+ * The Task the orchestrator named in an Agent call: `[arlesh:<id>]` with an id of 3 to 40 letters,
+ * digits or hyphens, once, in the `description` or the `prompt`. A repeated marker, or text that
+ * starts one and is not a whole marker, counts as none: `invalid`, for the debug log.
+ */
+export function parseMarker(description: string, prompt: string): Marker {
+  const text = `${description}\n${prompt}`
+  const started = text.split(MARKER_START).length - 1
+  if (started === 0) return { kind: 'none' }
+  const whole = [...text.matchAll(MARKER)]
+  if (started !== whole.length) return { kind: 'invalid', reason: 'a marker that is not whole' }
+  const [first] = whole
+  if (whole.length > 1 || first?.[1] === undefined) return { kind: 'invalid', reason: 'more than one marker' }
+  return { kind: 'one', ref: first[1] }
+}
+
+/** `text` without the markers, and the space that stood before each. */
+export function stripMarker(text: string): string {
+  return text.replace(/ ?\[arlesh:[0-9A-Za-z-]{3,40}\]/g, '').trim()
+}
+
+/** The longest Task title a label carries. */
+export const TITLE_MAX = 28
+
+/**
+ * What the subagent list shows for a subagent holding a Task: its own description first, then the
+ * Task's short id and title, cut to stay readable in a narrow list.
+ * `Fix CI · 077 Subagents: register under t…`
+ */
+export function label(description: string, shortId: string, title: string): string {
+  const cut = title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX).trimEnd()}…` : title
+  const base = description.trim() === '' ? 'subagent' : description.trim()
+  return `${base} · ${shortId} ${cut}`
+}
+
+/** The short id and title of the Task an `arlesh_tasks.get` answered, or `undefined`. */
+export function taskFrom(result: unknown): { shortId: string; title: string } | undefined {
+  const payload = payloadOf(result)
+  const task = isRecord(payload) ? payload['task'] : undefined
+  if (!isRecord(task)) return undefined
+  const shortId = task['short_id']
+  const title = task['title']
+  return typeof shortId === 'string' && typeof title === 'string' ? { shortId, title } : undefined
+}
+
+/** The operations that would change the session's own Claim when made with no `sub_token`. */
+const CLAIM_OPERATIONS = new Set(['claim', 'release'])
+
+/**
+ * Whether an Arlesh call is a `claim` or `release` that carries no `sub_token`: made inside a
+ * subagent's loop it would run as the session and change the session's Claim.
+ */
+export function changesSessionClaim(tool: string, input: Record<string, unknown>): boolean {
+  const operation = input['operation']
+  return (
+    tool.endsWith('__arlesh_agents') &&
+    typeof operation === 'string' &&
+    CLAIM_OPERATIONS.has(operation) &&
+    typeof input['sub_token'] !== 'string'
+  )
 }

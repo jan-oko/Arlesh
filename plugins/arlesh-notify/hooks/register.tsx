@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, EngineInterface } from 'claude-code'
+import type { AgentSpawnInput, Register, EngineInterface } from 'claude-code'
 
 import {
   agentName,
@@ -35,6 +35,7 @@ import { currentFrom, waitsFrom, type Current } from './results'
 import { changeBetween, namesRaiser, notificationText, routeTo, type Change, type Via } from './rules'
 
 type Engine = EngineInterface
+type SpawnInput = AgentSpawnInput
 
 /** What the agents are told at the start of a session in which the notifications are on. */
 const NOTES =
@@ -59,6 +60,23 @@ let attaching: Promise<Standing> | undefined
 let lastReport: Reported | undefined
 /** Which `Agent` call started each subagent, so its row can be found again. */
 const spawned = new Map<string, string>()
+
+/** A subagent the orchestrator started with a Task named, until its child is registered holding it. */
+interface Pending {
+  /** What the subagent list shows: the original description, then the Task. */
+  label: string
+  /** The description as the orchestrator wrote it, marker removed: the child's name. */
+  original: string
+  /** The Task's short id, which `register_child` claims. */
+  shortId: string
+}
+const pendingByLabel = new Map<string, Pending>()
+const pendingByAgent = new Map<string, Pending>()
+
+const NO_CHILD =
+  'arlesh-notify: this subagent has no child agent of its own, so a claim or release here would run as ' +
+  "the session and change the session's Claim. Ask the orchestrator to register you " +
+  '(arlesh_agents.register_child, or name your Task with [arlesh:<task id>] in the Agent call).'
 
 /** The line under each subagent's row, by the Agent call's tool use id. */
 const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
@@ -105,10 +123,18 @@ export const register: Register = (on) => {
   })
 
   // The Agent call that starts (or resumes) a subagent: remembered, so its row can be drawn on.
+  // A marker `[arlesh:<task id>]` in the call names the Task the subagent is to hold: its label in
+  // the subagent list then carries the Task, and its child is registered holding it.
   on('agent.spawn', async ($, e, next) => {
-    const started = await next(e)
+    const { request, pending } = await spawnRequest($, e)
+    const started = await next(request)
+    if (started.deny !== undefined) {
+      if (pending !== undefined) pendingByLabel.delete(pending.label)
+      return started
+    }
     const id = e.resume?.agentId ?? started.agentId
     if (id !== undefined && !spawned.has(id)) spawned.set(id, e.tool_use_id)
+    if (pending !== undefined && started.agentId !== undefined) pendingByAgent.set(started.agentId, pending)
     return started
   }).catch(($, e, next) => next(e))
 
@@ -141,7 +167,8 @@ export const register: Register = (on) => {
     const input: Record<string, unknown> = { ...e }
     if (agentId === undefined) return next(e)
     const found = await governingOf($, agentId)
-    if (found === undefined || input['sub_token'] === found.child.subToken) return next(e)
+    if (found === undefined) return kids.changesSessionClaim(e.tool, input) ? { deny: NO_CHILD } : next(e)
+    if (input['sub_token'] === found.child.subToken) return next(e)
     const ran = await next({ ...e, ...{ sub_token: found.child.subToken } })
     void noteAnswer($, found, e.tool, ran.result ?? ran.text)
     return ran
@@ -610,14 +637,78 @@ async function childStarted($: Engine, id: string): Promise<string | undefined> 
     await serially(async () => saveChildren($, { ...(await loadChildren($)), [id]: record }))
     return kids.contextBlock(ancestor.child.name, ancestor.child.subToken)
   }
+  const pending = pendingFor(id, info.description)
+  const subtree: kids.TaskRef | undefined = pending === undefined ? undefined : { node_type: 'task', node_id: pending.shortId }
   const made = kids.registeredFrom(
-    await $.mcp.call(connection.name, 'arlesh_agents', kids.registerArguments(info.description || id, id)),
+    await $.mcp.call(
+      connection.name,
+      'arlesh_agents',
+      kids.registerArguments(pending?.original || info.description || id, id, subtree),
+    ),
   )
+  if (pending !== undefined) forgetPending(id, pending)
   if (made === undefined) return undefined
   if (made.subToken === undefined) return undefined
-  const record: kids.Child = { childId: made.childId, subToken: made.subToken, name: made.name, savedAt: await $.clock.now() }
+  const held = made.holds ? made.claimName : undefined
+  const record: kids.Child = {
+    childId: made.childId,
+    subToken: made.subToken,
+    name: made.name,
+    savedAt: await $.clock.now(),
+    ...(held === undefined ? {} : { claimName: held, standing: 'active' }),
+  }
   await serially(async () => saveChildren($, { ...(await loadChildren($)), [id]: record }))
-  return kids.contextBlock(made.name, made.subToken)
+  if (held !== undefined) {
+    await showRow($, id, record)
+    return kids.contextBlock(made.name, made.subToken, { holding: held })
+  }
+  return kids.contextBlock(made.name, made.subToken, made.claimRefused === undefined ? {} : { refused: made.claimRefused })
+}
+
+/** The Task named for a subagent: by the id `agent.spawn` settled with, else by the label it lists. */
+function pendingFor(id: string, description: string): Pending | undefined {
+  return pendingByAgent.get(id) ?? pendingByLabel.get(description)
+}
+
+function forgetPending(id: string, pending: Pending): void {
+  pendingByAgent.delete(id)
+  pendingByLabel.delete(pending.label)
+}
+
+/**
+ * The Agent call as the engine should run it: with a valid marker the marker is taken out of the
+ * description and the prompt and the description is relabelled with the Task. Nothing changes for
+ * a resumed or teammate call, for a session the mod has not attached, or when the Task cannot be
+ * read (then only the marker goes). Never throws.
+ */
+async function spawnRequest(
+  $: Engine,
+  e: SpawnInput,
+): Promise<{ request: SpawnInput; pending?: Pending }> {
+  try {
+    if (e.resume !== undefined || e.isTeammate !== undefined || e.workflow !== undefined) return { request: e }
+    const marker = kids.parseMarker(e.description, e.prompt)
+    if (marker.kind === 'invalid') {
+      $.ui.log(`arlesh-notify: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
+      return { request: e }
+    }
+    if (marker.kind === 'none') return { request: e }
+    const stripped = { ...e, description: kids.stripMarker(e.description), prompt: kids.stripMarker(e.prompt) }
+    if (attaching !== undefined) await attaching
+    if (standing?.kind !== 'attached' || server === undefined) return { request: stripped }
+    const task = kids.taskFrom(await $.mcp.call(server.name, 'arlesh_tasks', { operation: 'get', id: marker.ref }))
+    if (task === undefined) {
+      $.ui.log(`arlesh-notify: could not read the Task ${marker.ref} named for a subagent`, { to: 'debug' })
+      return { request: stripped }
+    }
+    const label = kids.label(stripped.description, task.shortId, task.title)
+    const pending: Pending = { label, original: stripped.description, shortId: task.shortId }
+    pendingByLabel.set(label, pending)
+    return { request: { ...stripped, description: label }, pending }
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not read a subagent's marker: ${String(error)}`, { to: 'debug' })
+    return { request: e }
+  }
 }
 
 /** A subagent stopped: its Claim is paused, unless the child is gone or is not its own. */

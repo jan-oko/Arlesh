@@ -48,6 +48,23 @@ environment variables:
   every five minutes otherwise, so the server holds back the agents of an account at its limit and
   frees them at the reset.
 
+- **Starts a subagent already holding its Task.** Write the marker `[arlesh:<task id>]` once in an
+  `Agent` call's `description` or `prompt` (`<task id>` is the Task's short id, row id or full id:
+  3 to 40 letters, digits or hyphens; case-sensitive). When the session is attached, the mod reads
+  the Task at `agent.spawn`, takes the marker out of the description and the prompt, and relabels
+  the subagent in Claude Code's subagent list as `<description> · <short id> <title>`, the title cut
+  at 28 characters (`Fix CI · 077 Subagents: register under th…`). It then registers the child
+  with that Task as its sub-Claim, in one call, when the subagent starts, and the starting context
+  says the subagent already holds it and must not call `claim`. The label is set once at spawn: it
+  does not follow Active and Paused. A repeated or malformed marker counts as none (noted in the
+  debug log). Without a marker, with a Task the mod cannot read, or when the server refuses the
+  Claim (outside the session's Claim, a sibling holds it), the subagent is registered unclaimed and
+  told to claim the Task its brief names, with the reason. A resumed subagent keeps its child and
+  its label.
+- **Keeps a subagent from changing the session's Claim.** A `claim` or `release` made inside a
+  subagent's loop with no `sub_token` would run as the session. When that subagent has no child of
+  its own (the session was not attached by the mod, or registration failed) the mod denies the call
+  and says why.
 - **Registers each subagent as a child agent** of the session's agent, when the session is
   attached. When a subagent starts (`SubagentStart`), the mod calls `arlesh_agents.register_child`
   with the subagent's description as its name and Claude Code's agent id as its `client_id`, keeps

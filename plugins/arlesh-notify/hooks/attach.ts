@@ -180,5 +180,6 @@ export function contextBlock(standing: Standing): string {
   const held = standing.claim === undefined ? 'no claim yet' : `claim: ${standing.claim}`
   const refused = standing.claimRefused === undefined ? '' : ` The claim asked for was refused: ${standing.claimRefused}.`
   const verb = standing.automatic ? 'attached automatically' : 'attached'
-  return `This session tracks work on Arlesh: ${verb} as ${standing.name}, ${held}.${refused} ${how}`
+  const subagents = 'To start a subagent already holding its Task, write [arlesh:<task id>] once in the Agent call\'s description or prompt.'
+  return `This session tracks work on Arlesh: ${verb} as ${standing.name}, ${held}.${refused} ${how} ${subagents}`
 }
