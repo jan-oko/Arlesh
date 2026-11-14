@@ -204,8 +204,13 @@ fn insert_row(entry: &JournalEntry, image: &RowImage) -> Result<Statement, UndoE
         columns.push("rowid".to_string());
         values.push(SqlValue::Integer(entry.row_id));
     }
+    let comes_back_paused = child_agent_comes_back_paused(&entry.table, image);
     for (column, value) in image.columns() {
         columns.push(identifier(column)?);
+        if comes_back_paused && column == "claim_paused" {
+            values.push(SqlValue::Integer(1));
+            continue;
+        }
         values.push(SqlValue::read(column, value)?);
     }
 
@@ -217,6 +222,16 @@ fn insert_row(entry: &JournalEntry, image: &RowImage) -> Result<Statement, UndoE
         ),
         values,
     })
+}
+
+/// Whether the row being put back is a child Agent (Task 077, ADR 0019): it returns **Paused**,
+/// whatever it was when it went, because a subagent that is not running must not read Active. It
+/// becomes Active when its subagent actually resumes.
+fn child_agent_comes_back_paused(table: &str, image: &RowImage) -> bool {
+    table == "agents"
+        && image
+            .columns()
+            .any(|(column, value)| column == "parent_id" && !value.is_null())
 }
 
 /// `UPDATE <table> SET … WHERE rowid = <row_id>`, writing every column of `image` back.

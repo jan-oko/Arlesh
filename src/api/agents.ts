@@ -29,6 +29,8 @@ export interface Agent {
   locked: boolean;
   created_at: string;
   last_seen_at: string | null;
+  /** The agent this one is a child of (a registered subagent), or null for an agent. */
+  parent_id: number | null;
 }
 
 /** Where an agent's Claim stands among the others. */

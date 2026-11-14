@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { locksOf } from "./use-agent-locks";
 import type { AgentSummary, AgentsOverview } from "@/api/agents";
 
-function agent(id: number, cause: AgentSummary["at_capacity"]): AgentSummary {
+function agent(id: number, cause: AgentSummary["at_capacity"], parent: number | null = null): AgentSummary {
   return {
     agent: {
       id, name: `a${id}`, account: "work", session_uuid: "s", claim: null, locked: false,
-      created_at: "2026-11-07T09:00:00", last_seen_at: null,
+      created_at: "2026-11-07T09:00:00", last_seen_at: null, parent_id: parent,
     },
     standing: "unclaimed",
     at_capacity: cause,
@@ -34,6 +34,13 @@ describe("locksOf", () => {
     expect(locksOf(overview(agent(1, null), agent(2, { kind: "agent_locked" }))).anchor).toBe("settings-agent-2");
     expect(locksOf(overview(agent(1, { kind: "agent_locked" }), agent(2, { kind: "account_locked" }))).anchor)
       .toBe("settings-agents");
+  });
+
+  it("counts a locked parent once, however many children it has", () => {
+    const locked = { kind: "agent_locked" } as const;
+    const held = locksOf(overview(agent(1, locked), agent(2, locked, 1), agent(3, locked, 1)));
+    expect(held.count).toBe(1);
+    expect(held.anchor).toBe("settings-agent-1");
   });
 
   it("knows when the soonest plan limit lifts", () => {

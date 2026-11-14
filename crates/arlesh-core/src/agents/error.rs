@@ -31,6 +31,15 @@ pub enum AgentError {
     /// The node is not inside the user's MCP roots, is private, or is not a node.
     #[error("{0} is not inside the MCP roots, so it cannot be claimed")]
     OutsideRoots(crate::access::model::NodeKey),
+    /// The node is not inside the Claim of the child's parent Agent.
+    #[error("{0} is not inside your parent agent's Claim, so it cannot be claimed")]
+    OutsideParentClaim(crate::access::model::NodeKey),
+    /// The `sub_token` is not a child agent's of this session's Agent.
+    #[error("the sub_token names no child agent of this session")]
+    SubTokenInvalid,
+    /// A child agent cannot do this, for the reason given.
+    #[error("{0}")]
+    NotForChild(&'static str),
     /// Another agent holds an active Claim that overlaps.
     #[error("{node} overlaps the active claim of agent {holder}")]
     Overlaps {
