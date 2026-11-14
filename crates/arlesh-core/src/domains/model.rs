@@ -87,7 +87,7 @@ impl ProjectStatus {
 }
 
 /// A domain row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Domain {
     /// Primary key.
     pub id: i64,

@@ -1,25 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import type { InvokeArgs } from "@tauri-apps/api/core";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import type { BoardRevision } from "@/api/board";
+import type { BoardChange, BoardHead } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
-import { SETTLE_MS } from "@/stores/watch-board-changes";
+import { SETTLE_TIMEOUT_MS } from "@/stores/use-board-store";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { HEAD_CHECK_MS, IDLE_HEAD_CHECK_MS } from "@/stores/watch-board-changes";
+import { currentBoard } from "@/test/current-board";
+import { indexBoard } from "@/utils/board-changes";
 import { useMindmapData } from "./use-mindmap-data";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // The change stream, held by the test: `emit` is the server's `board-changed` as the shell relays it.
 // The window listens once, however many views it has.
-const listeners = new Set<(change: BoardRevision | null) => void>();
-function emit(change: BoardRevision | null): void {
+const listeners = new Set<(change: BoardChange | null) => void>();
+function emit(change: BoardChange | null): void {
   for (const listener of [...listeners]) listener(change);
 }
 vi.mock("@/api/board", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/board")>()),
-  onBoardChanged: vi.fn((handler: (change: BoardRevision | null) => void) => {
+  onBoardChanged: vi.fn((handler: (change: BoardChange | null) => void) => {
     listeners.add(handler);
     return Promise.resolve(() => { listeners.delete(handler); });
   }),
@@ -64,9 +69,8 @@ const ROWS = {
   tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code" })],
 };
 
-function emptyBoard(revision: BoardRevision | undefined, taskTitle = "Write code"): MindmapLoad {
+function emptyBoard(taskTitle = "Write code"): MindmapLoad {
   return {
-    ...(revision === undefined ? {} : { revision }),
     ...ROWS,
     tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: taskTitle })],
     commitments: [], expectations: [], infos: [], flows: [],
@@ -77,16 +81,47 @@ function emptyBoard(revision: BoardRevision | undefined, taskTitle = "Write code
 }
 
 /**
- * A server the app is a client of: it counts writes, stamps each board it serves with the count
- * as it stood when the request arrived, and counts the boards it served.
+ * The producer the window is a client of, as far as the window can tell: it publishes boards with a
+ * sequence number, a revision and a hash, answers `board_fence` and `board_head`, and counts the
+ * boards it served whole.
  */
-function fakeServer(stamped = true) {
-  const server = { revision: 0, boardFetches: 0, epoch: EPOCH, taskTitle: "Write code" };
-  vi.mocked(invoke).mockImplementation((command: string) => {
+function fakeServer(published = true) {
+  const server = {
+    revision: 0, seq: 1, boardFetches: 0, epoch: EPOCH, taskTitle: "Write code",
+    /** What `board_fence` answers: the newest revision a write reached. */
+    fence: null as { epoch: string; revision: number } | null,
+    /** Lies about the head's hash, to make the window disagree. */
+    headHash: null as number | null,
+    divergences: [] as unknown[],
+    head: (): BoardHead => ({
+      epoch: server.epoch, seq: server.seq, revision: server.revision,
+      hash: server.headHash ?? indexBoard(emptyBoard(server.taskTitle)).digests.total, sums: {},
+    }),
+    /** A publication that renames the Task, as the event the stream sends for it. */
+    publish(title: string, hash?: number): BoardChange {
+      server.seq += 1;
+      server.revision += 1;
+      server.taskTitle = title;
+      return {
+        epoch: server.epoch, seq: server.seq, revision: server.revision, now: "2026-11-13T12:00:00",
+        hash: hash ?? indexBoard(emptyBoard(title)).digests.total,
+        changes: { tasks: { set: [["task-1", mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })]], del: [] } },
+      };
+    },
+  };
+  vi.mocked(invoke).mockImplementation((command: string, args?: InvokeArgs) => {
     if (command === "load_mindmap") {
       server.boardFetches += 1;
-      const at = { epoch: server.epoch, revision: server.revision };
-      return Promise.resolve(emptyBoard(stamped ? at : undefined, server.taskTitle));
+      const load = emptyBoard(server.taskTitle);
+      return Promise.resolve(
+        published ? currentBoard(load, { epoch: server.epoch, seq: server.seq, revision: server.revision }) : currentBoard(load),
+      );
+    }
+    if (command === "board_fence") return Promise.resolve(server.fence);
+    if (command === "board_head") return Promise.resolve(server.head());
+    if (command === "report_board_divergence") {
+      server.divergences.push(args);
+      return Promise.resolve(null);
     }
     if (command === "update_task") {
       server.revision += 1;
@@ -98,221 +133,233 @@ function fakeServer(stamped = true) {
   return server;
 }
 
-async function settle(): Promise<void> {
-  await act(async () => { await vi.advanceTimersByTimeAsync(SETTLE_MS + 50); });
+/** Lets the timers the window runs (its checks of the head) elapse. */
+async function elapse(ms: number): Promise<void> {
+  await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 }
 
-describe("a write and the server's echo of it", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    listeners.clear();
-  });
-  afterEach(() => { vi.useRealTimers(); });
+function taskTitle(hook: { result: { current: { tree: { children: Array<{ children: Array<{ children: Array<{ title: string }> }> }> } } } }): string {
+  return hook.result.current.tree.children[0]?.children[0]?.children[0]?.title ?? "";
+}
 
-  async function mounted() {
-    const hook = renderHook(() => useMindmapData());
-    await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
-    return hook;
-  }
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  listeners.clear();
+  usePendingWritesStore.getState().reset();
+  Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+});
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it("costs one board fetch when the echo arrives after the write's own reload", async () => {
+async function views(count: number) {
+  const hooks = Array.from({ length: count }, () => renderHook(() => useMindmapData()));
+  for (const hook of hooks) await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
+  return hooks;
+}
+
+describe("a write and the event it brings about", () => {
+  it("makes no second load: the writer settles on the event for its revision", async () => {
     const server = fakeServer();
-    const { result } = await mounted();
+    const [hook] = await views(1);
     const before = server.boardFetches;
 
-    await act(async () => { await result.current.renameNode("task-1", "task", "Renamed"); });
-    emit({ epoch: EPOCH, revision: server.revision });
-    await settle();
-
-    expect(server.boardFetches - before).toBe(1);
-  });
-
-  it("costs one board fetch when the echo beats the write's response", async () => {
-    const server = fakeServer();
-    const { result } = await mounted();
-    const before = server.boardFetches;
-
-    // The server commits and the echo reaches the window before the write has answered.
     let write: Promise<void> = Promise.resolve();
-    act(() => { write = result.current.renameNode("task-1", "task", "Renamed"); });
-    emit({ epoch: EPOCH, revision: 1 });
+    act(() => { write = hook?.result.current.renameNode("task-1", "task", "Renamed") ?? Promise.resolve(); });
     await act(async () => { await write; });
-    await settle();
+    server.fence = { epoch: EPOCH, revision: 1 };
+    let settled = false;
+    act(() => { void hook?.result.current.settle().then(() => { settled = true; }); });
+    await act(async () => { await Promise.resolve(); });
+    expect(settled).toBe(false);
+
+    act(() => emit(server.publish("Renamed")));
+    await waitFor(() => expect(settled).toBe(true));
+
+    expect(server.boardFetches).toBe(before);
+    expect(hook === undefined ? "" : taskTitle(hook)).toBe("Renamed");
+  });
+
+  it("falls back to one full load, and says so, when the event never comes", async () => {
+    const server = fakeServer();
+    const [hook] = await views(1);
+    const before = server.boardFetches;
+    server.fence = { epoch: EPOCH, revision: 9 };
+
+    let settled = false;
+    act(() => { void hook?.result.current.settle().then(() => { settled = true; }); });
+    await elapse(SETTLE_TIMEOUT_MS + 100);
+    await waitFor(() => expect(settled).toBe(true));
 
     expect(server.boardFetches - before).toBe(1);
+    expect(console.warn).toHaveBeenCalled();
   });
-
-  it("still reloads for a change another device made", async () => {
-    const server = fakeServer();
-    await mounted();
-    const before = server.boardFetches;
-
-    server.revision += 1;
-    emit({ epoch: EPOCH, revision: 1 });
-    await settle();
-
-    expect(server.boardFetches - before).toBe(1);
-  });
-
-  it("does not reload for a revision the board it holds already has", async () => {
-    const server = fakeServer();
-    server.revision = 4;
-    await mounted();
-    const before = server.boardFetches;
-
-    emit({ epoch: EPOCH, revision: 3 });
-    emit({ epoch: EPOCH, revision: 4 });
-    await settle();
-
-    expect(server.boardFetches - before).toBe(0);
-  });
-
-  it("always reloads when the server has restarted, whatever its revision says", async () => {
-    const server = fakeServer();
-    server.revision = 9;
-    await mounted();
-    const before = server.boardFetches;
-
-    server.epoch = "run2";
-    server.revision = 0;
-    emit({ epoch: "run2", revision: 0 });
-    await settle();
-
-    expect(server.boardFetches - before).toBe(1);
-  });
-
-  it("reloads for an announcement that carries no revision, as Standalone's do", async () => {
-    const server = fakeServer(false);
-    renderHook(() => useMindmapData());
-    await waitFor(() => expect(server.boardFetches).toBe(1));
-
-    emit(null);
-    await waitFor(() => expect(server.boardFetches).toBe(2));
-  });
-
 });
 
-describe("one board per window, however many views", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    listeners.clear();
-  });
-  afterEach(() => { vi.useRealTimers(); });
-
-  /** Mounts `count` views of the board, as the list, the filter display and the Mindmap are. */
-  async function views(count: number) {
-    const hooks = Array.from({ length: count }, () => renderHook(() => useMindmapData()));
-    for (const hook of hooks) await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
-    return hooks;
-  }
-
-  function taskTitles(hooks: Awaited<ReturnType<typeof views>>): string[] {
-    return hooks.map((hook) => {
-      const task = hook.result.current.tree.children[0]?.children[0]?.children[0];
-      return task?.title ?? "";
-    });
-  }
-
-  it("fetches the board once for four views mounted together", async () => {
-    const server = fakeServer();
-    const hooks = await views(4);
-    await settle();
-
-    expect(server.boardFetches).toBe(1);
-    expect(taskTitles(hooks)).toEqual(Array(4).fill("Write code"));
-  });
-
-  it("listens for changes once, not once per view", async () => {
-    fakeServer();
-    await views(4);
-    await waitFor(() => expect(listeners.size).toBe(1));
-  });
-
-  it("fetches once for another device's change and updates every view", async () => {
+describe("another device's change", () => {
+  it("applies from the event alone, to every view, with no load", async () => {
     const server = fakeServer();
     const hooks = await views(3);
     await waitFor(() => expect(listeners.size).toBe(1));
     const before = server.boardFetches;
 
-    server.revision += 1;
-    server.taskTitle = "Changed elsewhere";
-    emit({ epoch: EPOCH, revision: server.revision });
-    await settle();
+    act(() => emit(server.publish("Changed elsewhere")));
 
-    expect(server.boardFetches - before).toBe(1);
-    expect(taskTitles(hooks)).toEqual(Array(3).fill("Changed elsewhere"));
+    expect(server.boardFetches).toBe(before);
+    expect(hooks.map(taskTitle)).toEqual(Array(3).fill("Changed elsewhere"));
   });
 
-  it("fetches once for a write from one view and skips its echo, and every view shows it", async () => {
+  it("is skipped when the window already holds its sequence number", async () => {
     const server = fakeServer();
-    const hooks = await views(3);
+    const [hook] = await views(1);
+    const change = server.publish("Changed elsewhere");
+    act(() => emit(change));
     const before = server.boardFetches;
 
-    await act(async () => { await hooks[0]?.result.current.renameNode("task-1", "task", "Renamed"); });
-    emit({ epoch: EPOCH, revision: server.revision });
-    await settle();
+    act(() => emit(change));
 
-    expect(server.boardFetches - before).toBe(1);
-    expect(taskTitles(hooks)).toEqual(Array(3).fill("Renamed"));
+    expect(server.boardFetches).toBe(before);
+    expect(hook === undefined ? "" : taskTitle(hook)).toBe("Changed elsewhere");
   });
+});
 
-  it("answers reloads asked during a fetch with exactly one follow-up", async () => {
+describe("a dropped event is repaired", () => {
+  it("loads the board when a sequence number is missed", async () => {
     const server = fakeServer();
-    const hooks = await views(2);
+    const [hook] = await views(1);
     const before = server.boardFetches;
-    // Hold the next board fetch open.
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => { release = resolve; });
-    const serve = vi.mocked(invoke).getMockImplementation();
-    vi.mocked(invoke).mockImplementation(async (command: string, args?: Parameters<typeof invoke>[1]) => {
-      if (command === "load_mindmap" && server.boardFetches === before) {
-        const board = serve?.(command, args);
-        await held;
-        return board;
-      }
-      return serve?.(command, args);
-    });
+    server.publish("Missed");
 
-    let first: Promise<void> = Promise.resolve();
-    let others: Array<Promise<void>> = [];
-    act(() => { first = hooks[0]?.result.current.reload() ?? Promise.resolve(); });
-    await waitFor(() => expect(server.boardFetches - before).toBe(1));
-    server.taskTitle = "Written meanwhile";
-    server.revision += 1;
-    act(() => {
-      others = [hooks[0], hooks[1], hooks[1]].map((hook) => hook?.result.current.reload() ?? Promise.resolve());
-    });
-    release();
-    await act(async () => { await Promise.all([first, ...others]); });
+    act(() => emit(server.publish("Seen")));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
 
-    expect(server.boardFetches - before).toBe(2);
-    expect(taskTitles(hooks)).toEqual(["Written meanwhile", "Written meanwhile"]);
+    expect(hook === undefined ? "" : taskTitle(hook)).toBe("Seen");
   });
 
-  it("reloads every view when the server has restarted", async () => {
+  it("loads the board when the server has restarted, whatever its sequence says", async () => {
     const server = fakeServer();
-    server.revision = 9;
-    const hooks = await views(2);
+    server.seq = 9;
+    const [hook] = await views(1);
     const before = server.boardFetches;
 
     server.epoch = "run2";
-    server.revision = 0;
+    server.seq = 1;
     server.taskTitle = "After restart";
-    emit({ epoch: "run2", revision: 0 });
-    await settle();
+    act(() => emit({ epoch: "run2", seq: 1, revision: 0 }));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
 
-    expect(server.boardFetches - before).toBe(1);
-    expect(taskTitles(hooks)).toEqual(["After restart", "After restart"]);
+    expect(hook === undefined ? "" : taskTitle(hook)).toBe("After restart");
   });
 
-  it("loads afresh when a view mounts after the last one left", async () => {
+  it("loads the board for an event that says reload", async () => {
     const server = fakeServer();
-    const [first] = await views(1);
-    first?.unmount();
     await views(1);
+    const before = server.boardFetches;
+    server.seq += 1;
 
-    expect(server.boardFetches).toBe(2);
+    act(() => emit({ epoch: EPOCH, seq: server.seq, revision: 0, reload: true }));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
+  });
+
+  it("loads the board for an event with no sequence number, as an older server's", async () => {
+    const server = fakeServer();
+    await views(1);
+    const before = server.boardFetches;
+
+    act(() => emit({ epoch: EPOCH, revision: 1 }));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
+    act(() => emit(null));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 2));
+  });
+
+  it("loads the board when the head has been ahead for two checks ten seconds apart", async () => {
+    const server = fakeServer();
+    await views(1);
+    const before = server.boardFetches;
+    // The server published something this window was never sent.
+    server.seq += 1;
+
+    await elapse(HEAD_CHECK_MS);
+    expect(server.boardFetches).toBe(before);
+    await elapse(HEAD_CHECK_MS);
+
+    expect(server.boardFetches).toBe(before + 1);
+  });
+
+  it("raises no alarm for a head one sequence ahead at one check and caught up by an event before the next", async () => {
+    const server = fakeServer();
+    const [hook] = await views(1);
+    const before = server.boardFetches;
+    // A tick publishes at a minute boundary: the head is ahead until the event arrives.
+    const change = server.publish("Overdue now");
+    await elapse(HEAD_CHECK_MS);
+    act(() => emit(change));
+    await elapse(HEAD_CHECK_MS);
+
+    expect(server.boardFetches).toBe(before);
+    expect(server.divergences).toEqual([]);
+    expect(hook === undefined ? "" : taskTitle(hook)).toBe("Overdue now");
+  });
+
+  it("checks the head five seconds after the last event it applied", async () => {
+    const server = fakeServer();
+    await views(1);
+    const before = server.boardFetches;
+    act(() => emit(server.publish("Seen")));
+    server.epoch = "run2";
+
+    await elapse(IDLE_HEAD_CHECK_MS + 100);
+
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
+  });
+});
+
+describe("the board hash", () => {
+  it("loads the board and reports a bug when the head says another hash at the same sequence number", async () => {
+    const server = fakeServer();
+    await views(1);
+    const before = server.boardFetches;
+    server.headHash = 12345;
+
+    await elapse(HEAD_CHECK_MS);
+
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
+    expect(server.divergences).toHaveLength(1);
+  });
+
+  it("loads the board and reports a bug when an event's hash disagrees after it is applied", async () => {
+    const server = fakeServer();
+    await views(1);
+    const before = server.boardFetches;
+
+    act(() => emit(server.publish("Seen", 777)));
+    await waitFor(() => expect(server.boardFetches).toBe(before + 1));
+
+    expect(server.divergences).toHaveLength(1);
+  });
+
+  it("reports a disagreement right after a load once, and stops comparing hashes", async () => {
+    const server = fakeServer();
+    const load = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation((command: string, args?: InvokeArgs) => {
+      if (command === "load_mindmap") {
+        server.boardFetches += 1;
+        return Promise.resolve({ ...currentBoard(emptyBoard(server.taskTitle), { epoch: EPOCH, seq: server.seq, revision: 0 }), hash: 1 });
+      }
+      return load?.(command, args) ?? Promise.resolve(null);
+    });
+    await views(1);
+    expect(server.divergences).toHaveLength(1);
+    const before = server.boardFetches;
+
+    // The producer's hash is not the window's, for a reason no reload can mend: neither the head
+    // nor an event may make a loop of it.
+    server.headHash = 5;
+    await elapse(HEAD_CHECK_MS);
+    act(() => emit(server.publish("Seen", 6)));
+
+    expect(server.boardFetches).toBe(before);
+    expect(server.divergences).toHaveLength(1);
   });
 });

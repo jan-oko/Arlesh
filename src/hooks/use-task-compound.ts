@@ -8,7 +8,7 @@ import { takesCompound } from "@/utils/compound";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -26,7 +26,7 @@ interface Result {
  * A stored Task carries the flag, and so does a Habit's Task occurrence, over its template's; a
  * check task is turned away out loud rather than left looking like a key that did nothing.
  */
-export function useTaskCompound({ findNode, reload, showToast }: Options): Result {
+export function useTaskCompound({ findNode, settle, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
   const toggleCompound = useCallback(
@@ -39,13 +39,13 @@ export function useTaskCompound({ findNode, reload, showToast }: Options): Resul
       }
       const rowId = rowIdOf(node);
       void updateTask(rowId, { compound: node.compound !== true }).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => {
           showToast({ nodeId, message: t("compoundFailed", { message: getErrorMessage(error) }) });
         },
       );
     },
-    [findNode, reload, showToast, t],
+    [findNode, settle, showToast, t],
   );
 
   return { toggleCompound };

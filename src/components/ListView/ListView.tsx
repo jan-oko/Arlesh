@@ -72,7 +72,7 @@ export default function ListView() {
   const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "listView", "editor", "expectation", "touch"]);
   const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease,
-    allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted, renameNode,
+    allTasksAndGoals, isLoading, error, settle, onCycleStatus, onToggleStarted, renameNode,
     createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
@@ -107,7 +107,7 @@ export default function ListView() {
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onAnswer, onCommitmentSave, onExpectationSave, checkScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, reload });
+  } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
@@ -118,17 +118,17 @@ export default function ListView() {
   const clearToast = useMindmapStore((s) => s.clearToast);
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   const { toggleAgentic } = useTaskAgentic({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   const { toggleArchive } = useHandArchive({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   // The row context menu: the hand archive, on a row that takes one.
@@ -143,26 +143,26 @@ export default function ListView() {
   };
   const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   const { toggleCompound } = useTaskCompound({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   const quickPlan = useQuickPlan({
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
   const quickDependency = useQuickDependency({
     tree,
     findNode: (id) => findNode(tree, id),
-    reload,
+    settle,
     showToast,
   });
-  const waitEditor = useWaitEditor(tree, reload);
+  const waitEditor = useWaitEditor(tree, settle);
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
@@ -285,7 +285,7 @@ export default function ListView() {
 
   useTouchBoardCommands({
     selection: () => (activeSelectedId === null ? [] : [findNode(tree, activeSelectedId) ?? []].flat()),
-    reload,
+    settle,
     showToast,
   });
   // The action bar's New, with nothing selected: a Task under the subtree you are in, refused out
@@ -352,7 +352,7 @@ export default function ListView() {
       showToast,
     });
 
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
 
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
   const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);

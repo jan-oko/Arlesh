@@ -80,7 +80,7 @@ const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
  */
 export default function PlanView() {
   const { t } = useTranslation(["common", "planView"]);
-  const { tree, rows, allTasksAndGoals, isLoading, error, reload } = useListData();
+  const { tree, rows, allTasksAndGoals, isLoading, error, settle } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
@@ -97,7 +97,7 @@ export default function PlanView() {
   // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
   const searchableNodes = useSearchableNodes(tree);
   const startFromSearch = useSearchStart(tree);
-  const { onUndo, onRedo } = useUndo({ reload, showToast });
+  const { onUndo, onRedo } = useUndo({ settle, showToast });
 
   const scope = usePlanScope();
   const subscopeLabel = useSubscopeLabel();
@@ -108,7 +108,7 @@ export default function PlanView() {
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick, onTaskSave, onAnswer,
     checkScopeClamp,
-  } = useNodeEditor({ tree, allTasksAndGoals, reload });
+  } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // The view always reads under the **Plan** preset, whatever the tab's is: it is read as Plan here
   // rather than written into the tab's filter, so the tab keeps its own preset for the other views.

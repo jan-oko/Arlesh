@@ -12,7 +12,7 @@ import {
   refuse,
   resolveTemporary,
 } from "@/utils/pending-writes";
-import type { Lane, NewWrite, WriteAnswer } from "@/utils/pending-writes";
+import type { BoardStamp, Lane, NewWrite, WriteAnswer } from "@/utils/pending-writes";
 
 function rename(seq: number, nodeId: string): NewWrite {
   return { seq, nodeId, patch: { kind: "fields", fields: { title: `t${seq}` } }, label: "rename" };
@@ -31,7 +31,12 @@ function laneOf(...writes: NewWrite[]): Lane {
   return writes.reduce<Lane>((lane, write) => enqueue(lane, write), []);
 }
 
-const answer: WriteAnswer = { afterRead: 3, epoch: "e1", revision: 10, fields: null, createdId: null };
+const answer: WriteAnswer = { afterRead: 3, answeredAt: 1000, epoch: "e1", revision: 10, fields: null, createdId: null };
+
+/** A board taken in at `at`: `read` is its intake number, the publication is the run, sequence and revision. */
+function board(read: number, epoch: string | null, revision: number | null, at = 0): BoardStamp {
+  return { read, epoch, seq: revision, revision, at };
+}
 
 describe("the lane's reducer", () => {
   it("sends one write at a time, oldest first", () => {
@@ -101,31 +106,39 @@ describe("the lane's reducer", () => {
 });
 
 describe("isReflected", () => {
-  it("holds when the board's read began after the answer, in either mode", () => {
-    expect(isReflected({ ...answer, epoch: null, revision: null }, { read: 4, epoch: null, revision: null })).toBe(true);
-    expect(isReflected({ ...answer, epoch: null, revision: null }, { read: 3, epoch: null, revision: null })).toBe(false);
-  });
-
   it("holds when the board's revision has reached the write's in the same epoch", () => {
-    expect(isReflected(answer, { read: 1, epoch: "e1", revision: 10 })).toBe(true);
-    expect(isReflected(answer, { read: 1, epoch: "e1", revision: 9 })).toBe(false);
+    expect(isReflected(answer, board(1, "e1", 10))).toBe(true);
+    expect(isReflected(answer, board(1, "e1", 11))).toBe(true);
+    expect(isReflected(answer, board(1, "e1", 9))).toBe(false);
   });
 
-  it("compares revisions only within one epoch", () => {
-    expect(isReflected(answer, { read: 1, epoch: "e2", revision: 99 })).toBe(false);
+  it("does not count a board taken in after the answer when its revision has not reached the write's", () => {
+    expect(isReflected(answer, board(9, "e1", 9))).toBe(false);
+  });
+
+  it("holds across a new epoch for a board taken in after the answer, and not before", () => {
+    expect(isReflected(answer, board(4, "e2", 1))).toBe(true);
+    expect(isReflected(answer, board(3, "e2", 99))).toBe(false);
+  });
+
+  it("retires a write whose revision is unknown by the first board taken in five seconds after the answer", () => {
+    const unknown: WriteAnswer = { ...answer, epoch: null, revision: null };
+
+    expect(isReflected(unknown, board(9, "e1", 50, 5999))).toBe(false);
+    expect(isReflected(unknown, board(9, "e1", 50, 6000))).toBe(true);
   });
 });
 
 describe("forgetReflected", () => {
   it("forgets an answered write only when every board reflects it", () => {
     const lane = markAnswered(markSending(laneOf(rename(1, "a")), 1), 1, answer);
-    const caughtUp = { read: 9, epoch: null, revision: null };
-    const behind = { read: 1, epoch: null, revision: null };
+    const caughtUp = board(9, "e1", 10);
+    const behind = board(1, "e1", 9);
     expect(forgetReflected(lane, [caughtUp, behind])).toHaveLength(1);
     expect(forgetReflected(lane, [caughtUp, caughtUp])).toHaveLength(0);
   });
 
   it("never forgets a write that is not answered", () => {
-    expect(forgetReflected(laneOf(rename(1, "a")), [{ read: 99, epoch: null, revision: null }])).toHaveLength(1);
+    expect(forgetReflected(laneOf(rename(1, "a")), [board(99, "e1", 99)])).toHaveLength(1);
   });
 });

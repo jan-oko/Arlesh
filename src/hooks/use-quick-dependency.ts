@@ -28,7 +28,7 @@ interface Options {
   /** The whole loaded board — the pool the search draws from, as `Ctrl+O`'s does. */
   tree: MindmapNode;
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: PendingToast) => void;
 }
 
@@ -56,7 +56,7 @@ export interface QuickDependency {
  * own `add_task_dependency`, so a refusal the search could not foresee still comes back from the
  * backend, and is shown as a toast rather than dropped.
  */
-export function useQuickDependency({ tree, findNode, reload, showToast }: Options): QuickDependency {
+export function useQuickDependency({ tree, findNode, settle, showToast }: Options): QuickDependency {
   const { t } = useTranslation(["warnings", "undo"]);
   const includeArchived = useDisplayStore((s) => s.searchIncludesArchived);
   const skipDelegated = useFilterStore((s) => delegatedModeOf(s.filter) !== "include");
@@ -124,9 +124,9 @@ export function useQuickDependency({ tree, findNode, reload, showToast }: Option
         showToast({ nodeId: adding.anchorId, message });
         return;
       }
-      await reload();
+      await settle();
     },
-    [target, close, reload, showToast, t],
+    [target, close, settle, showToast, t],
   );
 
   return { target, open, apply, close };

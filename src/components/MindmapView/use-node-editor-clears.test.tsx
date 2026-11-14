@@ -77,9 +77,9 @@ function wireRequest(command: string): Record<string, unknown> {
 }
 
 function editor() {
-  const reload = vi.fn().mockResolvedValue(undefined);
+  const settle = vi.fn().mockResolvedValue(undefined);
   const { result } = renderHook(() =>
-    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], settle }),
   );
   return result;
 }

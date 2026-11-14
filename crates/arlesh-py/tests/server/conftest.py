@@ -76,14 +76,22 @@ def connect_token(server_db: Path, tokens: DatabaseTokenStore) -> str:
 
 @pytest.fixture
 def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
-    """Builds the server over the test's database, as ``arlesh-server`` does."""
+    """Builds the server over the test's database, as ``arlesh-server`` does.
+
+    The board publisher is off unless the test asks for it with ``publish=True``: many tests read
+    the file with Python's own ``sqlite3`` while the server runs, and that library and the core's
+    must not touch one WAL index at the same moment."""
 
     def build(
-        *, force: bool = False, path: Path | None = None, sender: PushSender | None = None
+        *,
+        force: bool = False,
+        path: Path | None = None,
+        sender: PushSender | None = None,
+        publish: bool = False,
     ) -> ArleshServer:
         database = path if path is not None else server_db
         return ArleshServer(
-            board=Board(opener(database), holder(database), force=force),
+            board=Board(opener(database), holder(database), force=force, publish=publish),
             tokens=DatabaseTokenStore(database) if path is not None else tokens,
             pairs=DatabasePairingStore(database),
             connect=ConnectTokens(database),
@@ -164,11 +172,15 @@ def one_day() -> Callable[[str], dict[str, Any]]:
 @pytest.fixture
 def live(start: Start) -> Iterator[str]:
     """The server, listening on a loopback port; its base URL."""
-    app: ArleshServer = start()
+    app: ArleshServer = start(publish=True)
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1
+        )
+    )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + 20

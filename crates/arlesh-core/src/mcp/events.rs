@@ -339,7 +339,7 @@ async fn claim_nodes(
     agent: AgentId,
 ) -> Result<std::collections::HashSet<String>, AppError> {
     let mut db = factory.begin().await?;
-    let now = chrono::Local::now().naive_local();
+    let now = crate::clock::now();
     let Some(view) = crate::agents::service::view(&mut db, agent).await? else {
         return Ok(std::collections::HashSet::new());
     };
@@ -421,7 +421,7 @@ pub(super) async fn read_waits(
     agentic: bool,
 ) -> Result<BTreeMap<String, WaitState>, AppError> {
     let mut db = factory.begin().await?;
-    let now = chrono::Local::now().naive_local();
+    let now = crate::clock::now();
     let board = Board::read(&mut db, now, Blocking::default()).await?;
     Ok(wait_states(&board, agentic))
 }

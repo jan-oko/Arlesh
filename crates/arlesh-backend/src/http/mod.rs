@@ -23,7 +23,7 @@ use reqwest::Method;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
 
-use crate::revision::{BoardLoad, BoardRevision};
+use crate::revision::{BoardChange, BoardHead, BoardLoad, BoardRevision, CurrentBoard};
 use arlesh_core::{
     error::{WireError, WireErrorKind},
     mindmap::model::MindmapLoad,
@@ -136,6 +136,8 @@ struct Link {
     last_sync: Option<NaiveDateTime>,
     server_api_version: Option<u32>,
     board: Option<BoardLoad>,
+    /// The last published board taken in, which a window is shown while the server is away.
+    current: Option<CurrentBoard>,
 }
 
 /// The Backend port over `arlesh-server`.
@@ -148,6 +150,10 @@ pub struct HttpBackend {
     gestures: Mutex<u32>,
     /// Failed attempts in a row since the server last answered.
     failures: AtomicU32,
+    /// The newest revision any answer of this run of the server carried: what a writer settles on.
+    fence: Mutex<Option<BoardRevision>>,
+    /// The latest publication's identity, as the change stream last said it.
+    head: Mutex<Option<BoardHead>>,
 }
 
 impl HttpBackend {
@@ -173,7 +179,10 @@ impl HttpBackend {
                 last_sync: None,
                 server_api_version: None,
                 board: None,
+                current: None,
             }),
+            fence: Mutex::new(None),
+            head: Mutex::new(None),
             notify,
             gestures: Mutex::new(0),
             failures: AtomicU32::new(0),
@@ -260,6 +269,16 @@ impl HttpBackend {
         &self,
         call: Call,
     ) -> Result<(T, Option<BoardRevision>), WireError> {
+        let (answer, headers) = self.send_with_headers(call).await?;
+        Ok((answer, BoardRevision::from_headers(&headers)))
+    }
+
+    /// Sends `call` and reads its answer with the headers the server put on it. Every stamp it
+    /// carries, a refusal's too, moves the [fence](Self::fence).
+    async fn send_with_headers<T: DeserializeOwned>(
+        &self,
+        call: Call,
+    ) -> Result<(T, reqwest::header::HeaderMap), WireError> {
         let url = format!("{}{}", self.connection.url, call.path);
         let mut request = self
             .http
@@ -280,7 +299,10 @@ impl HttpBackend {
         };
         self.set_reachable(true);
         let status = response.status();
-        let revision = BoardRevision::from_headers(response.headers());
+        let headers = response.headers().clone();
+        if let Some(stamp) = BoardRevision::from_headers(&headers) {
+            self.note_stamp(stamp);
+        }
         let bytes = response.bytes().await.map_err(|error| {
             WireError::internal(format!("could not read the server's answer: {error}"))
         })?;
@@ -295,7 +317,68 @@ impl HttpBackend {
         let answer = serde_json::from_slice(text).map_err(|error| {
             WireError::internal(format!("could not read the server's answer: {error}"))
         })?;
-        Ok((answer, revision))
+        Ok((answer, headers))
+    }
+
+    /// Takes a stamp an answer carried into the fence: the highest revision of the run, and a new
+    /// run replaces it.
+    fn note_stamp(&self, stamp: BoardRevision) {
+        let mut fence = lock_plain(&self.fence);
+        match fence.as_mut() {
+            Some(held) if held.epoch == stamp.epoch => {
+                held.revision = held.revision.max(stamp.revision);
+            }
+            _ => *fence = Some(stamp),
+        }
+    }
+
+    /// The newest revision any answer of the server's current run carried.
+    pub fn fence(&self) -> Option<BoardRevision> {
+        lock_plain(&self.fence).clone()
+    }
+
+    /// The latest publication's identity, as the change stream last said it.
+    pub fn head(&self) -> Option<BoardHead> {
+        lock_plain(&self.head).clone()
+    }
+
+    /// Takes the head a `board-head` event carried.
+    pub fn set_head(&self, head: BoardHead) {
+        *lock_plain(&self.head) = Some(head);
+    }
+
+    /// Moves the head to what a `board-changed` event brought the board to. The per-collection
+    /// sums come only with a `board-head`, so a new run's are not carried over.
+    pub fn note_change(&self, change: &BoardChange) {
+        let (Some(seq), Some(hash)) = (change.seq, change.hash) else {
+            return;
+        };
+        let mut head = lock_plain(&self.head);
+        let sums = match head.as_ref() {
+            Some(held) if held.epoch == change.epoch => held.sums.clone(),
+            _ => Default::default(),
+        };
+        *head = Some(BoardHead {
+            epoch: change.epoch.clone(),
+            seq,
+            revision: change.revision,
+            hash,
+            sums,
+        });
+    }
+
+    /// Remembers the published board taken in last.
+    fn keep_current(&self, current: &CurrentBoard) {
+        let now = device_now();
+        self.update(|link| {
+            link.current = Some(current.clone());
+            link.last_sync = Some(now);
+        });
+    }
+
+    /// The published board taken in last, if one was.
+    fn kept_current(&self) -> Option<CurrentBoard> {
+        self.lock().current.clone()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Link> {
@@ -316,6 +399,13 @@ impl HttpBackend {
             (self.notify)(&after);
         }
     }
+}
+
+fn lock_plain<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    // A poisoned lock only means a panic elsewhere mid-update; the value is still whole.
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn status_of(connection: &Connection, link: &Link) -> ServerStatus {
@@ -363,6 +453,13 @@ pub fn read_only_error(reason: ReadOnlyReason) -> WireError {
 
 fn unreachable_error() -> WireError {
     read_only_error(ReadOnlyReason::ServerUnreachable)
+}
+
+/// Whether the server has no such route: an older one, without `GET /board/current`.
+fn is_unknown_route(error: &WireError) -> bool {
+    error.kind() == WireErrorKind::NotFound
+        && error.details().and_then(|details| details.get("reason"))
+            == Some(&json!("unknown_route"))
 }
 
 fn is_unreachable(error: &WireError) -> bool {
@@ -435,5 +532,7 @@ impl Call {
     }
 }
 
+#[cfg(test)]
+mod board_tests;
 #[cfg(test)]
 mod tests;

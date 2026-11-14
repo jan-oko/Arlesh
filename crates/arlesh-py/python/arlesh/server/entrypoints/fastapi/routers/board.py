@@ -7,17 +7,40 @@ from datetime import datetime
 from fastapi import Response
 
 from arlesh.models import BlockReason, ItemLifecycle, MindmapLoad, TaskDependencyEdge
+from arlesh.server.entrypoints.fastapi.revision import REVISION_HEADER
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter
+
+SEQ_HEADER = "X-Arlesh-Seq"
+HASH_HEADER = "X-Arlesh-Hash"
+BOARD_NOW_HEADER = "X-Arlesh-Board-Now"
 
 
 class BoardsRouter(BoardRouter):
     """``/board``."""
 
     def _register_routes(self) -> None:
+        self.get("/current")(self._current)
         self.get("", response_model=MindmapLoad)(self._get)
         self.get("/lifecycles")(self._lifecycles)
         self.get("/task-dependencies")(self._task_dependencies)
         self.get("/block-reasons")(self._block_reasons)
+
+    async def _current(self) -> Response:
+        """The latest published board, as it is: the core's JSON, nulls included, with the
+        publication's ``X-Arlesh-Seq``, ``X-Arlesh-Revision`` (the publication's, not the board's
+        as it stands), ``X-Arlesh-Hash`` and ``X-Arlesh-Board-Now``. Derives nothing: it is what
+        the change stream's events apply to."""
+        current = await self._reader.board_current()
+        return Response(
+            content=current.body,
+            media_type="application/json",
+            headers={
+                SEQ_HEADER: str(current.head.seq),
+                REVISION_HEADER: str(current.head.revision),
+                HASH_HEADER: str(current.head.hash),
+                BOARD_NOW_HEADER: current.now,
+            },
+        )
 
     async def _get(self, now: datetime | None = None) -> Response:
         """Every node of every kind, with its derived lifecycle, short id and facts.

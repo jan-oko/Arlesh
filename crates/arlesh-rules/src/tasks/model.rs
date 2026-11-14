@@ -606,7 +606,7 @@ impl TimeScope {
 }
 
 /// A task row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Task {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -681,7 +681,7 @@ pub struct TaskWithBlockers {
 
 /// A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. Returned by the
 /// bulk-load endpoint so the mindmap can derive virtual "blocked by" reasons without a per-task call.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskDependencyEdge {
     /// The dependent task.
     pub task_id: NodeId,
@@ -692,7 +692,7 @@ pub struct TaskDependencyEdge {
 }
 
 /// A goal row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Goal {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -1016,7 +1016,7 @@ impl Verdict {
 /// commitment, so there is nothing to schedule it into), no `on_scope_exit` (a Commitment always
 /// Keeps, and the Verdict Window is what eventually ends that), no `status`, no `archival`, no
 /// `delegate_to`, and no dependency edges in either direction.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Commitment {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -1372,7 +1372,7 @@ impl ExpectationArchival {
 /// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
 /// Missed), no block reasons and no dependencies of its own — it depends on nothing,
 /// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Expectation {
     /// Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
     /// delegated Task's wait on its delegate).

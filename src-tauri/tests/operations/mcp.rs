@@ -342,9 +342,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     }
     assert!(named > 0, "the snapshot names its nodes by short id");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
-        .await
-        .unwrap();
+    let expected = helpers::load_board_at(&app, now()).await.unwrap();
     // The app's load also carries every node's short id as a map, for its "Blocked by …" text; the
     // snapshot stamps each node with its own instead.
     let mut expected = serde_json::to_value(&expected).unwrap();
@@ -952,9 +950,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
 
     assert!(pages > 1, "200 padded tasks should not fit in one page");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
-        .await
-        .unwrap();
+    let expected = helpers::load_board_at(&app, now()).await.unwrap();
     let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id.sid()).collect();
     assert_eq!(
         tasks_seen, expected_ids,

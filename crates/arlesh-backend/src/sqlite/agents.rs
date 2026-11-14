@@ -30,6 +30,7 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
+        self.publisher.record_write();
         Ok(pin)
     }
 
@@ -39,6 +40,7 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
+        self.publisher.record_write();
         Ok(())
     }
 
@@ -48,6 +50,7 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
+        self.publisher.record_write();
         Ok(())
     }
 }

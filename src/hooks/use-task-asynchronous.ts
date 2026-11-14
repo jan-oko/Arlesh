@@ -7,7 +7,7 @@ import { getErrorMessage } from "@/api/errors";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
-  reload: () => Promise<void>;
+  settle: () => Promise<void>;
   showToast: (toast: { nodeId: string; message: string }) => void;
 }
 
@@ -24,7 +24,7 @@ interface Result {
  * not inherit, so there is no resolved value to read through and no third state to resolve: what
  * the badge shows is what the column holds, and one press flips both.
  */
-export function useTaskAsynchronous({ findNode, reload, showToast }: Options): Result {
+export function useTaskAsynchronous({ findNode, settle, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
   const toggleAsynchronous = useCallback(
@@ -33,13 +33,13 @@ export function useTaskAsynchronous({ findNode, reload, showToast }: Options): R
       // Any Task row, a Habit occurrence included: its flag lands on that occurrence alone.
       if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       void updateTask(rowIdOf(node), { asynchronous: node.asynchronous !== true }).then(
-        () => reload(),
+        () => settle(),
         (error: unknown) => {
           showToast({ nodeId, message: t("asynchronousFailed", { message: getErrorMessage(error) }) });
         },
       );
     },
-    [findNode, reload, showToast, t],
+    [findNode, settle, showToast, t],
   );
 
   return { toggleAsynchronous };

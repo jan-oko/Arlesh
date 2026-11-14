@@ -9,7 +9,6 @@ use tauri::{Emitter, Manager, Runtime, State};
 use crate::{
     agents::model::{AgentAction, AgentsOverview, IssuedPin},
     backend::AppBackend,
-    board::recipients,
     error::WireError,
     mcp::door::PinIssuer,
 };
@@ -46,7 +45,6 @@ pub async fn apply_agent_action<R: Runtime>(
 ) -> Result<(), WireError> {
     backend.apply_agent_action(id, action).await?;
     tell_windows(&app);
-    crate::commands::board::announce(&app, None);
     Ok(())
 }
 
@@ -60,17 +58,13 @@ pub async fn set_agent_account_locked<R: Runtime>(
 ) -> Result<(), WireError> {
     backend.set_agent_account_locked(label, locked).await?;
     tell_windows(&app);
-    crate::commands::board::announce(&app, None);
     Ok(())
 }
 
 /// Tells every window the agents changed.
 pub fn tell_windows<R: Runtime>(app: &tauri::AppHandle<R>) {
-    let open: Vec<String> = app.webview_windows().into_keys().collect();
-    for label in recipients(&open, None) {
-        if let Err(error) = app.emit_to(label, AGENTS_CHANGED, ()) {
-            tracing::warn!(error = %error, label = %label, "could not tell a window the agents changed");
-        }
+    if let Err(error) = app.emit(AGENTS_CHANGED, ()) {
+        tracing::warn!(error = %error, "could not tell the windows the agents changed");
     }
 }
 

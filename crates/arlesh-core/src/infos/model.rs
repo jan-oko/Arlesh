@@ -20,7 +20,7 @@ impl From<InfoId> for i64 {
 }
 
 /// A free-text info node attached to any other node type.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Info {
     /// Database primary key.
     pub id: i64,

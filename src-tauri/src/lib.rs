@@ -224,6 +224,9 @@ pub fn run() {
             commands::flows::remove_flow_dependency,
             commands::flows::list_all_flow_dependencies,
             commands::mindmap::load_mindmap,
+            commands::board::board_fence,
+            commands::board::board_head,
+            commands::board::report_board_divergence,
             commands::node_gestures::delete_nodes,
             commands::node_gestures::run_gesture,
             commands::windows::open_board_window,
@@ -284,9 +287,18 @@ fn setup_standalone(
     // changed, so an agent's write refreshes the windows that are open rather than leaving
     // them showing the old value. A bind failure is recorded in its status, for the
     // settings page to show and retry: an occupied port must not take the windows down.
-    let endpoint = mcp::endpoint::McpEndpoint::new(
+    // The backend publishes the board's changes to the windows (ADR 0020): it records each write
+    // it knows of itself, and an agent's write through the endpoint is recorded by the closure
+    // the backend hands out for it.
+    let sqlite_backend = backend::sqlite::SqliteBackend::new(
         factory.clone(),
-        commands::board::announcer(app.handle()),
+        undo::stacks::UndoStacks::new(),
+        commands::board::board_change_sink(app.handle()),
+        tauri::async_runtime::handle().inner(),
+    );
+    let endpoint = mcp::endpoint::McpEndpoint::new(
+        factory,
+        sqlite_backend.write_recorder(),
         app_dir.join(mcp::endpoint::SETTINGS_FILE),
         mcp::endpoint::env_port(),
     );
@@ -299,9 +311,7 @@ fn setup_standalone(
     // Undo and Redo Stacks are one pair for the whole app, in memory inside it.
     // Constructing them here is the whole of "session-scoped" — a restart is an empty
     // history, and nothing has to clear them.
-    app.manage(backend::AppBackend::new(
-        backend::sqlite::SqliteBackend::new(factory, undo::stacks::UndoStacks::new()),
-    ));
+    app.manage(backend::AppBackend::new(sqlite_backend));
     Ok(())
 }
 
@@ -354,7 +364,7 @@ fn setup_client(
         backend.clone(),
         std::sync::Arc::new({
             let app = app.handle().clone();
-            move |revision| commands::board::announce_revision(&app, revision)
+            move |change| commands::board::emit_board_change(&app, &change)
         }),
         tauri::async_runtime::handle().inner().clone(),
     );

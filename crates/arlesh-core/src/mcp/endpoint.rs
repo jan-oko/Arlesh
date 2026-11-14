@@ -275,10 +275,9 @@ fn local_pin_issuer(factory: SessionFactory) -> super::door::PinIssuer {
                 .begin()
                 .await
                 .map_err(crate::error::WireError::from_error)?;
-            let pin =
-                crate::agents::service::issue_pin(&mut db, chrono::Local::now().naive_local())
-                    .await
-                    .map_err(crate::error::WireError::from_error)?;
+            let pin = crate::agents::service::issue_pin(&mut db, crate::clock::now())
+                .await
+                .map_err(crate::error::WireError::from_error)?;
             db.commit()
                 .await
                 .map_err(crate::error::WireError::from_error)?;

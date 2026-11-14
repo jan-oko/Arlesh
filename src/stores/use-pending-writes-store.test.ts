@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { boardFence } from "@/api/board";
 import { afterLane, usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import type { BoardStamp } from "@/utils/pending-writes";
 import type { IdResolver, WriteResult, WriteSpec } from "@/stores/use-pending-writes-store";
+
+vi.mock("@/api/board", () => ({ boardFence: vi.fn(() => Promise.resolve(null)) }));
+
+/** A board taken in: no publication unless the test gives one. */
+const board = (more: Partial<BoardStamp> = {}): BoardStamp => ({ read: 0, epoch: null, seq: null, revision: null, at: 0, ...more });
 
 const written = (more: Partial<Extract<WriteResult, { outcome: "written" }>["response"]> = {}): WriteResult => ({
   outcome: "written",
@@ -26,10 +33,13 @@ function spec(nodeId: string, send: WriteSpec["send"], more: Partial<WriteSpec> 
   };
 }
 
-const flushPromises = async (): Promise<void> => { await Promise.resolve(); await Promise.resolve(); };
+const flushPromises = async (): Promise<void> => { await new Promise((resolve) => setTimeout(resolve, 0)); };
 const store = () => usePendingWritesStore.getState();
 
-beforeEach(() => store().reset());
+beforeEach(() => {
+  store().reset();
+  vi.mocked(boardFence).mockResolvedValue(null);
+});
 
 describe("usePendingWritesStore", () => {
   it("sends the writes strictly in order, one at a time", async () => {
@@ -44,10 +54,36 @@ describe("usePendingWritesStore", () => {
     expect(second.send).toHaveBeenCalledTimes(1);
   });
 
-  it("records the answer with the read counter when it arrived", async () => {
+  it("takes the revision a write reached from the backend's fence when its response names none", async () => {
+    const g = gate();
+    vi.mocked(boardFence).mockResolvedValue({ epoch: "e1", revision: 12 });
+    store().reportBoard(board({ epoch: "e1", seq: 1, revision: 1 }));
+    store().enqueue(spec("a", g.send));
+
+    g.settle(written({ epoch: null, revision: null }));
+    await flushPromises();
+
+    expect(store().writes[0]).toMatchObject({ state: "answered", answer: { epoch: "e1", revision: 12 } });
+  });
+
+  it("retires a write by revision: the board that reaches it takes it off in the same update", async () => {
+    const g = gate();
+    vi.mocked(boardFence).mockResolvedValue({ epoch: "e1", revision: 12 });
+    store().reportBoard(board({ epoch: "e1", seq: 3, revision: 11 }));
+    store().enqueue(spec("a", g.send));
+    g.settle(written({ epoch: null, revision: null }));
+    await flushPromises();
+    expect(store().writes).toHaveLength(1);
+
+    store().reportBoard(board({ read: store().beginRead(), epoch: "e1", seq: 4, revision: 12 }));
+
+    expect(store().writes).toHaveLength(0);
+  });
+
+  it("records the answer with the intake counter when it arrived", async () => {
     const g = gate();
     store().beginRead();
-    store().reportBoard({ read: 0, epoch: null, revision: null });
+    store().reportBoard(board());
     store().enqueue(spec("a", g.send));
     g.settle(written({ fields: { title: "server" } }));
     await flushPromises();
@@ -128,18 +164,18 @@ describe("usePendingWritesStore", () => {
 
   it("forgets an answered write once the board reflects it", async () => {
     const g = gate();
-    store().reportBoard({ read: 0, epoch: null, revision: null });
+    store().reportBoard(board());
     store().enqueue(spec("a", g.send));
     g.settle(written({ epoch: null, revision: null }));
     await flushPromises();
     expect(store().writes).toHaveLength(1);
-    store().reportBoard({ read: store().beginRead(), epoch: null, revision: null });
+    store().reportBoard(board({ read: store().beginRead(), at: Date.now() + 6000 }));
     expect(store().writes).toHaveLength(0);
   });
 
   it("lets go of a write when the board that lagged behind it is gone", async () => {
     const g = gate();
-    store().reportBoard({ read: 0, epoch: null, revision: null });
+    store().reportBoard(board());
     store().enqueue(spec("a", g.send));
     g.settle(written({ epoch: null, revision: null }));
     await flushPromises();
@@ -160,7 +196,7 @@ describe("usePendingWritesStore", () => {
   it("rewrites a temporary id after the create is answered and remembers the alias", async () => {
     const create = gate();
     const rename = gate();
-    store().reportBoard({ read: 0, epoch: null, revision: null });
+    store().reportBoard(board());
     const tempId = store().nextTemporaryId();
     store().enqueue({
       ...spec(tempId, create.send),
