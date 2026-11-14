@@ -120,6 +120,9 @@ Below 700 px:
     grid still pages.
   - **Scroll**: one scrolling column in place of the paged grid, each card as tall as its content
     (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the card.
+- **Help** is a line in the ☰ menu, beside Settings and the gestures sheet; it opens the same full
+  view as `F1` (see [Tabs](tabs.md)), closed by its × button. A tap on a box of its graph pins the
+  box's card, and the graph scrolls sideways on a narrow screen.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.
 - **Toasts** rise above the action bar rather than covering it.
 - **Tabs are not shown** in the phone layout: the tab strip is hidden and the active tab is the one

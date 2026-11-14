@@ -1,0 +1,482 @@
+/* The whole window, over the tab; the tab stays mounted beneath. One scrolling page. */
+.view {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--canvas-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .view { scroll-behavior: smooth; }
+}
+
+/* The page cannot scroll while the graph is expanded over it; hiding the overflow keeps its place. */
+.viewLocked { overflow: hidden; }
+/* Groups the page around the graph without a box of its own: the layout is as if they were not there. */
+.pageRest { display: contents; }
+
+/* No bar: the standard close button floats over the corner. */
+.close {
+  position: fixed;
+  top: calc(var(--safe-top) + var(--space-2));
+  right: calc(var(--safe-right) + var(--space-2));
+  z-index: 3;
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 22px;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover { background: var(--node-bg-hover); }
+.close:focus-visible,
+.clear:focus-visible,
+.cardX:focus-visible,
+.jumpLink:focus-visible,
+.conceptLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) calc(var(--space-6) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 68ch;
+  /* Clear of the floating close button. */
+  padding-right: 48px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.h1 { margin: 0; font-size: clamp(28px, 5vw, 40px); line-height: 1.1; text-wrap: balance; }
+.h2 { margin: 0; font-size: 22px; line-height: 1.2; text-wrap: balance; }
+.lede { margin: 0; font-size: 18px; color: var(--text-secondary); }
+.intro p { margin: 0; }
+
+.code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-raised);
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+.jump {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.jumpLink {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid var(--node-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.jumpLink span { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); }
+.jumpLink:hover { border-color: var(--accent); }
+
+.figure { margin: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.caption { color: var(--text-secondary); max-width: 72ch; }
+
+.diagram {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-4);
+}
+.svg.pipelineSvg { min-width: 720px; color: var(--text-primary); }
+.pipelineText { fill: currentColor; font-family: var(--font-sans); font-size: 13px; }
+.pipelineText .bold { font-weight: 700; }
+.toneMuted { fill: var(--text-secondary); }
+.toneStored { fill: var(--mode-all); }
+.toneDerived { fill: var(--accent); }
+.toneRead { fill: var(--overdue); }
+.frame { fill: none; stroke-width: 2; }
+.frameStored { stroke: var(--mode-all); }
+.frameDerived { stroke: var(--accent); }
+.frameRead { stroke: var(--overdue); }
+.frameText { stroke: currentColor; stroke-width: 1.5; }
+.step { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+.writeBack { fill: none; stroke: var(--mode-all); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.journal { fill: none; stroke: currentColor; stroke-dasharray: 3 3; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.swatchStored { background: var(--mode-all); }
+.swatchDerived { background: var(--accent); }
+.swatchPreset { background: var(--overdue); }
+.swatchSelected { background: var(--accent); box-shadow: 0 0 0 2px var(--text-primary); }
+
+/* A group of the map: a heading with a coloured rule, then its cards. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  scroll-margin-top: var(--space-4);
+  --band: var(--accent);
+}
+.band-stored { --band: var(--mode-all); }
+.band-derived { --band: var(--accent); }
+.band-duty { --band: var(--color-aspect-blue); }
+.band-flow { --band: var(--color-aspect-gray); }
+.band-growth { --band: var(--color-aspect-green); }
+.band-body { --band: var(--color-aspect-red); }
+.band-read { --band: var(--overdue); }
+.band-accent { --band: var(--accent); }
+
+.groupHead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 72ch;
+  padding-left: 14px;
+  border-left: 3px solid var(--band);
+}
+.groupHead .eyebrow { color: var(--band); }
+.groupIntro { margin: 0; color: var(--text-secondary); }
+
+.conceptGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--space-3);
+}
+
+.concept {
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-margin-top: var(--space-4);
+}
+.conceptTitle { margin: 0; font-size: var(--text-lg); }
+.conceptIs { margin: 0; }
+.conceptFacts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  font-size: var(--text-base);
+}
+.conceptFacts dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  line-height: 1.9;
+}
+.conceptFacts dd { margin: 0; }
+
+@media (max-width: 520px) {
+  .conceptFacts { grid-template-columns: 1fr; }
+  .conceptFacts dt { line-height: 1.2; margin-top: 4px; }
+}
+
+.footer {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  border-top: 1px solid var(--node-border);
+  padding-top: var(--space-4);
+  max-width: 72ch;
+}
+
+/* Scrolls sideways on a narrow screen instead of shrinking the text. */
+.graphMain { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* Never shrinks: the whole graph is drawn at its natural height, and the page scrolls. */
+.graph {
+  flex: none;
+  position: relative;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  min-width: 1040px;
+  height: auto;
+  color: var(--text-secondary);
+}
+
+.node { cursor: pointer; outline: none; }
+.node rect { fill: var(--surface); stroke-width: 1.6; }
+.stored rect { stroke: var(--mode-all); }
+.derived rect { stroke: var(--accent); }
+.preset rect { stroke: var(--overdue); }
+.node text {
+  fill: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 1.1;
+  opacity: 0.35;
+}
+.far { stroke-dasharray: 5 4; }
+
+.active .node { opacity: 0.25; }
+.active .edge { opacity: 0.06; }
+.active .node.on { opacity: 1; }
+.active .edge.edgeOn { opacity: 1; stroke: var(--accent); stroke-width: 1.8; }
+
+.lit rect { fill: color-mix(in srgb, var(--accent) 14%, transparent); }
+.hover rect {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-dasharray: 4 3;
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.sel rect { fill: var(--accent); stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: none; }
+.sel text { fill: var(--surface); font-weight: 700; }
+.node:focus-visible rect { stroke: var(--text-primary); stroke-width: 3; }
+
+.hint {
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3) var(--space-4);
+  height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.hint p { margin: 0; flex: none; }
+.hintTitle { font-weight: 700; }
+.io { font-size: var(--text-sm); color: var(--text-secondary); }
+
+.kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.mono { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); word-break: break-word; }
+
+.asideHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.asideTitle { margin: 0; font-size: var(--text-lg); }
+.clear {
+  background: none;
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  min-height: 36px;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.clear:disabled { opacity: 0.45; cursor: default; }
+
+.empty {
+  margin: 0;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px dashed var(--node-border);
+  border-radius: 10px;
+  padding: var(--space-3);
+}
+
+.pinned { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--space-3); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cardTop { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.cardTitle { margin: 0; font-size: var(--text-lg); }
+.cardX {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  min-width: 36px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.cardX:hover { color: var(--text-primary); }
+.cardText { margin: 0; }
+.facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  line-height: 1.9;
+}
+.facts dd { margin: 0; }
+.conceptLink {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  min-height: 36px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.conceptLink:hover { text-decoration: underline; }
+
+.graphHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.expand {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--node-border);
+  border-radius: 22px;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+.expand:hover { background: var(--node-bg-hover); }
+.expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The graph taken out of the page to fill the Help view; the page keeps its place beneath. */
+.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--canvas-bg);
+  padding: calc(var(--safe-top) + var(--space-4)) calc(var(--safe-right) + var(--space-4)) calc(var(--safe-bottom) + var(--space-4)) calc(var(--safe-left) + var(--space-4));
+}
+/* Clear of the floating close button, which stays above it. */
+.expanded .graphHead { padding-right: 56px; }
+/* In the corner the Help close button holds on the page: the same place, size and shape. */
+.expanded .expand {
+  position: fixed;
+  top: calc(var(--safe-top) + var(--space-2));
+  right: calc(var(--safe-right) + var(--space-2));
+  z-index: 3;
+  border-radius: 22px;
+}
+
+/*
+ * The expanded graph, as the old standalone page laid it out: the graph on the left, whole and fitted
+ * to the space, the hover line under it, and the pinned cards in a column of their own that scrolls
+ * by itself — so pinning a card never takes room from the graph. The cause of the earlier clipping was
+ * a flex column of fixed height whose scroll-container child (`.graph`) was allowed to shrink to a strip.
+ */
+.expanded .groupIntro,
+.expanded .groupHead .eyebrow { display: none; }
+.expanded .groupHead { max-width: none; }
+.expanded .h2 { font-size: var(--text-lg); }
+.expanded .hint { height: 140px; }
+
+@media (min-width: 900px) {
+  .expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-3) var(--space-4);
+    overflow: hidden;
+  }
+  .expanded .graphHead { grid-column: 1 / -1; align-items: center; }
+  .expanded .graphMain { grid-column: 1; grid-row: 2; min-height: 0; }
+  .expanded .graph { flex: 1 1 0; min-height: 0; overflow: hidden; }
+  /* Drawn to fit the panel, boxes and text scaling with it, never clipped. */
+  .expanded .svg {
+    position: absolute;
+    inset: var(--space-3);
+    width: calc(100% - 2 * var(--space-3));
+    height: calc(100% - 2 * var(--space-3));
+    min-width: 0;
+  }
+  .expanded .legend,
+  .expanded .hint { flex: none; }
+  .expanded .pinned { grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .expanded .cards { grid-template-columns: 1fr; }
+}
