@@ -53,6 +53,7 @@ export default function DerivationSection({ expanded, onToggleExpanded }: Props)
           {expanded ? COLLAPSE_GLYPH : EXPAND_GLYPH}
         </button>
       </div>
+      <div className={styles.graphMain}>
       <DerivationGraph {...state} />
       <div className={styles.legend} aria-hidden="true">
         <span><i className={`${styles.swatch} ${styles.swatchStored}`} />{t("legendStored")}</span>
@@ -61,6 +62,7 @@ export default function DerivationSection({ expanded, onToggleExpanded }: Props)
         <span><i className={`${styles.swatch} ${styles.swatchSelected}`} />{t("legendSelected")}</span>
       </div>
       <GraphHint graph={graph} hovered={state.hovered} selected={selected} />
+      </div>
       <div className={styles.pinned} aria-label={t("selectedCount", { count: selected.length })} role="region">
         <div className={styles.asideHead}>
           <h3 className={styles.asideTitle}>{t("selectedCount", { count: selected.length })}</h3>

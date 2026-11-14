@@ -231,7 +231,12 @@
 }
 
 /* Scrolls sideways on a narrow screen instead of shrinking the text. */
+.graphMain { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* Never shrinks: the whole graph is drawn at its natural height, and the page scrolls. */
 .graph {
+  flex: none;
+  position: relative;
   overflow-x: auto;
   background: var(--surface);
   border: 1px solid var(--node-border);
@@ -422,3 +427,40 @@
 }
 /* Clear of the floating close button, which stays above it. */
 .expanded .graphHead { padding-right: 56px; }
+
+/*
+ * The expanded graph, as the old standalone page laid it out: the graph on the left, whole and fitted
+ * to the space, the hover line under it, and the pinned cards in a column of their own that scrolls
+ * by itself — so pinning a card never takes room from the graph. The cause of the earlier clipping was
+ * a flex column of fixed height whose scroll-container child (`.graph`) was allowed to shrink to a strip.
+ */
+.expanded .groupIntro,
+.expanded .groupHead .eyebrow { display: none; }
+.expanded .groupHead { max-width: none; }
+.expanded .h2 { font-size: var(--text-lg); }
+.expanded .hint { height: 140px; }
+
+@media (min-width: 900px) {
+  .expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-3) var(--space-4);
+    overflow: hidden;
+  }
+  .expanded .graphHead { grid-column: 1 / -1; align-items: center; }
+  .expanded .graphMain { grid-column: 1; grid-row: 2; min-height: 0; }
+  .expanded .graph { flex: 1 1 0; min-height: 0; overflow: hidden; }
+  /* Drawn to fit the panel, boxes and text scaling with it, never clipped. */
+  .expanded .svg {
+    position: absolute;
+    inset: var(--space-3);
+    width: calc(100% - 2 * var(--space-3));
+    height: calc(100% - 2 * var(--space-3));
+    min-width: 0;
+  }
+  .expanded .legend,
+  .expanded .hint { flex: none; }
+  .expanded .pinned { grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .expanded .cards { grid-template-columns: 1fr; }
+}
