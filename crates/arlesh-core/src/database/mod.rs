@@ -4,6 +4,7 @@ pub mod baseline;
 pub mod client;
 pub mod hold;
 pub mod open;
+pub mod row_ids;
 pub mod rules;
 pub mod session;
 
@@ -165,6 +166,7 @@ async fn migrate_with(
     if baseline::is_fresh(pool).await? {
         baseline::install(pool, chain).await?;
     }
+    row_ids::prepare(pool).await?;
     chain.run(pool).await
 }
 
