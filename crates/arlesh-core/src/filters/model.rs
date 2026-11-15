@@ -210,7 +210,8 @@ pub struct BoardFilter {
     /// the Archived pill includes them. A sub-item is a row only if it reads Review itself. The
     /// three options are one dropdown value in the UI, so they are never set together there; were
     /// they, the precedence is `unblock`, then `expectations`, then `review`, as each empties
-    /// what the others show. Ignored by the Mindmap.
+    /// what the others show. Ignored by the Mindmap; over MCP it applies only when the read goes
+    /// through the List View's rules (a pill, or a narrower row-kind choice).
     pub review: bool,
     /// Plan/Start's per-preset "include flows" subtoggle, separate from `show_flow`.
     pub include_flows: bool,

@@ -250,4 +250,16 @@ fn review_draws_no_review_section_but_keeps_the_overdue_rule() {
     };
     assert!(!shows_review(&review));
     assert!(shows_overdue(true, &review));
+    assert!(!shows_overdue(false, &review));
+}
+
+#[test]
+fn review_draws_overdue_whatever_the_shared_preset_is() {
+    for preset in [Preset::All, Preset::Plan, Preset::Do, Preset::Backlog] {
+        let review = BoardFilter {
+            review: true,
+            ..BoardFilter::preset(preset)
+        };
+        assert!(shows_overdue(true, &review), "{preset:?}");
+    }
 }

@@ -246,6 +246,28 @@
       "overdueSetting": true,
       "review": false,
       "overdue": true
+    },
+    {
+      "name": "the review option draws Overdue whatever the shared preset is",
+      "spec": "list-view.md — The Review option always draws the Overdue section: the shared preset is the Mindmap's, not visible from the list.",
+      "filter": {
+        "preset": "all",
+        "review": true
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": true
+    },
+    {
+      "name": "the review option draws no Overdue section when its setting is off",
+      "spec": "list-view.md — The Overdue setting still switches the section off.",
+      "filter": {
+        "preset": "all",
+        "review": true
+      },
+      "overdueSetting": false,
+      "review": false,
+      "overdue": false
     }
   ],
   "boards": {

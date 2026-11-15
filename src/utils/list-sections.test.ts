@@ -219,8 +219,11 @@ describe("showsOverdueSection", () => {
     }
   });
 
-  it("keeps drawing it under the Review option, which has no Review section but leaves Overdue alone", () => {
-    expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset: "review" })).toBe(true);
+  it("always draws it under the Review option, whatever the shared preset is", () => {
+    for (const statusMode of ["all", "plan", "start", "do", "backlog"] as const) {
+      expect(showsOverdueSection(true, { ...DEFAULT_FILTER, statusMode }, { ...DEFAULT_LIST_FILTER, preset: "review" })).toBe(true);
+    }
+    expect(showsOverdueSection(false, start, { ...DEFAULT_LIST_FILTER, preset: "review" })).toBe(false);
   });
 
   it("does not draw it under the Unblock or Expectations option, which replace Start's question", () => {

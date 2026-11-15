@@ -139,9 +139,16 @@ pub fn shows_review(filter: &BoardFilter) -> bool {
 
 /// Whether the List View draws its **Overdue** section: while its setting (`enabled`, on by
 /// default) is on, and only under **Start**, the preset that asks what to begin now — and not under
-/// the Unblock or Expectations option.
+/// the Unblock or Expectations option. The **Review** option always draws it, whatever the shared
+/// preset is (ruled by the user, 2026-11-15): that preset is the Mindmap's, not visible from the list.
 pub fn shows_overdue(enabled: bool, filter: &BoardFilter) -> bool {
-    enabled && filter.preset == Preset::Start && reads_the_preset(filter)
+    if !enabled {
+        return false;
+    }
+    if filter.reads_review_option() {
+        return true;
+    }
+    filter.preset == Preset::Start && reads_the_preset(filter)
 }
 
 #[cfg(test)]

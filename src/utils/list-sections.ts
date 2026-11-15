@@ -168,10 +168,12 @@ export function showsReviewSection(shared: FilterState, listFilter: ListFilterSt
  * Whether the List View draws its **Overdue** section: while the setting is on, and only while the
  * list is reading the **Start** preset — the preset that asks what to begin now, which late work
  * answers first. The Unblock and Expectations options replace the preset's question for the list, so
- * neither draws it. The Review option keeps it: a Review Task that is Overdue still
- * leads the list under it.
+ * neither draws it. The Review option always draws it, whatever the shared preset is — that preset
+ * is the Mindmap's and not visible from the list, so an Overdue Review Task leads the list under it.
  */
 export function showsOverdueSection(enabled: boolean, shared: FilterState, listFilter: ListFilterState): boolean {
-  if (!enabled || shared.statusMode !== "start") return false;
+  if (!enabled) return false;
+  if (listFilter.preset === "review") return true;
+  if (shared.statusMode !== "start") return false;
   return listFilter.preset !== "unblock" && listFilter.preset !== "expectations";
 }
