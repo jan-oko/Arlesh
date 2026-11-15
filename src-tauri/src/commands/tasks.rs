@@ -1,5 +1,6 @@
 //! Tauri commands for task and goal operations.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -30,7 +31,7 @@ pub async fn create_task(
 #[tauri::command]
 pub async fn get_task(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
 ) -> Result<TaskWithBlockers, WireError> {
     backend.get_task(id).await
 }
@@ -106,7 +107,7 @@ pub async fn plan_containment_conflicts(
 pub async fn scope_containment_conflicts(
     backend: State<'_, AppBackend>,
     node_type: String,
-    node_id: i64,
+    node_id: RowId,
     time_scope: TimeScope,
 ) -> Result<Vec<ViolatingDescendant>, WireError> {
     backend
@@ -120,9 +121,9 @@ pub async fn scope_containment_conflicts(
 pub async fn reparent_scope_conflicts(
     backend: State<'_, AppBackend>,
     node_type: String,
-    node_id: i64,
+    node_id: RowId,
     new_parent_type: String,
-    new_parent_id: i64,
+    new_parent_id: RowId,
 ) -> Result<ReparentConflicts, WireError> {
     backend
         .reparent_scope_conflicts(node_type, node_id, new_parent_type, new_parent_id)
@@ -143,9 +144,9 @@ pub async fn delete_task(backend: State<'_, AppBackend>, id: NodeId) -> Result<(
 #[tauri::command]
 pub async fn duplicate_task(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     target_type: String,
-    target_id: i64,
+    target_id: RowId,
     position: i64,
 ) -> Result<DuplicatedSubtree<Task>, WireError> {
     backend
@@ -228,7 +229,7 @@ pub async fn create_goal(
 
 /// Fetches a goal by id.
 #[tauri::command]
-pub async fn get_goal(backend: State<'_, AppBackend>, id: i64) -> Result<Goal, WireError> {
+pub async fn get_goal(backend: State<'_, AppBackend>, id: RowId) -> Result<Goal, WireError> {
     backend.get_goal(id).await
 }
 
@@ -267,9 +268,9 @@ pub async fn delete_goal(backend: State<'_, AppBackend>, id: NodeId) -> Result<(
 #[tauri::command]
 pub async fn duplicate_goal(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     target_type: String,
-    target_id: i64,
+    target_id: RowId,
     position: i64,
 ) -> Result<DuplicatedSubtree<Goal>, WireError> {
     backend
@@ -282,7 +283,7 @@ pub async fn duplicate_goal(
 pub async fn add_tag_to_task(
     backend: State<'_, AppBackend>,
     task_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend.add_tag_to_task(task_id, tag_id).await
 }
@@ -292,7 +293,7 @@ pub async fn add_tag_to_task(
 pub async fn remove_tag_from_task(
     backend: State<'_, AppBackend>,
     task_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend.remove_tag_from_task(task_id, tag_id).await
 }
@@ -302,7 +303,7 @@ pub async fn remove_tag_from_task(
 pub async fn add_tag_to_goal(
     backend: State<'_, AppBackend>,
     goal_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend.add_tag_to_goal(goal_id, tag_id).await
 }
@@ -312,7 +313,7 @@ pub async fn add_tag_to_goal(
 pub async fn remove_tag_from_goal(
     backend: State<'_, AppBackend>,
     goal_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend.remove_tag_from_goal(goal_id, tag_id).await
 }

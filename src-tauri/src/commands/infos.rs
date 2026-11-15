@@ -1,5 +1,6 @@
 //! Tauri commands for info node operations.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -35,7 +36,7 @@ pub async fn list_infos(backend: State<'_, AppBackend>) -> Result<Vec<Info>, Wir
 #[tauri::command]
 pub async fn update_info(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateInfoRequest,
 ) -> Result<Info, WireError> {
     backend.update_info(id, request).await
@@ -45,7 +46,7 @@ pub async fn update_info(
 ///
 /// A single `DELETE`, so it runs on a pooled session.
 #[tauri::command]
-pub async fn delete_info(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+pub async fn delete_info(backend: State<'_, AppBackend>, id: RowId) -> Result<(), WireError> {
     backend.delete_info(id).await
 }
 
@@ -57,9 +58,9 @@ pub async fn delete_info(backend: State<'_, AppBackend>, id: i64) -> Result<(), 
 #[tauri::command]
 pub async fn duplicate_info(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     target_type: String,
-    target_id: i64,
+    target_id: RowId,
     position: i64,
 ) -> Result<DuplicatedSubtree<Info>, WireError> {
     backend

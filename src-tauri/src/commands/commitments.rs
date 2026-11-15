@@ -4,6 +4,7 @@
 //! no `set_verdict` command — recording, changing and clearing a verdict are all one ordinary
 //! [`update_commitment`] write, so a misclick is undone by the same call that made it.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -30,7 +31,7 @@ pub async fn create_commitment(
 #[tauri::command]
 pub async fn get_commitment(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
 ) -> Result<Commitment, WireError> {
     backend.get_commitment(id).await
 }
@@ -71,7 +72,7 @@ pub async fn delete_commitment(
 pub async fn add_tag_to_commitment(
     backend: State<'_, AppBackend>,
     commitment_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend.add_tag_to_commitment(commitment_id, tag_id).await
 }
@@ -81,7 +82,7 @@ pub async fn add_tag_to_commitment(
 pub async fn remove_tag_from_commitment(
     backend: State<'_, AppBackend>,
     commitment_id: NodeId,
-    tag_id: i64,
+    tag_id: RowId,
 ) -> Result<(), WireError> {
     backend
         .remove_tag_from_commitment(commitment_id, tag_id)
