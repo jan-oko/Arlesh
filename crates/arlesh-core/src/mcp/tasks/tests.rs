@@ -13,11 +13,11 @@ async fn board() -> (ArleshMcp, SqlitePool) {
         .unwrap();
     crate::database::run_migrations(&pool).await.unwrap();
     for sql in [
-        "INSERT INTO domains (id, title, subtype) VALUES (901, 'Growth', 'aspect')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (902, 'Arlesh', 'project', 901, 'active')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (10, 'Ship', 'domain', 902, 'active')",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (100, 'Docs', 'goal', 10, 'agentic_todo', 1)",
-        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', 901)",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000385', 'Growth', 'aspect')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000386', 'Arlesh', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000a', 'Ship', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000064', 'Docs', 'goal', '00000000-0000-7000-8000-00000000000a', 'agentic_todo', 1)",
+        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', '00000000-0000-7000-8000-000000000385')",
     ] {
         sqlx::query(sql).execute(&pool).await.unwrap();
     }
@@ -53,7 +53,7 @@ async fn shown(mcp: &ArleshMcp) -> String {
 }
 
 async fn stored(pool: &SqlitePool) -> String {
-    sqlx::query_scalar("SELECT status FROM tasks WHERE id = 100")
+    sqlx::query_scalar("SELECT status FROM tasks WHERE id = '00000000-0000-7000-8000-000000000064'")
         .fetch_one(pool)
         .await
         .unwrap()

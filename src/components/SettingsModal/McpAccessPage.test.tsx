@@ -71,7 +71,7 @@ describe("McpAccessPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "settings:mcp.remove:Arlesh" }));
 
-    expect(state.removeRoot).toHaveBeenCalledWith({ node_kind: "domain", node_id: 2 });
+    expect(state.removeRoot).toHaveBeenCalledWith({ node_kind: "domain", node_id: storedRowId(2) });
   });
 
   it("adds a root picked in the node search", () => {

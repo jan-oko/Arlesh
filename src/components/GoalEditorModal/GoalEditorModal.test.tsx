@@ -18,7 +18,7 @@ vi.mock("react-i18next", () => ({
 // don't emit unhandled rejections. The on-exit toggle itself renders synchronously.
 vi.mock("@/api/scopes", () => ({
   getScope: vi.fn().mockResolvedValue({
-    id: 1, kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
+    id: storedRowId(1), kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
     start_datetime: null, end_datetime: null, part: null,
   }),
   getOrCreateScope: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock("@/api/scopes", () => ({
 
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "goal-1",
+    id: `goal-${storedRowId(1)}`,
     rowId: storedRowId(1),
     kind: "goal",
     title: "Ship it",
@@ -40,7 +40,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAG_A = mkTag(1, "frontend");
@@ -49,7 +49,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -90,7 +90,7 @@ describe("GoalEditorModal — save", () => {
         title: "Ship it",
         status: "active",
         blockReasons: [],
-        tagIds: [2],
+        tagIds: [storedRowId(2)],
         timeScope: null,
         onScopeExit: null,
         isPrivate: false,

@@ -16,8 +16,8 @@ const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
 const DISPLAY = {
   tagOptions: [],
-  tagName: (id: number) => (id === 5 ? "urgent" : `#${id}`),
-  tagColor: (id: number) => (id === 5 ? "#3498db" : null),
+  tagName: (id: string) => (id === storedRowId(5) ? "urgent" : `#${id}`),
+  tagColor: (id: string) => (id === storedRowId(5) ? "#3498db" : null),
   nodeLabel: (ref: string) => (ref === "project-1" ? "Rocket" : ref),
   nodeColor: (ref: string) => (ref === "project-1" ? "#e74c3c" : null),
   antecedentPool: [],

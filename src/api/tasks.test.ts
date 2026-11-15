@@ -48,7 +48,7 @@ describe("updateTask", () => {
     const updated = { ...mockTask, status: { kind: "ordinary", status: "done" } };
     mockCommandOnce(updated);
     const result = await updateTask(storedRowId(1), { status: { kind: "ordinary", status: "done" } });
-    expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: { kind: "ordinary", status: "done" } } });
+    expect(invoke).toHaveBeenCalledWith("update_task", { id: storedRowId(1), request: { status: { kind: "ordinary", status: "done" } } });
     expect(result.status).toEqual({ kind: "ordinary", status: "done" });
   });
 });
@@ -57,7 +57,7 @@ describe("deleteTask", () => {
   it("calls invoke with delete_task and the id", async () => {
     mockCommandOnce(undefined);
     await deleteTask(storedRowId(3));
-    expect(invoke).toHaveBeenCalledWith("delete_task", { id: 3 });
+    expect(invoke).toHaveBeenCalledWith("delete_task", { id: storedRowId(3) });
   });
 });
 
@@ -66,7 +66,7 @@ describe("getTask", () => {
     const withBlockers: TaskWithBlockers = { task: mockTask, block_reasons: [] };
     mockCommandOnce(withBlockers);
     const result = await getTask(storedRowId(1));
-    expect(invoke).toHaveBeenCalledWith("get_task", { id: 1 });
+    expect(invoke).toHaveBeenCalledWith("get_task", { id: storedRowId(1) });
     expect(result).toEqual(withBlockers);
   });
 });
@@ -76,7 +76,7 @@ describe("listTaskDependencies", () => {
     const deps: Dependency[] = [{ type: "goal", id: storedRowId(5) }];
     mockCommandOnce(deps);
     const result = await listTaskDependencies(storedRowId(1));
-    expect(invoke).toHaveBeenCalledWith("list_task_dependencies", { taskId: 1 });
+    expect(invoke).toHaveBeenCalledWith("list_task_dependencies", { taskId: storedRowId(1) });
     expect(result).toEqual(deps);
   });
 });
@@ -86,7 +86,7 @@ describe("addTaskDependency", () => {
     mockCommandOnce(undefined);
     const dep: Dependency = { type: "task", id: storedRowId(2) };
     await addTaskDependency(storedRowId(1), dep);
-    expect(invoke).toHaveBeenCalledWith("add_task_dependency", { taskId: 1, dependency: dep });
+    expect(invoke).toHaveBeenCalledWith("add_task_dependency", { taskId: storedRowId(1), dependency: dep });
   });
 });
 
@@ -95,7 +95,7 @@ describe("removeTaskDependency", () => {
     mockCommandOnce(undefined);
     const dep: Dependency = { type: "task", id: storedRowId(2) };
     await removeTaskDependency(storedRowId(1), dep);
-    expect(invoke).toHaveBeenCalledWith("remove_task_dependency", { taskId: 1, dependency: dep });
+    expect(invoke).toHaveBeenCalledWith("remove_task_dependency", { taskId: storedRowId(1), dependency: dep });
   });
 });
 
@@ -103,7 +103,7 @@ describe("addTagToTask", () => {
   it("calls invoke with add_tag_to_task, taskId, and tagId", async () => {
     mockCommandOnce(undefined);
     await addTagToTask(storedRowId(1), storedRowId(99));
-    expect(invoke).toHaveBeenCalledWith("add_tag_to_task", { taskId: 1, tagId: 99 });
+    expect(invoke).toHaveBeenCalledWith("add_tag_to_task", { taskId: storedRowId(1), tagId: storedRowId(99) });
   });
 });
 
@@ -111,7 +111,7 @@ describe("removeTagFromTask", () => {
   it("calls invoke with remove_tag_from_task, taskId, and tagId", async () => {
     mockCommandOnce(undefined);
     await removeTagFromTask(storedRowId(1), storedRowId(99));
-    expect(invoke).toHaveBeenCalledWith("remove_tag_from_task", { taskId: 1, tagId: 99 });
+    expect(invoke).toHaveBeenCalledWith("remove_tag_from_task", { taskId: storedRowId(1), tagId: storedRowId(99) });
   });
 });
 
@@ -125,7 +125,7 @@ describe("reparentScopeConflicts", () => {
     const out = await reparentScopeConflicts("task", storedRowId(8), "goal", storedRowId(4));
     expect(invoke).toHaveBeenCalledWith("reparent_scope_conflicts", {
       nodeType: "task",
-      nodeId: 8,
+      nodeId: storedRowId(8),
       newParentType: "goal",
       newParentId: 4,
     });
@@ -141,7 +141,7 @@ describe("scopeContainmentConflicts", () => {
     const result = await scopeContainmentConflicts("goal", storedRowId(5), timeScope);
     expect(invoke).toHaveBeenCalledWith("scope_containment_conflicts", {
       nodeType: "goal",
-      nodeId: 5,
+      nodeId: storedRowId(5),
       timeScope,
     });
     expect(result).toEqual(conflicts);

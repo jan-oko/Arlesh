@@ -11,7 +11,7 @@ import { canParentAnyNewChild } from "@/utils/node-meta";
 import { storedRowId } from "@/test/stored-id";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  const rowId = extra.virtual === true ? {} : { rowId: 1 };
+  const rowId = extra.virtual === true ? {} : { rowId: storedRowId(1) };
   return { id: `${kind}-1`, ...rowId, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 

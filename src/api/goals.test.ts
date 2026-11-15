@@ -24,7 +24,7 @@ describe("getGoal", () => {
   it("calls invoke with get_goal and the id", async () => {
     mockCommandOnce(mockGoal);
     const result = await getGoal(storedRowId(1));
-    expect(invoke).toHaveBeenCalledWith("get_goal", { id: 1 });
+    expect(invoke).toHaveBeenCalledWith("get_goal", { id: storedRowId(1) });
     expect(result).toEqual(mockGoal);
   });
 });
@@ -53,7 +53,7 @@ describe("updateGoal", () => {
     const updated = { ...mockGoal, status: "achieved" };
     mockCommandOnce(updated);
     const result = await updateGoal(storedRowId(1), { status: "achieved" });
-    expect(invoke).toHaveBeenCalledWith("update_goal", { id: 1, request: { status: "achieved" } });
+    expect(invoke).toHaveBeenCalledWith("update_goal", { id: storedRowId(1), request: { status: "achieved" } });
     expect(result.status).toBe("achieved");
   });
 });
@@ -62,7 +62,7 @@ describe("deleteGoal", () => {
   it("calls invoke with delete_goal and the id", async () => {
     mockCommandOnce(undefined);
     await deleteGoal(storedRowId(5));
-    expect(invoke).toHaveBeenCalledWith("delete_goal", { id: 5 });
+    expect(invoke).toHaveBeenCalledWith("delete_goal", { id: storedRowId(5) });
   });
 });
 
@@ -70,7 +70,7 @@ describe("addTagToGoal", () => {
   it("calls invoke with add_tag_to_goal, goalId, and tagId", async () => {
     mockCommandOnce(undefined);
     await addTagToGoal(storedRowId(1), storedRowId(42));
-    expect(invoke).toHaveBeenCalledWith("add_tag_to_goal", { goalId: 1, tagId: 42 });
+    expect(invoke).toHaveBeenCalledWith("add_tag_to_goal", { goalId: storedRowId(1), tagId: storedRowId(42) });
   });
 });
 
@@ -78,6 +78,6 @@ describe("removeTagFromGoal", () => {
   it("calls invoke with remove_tag_from_goal, goalId, and tagId", async () => {
     mockCommandOnce(undefined);
     await removeTagFromGoal(storedRowId(1), storedRowId(42));
-    expect(invoke).toHaveBeenCalledWith("remove_tag_from_goal", { goalId: 1, tagId: 42 });
+    expect(invoke).toHaveBeenCalledWith("remove_tag_from_goal", { goalId: storedRowId(1), tagId: storedRowId(42) });
   });
 });

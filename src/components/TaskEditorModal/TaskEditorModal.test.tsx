@@ -1,3 +1,4 @@
+import { NO_CYCLE } from "@/api/flows";
 import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -44,7 +45,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAG_A = mkTag(1, "backend");
@@ -53,7 +54,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   availableForDep: [] as MindmapNode[],
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
@@ -839,7 +840,7 @@ describe("TaskEditorModal — the Due field", () => {
       rowId: "0b3f0f9e-7a52-5a4e-9d3c-1c2b3a4d5e6f",
       timeScope: JULY_WEEK,
       origin: {
-        kind: "habit", habit_id: storedRowId(3), item_type: "flow_task", item_id: storedRowId(4), cycle_id: storedRowId(0),
+        kind: "habit", habit_id: storedRowId(3), item_type: "flow_task", item_id: storedRowId(4), cycle_id: NO_CYCLE,
         iteration_scope: {
           index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
           scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",

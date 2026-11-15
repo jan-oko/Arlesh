@@ -21,9 +21,9 @@ describe("archiveNodes", () => {
     expect(invoke).toHaveBeenCalledWith("run_gesture", {
       name: "archive-nodes",
       steps: [
-        { op: "update_task", id: 1, request: { archival: "archived" } },
-        { op: "update_commitment", id: 2, request: { archival: "archived" } },
-        { op: "update_domain", id: 3, request: { status: "archived" } },
+        { op: "update_task", id: storedRowId(1), request: { archival: "archived" } },
+        { op: "update_commitment", id: storedRowId(2), request: { archival: "archived" } },
+        { op: "update_domain", id: storedRowId(3), request: { status: "archived" } },
       ],
     });
   });
@@ -33,7 +33,7 @@ describe("archiveNodes", () => {
 
     expect(invoke).toHaveBeenCalledWith("run_gesture", {
       name: "archive-nodes",
-      steps: [{ op: "update_task", id: 1, request: { archival: "live" } }],
+      steps: [{ op: "update_task", id: storedRowId(1), request: { archival: "live" } }],
     });
   });
 });

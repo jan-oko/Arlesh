@@ -22,7 +22,7 @@ export interface Agents {
   error: string | null;
   /** The PIN last asked for, or `null`. */
   pin: IssuedPin | null;
-  act: (id: string, action: AgentAction) => Promise<void>;
+  act: (id: number, action: AgentAction) => Promise<void>;
   lockAccount: (label: string, locked: boolean) => Promise<void>;
   requestPin: () => Promise<void>;
 }
@@ -80,7 +80,7 @@ export function useAgents(): Agents {
   }, [load]);
 
   const act = useCallback(
-    (id: string, action: AgentAction) => edit(() => applyAgentAction(id, action)),
+    (id: number, action: AgentAction) => edit(() => applyAgentAction(id, action)),
     [edit],
   );
   const lockAccount = useCallback(

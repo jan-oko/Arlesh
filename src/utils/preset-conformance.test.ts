@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/preset-filters.json";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -88,7 +89,7 @@ function parseTagFilter(value: unknown, what: string): TagFilter {
   const mode = str(raw.mode, `${what}.mode`);
   if (!TAG_MODES.includes(mode)) fail(`${what}.mode is not a tag mode: ${mode}`);
   const narrowed = TAG_MODES.find((candidate): candidate is TagFilterMode => candidate === mode) ?? fail(what);
-  return { tagId: raw.tagId, mode: narrowed };
+  return { tagId: storedRowId(raw.tagId), mode: narrowed };
 }
 
 function parseOverride(value: unknown, what: string): ArchivedMode {

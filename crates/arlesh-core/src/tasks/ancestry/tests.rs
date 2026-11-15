@@ -25,10 +25,10 @@ async fn insert_task(pool: &DatabasePool, id: i64, parent_type: &str, parent_id:
     sqlx::query(
         "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES (?, ?, ?, ?, 'todo')",
     )
-    .bind(id)
+    .bind(tid(id))
     .bind(format!("task {id}"))
     .bind(parent_type)
-    .bind(parent_id)
+    .bind(tid(parent_id))
     .execute(pool)
     .await
     .expect("failed to insert task");
@@ -39,10 +39,10 @@ async fn insert_goal(pool: &DatabasePool, id: i64, parent_type: &str, parent_id:
     sqlx::query(
         "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (?, ?, ?, ?, 'active')",
     )
-    .bind(id)
+    .bind(tid(id))
     .bind(format!("goal {id}"))
     .bind(parent_type)
-    .bind(parent_id)
+    .bind(tid(parent_id))
     .execute(pool)
     .await
     .expect("failed to insert goal");
@@ -349,9 +349,9 @@ async fn a_three_deep_chain_climbs_to_the_root() {
     assert_eq!(
         shape(&chain),
         vec![
-            (NodeKind::Task, 3),
-            (NodeKind::Task, 2),
-            (NodeKind::Goal, 1)
+            (NodeKind::Task, tid(3)),
+            (NodeKind::Task, tid(2)),
+            (NodeKind::Goal, tid(1))
         ],
         "the chain must include the starting node and climb through the goal"
     );
@@ -370,7 +370,7 @@ async fn a_chain_whose_middle_parent_is_missing_ends_as_broken() {
 
     let chain = climb(&mut db, "task", tid(3)).await.expect("climb failed");
 
-    assert_eq!(shape(&chain), vec![(NodeKind::Task, 3)]);
+    assert_eq!(shape(&chain), vec![(NodeKind::Task, tid(3))]);
     assert_eq!(
         chain.end,
         ChainEnd::Broken {
@@ -397,7 +397,7 @@ async fn a_cyclic_parent_chain_terminates_as_broken() {
 
     assert_eq!(
         shape(&chain),
-        vec![(NodeKind::Task, 4), (NodeKind::Task, 5)]
+        vec![(NodeKind::Task, tid(4)), (NodeKind::Task, tid(5))]
     );
     assert_eq!(
         chain.end,

@@ -2,7 +2,7 @@
 export const AGENTS_SECTION_ID = "settings-agents";
 
 /** The DOM id of one agent's row, so the status menu can scroll to it. */
-export function agentRowId(agentId: string): string {
+export function agentRowId(agentId: number): string {
   return `settings-agent-${agentId}`;
 }
 

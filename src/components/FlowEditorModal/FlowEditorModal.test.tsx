@@ -21,7 +21,7 @@ vi.mock("@/api/flows", () => ({
 }));
 vi.mock("@/api/scopes", () => ({
   getScope: vi.fn().mockResolvedValue({
-    id: 1, kind: "week", label: "", start_date: "2026-01-04", end_date: "2026-01-10",
+    id: storedRowId(1), kind: "week", label: "", start_date: "2026-01-04", end_date: "2026-01-10",
     week_id: null, month_id: null, season_id: null, day_id: null,
     part: null, start_datetime: null, end_datetime: null,
   }),
@@ -33,7 +33,7 @@ import { storedRowId } from "@/test/stored-id";
 
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "flow-1",
+    id: `flow-${storedRowId(1)}`,
     rowId: storedRowId(1),
     kind: "flow",
     title: "Ship a feature",
@@ -46,7 +46,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, rowId: id, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${id}`, rowId: storedRowId(id), kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];
@@ -55,7 +55,7 @@ const defaultProps = {
   node: mkFlow(),
   availableTargets: TARGETS,
   allTags: [],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -147,7 +147,7 @@ describe("FlowEditorModal — save", () => {
     fireEvent.mouseDown(screen.getByText("Frontend Polish"));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: 8 })),
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: storedRowId(8) })),
     );
   });
 
@@ -334,14 +334,14 @@ describe("FlowEditorModal — keyboard", () => {
 });
 
 describe("FlowEditorModal — target display", () => {
-  const flowWith = (targetType: string, targetId: number) => ({
-    instanceType: "task" as const, targetType, targetId,
+  const flowWith = (targetType: string, targetNumber: number) => ({
+    instanceType: "task" as const, targetType, targetId: storedRowId(targetNumber),
     durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
   });
 
   it("resolves a domain-table target (project) to its title, not #id", () => {
     const project: MindmapNode = {
-      id: "domain-9", kind: "project", title: "Platform", position: 0, tagIds: [], children: [],
+      id: `domain-${storedRowId(9)}`, kind: "project", title: "Platform", position: 0, tagIds: [], children: [],
     };
     render(
       <FlowEditorModal

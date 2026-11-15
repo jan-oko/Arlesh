@@ -89,26 +89,26 @@ function openEditorOn(nodeId: string): void {
 
 describe("NodeEditorModals — Cycle Plans as loaded", () => {
   it("opens the Flow editor on a task-instance flow with its root Cycle Plan, Day 1, chosen", () => {
-    openEditorOn("flow-5");
+    openEditorOn(`flow-${storedRowId(5)}`);
     expect(screen.getByRole("combobox", { name: "cyclePlanKind" })).toHaveValue("day");
     expect(screen.getByRole("button", { name: "kindDay 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "kindDay 2" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("opens the item editor on a flow item with its pair's Cycle Plan in the pair's row", () => {
-    openEditorOn("flowtask-9");
+    openEditorOn(`flowtask-${storedRowId(9)}`);
     expect(screen.getByText("editor:kindDay 3 · editor:kindPart 2")).toBeInTheDocument();
   });
 
   // Neither is offered here, as on master: Plan is task-only, and a part of day has no finer kind
   // to plan within (docs/spec/flows.md).
   it("offers no root Cycle Plan on a goal-instance flow", () => {
-    openEditorOn("flow-4");
+    openEditorOn(`flow-${storedRowId(4)}`);
     expect(screen.queryByRole("combobox", { name: "cyclePlanKind" })).not.toBeInTheDocument();
   });
 
   it("offers no Cycle Plan on an item whose Cycle Scope is a part of the day", () => {
-    openEditorOn("flowtask-4");
+    openEditorOn(`flowtask-${storedRowId(4)}`);
     expect(screen.getByText("scopes:part.morning")).toBeInTheDocument();
     expect(screen.queryByText("editor:cyclePlanKind")).not.toBeInTheDocument();
   });

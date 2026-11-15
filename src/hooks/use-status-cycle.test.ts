@@ -49,7 +49,7 @@ function setup(nodes: MindmapNode[]) {
 
 function task(id: number, status: Task["status"]): Task {
   return {
-    id, title: `task-${id}`, parent_type: "aspect", parent_id: storedRowId(1), status,
+    id: storedRowId(id), title: `task-${id}`, parent_type: "aspect", parent_id: storedRowId(1), status,
     delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null,
     plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
   };
@@ -81,12 +81,12 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
   it("patches the node before the write resolves, then sends one step of the cycle", async () => {
     const held = deferred<StatusStepOutcome>();
     vi.mocked(stepTaskStatus).mockReturnValue(held.promise);
-    const { result } = setup([todo("task-5")]);
+    const { result } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     expect(patchedFields()).toEqual([{ status: "in_progress", taskStatus: ordinary("in_progress") }]);
-    expect(stepTaskStatus).toHaveBeenCalledWith(5, "advance");
+    expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(5), "advance");
 
     await act(async () => { held.resolve(written(IN_PROGRESS)); await held.promise; });
     expect(lane()[0]?.state).toBe("answered");
@@ -95,24 +95,24 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
 
   it("sends Alt+Enter as the alt step and shows Started", () => {
     vi.mocked(stepTaskStatus).mockReturnValue(new Promise(() => undefined));
-    const { result } = setup([todo("task-5")]);
+    const { result } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleStarted("task-5"); });
+    act(() => { result.current.toggleStarted(`task-${storedRowId(5)}`); });
 
     expect(patchedFields()).toEqual([{ status: "started", taskStatus: ordinary("started") }]);
-    expect(stepTaskStatus).toHaveBeenCalledWith(5, "alt");
+    expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(5), "alt");
   });
 
   it("shows two quick presses as two steps and sends them in order", async () => {
     const first = deferred<StatusStepOutcome>();
     const second = deferred<StatusStepOutcome>();
     vi.mocked(stepTaskStatus).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const { result, byId } = setup([todo("task-5")]);
+    const { result, byId } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
     // The board has shown the first press, so the second predicts from it.
-    byId.set("task-5", todo("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") }));
-    act(() => { result.current.cycleStatus("task-5"); });
+    byId.set(`task-${storedRowId(5)}`, todo(`task-${storedRowId(5)}`, { status: "in_progress", taskStatus: ordinary("in_progress") }));
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     expect(patchedFields()).toEqual([
       { status: "in_progress", taskStatus: ordinary("in_progress") },
@@ -128,9 +128,9 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
 
   it("takes the Agentic cycle for an Agentic Task", () => {
     vi.mocked(stepTaskStatus).mockReturnValue(new Promise(() => undefined));
-    const { result } = setup([node("task-5", { status: "review", taskStatus: agentic("review") })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { status: "review", taskStatus: agentic("review") })]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     expect(patchedFields()).toEqual([{ status: "doing", taskStatus: agentic("doing") }]);
   });
@@ -138,61 +138,61 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
   it("sets a Task to the status it is told, shown at once and sent as an edit", async () => {
     const held = deferred<Task>();
     vi.mocked(updateTask).mockReturnValue(held.promise);
-    const { result } = setup([todo("task-5")]);
+    const { result } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+    act(() => { result.current.setTaskStatus(`task-${storedRowId(5)}`, ordinary("in_progress")); });
 
     expect(patchedFields()).toEqual([{ status: "in_progress", taskStatus: ordinary("in_progress") }]);
-    expect(updateTask).toHaveBeenCalledWith(5, { status: ordinary("in_progress") });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { status: ordinary("in_progress") });
     await act(async () => { held.resolve(IN_PROGRESS); await held.promise; });
     expect(lane()[0]?.state).toBe("answered");
   });
 
   it("says so when setting a status takes a Backlogged Task out of the Backlog", async () => {
     vi.mocked(updateTask).mockResolvedValue({ ...IN_PROGRESS, archival: "live" });
-    const { result, showToast } = setup([todo("task-5", { backlogged: true })]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`, { backlogged: true })]);
 
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+    act(() => { result.current.setTaskStatus(`task-${storedRowId(5)}`, ordinary("in_progress")); });
     await settleLane();
 
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:backlogClearedByStart" });
+    expect(showToast).toHaveBeenCalledWith({ nodeId: `task-${storedRowId(5)}`, message: "warnings:backlogClearedByStart" });
   });
 
   it("says nothing about the Backlog for a Task that was not in it", async () => {
     vi.mocked(updateTask).mockResolvedValue(IN_PROGRESS);
-    const { result, showToast } = setup([todo("task-5")]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+    act(() => { result.current.setTaskStatus(`task-${storedRowId(5)}`, ordinary("in_progress")); });
     await settleLane();
 
     expect(showToast).not.toHaveBeenCalled();
   });
 
   it("leaves a node that is not a Task alone", () => {
-    const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
-    act(() => { result.current.setTaskStatus("goal-2", ordinary("in_progress")); });
+    const { result } = setup([node(`goal-${storedRowId(2)}`, { kind: "goal", status: "active" })]);
+    act(() => { result.current.setTaskStatus(`goal-${storedRowId(2)}`, ordinary("in_progress")); });
     expect(updateTask).not.toHaveBeenCalled();
     expect(lane()).toEqual([]);
   });
 
   it("toggles a Goal between active and achieved through the lane", () => {
     vi.mocked(updateGoal).mockReturnValue(new Promise(() => undefined));
-    const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
+    const { result } = setup([node(`goal-${storedRowId(2)}`, { kind: "goal", status: "active" })]);
 
-    act(() => { result.current.cycleStatus("goal-2"); });
+    act(() => { result.current.cycleStatus(`goal-${storedRowId(2)}`); });
 
     expect(patchedFields()).toEqual([{ status: "achieved" }]);
-    expect(updateGoal).toHaveBeenCalledWith(2, { status: "achieved" });
+    expect(updateGoal).toHaveBeenCalledWith(storedRowId(2), { status: "achieved" });
   });
 
   it("shows the returned Goal row's status once the server has answered", async () => {
     const goal: Goal = {
-      id: 2, title: "g", parent_type: "aspect", parent_id: 1, status: "achieved", time_scope: null, on_scope_exit: null,
+      id: storedRowId(2), title: "g", parent_type: "aspect", parent_id: storedRowId(1), status: "achieved", time_scope: null, on_scope_exit: null,
     } as Goal;
     vi.mocked(updateGoal).mockResolvedValue(goal);
-    const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
+    const { result } = setup([node(`goal-${storedRowId(2)}`, { kind: "goal", status: "active" })]);
 
-    act(() => { result.current.cycleStatus("goal-2"); });
+    act(() => { result.current.cycleStatus(`goal-${storedRowId(2)}`); });
 
     await waitFor(() => expect(lane()[0]?.answer?.fields).toEqual({ status: "achieved" }));
   });
@@ -200,34 +200,34 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
 
 describe("useStatusCycle: refusals", () => {
   it("writes nothing for a Compound Task and shows the existing toast", () => {
-    const { result, showToast } = setup([todo("task-5", { compound: true })]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`, { compound: true })]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     expect(lane()).toEqual([]);
     expect(stepTaskStatus).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }));
   });
 
   it("writes nothing for Alt+Enter on Agentic work that is not Doing", () => {
-    const { result, showToast } = setup([node("task-5", { status: "todo", taskStatus: agentic("todo") })]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`, { status: "todo", taskStatus: agentic("todo") })]);
 
-    act(() => { result.current.toggleStarted("task-5"); });
+    act(() => { result.current.toggleStarted(`task-${storedRowId(5)}`); });
 
     expect(lane()).toEqual([]);
     expect(stepTaskStatus).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }));
   });
 
   it("rolls back a refused step and the presses after it on the node, but not another node's", async () => {
     const first = deferred<StatusStepOutcome>();
     vi.mocked(stepTaskStatus).mockReturnValueOnce(first.promise).mockReturnValue(new Promise(() => undefined));
-    const { result, showToast, byId } = setup([todo("task-5"), todo("task-6")]);
+    const { result, showToast, byId } = setup([todo(`task-${storedRowId(5)}`), todo(`task-${storedRowId(6)}`)]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
-    byId.set("task-5", todo("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") }));
-    act(() => { result.current.cycleStatus("task-5"); });
-    act(() => { result.current.cycleStatus("task-6"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
+    byId.set(`task-${storedRowId(5)}`, todo(`task-${storedRowId(5)}`, { status: "in_progress", taskStatus: ordinary("in_progress") }));
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(6)}`); });
     expect(lane()).toHaveLength(3);
 
     await act(async () => {
@@ -235,62 +235,62 @@ describe("useStatusCycle: refusals", () => {
       await first.promise;
     });
 
-    expect(lane().map((write) => write.nodeId)).toEqual(["task-6"]);
+    expect(lane().map((write) => write.nodeId)).toEqual([`task-${storedRowId(6)}`]);
     expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }));
   });
 
   it("rolls back and says why when the backend refuses Done over open sub-items", async () => {
     vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "refused", reason: "open_sub_items" });
-    const { result, showToast } = setup([node("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") })]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`, { status: "in_progress", taskStatus: ordinary("in_progress") })]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(lane()).toEqual([]));
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:openSubItemsRefused" });
+    expect(showToast).toHaveBeenCalledWith({ nodeId: `task-${storedRowId(5)}`, message: "warnings:openSubItemsRefused" });
   });
 
   it("rolls back and says why when the write is rejected", async () => {
     vi.mocked(stepTaskStatus).mockRejectedValue({ kind: "database", message: "db is locked" });
-    const { result, showToast } = setup([todo("task-5")]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(lane()).toEqual([]));
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "db is locked" });
+    expect(showToast).toHaveBeenCalledWith({ nodeId: `task-${storedRowId(5)}`, message: "db is locked" });
   });
 
   it("refuses on a read-only board with a notice and no patch", () => {
     useClientModeStore.setState({ status: readOnly() });
-    const { result, showToast } = setup([todo("task-5")]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
 
     expect(lane()).toEqual([]);
     expect(stepTaskStatus).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }));
   });
 
   it("says when the write took the task out of the Backlog", async () => {
     vi.mocked(stepTaskStatus).mockResolvedValue(written(task(5, { kind: "ordinary", status: "started" }), "by_started"));
-    const { result, showToast } = setup([todo("task-5", { backlogged: true })]);
+    const { result, showToast } = setup([todo(`task-${storedRowId(5)}`, { backlogged: true })]);
 
-    act(() => { result.current.toggleStarted("task-5"); });
+    act(() => { result.current.toggleStarted(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" })));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` })));
   });
 });
 
 describe("useStatusCycle: the occurrence guard", () => {
-  const MILK = [{ child_type: "task", child_id: 12, title: "buy milk" }];
+  const MILK = [{ child_type: "task", child_id: storedRowId(12), title: "buy milk" }];
   const HOLDING = { kind: "needs_confirmation", message: "still holds work", details: { children: MILK } };
-  const occurrence = () => node("task-5", { status: "in_progress", taskStatus: ordinary("in_progress") });
+  const occurrence = () => node(`task-${storedRowId(5)}`, { status: "in_progress", taskStatus: ordinary("in_progress") });
 
   it("rolls the press back without a toast and opens the prompt", async () => {
     vi.mocked(stepTaskStatus).mockRejectedValue(HOLDING);
     const { result, showToast } = setup([occurrence()]);
 
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
     expect(patchedFields()).toEqual([{ status: "done", taskStatus: ordinary("done") }]);
 
     await waitFor(() => expect(result.current.occurrencePrompt).not.toBeNull());
@@ -302,20 +302,20 @@ describe("useStatusCycle: the occurrence guard", () => {
   it("shows Done again on Confirm and sends it confirmed", async () => {
     vi.mocked(stepTaskStatus).mockRejectedValueOnce(HOLDING).mockReturnValue(new Promise(() => undefined));
     const { result } = setup([occurrence()]);
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
     await waitFor(() => expect(result.current.occurrencePrompt).not.toBeNull());
 
     act(() => { result.current.confirmOccurrence(); });
 
     expect(result.current.occurrencePrompt).toBeNull();
     expect(patchedFields()).toEqual([{ status: "done", taskStatus: ordinary("done") }]);
-    expect(stepTaskStatus).toHaveBeenLastCalledWith(5, "advance", true);
+    expect(stepTaskStatus).toHaveBeenLastCalledWith(storedRowId(5), "advance", true);
   });
 
   it("declining leaves the occurrence as it was and sends nothing more", async () => {
     vi.mocked(stepTaskStatus).mockRejectedValue(HOLDING);
     const { result } = setup([occurrence()]);
-    act(() => { result.current.cycleStatus("task-5"); });
+    act(() => { result.current.cycleStatus(`task-${storedRowId(5)}`); });
     await waitFor(() => expect(result.current.occurrencePrompt).not.toBeNull());
 
     act(() => { result.current.cancelOccurrence(); });
@@ -328,9 +328,9 @@ describe("useStatusCycle: the occurrence guard", () => {
 
 describe("useStatusCycle: what is left alone", () => {
   it("leaves a node that is not a task to its own gesture", () => {
-    const { result } = setup([node("commitment-5", { kind: "commitment" })]);
+    const { result } = setup([node(`commitment-${storedRowId(5)}`, { kind: "commitment" })]);
 
-    act(() => { result.current.toggleStarted("commitment-5"); });
+    act(() => { result.current.toggleStarted(`commitment-${storedRowId(5)}`); });
 
     expect(stepTaskStatus).not.toHaveBeenCalled();
     expect(lane()).toEqual([]);

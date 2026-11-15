@@ -15,7 +15,7 @@ vi.mock("react-i18next", () => ({
 
 function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "flowtask-2",
+    id: `flowtask-${storedRowId(2)}`,
     rowId: storedRowId(2),
     kind: "flow_task",
     title: "Implement",
@@ -28,7 +28,7 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 const SPECIFY: MindmapNode = {
-  id: "flowtask-1", rowId: storedRowId(1), kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
+  id: `flowtask-${storedRowId(1)}`, rowId: storedRowId(1), kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
   flowItem: { itemType: "flow_task", flowId: storedRowId(5), flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
 };
 
@@ -36,7 +36,7 @@ const defaultProps = {
   node: mkItem(),
   availableDeps: [SPECIFY],
   allTags: [],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -99,7 +99,7 @@ describe("FlowItemEditorModal", () => {
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
         template: {
-          tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
+          tag_ids: [storedRowId(4)], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
           compound: false,
           // An empty Expectation section is no template, and an empty brief section no brief.
           async_template: null,
@@ -160,7 +160,7 @@ describe("FlowItemEditorModal", () => {
 
   it("offers neither Compound nor a wait template on a goal item", async () => {
     const goal = mkItem({
-      id: "flowgoal-3", kind: "flow_goal",
+      id: `flowgoal-${storedRowId(3)}`, kind: "flow_goal",
       flowItem: { itemType: "flow_goal", flowId: storedRowId(5), flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
     });
     render(<FlowItemEditorModal {...defaultProps} node={goal} />);
@@ -231,7 +231,7 @@ describe("FlowItemEditorModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ addedDeps: [{ type: "flow_task", id: 1 }] }),
+        expect.objectContaining({ addedDeps: [{ type: "flow_task", id: storedRowId(1) }] }),
       ),
     );
   });
@@ -288,7 +288,7 @@ describe("FlowItemEditorModal — focus on open", () => {
 describe("FlowItemEditorModal — Commitment and wait items", () => {
   function commitmentItem(): MindmapNode {
     return mkItem({
-      id: "flowcommitment-3", rowId: storedRowId(3), kind: "flow_commitment", title: "Asleep by 23:00",
+      id: `flowcommitment-${storedRowId(3)}`, rowId: storedRowId(3), kind: "flow_commitment", title: "Asleep by 23:00",
       flowItem: {
         itemType: "flow_commitment", flowId: storedRowId(5), flowScopeN: 1, flowScopeKind: "week", cycles: [],
         dependsOn: [], template: {}, verdictWindow: { n: 2, kind: "day" },
@@ -298,7 +298,7 @@ describe("FlowItemEditorModal — Commitment and wait items", () => {
 
   function waitItem(): MindmapNode {
     return mkItem({
-      id: "flowexpectation-4", rowId: storedRowId(4), kind: "flow_expectation", title: "Coach replies",
+      id: `flowexpectation-${storedRowId(4)}`, rowId: storedRowId(4), kind: "flow_expectation", title: "Coach replies",
       flowItem: {
         itemType: "flow_expectation", flowId: storedRowId(5), flowScopeN: 1, flowScopeKind: "week", cycles: [],
         dependsOn: [], template: {}, checkEvery: { n: 1, kind: "day" }, firstCheck: { kind: "day", index: 3 },

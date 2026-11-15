@@ -40,7 +40,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
   }),
 }));
 
-const FLOW = 7;
+const FLOW = storedRowId(7);
 const RUN = habitRunId(FLOW);
 // The two week levels the run below expands into, keyed by the first day under each.
 const WEEK_ONE = `habitrun-${FLOW}-week-2026-09-08-virtual`;
@@ -63,7 +63,7 @@ function iteration(date: string, index: number, status = "todo"): MindmapNode {
   // A Habit occurrence, as the board loads one: a derived row, which can be stepped into.
   return {
     id: `habit-${FLOW}-${index}-virtual`, kind: "task", title: date, status, virtual: true,
-    ...occurrenceRow({ habitId: FLOW, itemType: "flow_root", index, startDate: date }),
+    ...occurrenceRow({ habitId: 7, itemType: "flow_root", index, startDate: date }),
     habitIteration, position: index, tagIds: [], children: [],
   };
 }
@@ -79,10 +79,10 @@ function hostWith(iterations: MindmapNode[]): MindmapNode {
   return {
     id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
     children: [{
-      id: "goal-5", rowId: storedRowId(5), kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
+      id: `goal-${storedRowId(5)}`, rowId: storedRowId(5), kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
       children: [
         ...iterations,
-        { id: "task-9", rowId: storedRowId(9), kind: "task", title: "Live task", status: "todo", position: 9, tagIds: [], children: [] },
+        { id: `task-${storedRowId(9)}`, rowId: storedRowId(9), kind: "task", title: "Live task", status: "todo", position: 9, tagIds: [], children: [] },
       ],
     }],
   };
@@ -106,7 +106,7 @@ function mockTree(tree: MindmapNode): void {
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
     pasteNodes: vi.fn().mockResolvedValue([]),
-    insertParent: vi.fn().mockResolvedValue("domain-99"),
+    insertParent: vi.fn().mockResolvedValue(`domain-${storedRowId(99)}`),
     removeNode: vi.fn(),
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
@@ -146,7 +146,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useDisplayStore.setState({ habitCollapseThreshold: 3 });
   useMindmapStore.setState({
-    subtreeRootId: "goal-5", subtreeNav: null, pendingToast: null, searchOpen: false,
+    subtreeRootId: `goal-${storedRowId(5)}`, subtreeNav: null, pendingToast: null, searchOpen: false,
     selectedNodeId: null, selectedNodeIds: new Set(),
   });
   useViewStore.setState({ stepsZoom: 3 });
@@ -156,14 +156,14 @@ describe("a run of passed Habit iterations on a Step", () => {
   it("folds into one card once the run reaches the threshold", () => {
     mockTree(hostWith(DATES.slice(0, 3).map((date, index) => iteration(date, index))));
     render(<StepsView />);
-    expect(cardIds()).toEqual(["goal-5", RUN, "task-9"]);
+    expect(cardIds()).toEqual([`goal-${storedRowId(5)}`, RUN, `task-${storedRowId(9)}`]);
   });
 
   it("stays as separate cards below the threshold", () => {
     useDisplayStore.setState({ habitCollapseThreshold: 4 });
     mockTree(hostWith(DATES.slice(0, 3).map((date, index) => iteration(date, index))));
     render(<StepsView />);
-    expect(cardIds()).toEqual(["goal-5", "habit-7-0-virtual", "habit-7-1-virtual", "habit-7-2-virtual", "task-9"]);
+    expect(cardIds()).toEqual([`goal-${storedRowId(5)}`, `habit-${FLOW}-0-virtual`, `habit-${FLOW}-1-virtual`, `habit-${FLOW}-2-virtual`, `task-${storedRowId(9)}`]);
   });
 
   it("is titled with its Habit and its tally, and names its day span in a tooltip", () => {
@@ -187,7 +187,7 @@ describe("a run of passed Habit iterations on a Step", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
     render(<StepsView />);
     expect(cardIds()).not.toContain(RUN);
-    expect(cardIds()).toContain("habit-7-0-virtual");
+    expect(cardIds()).toContain(`habit-${FLOW}-0-virtual`);
   });
 });
 
@@ -203,18 +203,18 @@ describe("descending into a folded run", () => {
     press("Enter");
     expect(useMindmapStore.getState().subtreeRootId).toBe(RUN);
     expect(cardIds()).toEqual([RUN, WEEK_ONE, WEEK_TWO]);
-    expect(crumbs()).toEqual([null, "goal-5"]);
+    expect(crumbs()).toEqual([null, `goal-${storedRowId(5)}`]);
 
     select(WEEK_TWO);
     press("Enter");
-    expect(cardIds()).toEqual([WEEK_TWO, "habit-7-2-virtual", "habit-7-3-virtual"]);
-    expect(crumbs()).toEqual([null, "goal-5", RUN]);
+    expect(cardIds()).toEqual([WEEK_TWO, `habit-${FLOW}-2-virtual`, `habit-${FLOW}-3-virtual`]);
+    expect(crumbs()).toEqual([null, `goal-${storedRowId(5)}`, RUN]);
 
     // An iteration is a real Step, and climbing out of it lands on the level it was drawn in.
-    select("habit-7-3-virtual");
+    select(`habit-${FLOW}-3-virtual`);
     press("Enter");
-    expect(useMindmapStore.getState().subtreeRootId).toBe("habit-7-3-virtual");
-    expect(crumbs()).toEqual([null, "goal-5", RUN, WEEK_TWO]);
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`habit-${FLOW}-3-virtual`);
+    expect(crumbs()).toEqual([null, `goal-${storedRowId(5)}`, RUN, WEEK_TWO]);
   });
 
   it("restores a run or a level saved as the tab's subtree root once the board has loaded", () => {
@@ -226,8 +226,8 @@ describe("descending into a folded run", () => {
     rerender(<StepsView />);
 
     expect(useMindmapStore.getState().subtreeRootId).toBe(WEEK_ONE);
-    expect(cardIds()).toEqual([WEEK_ONE, "habit-7-0-virtual", "habit-7-1-virtual"]);
-    expect(crumbs()).toEqual([null, "goal-5", RUN]);
+    expect(cardIds()).toEqual([WEEK_ONE, `habit-${FLOW}-0-virtual`, `habit-${FLOW}-1-virtual`]);
+    expect(crumbs()).toEqual([null, `goal-${storedRowId(5)}`, RUN]);
   });
 
   it("climbs to the run when a saved level is no longer drawn, rather than to the true root", () => {
@@ -240,7 +240,7 @@ describe("descending into a folded run", () => {
     useDisplayStore.setState({ habitCollapseThreshold: 9 });
     useMindmapStore.setState({ subtreeRootId: RUN });
     render(<StepsView />);
-    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-5");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`goal-${storedRowId(5)}`);
   });
 });
 

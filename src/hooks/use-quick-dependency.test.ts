@@ -74,11 +74,11 @@ function node(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Min
 function board(): MindmapNode {
   return node("root", "domain", {
     children: [
-      node("task-1", "task", { title: "Ship it" }),
-      node("task-2", "task", { title: "Write the tests" }),
-      node("task-3", "task", { title: "Old tests", archived: true }),
+      node(`task-${storedRowId(1)}`, "task", { title: "Ship it" }),
+      node(`task-${storedRowId(2)}`, "task", { title: "Write the tests" }),
+      node(`task-${storedRowId(3)}`, "task", { title: "Old tests", archived: true }),
       node("expectation-7", "expectation", { title: "Tests from Dana" }),
-      node("goal-4", "goal"),
+      node(`goal-${storedRowId(4)}`, "goal"),
     ],
   });
 }
@@ -107,19 +107,19 @@ describe("useQuickDependency — opening", () => {
   it("opens on a Task and offers the other Tasks, the Goals and the stored waits, archived ones left out", async () => {
     installBackend();
     const { result } = setup();
-    act(() => { result.current.open(["task-1"]); });
-    expect(result.current.target).toMatchObject({ anchorId: "task-1", candidates: null });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
+    expect(result.current.target).toMatchObject({ anchorId: `task-${storedRowId(1)}`, candidates: null });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "expectation-7", "goal-4"]);
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual([`task-${storedRowId(2)}`, "expectation-7", `goal-${storedRowId(4)}`]);
   });
 
   it("offers archived nodes too when Settings says search includes them", async () => {
     installBackend();
     useDisplayStore.setState({ searchIncludesArchived: true });
     const { result } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "task-3", "expectation-7", "goal-4"]);
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual([`task-${storedRowId(2)}`, `task-${storedRowId(3)}`, "expectation-7", `goal-${storedRowId(4)}`]);
   });
 
   it("offers only what the backend offers for the Task", async () => {
@@ -127,25 +127,25 @@ describe("useQuickDependency — opening", () => {
     // (`tasks::rules::dependencies::candidates`); the picker offers what comes back.
     installBackend({ candidates: [{ type: "goal", id: storedRowId(4) }] });
     const { result } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["goal-4"]);
-    expect(tauriInvoke).toHaveBeenCalledWith("dependency_candidates", { id: 1 });
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual([`goal-${storedRowId(4)}`]);
+    expect(tauriInvoke).toHaveBeenCalledWith("dependency_candidates", { id: storedRowId(1) });
   });
 
   it("refuses a node that holds no dependencies, by name", () => {
     installBackend();
     const { result, showToast } = setup();
-    act(() => { result.current.open(["goal-4"]); });
+    act(() => { result.current.open([`goal-${storedRowId(4)}`]); });
     expect(result.current.target).toBeNull();
     expect(lastToast(showToast)).toContain("warnings:quickDependencyNotTask");
-    expect(lastToast(showToast)).toContain("goal-4");
+    expect(lastToast(showToast)).toContain(`goal-${storedRowId(4)}`);
   });
 
   it("asks a multi-selection to narrow to one Task", () => {
     installBackend();
     const { result, showToast } = setup();
-    act(() => { result.current.open(["task-1", "task-2"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`, `task-${storedRowId(2)}`]); });
     expect(result.current.target).toBeNull();
     expect(lastToast(showToast)).toBe("warnings:quickDependencyOneAtATime");
   });
@@ -153,7 +153,7 @@ describe("useQuickDependency — opening", () => {
   it("closes and says so when the candidates cannot be read", async () => {
     installBackend({ refuseCandidates: "database is locked" });
     const { result, showToast } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     await waitFor(() => expect(result.current.target).toBeNull());
     expect(lastToast(showToast)).toContain("database is locked");
   });
@@ -163,7 +163,7 @@ describe("useQuickDependency — adding", () => {
   it("writes the edge in one Gesture and reloads the board", async () => {
     const backend = installBackend();
     const { result, settle } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
     const wait = result.current.target?.candidates?.find((c) => c.id === "expectation-7");
     if (wait === undefined) throw new Error("the wait was not offered");
@@ -174,7 +174,7 @@ describe("useQuickDependency — adding", () => {
     await act(async () => { await result.current.apply(wait); });
     expect(backend.writes).toEqual([{
       command: "add_task_dependency",
-      args: { taskId: 1, dependency: { type: "expectation", id: 7 } },
+      args: { taskId: storedRowId(1), dependency: { type: "expectation", id: storedRowId(7) } },
       gesture: `gesture-${before + 1}`,
     }]);
     expect(backend.gestures()).toBe(before + 1);
@@ -185,9 +185,9 @@ describe("useQuickDependency — adding", () => {
   it("shows the backend's refusal — a cycle it could see and the search could not — as a toast", async () => {
     installBackend({ refuseWrite: "adding this dependency would create a cycle" });
     const { result, settle, showToast } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    const other = result.current.target?.candidates?.find((c) => c.id === "task-2");
+    const other = result.current.target?.candidates?.find((c) => c.id === `task-${storedRowId(2)}`);
     if (other === undefined) throw new Error("task-2 was not offered");
 
     await act(async () => { await result.current.apply(other); });
@@ -201,7 +201,7 @@ describe("useQuickDependency — adding", () => {
   it("closes without a write", async () => {
     const backend = installBackend();
     const { result } = setup();
-    act(() => { result.current.open(["task-1"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`]); });
     act(() => { result.current.close(); });
     await Promise.resolve();
     expect(result.current.target).toBeNull();

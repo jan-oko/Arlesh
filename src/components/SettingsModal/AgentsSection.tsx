@@ -49,7 +49,7 @@ export default function AgentsSection() {
   const topLevel = overview.agents.filter(
     ({ agent }) => agent.parent_id === null || !listed.has(agent.parent_id),
   );
-  const childrenOf = (id: string) => overview.agents.filter(({ agent }) => agent.parent_id === id);
+  const childrenOf = (id: number) => overview.agents.filter(({ agent }) => agent.parent_id === id);
   const accountOf = (summary: AgentSummary) =>
     overview.accounts.find((account) => account.label === summary.agent.account);
 

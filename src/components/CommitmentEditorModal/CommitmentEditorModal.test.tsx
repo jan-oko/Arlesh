@@ -16,7 +16,7 @@ vi.mock("react-i18next", () => ({
 // emit unhandled rejections.
 vi.mock("@/api/scopes", () => ({
   getScope: vi.fn().mockResolvedValue({
-    id: 1, kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
+    id: storedRowId(1), kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
     start_datetime: null, end_datetime: null, part: null,
   }),
   getOrCreateScope: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("@/api/scopes", () => ({
 
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "commitment-1",
+    id: `commitment-${storedRowId(1)}`,
     kind: "commitment",
     title: "Asleep by 23:00",
     verdict: "unresolved",
@@ -36,7 +36,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAG_A = mkTag(1, "frontend");
@@ -45,7 +45,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -81,7 +81,7 @@ describe("CommitmentEditorModal — save", () => {
       expect(defaultProps.onSave).toHaveBeenCalledWith({
         title: "Asleep by 23:00",
         verdict: "unresolved",
-        tagIds: [2],
+        tagIds: [storedRowId(2)],
         timeScope: null,
         verdictWindow: null,
         isPrivate: false,

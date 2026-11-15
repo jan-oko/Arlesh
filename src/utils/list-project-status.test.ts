@@ -44,7 +44,7 @@ describe("List View: filtering by Project status", () => {
   it("carries a project's status from the domain row onto the task row", () => {
     const rows = rowsFor([ASPECT, PROJECT]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.projectRef).toBe("domain-25");
+    expect(rows[0]?.projectRef).toBe(`domain-${storedRowId(25)}`);
     expect(rows[0]?.projectStatus).toBe("active");
   });
 

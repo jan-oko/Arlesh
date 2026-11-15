@@ -14,7 +14,7 @@ describe("asyncTemplateToSave", () => {
 
   it("gives a section with anything but a title the default title", () => {
     const saved = asyncTemplateToSave({ title: "  ", tag_ids: [storedRowId(4)] }, true, "Waiting on X");
-    expect(saved).toEqual({ title: "Waiting on X", tag_ids: [4] });
+    expect(saved).toEqual({ title: "Waiting on X", tag_ids: [storedRowId(4)] });
   });
 
   it("trims a title of its own", () => {

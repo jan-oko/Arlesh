@@ -70,13 +70,13 @@ function ListViewInApp() {
 
 /** A row id per fixture id, stable across the file. `commitment-7` draws row 7; a fixture named
  * by word (`task-parent`) draws one of its own, numbered from 1000 so it meets no numbered one. */
-const wordRows = new Map<string, number>();
-function fixtureRow(id: string): number {
+const wordRows = new Map<string, string>();
+function fixtureRow(id: string): string {
   const numbered = fixtureRowId(id).rowId;
   if (numbered !== undefined) return numbered;
   const known = wordRows.get(id);
   if (known !== undefined) return known;
-  const next = 1000 + wordRows.size;
+  const next = storedRowId(1000 + wordRows.size);
   wordRows.set(id, next);
   return next;
 }

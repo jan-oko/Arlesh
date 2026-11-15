@@ -21,7 +21,7 @@ export interface Claim {
 
 /** One agent. */
 export interface Agent {
-  id: string;
+  id: number;
   name: string;
   account: string;
   session_uuid: string;
@@ -30,7 +30,7 @@ export interface Agent {
   created_at: string;
   last_seen_at: string | null;
   /** The agent this one is a child of (a registered subagent), or null for an agent. */
-  parent_id: string | null;
+  parent_id: number | null;
 }
 
 /** Where an agent's Claim stands among the others. */
@@ -97,7 +97,7 @@ export async function issueAgentPin(): Promise<IssuedPin> {
 }
 
 /** Pauses, resumes, releases, locks or removes one agent. */
-export async function applyAgentAction(id: string, action: AgentAction): Promise<void> {
+export async function applyAgentAction(id: number, action: AgentAction): Promise<void> {
   return invoke<void>("apply_agent_action", { id, action });
 }
 

@@ -39,7 +39,7 @@ describe("tag filters", () => {
   it("adds a tag in the mode it is given, once", () => {
     useFilterStore.getState().addTagFilter(storedRowId(3), "exclude");
     useFilterStore.getState().addTagFilter(storedRowId(3), "all");
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 3, mode: "exclude" }]);
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(3), mode: "exclude" }]);
   });
 
   it("cycles a tag All → Any → Not → All", () => {

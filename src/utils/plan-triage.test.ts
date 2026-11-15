@@ -36,13 +36,13 @@ const REAL = [K1, K1, K2, K3, K4, K5, K6] as const;
 // Tuesday's morning, for a plan into a part of the day.
 const MORNING: ScopeKey = { kind: "part_of_day", date: "2026-09-22", part: "morning" };
 
-function real(id: number) {
+function real(id: string) {
   const key = REAL[id];
   if (key === undefined) throw new Error(`no real key for fixture ${id}`);
   return { start_id: key, end_id: key };
 }
 
-function scope(id: number) {
+function scope(id: string) {
   return { start_id: testKey(id), end_id: testKey(id) };
 }
 

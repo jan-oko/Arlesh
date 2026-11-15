@@ -106,7 +106,7 @@ function fakeServer(published = true) {
       return {
         epoch: server.epoch, seq: server.seq, revision: server.revision, now: "2026-11-13T12:00:00",
         hash: hash ?? indexBoard(emptyBoard(title)).digests.total,
-        changes: { tasks: { set: [["task-1", mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title })]], del: [] } },
+        changes: { tasks: { set: [[`task-${storedRowId(1)}`, mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title })]], del: [] } },
       };
     },
   };
@@ -167,7 +167,7 @@ describe("a write and the event it brings about", () => {
     const before = server.boardFetches;
 
     let write: Promise<void> = Promise.resolve();
-    act(() => { write = hook?.result.current.renameNode("task-1", "task", "Renamed") ?? Promise.resolve(); });
+    act(() => { write = hook?.result.current.renameNode(`task-${storedRowId(1)}`, "task", "Renamed") ?? Promise.resolve(); });
     await act(async () => { await write; });
     server.fence = { epoch: EPOCH, revision: 1 };
     let settled = false;

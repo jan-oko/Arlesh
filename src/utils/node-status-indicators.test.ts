@@ -241,7 +241,7 @@ describe("deriveStatusIndicators — visible to the MCP", () => {
 
 describe("deriveStatusIndicators — an agent waiting on you", () => {
   const wait = (rowId: number, review: boolean): MindmapNode => ({
-    id: `expectation-${rowId}`, rowId, kind: "expectation", title: "w", position: 0, tagIds: [], children: [],
+    id: `expectation-${rowId}`, rowId: storedRowId(rowId), kind: "expectation", title: "w", position: 0, tagIds: [], children: [],
     agentWaiting: { note: null, question: true, answer: null, ...(review ? { review: { links: [], hand_tests: [] } } : {}) },
   });
 

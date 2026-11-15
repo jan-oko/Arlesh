@@ -50,7 +50,7 @@ describe("updateDomain", () => {
     const updated = { ...mockDomain, title: "Personal" };
     mockCommandOnce(updated);
     const result = await updateDomain(storedRowId(1), { title: "Personal" });
-    expect(invoke).toHaveBeenCalledWith("update_domain", { id: 1, request: { title: "Personal" } });
+    expect(invoke).toHaveBeenCalledWith("update_domain", { id: storedRowId(1), request: { title: "Personal" } });
     expect(result.title).toBe("Personal");
   });
 });
@@ -59,6 +59,6 @@ describe("deleteDomain", () => {
   it("calls invoke with delete_domain and the id", async () => {
     mockCommandOnce(undefined);
     await deleteDomain(storedRowId(7));
-    expect(invoke).toHaveBeenCalledWith("delete_domain", { id: 7 });
+    expect(invoke).toHaveBeenCalledWith("delete_domain", { id: storedRowId(7) });
   });
 });

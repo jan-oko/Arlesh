@@ -18,8 +18,8 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
-function wait(id: string, rowId: number, agentWaiting: NonNullable<MindmapNode["agentWaiting"]>): MindmapNode {
-  return { id, rowId, kind: "expectation", title: id, position: 0, tagIds: [], children: [], agentWaiting };
+function wait(id: string, rowNumber: number, agentWaiting: NonNullable<MindmapNode["agentWaiting"]>): MindmapNode {
+  return { id, rowId: storedRowId(rowNumber), kind: "expectation", title: id, position: 0, tagIds: [], children: [], agentWaiting };
 }
 
 function renderRow(n: MindmapNode) {

@@ -32,52 +32,52 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskCompound", () => {
   it("makes a task consist purely of its sub-items in one press, children or none", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, settle } = setup([node("task-5")]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleCompound("task-5"); });
+    act(() => { result.current.toggleCompound(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { compound: true }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { compound: true }));
     await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("switches it off with the flag alone, so the backend keeps the status it showed", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result } = setup([node("task-5", { compound: true, status: "in_progress" })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { compound: true, status: "in_progress" })]);
 
-    act(() => { result.current.toggleCompound("task-5"); });
+    act(() => { result.current.toggleCompound(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { compound: false }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { compound: false }));
   });
 
   it("switches an occurrence of a flow Task item, over its item's flag", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const fields = occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 });
-    const { result } = setup([node("task-4", { ...fields })]);
+    const { result } = setup([node(`task-${storedRowId(4)}`, { ...fields })]);
 
-    act(() => { result.current.toggleCompound("task-4"); });
+    act(() => { result.current.toggleCompound(`task-${storedRowId(4)}`); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(fields.rowId, { compound: true }));
   });
 
   it("turns a check task away out loud: its status is the check itself", () => {
-    const check = node("task-3", {
+    const check = node(`task-${storedRowId(3)}`, {
       rowId: "00000000-0000-5000-8000-000000000003",
       origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(4), due_at: "2026-01-05T09:00:00" },
       capabilities: DERIVED_WAIT_CAPABILITIES,
     });
     const { result, showToast } = setup([check]);
 
-    act(() => { result.current.toggleCompound("task-3"); });
+    act(() => { result.current.toggleCompound(`task-${storedRowId(3)}`); });
 
     expect(updateTask).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-3" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(3)}` }));
   });
 
   it("declines every node that is not a task", () => {
-    const { result } = setup([node("goal-1", { kind: "goal" })]);
+    const { result } = setup([node(`goal-${storedRowId(1)}`, { kind: "goal" })]);
 
     act(() => {
-      result.current.toggleCompound("goal-1");
+      result.current.toggleCompound(`goal-${storedRowId(1)}`);
       result.current.toggleCompound("task-missing");
     });
 
@@ -86,10 +86,10 @@ describe("useTaskCompound", () => {
 
   it("says so when the write fails", async () => {
     vi.mocked(updateTask).mockRejectedValue(new Error("db is gone"));
-    const { result, showToast } = setup([node("task-5")]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleCompound("task-5"); });
+    act(() => { result.current.toggleCompound(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" })));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` })));
   });
 });

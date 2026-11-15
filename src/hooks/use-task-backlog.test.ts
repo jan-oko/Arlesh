@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -36,28 +37,28 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskBacklog", () => {
   it("puts an ordinary task in the backlog", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, settle } = setup([node("task-5", { status: "todo" })]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`, { status: "todo" })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "backlog" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { archival: "backlog" }));
     await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("takes a backlogged task back out — the same key reverses itself", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result } = setup([node("task-5", { status: "in_progress", backlogged: true })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { status: "in_progress", backlogged: true })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "live" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { archival: "live" }));
   });
 
   it("raises a prompt instead of silently dropping a planned task's Plan", async () => {
     vi.mocked(updateTask).mockRejectedValue(NEEDS_CONFIRMATION);
-    const { result } = setup([node("task-5", { status: "todo", plan: PLAN, title: "Ship it" })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { status: "todo", plan: PLAN, title: "Ship it" })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(result.current.planPrompt).not.toBeNull());
     expect(result.current.planPrompt?.title).toBe("Ship it");
@@ -66,14 +67,14 @@ describe("useTaskBacklog", () => {
 
   it("clears the Plan and backlogs in one write when the prompt is accepted", async () => {
     vi.mocked(updateTask).mockRejectedValueOnce(NEEDS_CONFIRMATION).mockResolvedValue({} as never);
-    const { result, settle } = setup([node("task-5", { status: "todo", plan: PLAN })]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`, { status: "todo", plan: PLAN })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
     await waitFor(() => expect(result.current.planPrompt).not.toBeNull());
     act(() => { result.current.confirmClearPlan(); });
 
     await waitFor(() =>
-      expect(updateTask).toHaveBeenLastCalledWith(5, { archival: "backlog", plan: null }),
+      expect(updateTask).toHaveBeenLastCalledWith(storedRowId(5), { archival: "backlog", plan: null }),
     );
     await waitFor(() => expect(settle).toHaveBeenCalled());
     expect(result.current.planPrompt).toBeNull();
@@ -81,9 +82,9 @@ describe("useTaskBacklog", () => {
 
   it("declining writes nothing — the task keeps its plan and stays out of the backlog", async () => {
     vi.mocked(updateTask).mockRejectedValue(NEEDS_CONFIRMATION);
-    const { result } = setup([node("task-5", { status: "todo", plan: PLAN })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { status: "todo", plan: PLAN })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
     await waitFor(() => expect(result.current.planPrompt).not.toBeNull());
     act(() => { result.current.cancelPlanPrompt(); });
 
@@ -94,9 +95,9 @@ describe("useTaskBacklog", () => {
 
   it("reports a real failure as a toast rather than as a prompt", async () => {
     vi.mocked(updateTask).mockRejectedValue({ kind: "database", message: "disk is full" });
-    const { result, showToast } = setup([node("task-5", { status: "todo" })]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`, { status: "todo" })]);
 
-    act(() => { result.current.toggleBacklog("task-5"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(showToast).toHaveBeenCalled());
     expect(result.current.planPrompt).toBeNull();
@@ -104,12 +105,12 @@ describe("useTaskBacklog", () => {
 
   it("ignores a goal and a container — neither has a backlog column", () => {
     const { result } = setup([
-      { ...node("goal-1"), kind: "goal" },
+      { ...node(`goal-${storedRowId(1)}`), kind: "goal" },
       { ...node("project-1"), kind: "project" },
     ]);
 
     act(() => {
-      result.current.toggleBacklog("goal-1");
+      result.current.toggleBacklog(`goal-${storedRowId(1)}`);
       result.current.toggleBacklog("project-1");
       result.current.toggleBacklog("task-missing");
     });
@@ -118,11 +119,11 @@ describe("useTaskBacklog", () => {
   });
 
   it("sets a Habit occurrence aside on its own row", async () => {
-    const occurrence = node("task-9", { ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2 }) });
+    const occurrence = node(`task-${storedRowId(9)}`, { ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2 }) });
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const { result } = setup([occurrence]);
 
-    act(() => { result.current.toggleBacklog("task-9"); });
+    act(() => { result.current.toggleBacklog(`task-${storedRowId(9)}`); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(occurrence.rowId, { archival: "backlog" }));
   });

@@ -18,8 +18,8 @@ describe("flattenTaskRows", () => {
     const root = n("habit-root", "task", occurrenceRow({ itemType: "flow_root" }), [
       n("habit-item", "task", occurrenceRow({ itemType: "flow_task" })),
     ]);
-    const stored = n("task-1", "task", {}, [n("task-2", "task")]);
-    const lang = n("domain-71", "project", { title: "LANG" }, [root, stored]);
+    const stored = n(`task-${storedRowId(1)}`, "task", {}, [n(`task-${storedRowId(2)}`, "task")]);
+    const lang = n(`domain-${storedRowId(71)}`, "project", { title: "LANG" }, [root, stored]);
     const board = n("root", "domain", {}, [n("aspect-1", "aspect", { title: "Growth" }, [lang])]);
     const paths = (frame: MindmapNode) =>
       new Map(flattenTaskRows(frame, []).map((r) => [r.node.id, r.ancestors.map((a) => a.title)]));
@@ -27,12 +27,12 @@ describe("flattenTaskRows", () => {
     const whole = paths(board);
     expect(whole.get("habit-root")).toEqual(["Growth", "LANG"]);
     expect(whole.get("habit-item")).toEqual(["Growth", "LANG", "habit-root"]);
-    expect(whole.get("habit-root")).toEqual(whole.get("task-1"));
+    expect(whole.get("habit-root")).toEqual(whole.get(`task-${storedRowId(1)}`));
 
     // Entered on the project, the project frames the list: neither has a path above it.
     const entered = paths(lang);
     expect(entered.get("habit-root")).toEqual([]);
-    expect(entered.get("habit-root")).toEqual(entered.get("task-1"));
+    expect(entered.get("habit-root")).toEqual(entered.get(`task-${storedRowId(1)}`));
     expect(entered.get("habit-item")).toEqual(["habit-root"]);
   });
 
@@ -40,39 +40,39 @@ describe("flattenTaskRows", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { status: "active" }, [
-          n("goal-1", "goal", { status: "active" }, [
-            n("task-1", "task", { status: "todo" }),
+          n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
+            n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
           ]),
         ]),
       ]),
     ]);
     const rows = flattenTaskRows(tree, []);
-    expect(rows.map((r) => r.node.id)).toEqual(["task-1"]);
+    expect(rows.map((r) => r.node.id)).toEqual([`task-${storedRowId(1)}`]);
   });
 
   it("resolves the nearest ancestor Goal and Project, with their status", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { status: "frozen" }, [
-          n("goal-1", "goal", { status: "achieved" }, [
-            n("task-1", "task", { status: "todo" }),
+          n(`goal-${storedRowId(1)}`, "goal", { status: "achieved" }, [
+            n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
           ]),
         ]),
       ]),
     ]);
     const [row] = flattenTaskRows(tree, []);
-    expect(row?.goalRef).toBe("goal-1");
+    expect(row?.goalRef).toBe(`goal-${storedRowId(1)}`);
     expect(row?.goalStatus).toBe("achieved");
     expect(row?.projectRef).toBe("project-1");
     expect(row?.projectStatus).toBe("frozen");
-    expect(row?.ancestors.map((a) => a.id)).toEqual(["aspect-1", "project-1", "goal-1"]);
+    expect(row?.ancestors.map((a) => a.id)).toEqual(["aspect-1", "project-1", `goal-${storedRowId(1)}`]);
   });
 
   it("a task directly under a project has no resolved goal", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { status: "active" }, [
-          n("task-1", "task", { status: "todo" }),
+          n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
         ]),
       ]),
     ]);
@@ -119,8 +119,8 @@ describe("flattenTaskRows", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { isPrivate: true }, [
-          n("goal-1", "goal", { status: "active", isPrivate: false }, [
-            n("task-1", "task", { status: "todo", isPrivate: false }),
+          n(`goal-${storedRowId(1)}`, "goal", { status: "active", isPrivate: false }, [
+            n(`task-${storedRowId(1)}`, "task", { status: "todo", isPrivate: false }),
           ]),
         ]),
       ]),
@@ -131,19 +131,19 @@ describe("flattenTaskRows", () => {
   });
 
   it("hasPrivateAncestor is false when no ancestor is marked private", () => {
-    const tree = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n("task-1", "task", { status: "todo" })])]);
+    const tree = n("root", "domain", {}, [n("aspect-1", "aspect", {}, [n(`task-${storedRowId(1)}`, "task", { status: "todo" })])]);
     const [row] = flattenTaskRows(tree, []);
     expect(row?.hasPrivateAncestor).toBe(false);
   });
 
   it("resolves this task's own dependency edges to target node ids", () => {
-    const tree = n("root", "domain", {}, [n("task-5", "task", { status: "todo" })]);
+    const tree = n("root", "domain", {}, [n(`task-${storedRowId(5)}`, "task", { status: "todo" })]);
     const deps: TaskDependencyEdge[] = [
       { task_id: storedRowId(5), dependency_type: "task", dependency_id: storedRowId(9) },
       { task_id: storedRowId(5), dependency_type: "goal", dependency_id: storedRowId(2) },
     ];
     const [row] = flattenTaskRows(tree, deps);
-    expect(row?.dependencyRefs.sort()).toEqual(["goal-2", "task-9"]);
+    expect(row?.dependencyRefs.sort()).toEqual([`goal-${storedRowId(2)}`, `task-${storedRowId(9)}`]);
   });
 });
 
@@ -162,9 +162,9 @@ describe("groupRowsByPath", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { status: "active" }, [
-          n("goal-1", "goal", { status: "active" }, [
-            n("task-1", "task", { status: "todo" }),
-            n("task-2", "task", { status: "todo" }),
+          n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
+            n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+            n(`task-${storedRowId(2)}`, "task", { status: "todo" }),
           ]),
         ]),
       ]),
@@ -179,8 +179,8 @@ describe("groupRowsByPath", () => {
   it("opens a new header where the path changes", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [n("task-1", "task", { status: "todo" })]),
-        n("goal-2", "goal", { status: "active" }, [n("task-2", "task", { status: "todo" })]),
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [n(`task-${storedRowId(1)}`, "task", { status: "todo" })]),
+        n(`goal-${storedRowId(2)}`, "goal", { status: "active" }, [n(`task-${storedRowId(2)}`, "task", { status: "todo" })]),
       ]),
     ]);
     expect(rendered(groupRowsByPath(flattenTaskRows(tree, [])))).toEqual([
@@ -190,14 +190,14 @@ describe("groupRowsByPath", () => {
   });
 
   it("renders no header for a task with no ancestors", () => {
-    const tree = n("root", "domain", {}, [n("task-1", "task", { status: "todo" })]);
+    const tree = n("root", "domain", {}, [n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     expect(rendered(groupRowsByPath(flattenTaskRows(tree, [])))).toEqual(["task:task-1@0"]);
   });
 
   it("keeps a parent task out of the header when it is itself a row, and counts it as depth", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
           n("task-parent", "task", { status: "todo" }, [
             n("task-child", "task", { status: "todo" }),
           ]),
@@ -214,7 +214,7 @@ describe("groupRowsByPath", () => {
   it("indents each step of a chain whose every link is a row", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
           n("task-a", "task", { status: "todo" }, [
             n("task-b", "task", { status: "todo" }, [
               n("task-c", "task", { status: "todo" }),
@@ -234,7 +234,7 @@ describe("groupRowsByPath", () => {
   it("counts only the ancestor tasks that are rows: two of three hidden leaves the row at depth 1", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
           n("task-a", "task", { status: "todo" }, [
             n("task-b", "task", { status: "in_progress" }, [
               n("task-c", "task", { status: "todo" }, [
@@ -258,7 +258,7 @@ describe("groupRowsByPath", () => {
   it("moves a parent task into the header when the active filter hides it", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
           n("task-parent", "task", { status: "todo" }, [
             n("task-child", "task", { status: "in_progress" }),
           ]),
@@ -276,7 +276,7 @@ describe("groupRowsByPath", () => {
   it("splits one goal's run per hidden parent, so no row is shown without its stated parent", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
           n("task-p", "task", { status: "todo" }, [n("task-a", "task", { status: "in_progress" })]),
           n("task-q", "task", { status: "todo" }, [n("task-b", "task", { status: "in_progress" })]),
         ]),
@@ -292,9 +292,9 @@ describe("groupRowsByPath", () => {
   it("still names a run's path when filtering has reduced it to a single row", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
-          n("task-1", "task", { status: "todo" }),
-          n("task-2", "task", { status: "done" }),
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
+          n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+          n(`task-${storedRowId(2)}`, "task", { status: "done" }),
         ]),
       ]),
     ]);
@@ -305,10 +305,10 @@ describe("groupRowsByPath", () => {
   it("gives each run its own key even when the same path recurs further down the list", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
-        n("goal-1", "goal", { status: "active" }, [
-          n("task-1", "task", { status: "todo" }),
-          n("task-p", "task", { status: "done" }, [n("task-2", "task", { status: "todo" })]),
-          n("task-3", "task", { status: "todo" }),
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
+          n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+          n("task-p", "task", { status: "done" }, [n(`task-${storedRowId(2)}`, "task", { status: "todo" })]),
+          n(`task-${storedRowId(3)}`, "task", { status: "todo" }),
         ]),
       ]),
     ]);
@@ -323,14 +323,14 @@ describe("groupRowsByPath", () => {
   it("carries the header's own nodes, so each segment is addressable as a filter value", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", { title: "Growth" }, [
-        n("goal-1", "goal", { status: "active", title: "Ship it" }, [n("task-1", "task", { status: "todo" })]),
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active", title: "Ship it" }, [n(`task-${storedRowId(1)}`, "task", { status: "todo" })]),
       ]),
     ]);
     const [header] = groupRowsByPath(flattenTaskRows(tree, []));
     expect(header?.type).toBe("path");
     if (header?.type !== "path") throw new Error("expected a path header first");
     expect(header.segments.map((s) => s.title)).toEqual(["Growth", "Ship it"]);
-    expect(header.segments.map((s) => s.id)).toEqual(["aspect-1", "goal-1"]);
+    expect(header.segments.map((s) => s.id)).toEqual(["aspect-1", `goal-${storedRowId(1)}`]);
   });
 });
 
@@ -344,9 +344,9 @@ describe("flattening from a subtree root", () => {
   const tree = n("root", "domain", {}, [
     n("aspect-1", "aspect", {}, [
       n("project-1", "project", { status: "active" }, [
-        n("goal-1", "goal", { status: "active" }, [
-          n("task-1", "task", { status: "todo" }),
-          n("task-2", "task", { status: "todo" }),
+        n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
+          n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+          n(`task-${storedRowId(2)}`, "task", { status: "todo" }),
         ]),
       ]),
     ]),
@@ -375,8 +375,8 @@ describe("flattening from a subtree root", () => {
     // a task with no ancestors at the true root — rather than a blank header leaving a gap.
     const flat = n("root", "domain", {}, [
       n("project-1", "project", { status: "active" }, [
-        n("task-1", "task", { status: "todo" }),
-        n("task-2", "task", { status: "todo" }),
+        n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+        n(`task-${storedRowId(2)}`, "task", { status: "todo" }),
       ]),
     ]);
     const root = flat.children[0];
@@ -402,10 +402,10 @@ describe("flattening from a subtree root", () => {
     const deepTree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("project-1", "project", { status: "active" }, [
-          n("goal-1", "goal", { status: "active" }, [
+          n(`goal-${storedRowId(1)}`, "goal", { status: "active" }, [
             n("task-parent", "task", { status: "todo" }, [n("task-child", "task", { status: "todo" })]),
           ]),
-          n("goal-2", "goal", { status: "active" }, [n("task-other", "task", { status: "todo" })]),
+          n(`goal-${storedRowId(2)}`, "goal", { status: "active" }, [n("task-other", "task", { status: "todo" })]),
         ]),
       ]),
     ]);

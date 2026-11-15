@@ -34,7 +34,7 @@ vi.mock("@/api/mcp-access", () => ({
   fetchMcpAccessCatalogue: vi.fn(() => Promise.resolve({
     roots: [],
     nodes: [
-      { node_kind: "goal", node_id: 10, subtype: null, title: "Ship", parent_kind: null,
+      { node_kind: "goal", node_id: storedRowId(10), subtype: null, title: "Ship", parent_kind: null,
         parent_id: null, is_private: false, agentic: null },
     ],
     candidates: [],

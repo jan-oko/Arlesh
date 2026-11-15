@@ -42,7 +42,7 @@ describe("updateInfo", () => {
     const updated = { ...mockInfo, body: "Updated note" };
     mockCommandOnce(updated);
     const result = await updateInfo(storedRowId(1), { body: "Updated note" });
-    expect(invoke).toHaveBeenCalledWith("update_info", { id: 1, request: { body: "Updated note" } });
+    expect(invoke).toHaveBeenCalledWith("update_info", { id: storedRowId(1), request: { body: "Updated note" } });
     expect(result.body).toBe("Updated note");
   });
 });
@@ -51,6 +51,6 @@ describe("deleteInfo", () => {
   it("calls invoke with delete_info and the id", async () => {
     mockCommandOnce(undefined);
     await deleteInfo(storedRowId(1));
-    expect(invoke).toHaveBeenCalledWith("delete_info", { id: 1 });
+    expect(invoke).toHaveBeenCalledWith("delete_info", { id: storedRowId(1) });
   });
 });

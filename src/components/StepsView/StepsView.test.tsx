@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
@@ -36,12 +37,12 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
   }),
 }));
 
-const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
-const stepTaskStatus = vi.fn((_id: number, _step: string) => Promise.resolve({ outcome: "written", backlog_cleared: null }));
-const addTaskDependency = vi.fn((_id: number, _dependency: unknown) => Promise.resolve());
+const updateTask = vi.fn((_id: string, _request: unknown) => Promise.resolve());
+const stepTaskStatus = vi.fn((_id: string, _step: string) => Promise.resolve({ outcome: "written", backlog_cleared: null }));
+const addTaskDependency = vi.fn((_id: string, _dependency: unknown) => Promise.resolve());
 const listAllTaskDependencies = vi.fn(() => Promise.resolve([]));
 // What the backend offers as prerequisites (`tasks::rules::dependencies::candidates`).
-const fetchDependencyCandidates = vi.fn((_id: number) => Promise.resolve([{ type: "expectation", id: 7 }]));
+const fetchDependencyCandidates = vi.fn((_id: string) => Promise.resolve([{ type: "expectation", id: storedRowId(7) }]));
 
 const undo = vi.fn(() => Promise.resolve(null));
 vi.mock("@/api/gesture", async (importOriginal) => ({
@@ -50,12 +51,12 @@ vi.mock("@/api/gesture", async (importOriginal) => ({
 }));
 vi.mock("@/api/node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/node-gestures")>()),
-  stepTaskStatus: (id: number, step: string) => stepTaskStatus(id, step),
+  stepTaskStatus: (id: string, step: string) => stepTaskStatus(id, step),
 }));
 // A gesture operation's Plan writes reach the same spy, one `update_task` each.
 vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
-  runGesture: async (_name: string, steps: Array<{ id: number; request: unknown }>) => {
+  runGesture: async (_name: string, steps: Array<{ id: string; request: unknown }>) => {
     for (const step of steps) await updateTask(step.id, step.request);
     return steps.map((step) => ({ id: step.id }));
   },
@@ -63,10 +64,10 @@ vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
-  updateTask: (id: number, request: unknown) => updateTask(id, request),
-  addTaskDependency: (id: number, dependency: unknown) => addTaskDependency(id, dependency),
+  updateTask: (id: string, request: unknown) => updateTask(id, request),
+  addTaskDependency: (id: string, dependency: unknown) => addTaskDependency(id, dependency),
   listAllTaskDependencies: () => listAllTaskDependencies(),
-  fetchDependencyCandidates: (id: number) => fetchDependencyCandidates(id),
+  fetchDependencyCandidates: (id: string) => fetchDependencyCandidates(id),
   // Nothing below the cards holds a Plan of its own, so the clamp prompt has nothing to ask.
   planContainmentConflicts: () => Promise.resolve([]),
 }));
@@ -83,7 +84,7 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 
 const settleBoard = vi.fn(() => Promise.resolve());
 const createChild = vi.fn((_parentId: string, _parentKind: NodeKind, _title: string) =>
-  Promise.resolve(n("task-99", "task")));
+  Promise.resolve(n(`task-${storedRowId(99)}`, "task")));
 const createNode = vi.fn((_parentId: string, _parentKind: NodeKind, childKind: NodeKind, _title: string) =>
   Promise.resolve(n(`${childKind}-98`, childKind)));
 const removeNode = vi.fn((_nodes: Array<{ id: string; kind: NodeKind }>) => Promise.resolve());
@@ -103,7 +104,7 @@ function mockTree(children: MindmapNode[]): void {
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
     pasteNodes: vi.fn().mockResolvedValue([]),
-    insertParent: vi.fn().mockResolvedValue("domain-99"),
+    insertParent: vi.fn().mockResolvedValue(`domain-${storedRowId(99)}`),
     removeNode,
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
@@ -140,31 +141,31 @@ beforeEach(() => {
 
 describe("a Step", () => {
   it("draws the board as the header card at the true root, and its children as cards", () => {
-    mockTree([n("domain-1", "domain"), n("domain-2", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain"), n(`domain-${storedRowId(2)}`, "domain")]);
     render(<StepsView />);
-    expect(cardIds()).toEqual(["board", "domain-1", "domain-2"]);
+    expect(cardIds()).toEqual(["board", `domain-${storedRowId(1)}`, `domain-${storedRowId(2)}`]);
   });
 
   it("draws the node you are standing on as the header card, and nothing deeper than its children", () => {
-    const grandchild = n("task-2", "task");
-    const child = n("task-1", "task", { children: [grandchild] });
-    mockTree([n("goal-1", "goal", { children: [child] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    const grandchild = n(`task-${storedRowId(2)}`, "task");
+    const child = n(`task-${storedRowId(1)}`, "task", { children: [grandchild] });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [child] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
-    expect(cardIds()).toEqual(["goal-1", "task-1"]);
+    expect(cardIds()).toEqual([`goal-${storedRowId(1)}`, `task-${storedRowId(1)}`]);
   });
 
   it("counts what descending will show against what the board holds, so the filter's effect shows", () => {
     // Standing on the Goal: one of its two Tasks survives the Do preset, so the header card counts
     // "1 of 2" while the surviving Task, which holds nothing, reads as empty.
-    const shown = n("task-1", "task", { status: "in_progress" });
-    const hidden = n("task-2", "task", { status: "done" });
-    mockTree([n("goal-1", "goal", { status: "active", children: [shown, hidden] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    const shown = n(`task-${storedRowId(1)}`, "task", { status: "in_progress" });
+    const hidden = n(`task-${storedRowId(2)}`, "task", { status: "done" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { status: "active", children: [shown, hidden] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
     render(<StepsView />);
 
-    expect(cardIds()).toEqual(["goal-1", "task-1"]);
+    expect(cardIds()).toEqual([`goal-${storedRowId(1)}`, `task-${storedRowId(1)}`]);
     expect(screen.getAllByText("stepsView:childCount")).toHaveLength(1);
     expect(screen.getAllByText("stepsView:childCountEmpty")).toHaveLength(1);
   });
@@ -172,40 +173,40 @@ describe("a Step", () => {
 
 describe("walking down", () => {
   it("moves the tab's shared subtree root, so every view lands where you walked", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
     render(<StepsView />);
 
     press("ArrowDown");
-    expect(selectedCardId()).toBe("goal-1");
+    expect(selectedCardId()).toBe(`goal-${storedRowId(1)}`);
     press("Enter");
 
-    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`goal-${storedRowId(1)}`);
   });
 
   it("opens an empty Step on a childless Task, rather than refusing to enter a leaf", () => {
-    mockTree([n("task-1", "task")]);
+    mockTree([n(`task-${storedRowId(1)}`, "task")]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("Enter");
 
-    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`task-${storedRowId(1)}`);
   });
 
   it("says so rather than doing nothing when Enter lands on the card you are standing on", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     press("ArrowUp");
-    expect(selectedCardId()).toBe("goal-1");
+    expect(selectedCardId()).toBe(`goal-${storedRowId(1)}`);
     press("Enter");
 
     expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedAlreadyHere");
   });
 
   it("refuses every node gesture on the board's own header card, out loud", () => {
-    mockTree([n("domain-1", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain")]);
     render(<StepsView />);
 
     press("ArrowUp");
@@ -219,27 +220,27 @@ describe("walking down", () => {
 
 describe("the arrow grid", () => {
   it("starts on the first child going down and on the header going up", () => {
-    mockTree([n("domain-1", "domain"), n("domain-2", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain"), n(`domain-${storedRowId(2)}`, "domain")]);
     render(<StepsView />);
 
     press("ArrowDown");
-    expect(selectedCardId()).toBe("domain-1");
+    expect(selectedCardId()).toBe(`domain-${storedRowId(1)}`);
 
     press("ArrowUp");
     expect(selectedCardId()).toBe("board");
   });
 
   it("keeps the selection Steps' own — it is never written into the shared store", () => {
-    mockTree([n("domain-1", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain")]);
     render(<StepsView />);
 
     press("ArrowDown");
-    expect(selectedCardId()).toBe("domain-1");
+    expect(selectedCardId()).toBe(`domain-${storedRowId(1)}`);
     expect(useMindmapStore.getState().selectedNodeId).toBeNull();
   });
 
   it("clears the selection on Escape", () => {
-    mockTree([n("domain-1", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain")]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -253,11 +254,11 @@ describe("a card with no editor", () => {
   // `NodeEditorModals` drew null, so there was no modal on screen — and the view gates its whole
   // keyboard on `editorModal !== null`, so every Steps binding went dead with no way back.
   it("refuses an Aspect out loud, and leaves the keyboard alive", () => {
-    mockTree([n("domain-1", "aspect"), n("domain-2", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect"), n(`domain-${storedRowId(2)}`, "domain")]);
     render(<StepsView />);
 
     press("ArrowDown");
-    expect(selectedCardId()).toBe("domain-1");
+    expect(selectedCardId()).toBe(`domain-${storedRowId(1)}`);
     press("KeyE");
 
     expect(setEditorModal).not.toHaveBeenCalled();
@@ -265,11 +266,11 @@ describe("a card with no editor", () => {
 
     // The proof it is not wedged: the next keystroke still moves.
     press("ArrowRight");
-    expect(selectedCardId()).toBe("domain-2");
+    expect(selectedCardId()).toBe(`domain-${storedRowId(2)}`);
   });
 
   it("opens the editor on a Habit occurrence, which is a row like any other", () => {
-    mockTree([n("task-7", "task", {
+    mockTree([n(`task-${storedRowId(7)}`, "task", {
       ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }),
     })]);
     render(<StepsView />);
@@ -292,86 +293,86 @@ describe("a card's colour", () => {
 
   it("is its aspect's, taken from the node itself at the root where each card is an aspect", () => {
     mockTree([
-      n("domain-1", "aspect", { color: "#e74c3c" }),
-      n("domain-2", "aspect", { color: "#27ae60" }),
+      n(`domain-${storedRowId(1)}`, "aspect", { color: "#e74c3c" }),
+      n(`domain-${storedRowId(2)}`, "aspect", { color: "#27ae60" }),
     ]);
     render(<StepsView />);
 
-    expect(aspectOf("domain-1")).toBe("#e74c3c");
-    expect(aspectOf("domain-2")).toBe("#27ae60");
+    expect(aspectOf(`domain-${storedRowId(1)}`)).toBe("#e74c3c");
+    expect(aspectOf(`domain-${storedRowId(2)}`)).toBe("#27ae60");
   });
 
   it("is the Step's aspect for a child that carries no colour of its own", () => {
-    mockTree([n("domain-1", "aspect", {
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect", {
       color: "#2980b9",
-      children: [n("task-1", "task")],
+      children: [n(`task-${storedRowId(1)}`, "task")],
     })]);
-    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    useMindmapStore.setState({ subtreeRootId: `domain-${storedRowId(1)}` });
     render(<StepsView />);
 
-    expect(aspectOf("domain-1")).toBe("#2980b9");
-    expect(aspectOf("task-1")).toBe("#2980b9");
+    expect(aspectOf(`domain-${storedRowId(1)}`)).toBe("#2980b9");
+    expect(aspectOf(`task-${storedRowId(1)}`)).toBe("#2980b9");
   });
 
   it("says nothing about state — the glyph and the badges carry that", () => {
     // Two Tasks in one aspect, one blocked and one done: same fill, different glyphs. This is the
     // trade the aspect colouring makes, and it is only safe because the icon already draws status.
-    mockTree([n("domain-1", "aspect", {
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect", {
       color: "#9b59b6",
       children: [
-        n("task-1", "task", { status: "done" }),
-        n("task-2", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] }),
+        n(`task-${storedRowId(1)}`, "task", { status: "done" }),
+        n(`task-${storedRowId(2)}`, "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] }),
       ],
     })]);
-    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    useMindmapStore.setState({ subtreeRootId: `domain-${storedRowId(1)}` });
     render(<StepsView />);
 
-    expect(aspectOf("task-1")).toBe("#9b59b6");
-    expect(aspectOf("task-2")).toBe("#9b59b6");
+    expect(aspectOf(`task-${storedRowId(1)}`)).toBe("#9b59b6");
+    expect(aspectOf(`task-${storedRowId(2)}`)).toBe("#9b59b6");
   });
 
   it("leaves a card outside any aspect the theme's own background", () => {
-    mockTree([n("domain-1", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "domain")]);
     render(<StepsView />);
-    expect(aspectOf("domain-1")).toBeNull();
+    expect(aspectOf(`domain-${storedRowId(1)}`)).toBeNull();
   });
 });
 
 describe("a card's glyph and kind line", () => {
   it("draws an Aspect with neither a glyph, nor an empty slot for one, nor its kind in words", () => {
-    mockTree([n("domain-1", "aspect", { color: "#e74c3c" }), n("domain-2", "domain")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect", { color: "#e74c3c" }), n(`domain-${storedRowId(2)}`, "domain")]);
     render(<StepsView />);
 
-    const aspect = document.querySelector('[data-step-card="domain-1"]');
+    const aspect = document.querySelector('[data-step-card=`domain-${storedRowId(1)}`]');
     expect(aspect?.querySelector("svg")).toBeNull();
     expect(aspect?.textContent).not.toContain("nodeKinds:aspect");
-    expect(document.querySelector('[data-step-card="domain-2"] svg')).not.toBeNull();
+    expect(document.querySelector('[data-step-card=`domain-${storedRowId(2)}`] svg')).not.toBeNull();
   });
 
   it("writes out the kind only where the glyph is borrowed — a Flow's template Task", () => {
-    mockTree([n("task-1", "task"), n("flow_task-2", "flow_task")]);
+    mockTree([n(`task-${storedRowId(1)}`, "task"), n("flow_task-2", "flow_task")]);
     render(<StepsView />);
 
-    expect(document.querySelector('[data-step-card="task-1"]')?.textContent).not.toContain("nodeKinds:task");
+    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')?.textContent).not.toContain("nodeKinds:task");
     expect(document.querySelector('[data-step-card="flow_task-2"]')?.textContent).toContain("nodeKinds:flow_task");
   });
 });
 
 describe("a card's Private badge", () => {
   it("badges a card marked Private itself, and not an unmarked one beside it", () => {
-    mockTree([n("goal-1", "goal", { status: "active", isPrivate: true }), n("goal-3", "goal", { status: "active" })]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { status: "active", isPrivate: true }), n(`goal-${storedRowId(3)}`, "goal", { status: "active" })]);
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
     render(<StepsView />);
 
-    expect(document.querySelector('[data-step-card="goal-1"] [title="private"]')).not.toBeNull();
-    expect(document.querySelector('[data-step-card="goal-3"] [title="private"]')).toBeNull();
+    expect(document.querySelector('[data-step-card=`goal-${storedRowId(1)}`] [title="private"]')).not.toBeNull();
+    expect(document.querySelector('[data-step-card=`goal-${storedRowId(3)}`] [title="private"]')).toBeNull();
   });
 });
 
 describe("the Info notes on a card", () => {
   it("draws the first ones as bullets", () => {
-    mockTree([n("goal-1", "goal", {
-      children: [n("info-1", "info", { title: "watch the migration" })],
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", {
+      children: [n(`info-${storedRowId(1)}`, "info", { title: "watch the migration" })],
     })]);
     render(<StepsView />);
 
@@ -382,7 +383,7 @@ describe("the Info notes on a card", () => {
     // The smallest card, with more notes than any card could hold.
     useViewStore.setState({ stepsZoom: 1 });
     const notes = Array.from({ length: 12 }, (_, i) => n(`info-${i}`, "info", { title: `note ${i}` }));
-    mockTree([n("goal-1", "goal", { children: notes })]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: notes })]);
     render(<StepsView />);
 
     expect(screen.getByText("stepsView:moreNotes")).toBeTruthy();
@@ -391,30 +392,30 @@ describe("the Info notes on a card", () => {
 
 describe("acting on the selected card", () => {
   it("cycles a Task's status on Space", () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("Space");
 
-    expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
+    expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(1), "advance");
   });
 
   it("steps a Task's status when its glyph is tapped, selects the card, and does not open it", () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     const glyph = screen.getByRole("button", { name: "listView:cycleStatus" });
     fireEvent.click(glyph);
     fireEvent.doubleClick(glyph);
 
-    expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
-    expect(selectedCardId()).toBe("task-1");
+    expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(1), "advance");
+    expect(selectedCardId()).toBe(`task-${storedRowId(1)}`);
     expect(setEditorModal).not.toHaveBeenCalled();
   });
 
   it("refuses Space on a blocked Task out loud, and writes nothing", () => {
-    mockTree([n("task-1", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -425,7 +426,7 @@ describe("acting on the selected card", () => {
   });
 
   it("refuses Space on a Task with a block reason of its own", () => {
-    mockTree([n("task-1", "task", { status: "in_progress", blockReasons: ["waiting on legal"] })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "in_progress", blockReasons: ["waiting on legal"] })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -436,21 +437,21 @@ describe("acting on the selected card", () => {
   });
 
   it("sends Alt+Enter on a Task, Started or not", async () => {
-    mockTree([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "in_progress" }), n(`task-${storedRowId(2)}`, "task", { status: "started" })]);
     render(<StepsView />);
 
     press("ArrowDown");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(stepTaskStatus).toHaveBeenCalledWith(1, "alt");
+    expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(1), "alt");
 
     press("ArrowRight");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
     // The second press goes out once the first is answered: the lane sends in order.
-    await waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(2, "alt"));
+    await waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(2), "alt"));
   });
 
   it("refuses Alt+Enter on a blocked Task", () => {
-    mockTree([n("task-1", "task", { status: "todo", blockReasons: ["waiting"] })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo", blockReasons: ["waiting"] })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -459,20 +460,20 @@ describe("acting on the selected card", () => {
   });
 
   it("opens the editor on E", () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("KeyE");
 
-    expect(setEditorModal).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-1" }));
+    expect(setEditorModal).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(1)}` }));
   });
 });
 
 describe("an empty Step", () => {
   it("offers to create the first child, and opens its editor to be named", async () => {
-    mockTree([n("task-1", "task")]);
-    useMindmapStore.setState({ subtreeRootId: "task-1" });
+    mockTree([n(`task-${storedRowId(1)}`, "task")]);
+    useMindmapStore.setState({ subtreeRootId: `task-${storedRowId(1)}` });
     render(<StepsView />);
 
     expect(screen.getByText("stepsView:emptyStep")).toBeTruthy();
@@ -480,13 +481,13 @@ describe("an empty Step", () => {
       fireEvent.click(screen.getByText("stepsView:createFirstChild"));
     });
 
-    expect(createChild).toHaveBeenCalledWith("task-1", "task", "");
-    expect(setEditorModal).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-99" }));
+    expect(createChild).toHaveBeenCalledWith(`task-${storedRowId(1)}`, "task", "");
+    expect(setEditorModal).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(99)}` }));
   });
 
   it("says the filter emptied it, rather than offering a child it already has", () => {
-    mockTree([n("goal-1", "goal", { status: "active", children: [n("task-1", "task", { status: "done" })] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { status: "active", children: [n(`task-${storedRowId(1)}`, "task", { status: "done" })] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
     render(<StepsView />);
 
@@ -511,9 +512,9 @@ function selectFirstCard(): void {
 
 describe("creating from a Step", () => {
   it("puts a sibling of the selected card on this Step, selected and open for naming", async () => {
-    const goal = n("goal-1", "goal", { children: [n("task-1", "task"), n("task-2", "task")] });
+    const goal = n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(2)}`, "task")] });
     mockTree([goal]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     const { rerender } = render(<StepsView />);
 
     selectFirstCard();
@@ -522,17 +523,17 @@ describe("creating from a Step", () => {
 
     // The Mindmap's own sibling action: a node of the same kind, under the Step, carrying the
     // source's own Agentic answer ("inherit" when it gave none).
-    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "", "inherit");
+    expect(createNode).toHaveBeenCalledWith(`goal-${storedRowId(1)}`, "goal", "task", "", "inherit");
     // The reload is simulated by the tree now holding the new card.
-    mockTree([{ ...goal, children: [...goal.children, n("task-98", "task")] }]);
+    mockTree([{ ...goal, children: [...goal.children, n(`task-${storedRowId(98)}`, "task")] }]);
     rerender(<StepsView />);
-    expect(selectedCardId()).toBe("task-98");
+    expect(selectedCardId()).toBe(`task-${storedRowId(98)}`);
     expect(screen.getByLabelText("stepsView:titleLabel")).toBeTruthy();
   });
 
   it("makes a child of the header card a card on this Step, without moving", async () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     press("ArrowUp"); // onto the header
@@ -541,27 +542,27 @@ describe("creating from a Step", () => {
     press("Tab");
     await settle();
 
-    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
-    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
+    expect(createNode).toHaveBeenCalledWith(`goal-${storedRowId(1)}`, "goal", "task", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`goal-${storedRowId(1)}`);
   });
 
   it("steps into a card when the new node is its child, as the Mindmap puts it under that card", async () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
     press("Tab");
     await settle();
 
-    expect(createNode).toHaveBeenCalledWith("task-1", "task", "task", "");
-    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+    expect(createNode).toHaveBeenCalledWith(`task-${storedRowId(1)}`, "task", "task", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`task-${storedRowId(1)}`);
   });
 
   it("does not step in when the create is refused, and says why", async () => {
     // A Tag holds notes and nothing else, so Tab (which creates a Task) is refused.
-    mockTree([n("domain-1", "domain", { children: [n("domain-2", "tag")] })]);
-    useMindmapStore.setState({ subtreeRootId: "domain-1" });
+    mockTree([n(`domain-${storedRowId(1)}`, "domain", { children: [n(`domain-${storedRowId(2)}`, "tag")] })]);
+    useMindmapStore.setState({ subtreeRootId: `domain-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
@@ -569,13 +570,13 @@ describe("creating from a Step", () => {
     await settle();
 
     expect(createNode).not.toHaveBeenCalled();
-    expect(useMindmapStore.getState().subtreeRootId).toBe("domain-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`domain-${storedRowId(1)}`);
     expect(useMindmapStore.getState().pendingToast?.message).toContain("typedChildRefused");
   });
 
   it("opens the new-Habit editor on Shift+H, with repeating already on", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     pressWith("KeyH", { shift: true }); // nothing selected: onto the Step's own Goal
@@ -584,8 +585,8 @@ describe("creating from a Step", () => {
   });
 
   it("refuses a sibling of the Step itself, which would land outside it", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
@@ -597,7 +598,7 @@ describe("creating from a Step", () => {
   });
 
   it("refuses every create on the board's own card, out loud", () => {
-    mockTree([n("domain-1", "aspect")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect")]);
     render(<StepsView />);
 
     selectFirstCard();
@@ -611,11 +612,11 @@ describe("creating from a Step", () => {
 
 describe("deleting from a Step", () => {
   it("asks first, deletes the card's subtree, and lands on the next card", async () => {
-    const goal = n("goal-1", "goal", {
-      children: [n("task-1", "task", { children: [n("task-3", "task")] }), n("task-2", "task")],
+    const goal = n(`goal-${storedRowId(1)}`, "goal", {
+      children: [n(`task-${storedRowId(1)}`, "task", { children: [n(`task-${storedRowId(3)}`, "task")] }), n(`task-${storedRowId(2)}`, "task")],
     });
     mockTree([goal]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
@@ -625,14 +626,14 @@ describe("deleting from a Step", () => {
     await act(async () => { fireEvent.click(screen.getByText("warnings:deleteConfirm")); });
 
     expect(removeNode).toHaveBeenCalledWith([
-      { id: "task-3", kind: "task" }, { id: "task-1", kind: "task" },
+      { id: `task-${storedRowId(3)}`, kind: "task" }, { id: `task-${storedRowId(1)}`, kind: "task" },
     ]);
-    expect(selectedCardId()).toBe("task-2");
+    expect(selectedCardId()).toBe(`task-${storedRowId(2)}`);
   });
 
   it("lands on the card before when the last one goes", async () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task"), n("task-2", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(2)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
@@ -640,12 +641,12 @@ describe("deleting from a Step", () => {
     press("Delete");
     await act(async () => { fireEvent.click(screen.getByText("warnings:deleteConfirm")); });
 
-    expect(selectedCardId()).toBe("task-1");
+    expect(selectedCardId()).toBe(`task-${storedRowId(1)}`);
   });
 
   it("refuses the Step you are standing on", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     selectFirstCard();
@@ -657,7 +658,7 @@ describe("deleting from a Step", () => {
   });
 
   it("refuses an Aspect, as the Mindmap does", () => {
-    mockTree([n("domain-1", "aspect")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect")]);
     render(<StepsView />);
     selectFirstCard();
     press("Delete");
@@ -665,8 +666,8 @@ describe("deleting from a Step", () => {
   });
 
   it("refuses a Habit repetition, which is drawn rather than stored, as the Mindmap does", () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-5", "task", { virtual: true })] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(5)}`, "task", { virtual: true })] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
     selectFirstCard();
     press("Delete");
@@ -675,7 +676,7 @@ describe("deleting from a Step", () => {
   });
 
   it("refuses the board's own card", () => {
-    mockTree([n("domain-1", "aspect")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect")]);
     render(<StepsView />);
     selectFirstCard();
     press("ArrowUp");
@@ -686,14 +687,14 @@ describe("deleting from a Step", () => {
 
 describe("undoing from a Step", () => {
   it("takes a create back with one Ctrl+Z", async () => {
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     const { rerender } = render(<StepsView />);
 
     selectFirstCard();
     pressWith("Enter", { shift: true });
     await settle();
-    mockTree([n("goal-1", "goal", { children: [n("task-1", "task"), n("task-98", "task")] })]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(98)}`, "task")] })]);
     rerender(<StepsView />);
     // The new card's title is open; leaving it closes the rename without a write.
     act(() => { fireEvent.keyDown(screen.getByLabelText("stepsView:titleLabel"), { key: "Escape" }); });
@@ -706,25 +707,25 @@ describe("undoing from a Step", () => {
 
 describe("Shift+initial with nothing selected", () => {
   it("creates that kind on the current Step, selected and open for naming", async () => {
-    const goal = n("goal-1", "goal", { children: [n("task-1", "task")] });
+    const goal = n(`goal-${storedRowId(1)}`, "goal", { children: [n(`task-${storedRowId(1)}`, "task")] });
     mockTree([goal]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     const { rerender } = render(<StepsView />);
 
     expect(selectedCardId()).toBeNull();
     pressWith("KeyT", { shift: true });
     await settle();
 
-    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
-    expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
-    mockTree([{ ...goal, children: [...goal.children, n("task-98", "task")] }]);
+    expect(createNode).toHaveBeenCalledWith(`goal-${storedRowId(1)}`, "goal", "task", "");
+    expect(useMindmapStore.getState().subtreeRootId).toBe(`goal-${storedRowId(1)}`);
+    mockTree([{ ...goal, children: [...goal.children, n(`task-${storedRowId(98)}`, "task")] }]);
     rerender(<StepsView />);
-    expect(selectedCardId()).toBe("task-98");
+    expect(selectedCardId()).toBe(`task-${storedRowId(98)}`);
     expect(screen.getByLabelText("stepsView:titleLabel")).toBeTruthy();
   });
 
   it("refuses out loud at the board, where nothing can be created", () => {
-    mockTree([n("domain-1", "aspect")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect")]);
     render(<StepsView />);
 
     pressWith("KeyD", { shift: true });
@@ -734,8 +735,8 @@ describe("Shift+initial with nothing selected", () => {
   });
 
   it("refuses a kind the Step cannot hold, in the Mindmap's words", () => {
-    mockTree([n("goal-1", "goal")]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     pressWith("KeyP", { shift: true });
@@ -745,8 +746,8 @@ describe("Shift+initial with nothing selected", () => {
   });
 
   it("does nothing while a text field has focus — the letter is typed, not a command", () => {
-    mockTree([n("goal-1", "goal")]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<><StepsView /><input aria-label="elsewhere" /></>);
 
     const field = screen.getByLabelText("elsewhere");
@@ -759,14 +760,14 @@ describe("Shift+initial with nothing selected", () => {
 
 describe("the Step's +", () => {
   it("is not offered on the board, where nothing can be created", () => {
-    mockTree([n("domain-1", "aspect")]);
+    mockTree([n(`domain-${storedRowId(1)}`, "aspect")]);
     render(<StepsView />);
     expect(screen.queryByLabelText("stepsView:addToStep")).toBeNull();
   });
 
   it("offers only the kinds the Step can hold, each with its chord", () => {
-    mockTree([n("goal-1", "goal")]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     fireEvent.click(screen.getByRole("button", { name: "stepsView:addToStep" }));
@@ -777,21 +778,21 @@ describe("the Step's +", () => {
   });
 
   it("creates the chosen kind on the Step, as its chord would", async () => {
-    mockTree([n("goal-1", "goal")]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
 
     fireEvent.click(screen.getByRole("button", { name: "stepsView:addToStep" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /nodeKinds:task/ }));
     await settle();
 
-    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
+    expect(createNode).toHaveBeenCalledWith(`goal-${storedRowId(1)}`, "goal", "task", "");
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("is driven from the keyboard: arrows move, Enter picks, Escape closes", async () => {
-    mockTree([n("goal-1", "goal")]);
-    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
+    useMindmapStore.setState({ subtreeRootId: `goal-${storedRowId(1)}` });
     render(<StepsView />);
     const trigger = screen.getByRole("button", { name: "stepsView:addToStep" });
 
@@ -808,14 +809,14 @@ describe("the Step's +", () => {
     await settle();
 
     // The second kind offered to a Goal, whatever it is, was created under the Step.
-    expect(createNode.mock.calls[0]?.[0]).toBe("goal-1");
+    expect(createNode.mock.calls[0]?.[0]).toBe(`goal-${storedRowId(1)}`);
     expect(`nodeKinds:${createNode.mock.calls[0]?.[2] ?? ""}`).toBe(second.replace(/Shift\+.$/, ""));
   });
 });
 
 describe("P, the quick Plan picker", () => {
   it("opens the Plan picker at the selected Task card, writes the pick, and one Ctrl+Z takes it back", async () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -825,7 +826,7 @@ describe("P, the quick Plan picker", () => {
     if (day === undefined) throw new Error("the picker drew no Day cells");
     fireEvent.click(day);
     fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(1, {
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(1), {
       plan: expect.objectContaining({ start_id: expect.objectContaining({ kind: "day" }) }),
     }));
     expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
@@ -838,7 +839,7 @@ describe("P, the quick Plan picker", () => {
   });
 
   it("holds the view's own keys while it is open, and Escape closes it writing nothing", () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -852,7 +853,7 @@ describe("P, the quick Plan picker", () => {
   });
 
   it("refuses a card that holds no Plan, by name", () => {
-    mockTree([n("goal-1", "goal")]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -862,7 +863,7 @@ describe("P, the quick Plan picker", () => {
   });
 
   it("refuses the board's own card", () => {
-    mockTree([n("goal-1", "goal")]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
     render(<StepsView />);
 
     press("ArrowUp");
@@ -873,19 +874,19 @@ describe("P, the quick Plan picker", () => {
 
 describe("D, the quick dependency picker", () => {
   it("opens a search at the selected Task card, adds the pick, and one Ctrl+Z takes it back", async () => {
-    mockTree([n("task-1", "task", { status: "todo" }), n("expectation-7", "expectation", { title: "Parts arrive" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" }), n("expectation-7", "expectation", { title: "Parts arrive" })]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("KeyD");
     const dialog = screen.getByRole("dialog", { name: "editor:quickDependencyPicker" });
     const search = screen.getByRole("combobox");
-    await waitFor(() => expect(fetchDependencyCandidates).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(fetchDependencyCandidates).toHaveBeenCalledWith(storedRowId(1)));
     fireEvent.change(search, { target: { value: "parts" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
     fireEvent.keyDown(search, { key: "Enter" });
 
-    await waitFor(() => expect(addTaskDependency).toHaveBeenCalledWith(1, { type: "expectation", id: 7 }));
+    await waitFor(() => expect(addTaskDependency).toHaveBeenCalledWith(storedRowId(1), { type: "expectation", id: storedRowId(7) }));
     expect(dialog.isConnected).toBe(false);
     await waitFor(() => expect(settleBoard).toHaveBeenCalled());
 
@@ -895,7 +896,7 @@ describe("D, the quick dependency picker", () => {
   });
 
   it("holds the view's own keys while it is open, and Escape closes it writing nothing", () => {
-    mockTree([n("task-1", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo" })]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -909,7 +910,7 @@ describe("D, the quick dependency picker", () => {
   });
 
   it("refuses a card that holds no dependencies, by name", () => {
-    mockTree([n("goal-1", "goal")]);
+    mockTree([n(`goal-${storedRowId(1)}`, "goal")]);
     render(<StepsView />);
 
     press("ArrowDown");
@@ -927,33 +928,33 @@ describe("an Overdue card", () => {
   }
 
   it("draws the amber border and says Overdue in its description", () => {
-    mockTree([n("task-1", "task", { status: "todo", overdue: true }), n("task-2", "task", { status: "todo" })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo", overdue: true }), n(`task-${storedRowId(2)}`, "task", { status: "todo" })]);
     render(<StepsView />);
-    expect(stepCard("task-1").className).toMatch(/overdue/);
-    expect(stepCard("task-1")).toHaveAccessibleDescription("overdue");
-    expect(stepCard("task-2").className).not.toMatch(/overdue/);
-    expect(stepCard("task-2")).not.toHaveAttribute("aria-describedby");
+    expect(stepCard(`task-${storedRowId(1)}`).className).toMatch(/overdue/);
+    expect(stepCard(`task-${storedRowId(1)}`)).toHaveAccessibleDescription("overdue");
+    expect(stepCard(`task-${storedRowId(2)}`).className).not.toMatch(/overdue/);
+    expect(stepCard(`task-${storedRowId(2)}`)).not.toHaveAttribute("aria-describedby");
   });
 
   it("carries both the Overdue and the selected class when selected, so its ring takes the selected-and-Overdue colour", () => {
-    mockTree([n("task-1", "task", { status: "todo", overdue: true })]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { status: "todo", overdue: true })]);
     render(<StepsView />);
     press("ArrowDown");
-    expect(selectedCardId()).toBe("task-1");
-    expect(stepCard("task-1").className).toMatch(/overdue/);
-    expect(stepCard("task-1").className).toMatch(/selected/);
+    expect(selectedCardId()).toBe(`task-${storedRowId(1)}`);
+    expect(stepCard(`task-${storedRowId(1)}`).className).toMatch(/overdue/);
+    expect(stepCard(`task-${storedRowId(1)}`).className).toMatch(/selected/);
   });
 });
 
 describe("the pending-write cue", () => {
   it("marks a card whose node has an unanswered write, and clears it on the answer", () => {
-    mockTree([n("task-1", "task", { pending: true }), n("task-2", "task")]);
+    mockTree([n(`task-${storedRowId(1)}`, "task", { pending: true }), n(`task-${storedRowId(2)}`, "task")]);
     const { rerender } = render(<StepsView />);
-    expect(document.querySelector('[data-step-card="task-1"]')).toHaveAttribute("data-pending");
-    expect(document.querySelector('[data-step-card="task-2"]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')).toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-step-card=`task-${storedRowId(2)}`]')).not.toHaveAttribute("data-pending");
 
-    mockTree([n("task-1", "task"), n("task-2", "task")]);
+    mockTree([n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(2)}`, "task")]);
     rerender(<StepsView />);
-    expect(document.querySelector('[data-step-card="task-1"]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')).not.toHaveAttribute("data-pending");
   });
 });

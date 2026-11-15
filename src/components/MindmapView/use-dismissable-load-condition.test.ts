@@ -5,7 +5,7 @@ import type { LoadCondition } from "./use-mindmap-data";
 import { storedRowId } from "@/test/stored-id";
 
 function condition(...ids: number[]): LoadCondition {
-  return { failedFlows: ids.map((id) => ({ id, title: `Flow ${id}` })), unrenderableCommitmentFlows: [] };
+  return { failedFlows: ids.map((id) => ({ id: storedRowId(id), title: `Flow ${id}` })), unrenderableCommitmentFlows: [] };
 }
 
 const CLEAN: LoadCondition = { failedFlows: [], unrenderableCommitmentFlows: [] };
@@ -13,7 +13,7 @@ const CLEAN: LoadCondition = { failedFlows: [], unrenderableCommitmentFlows: [] 
 describe("useDismissableLoadCondition", () => {
   it("shows the current failures when nothing has been dismissed", () => {
     const { result } = renderHook(() => useDismissableLoadCondition(condition(7)));
-    expect(result.current.visibleFailedFlows).toEqual([{ id: 7, title: "Flow 7" }]);
+    expect(result.current.visibleFailedFlows).toEqual([{ id: storedRowId(7), title: "Flow 7" }]);
   });
 
   it("hides the banner once dismissed", () => {
@@ -46,8 +46,8 @@ describe("useDismissableLoadCondition", () => {
     act(() => result.current.dismiss());
     rerender({ c: condition(7, 8) });
     expect(result.current.visibleFailedFlows).toEqual([
-      { id: 7, title: "Flow 7" },
-      { id: 8, title: "Flow 8" },
+      { id: storedRowId(7), title: "Flow 7" },
+      { id: storedRowId(8), title: "Flow 8" },
     ]);
   });
 
@@ -57,7 +57,7 @@ describe("useDismissableLoadCondition", () => {
     });
     act(() => result.current.dismiss());
     rerender({ c: condition(9) });
-    expect(result.current.visibleFailedFlows).toEqual([{ id: 9, title: "Flow 9" }]);
+    expect(result.current.visibleFailedFlows).toEqual([{ id: storedRowId(9), title: "Flow 9" }]);
   });
 
   it("re-arms the dismissal once the condition clears, so a later recurrence of the same failure shows again", () => {
@@ -68,7 +68,7 @@ describe("useDismissableLoadCondition", () => {
     rerender({ c: CLEAN });
     expect(result.current.visibleFailedFlows).toEqual([]);
     rerender({ c: condition(7) });
-    expect(result.current.visibleFailedFlows).toEqual([{ id: 7, title: "Flow 7" }]);
+    expect(result.current.visibleFailedFlows).toEqual([{ id: storedRowId(7), title: "Flow 7" }]);
   });
 
   it("treats a reordering of the same failed-flow ids as the identical set", () => {
@@ -96,7 +96,7 @@ describe("useDismissableLoadCondition", () => {
     const { result, rerender } = renderHook(({ c }) => useDismissableLoadCondition(c), {
       initialProps: { c: condition },
     });
-    expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([{ id: 11, title: "Asleep by 23:00" }]);
+    expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([{ id: storedRowId(11), title: "Asleep by 23:00" }]);
     act(() => result.current.dismiss());
     rerender({ c: { failedFlows: [], unrenderableCommitmentFlows: [{ id: storedRowId(11), title: "Asleep by 23:00" }] } });
     expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([]);

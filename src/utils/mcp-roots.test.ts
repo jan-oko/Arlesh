@@ -8,8 +8,8 @@ function node(
   subtype: string | null = null,
 ): McpCatalogueNode {
   return {
-    node_kind: kind, node_id: id, subtype, title,
-    parent_kind: parent?.[0] ?? null, parent_id: parent?.[1] ?? null,
+    node_kind: kind, node_id: storedRowId(id), subtype, title,
+    parent_kind: parent?.[0] ?? null, parent_id: parent === null ? null : storedRowId(parent[1]),
     is_private: false, agentic: null,
   };
 }
@@ -30,7 +30,7 @@ describe("describeRoots", () => {
     );
 
     expect(rows).toEqual([{
-      key: { node_kind: "task", node_id: 100 },
+      key: { node_kind: "task", node_id: storedRowId(100) },
       title: "Write docs",
       kind: "task",
       path: ["Growth", "Arlesh", "Ship"],
@@ -57,7 +57,7 @@ describe("describeRoots", () => {
 describe("rootCandidates", () => {
   it("names and places the nodes the backend offers, with their ancestors nearest first", () => {
     // Which nodes may be made roots is the backend's (`access::resolve::root_candidates`).
-    const offered = NODES.filter((n) => !(n.node_kind === "goal" && n.node_id === 10));
+    const offered = NODES.filter((n) => !(n.node_kind === "goal" && n.node_id === storedRowId(10)));
     const candidates = rootCandidates(offered, NODES);
 
     expect(candidates.map((candidate) => candidate.title)).toEqual(["Growth", "Arlesh", "Write docs"]);
@@ -68,7 +68,7 @@ describe("rootCandidates", () => {
   it("gives ids that lead back to the node they were made from", () => {
     const [growth] = rootCandidates(NODES, NODES);
     expect(growth).toBeDefined();
-    expect(catalogueKeyOf(growth?.id ?? "", NODES)).toEqual({ node_kind: "domain", node_id: 1 });
+    expect(catalogueKeyOf(growth?.id ?? "", NODES)).toEqual({ node_kind: "domain", node_id: storedRowId(1) });
     expect(catalogueKeyOf("nothing", NODES)).toBeUndefined();
   });
 });

@@ -12,7 +12,7 @@ function wait(id: string, over: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 /** A task holding `waits` off its tree, and the open ones the backend named, if any. */
-function task(waits: MindmapNode[], openQuestionIds?: number[]): MindmapNode {
+function task(waits: MindmapNode[], openQuestionIds?: string[]): MindmapNode {
   return {
     id: "task-1", kind: "task", title: "t", position: 0, tagIds: [], children: [], agentWaits: waits,
     ...(openQuestionIds !== undefined ? { openQuestionIds } : {}),
@@ -24,7 +24,7 @@ describe("openWaits", () => {
     const first = wait("a", { rowId: storedRowId(1) });
     const second = wait("b", { rowId: storedRowId(2) });
     const closed = wait("c", { rowId: storedRowId(3) });
-    expect(openWaits(task([first, second, closed], [2, 1])).map((open) => open.id)).toEqual(["b", "a"]);
+    expect(openWaits(task([first, second, closed], [storedRowId(2), storedRowId(1)])).map((open) => open.id)).toEqual(["b", "a"]);
   });
 
   it("finds nothing when the backend named no open wait", () => {

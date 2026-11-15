@@ -9,11 +9,11 @@ vi.mock("react-i18next", () => ({
 }));
 
 function mkTag(id: number, title: string, parentId: number | null, color: string | null = null): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: parentId, color, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: parentId === null ? null : storedRowId(parentId), color, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAGS = [mkTag(1, "backend", 10), mkTag(2, "urgent", 20), mkTag(3, "api", 10)];
-const DOMAIN_NAMES = new Map([[10, "Work"], [20, "Life"]]);
+const DOMAIN_NAMES = new Map([[storedRowId(10), "Work"], [storedRowId(20), "Life"]]);
 
 beforeEach(() => { vi.clearAllMocks(); });
 

@@ -20,7 +20,7 @@ vi.mock("@/hooks/use-filter-display");
 const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
 const EMPTY_DISPLAY = {
-  tagOptions: [], tagName: (id: number) => `#${id}`, tagColor: () => null,
+  tagOptions: [], tagName: (id: string) => `#${id}`, tagColor: () => null,
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
   antecedentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,
@@ -305,7 +305,7 @@ describe("FilterPopover — rows", () => {
       expect(screen.getByRole("option", { name: "urgent" })).toBeInTheDocument();
       expect(screen.queryByRole("option", { name: "home" })).not.toBeInTheDocument();
       fireEvent.keyDown(box, { key: "Enter" });
-      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "all" }]);
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(1), mode: "all" }]);
       expect(box).toHaveValue("");
     });
 
@@ -327,7 +327,7 @@ describe("FilterPopover — rows", () => {
       fireEvent.change(box, { target: { value: "home" } });
       fireEvent.keyDown(box, { key: "ArrowDown" });
       fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 2, mode: "any" }]);
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(2), mode: "any" }]);
     });
 
     it("adds with Alt+click as Not, and shows the added value beside the box, gone from the dropdown", () => {
@@ -352,13 +352,13 @@ describe("FilterPopover — rows", () => {
 
     it("searches Depends on in its own pool", () => {
       useViewStore.setState({ view: "list" });
-      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, dependencyPool: [{ id: "task-9", label: "Fuel up", color: null, path: "" }] });
+      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, dependencyPool: [{ id: `task-${storedRowId(9)}`, label: "Fuel up", color: null, path: "" }] });
       render(<FilterPopover />);
       const box = screen.getByRole("combobox", { name: "rows.dependency" });
       fireEvent.focus(box);
       fireEvent.change(box, { target: { value: "fuel" } });
       fireEvent.click(screen.getByRole("option", { name: "Fuel up" }));
-      expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: "task-9", mode: "all" }]);
+      expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: `task-${storedRowId(9)}`, mode: "all" }]);
     });
 
     it("cycles a set pill in the row and, on Delete, moves focus to the next one or the box", () => {
@@ -367,14 +367,14 @@ describe("FilterPopover — rows", () => {
       });
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
-        tagName: (id: number) => (id === 1 ? "urgent" : "home"),
+        tagName: (id: string) => (id === storedRowId(1) ? "urgent" : "home"),
         tagOptions: [{ id: storedRowId(1), label: "urgent", color: null }, { id: storedRowId(2), label: "home", color: null }],
       });
       render(<FilterPopover />);
       fireEvent.click(pill("urgent"));
-      expect(useFilterStore.getState().filter.tagFilters[0]).toEqual({ tagId: 1, mode: "any" });
+      expect(useFilterStore.getState().filter.tagFilters[0]).toEqual({ tagId: storedRowId(1), mode: "any" });
       fireEvent.keyDown(pill("urgent"), { key: "Delete" });
-      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 2, mode: "all" }]);
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(2), mode: "all" }]);
       expect(pill("home")).toHaveFocus();
       fireEvent.keyDown(pill("home"), { key: "Backspace" });
       expect(screen.getByRole("combobox", { name: "rows.tag" })).toHaveFocus();

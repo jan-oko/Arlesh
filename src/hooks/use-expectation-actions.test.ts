@@ -33,12 +33,12 @@ describe("useExpectationActions", () => {
 
   it("releases a pending wait", () => {
     setup(node({ rowId: storedRowId(3), status: "pending" })).actions.toggleRelease("x");
-    expect(updateExpectation).toHaveBeenLastCalledWith(3, { status: "released" });
+    expect(updateExpectation).toHaveBeenLastCalledWith(storedRowId(3), { status: "released" });
   });
 
   it("takes a release back", () => {
     setup(node({ rowId: storedRowId(3), status: "released" })).actions.toggleRelease("x");
-    expect(updateExpectation).toHaveBeenLastCalledWith(3, { status: "pending" });
+    expect(updateExpectation).toHaveBeenLastCalledWith(storedRowId(3), { status: "pending" });
   });
 
   it("shows the release at once and the returned row's status after the answer", async () => {

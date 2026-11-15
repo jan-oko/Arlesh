@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import MindmapView from "./MindmapView";
@@ -39,7 +40,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const FLOW = 7;
+const FLOW = storedRowId(7);
 
 /** One passed, day-long iteration of Habit 7, anchored on `date`. */
 function iteration(date: string, index: number): MindmapNode {
@@ -77,10 +78,10 @@ function iteration(date: string, index: number): MindmapNode {
 const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Root", position: 0, tagIds: [],
   children: [{
-    id: "goal-5", kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
+    id: `goal-${storedRowId(5)}`, kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
     children: [
       ...["2026-09-08", "2026-09-09", "2026-09-15", "2026-09-16"].map(iteration),
-      { id: "task-9", kind: "task", title: "Live task", status: "todo", position: 4, tagIds: [], children: [] },
+      { id: `task-${storedRowId(9)}`, kind: "task", title: "Live task", status: "todo", position: 4, tagIds: [], children: [] },
     ],
   }],
 };
@@ -121,7 +122,7 @@ beforeEach(() => {
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
     pasteNodes: vi.fn().mockResolvedValue([]),
-    insertParent: vi.fn().mockResolvedValue("domain-99"),
+    insertParent: vi.fn().mockResolvedValue(`domain-${storedRowId(99)}`),
     removeNode: vi.fn(),
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
@@ -150,7 +151,7 @@ beforeEach(() => {
 describe("arrow navigation over a folded Habit run", () => {
   it("arrows onto the folded run from the sibling below it", () => {
     render(<MindmapView />);
-    select("task-9");
+    select(`task-${storedRowId(9)}`);
 
     press("ArrowUp");
 
@@ -163,7 +164,7 @@ describe("arrow navigation over a folded Habit run", () => {
 
     press("ArrowDown");
 
-    expect(selected()).toBe("task-9");
+    expect(selected()).toBe(`task-${storedRowId(9)}`);
   });
 
   it("arrows off the folded run to its parent", () => {
@@ -172,12 +173,12 @@ describe("arrow navigation over a folded Habit run", () => {
 
     press("ArrowLeft");
 
-    expect(selected()).toBe("goal-5");
+    expect(selected()).toBe(`goal-${storedRowId(5)}`);
   });
 
   it("arrows from the parent down into the folded run", () => {
     render(<MindmapView />);
-    select("goal-5");
+    select(`goal-${storedRowId(5)}`);
 
     press("ArrowRight");
 
@@ -224,7 +225,7 @@ describe("arrow navigation inside an opened run", () => {
     press("ArrowLeft");
     press("ArrowDown");
 
-    expect(selected()).toBe("task-9");
+    expect(selected()).toBe(`task-${storedRowId(9)}`);
   });
 
   it("opens a scope level onto its iterations, which arrow back to it", () => {
@@ -294,8 +295,8 @@ describe("expanding a folded Habit run and everything under it", () => {
 
   it("clears an ordinary collapse and opens the fold beneath it in the same press", () => {
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
-    select("goal-5");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`goal-${storedRowId(5)}`]) }); });
+    select(`goal-${storedRowId(5)}`);
 
     press("/", { ctrlKey: true, altKey: true });
 
@@ -305,8 +306,8 @@ describe("expanding a folded Habit run and everything under it", () => {
 
   it("leaves a run outside the pressed subtree folded", () => {
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["task-9"]) }); });
-    select("task-9");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`task-${storedRowId(9)}`]) }); });
+    select(`task-${storedRowId(9)}`);
 
     press("/", { ctrlKey: true, altKey: true });
 
@@ -339,8 +340,8 @@ describe("collapsing a subtree with the same chord", () => {
     // `goal-5` is collapsed and the fold sits underneath it: one press has to clear the ordinary
     // collapse *and* open the run, and the second has to undo both.
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
-    select("goal-5");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`goal-${storedRowId(5)}`]) }); });
+    select(`goal-${storedRowId(5)}`);
     const before = drawnIds(container);
 
     pressChord();
@@ -377,7 +378,7 @@ describe("collapsing a subtree with the same chord", () => {
 
   it("shuts a cell that was already open, rather than opening it again", () => {
     const { container } = render(<MindmapView />);
-    select("goal-5");
+    select(`goal-${storedRowId(5)}`);
 
     pressChord();
 

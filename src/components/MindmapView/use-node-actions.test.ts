@@ -136,7 +136,7 @@ function refusedHere(child: NodeKind, parent: NodeKind, count: number, parents: 
 }
 
 /** A Task as a status write left it; the hook reads only the outcome around it. */
-const WRITTEN = { id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: { kind: "ordinary" as const, status: "in_progress" as const }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live" as const, tag_ids: [], position: 0, is_private: false };
+const WRITTEN = { id: storedRowId(5), title: "task-5", parent_type: "project", parent_id: storedRowId(3), status: { kind: "ordinary" as const, status: "in_progress" as const }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live" as const, tag_ids: [], position: 0, is_private: false };
 
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/habit-fold.json";
 import { fail, record, str } from "@/test/conformance-board";
@@ -34,7 +35,7 @@ function child(value: unknown, index: number, what: string): MindmapNode {
   return {
     ...node,
     habitIteration: {
-      flowId: raw.flow,
+      flowId: storedRowId(raw.flow),
       flowTitle: "Habit",
       index,
       scopeKind: kind === null ? null : (KINDS.find((candidate) => candidate === kind) ?? fail(`${what}.kind`)),

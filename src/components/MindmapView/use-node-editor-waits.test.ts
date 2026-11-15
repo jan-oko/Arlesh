@@ -28,10 +28,10 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...over };
 }
 
-const CHECK = { kind: "check" as const, wait_kind: "stored" as const, wait_id: 3, due_at: "2026-07-10T02:00:00" };
+const CHECK = { kind: "check" as const, wait_kind: "stored" as const, wait_id: storedRowId(3), due_at: "2026-07-10T02:00:00" };
 const check = node("check-3", "task", { rowId: "c-3", origin: CHECK });
 const wait = node(expectationNodeId(storedRowId(3)), "expectation", { rowId: storedRowId(3), checkEvery: { n: 3, kind: "day" }, children: [check] });
-const task = node("task-5", "task", { rowId: storedRowId(5) });
+const task = node(`task-${storedRowId(5)}`, "task", { rowId: storedRowId(5) });
 const root = node("root", "domain", { children: [wait, task] });
 
 function setup() {

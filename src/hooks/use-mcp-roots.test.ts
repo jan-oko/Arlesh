@@ -44,7 +44,7 @@ describe("useMcpRoots", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.roots).toEqual([{
-      key: { node_kind: "domain", node_id: 2 }, title: "Arlesh", kind: "project", path: ["Growth"], visible: true,
+      key: { node_kind: "domain", node_id: storedRowId(2) }, title: "Arlesh", kind: "project", path: ["Growth"], visible: true,
     }]);
     expect(result.current.candidates.map((candidate) => candidate.title)).toEqual(["Growth", "Ship"]);
   });
@@ -56,7 +56,7 @@ describe("useMcpRoots", () => {
 
     await act(() => result.current.addRoot(ship?.id ?? ""));
 
-    expect(written).toEqual([{ command: "add_mcp_root", args: { nodeKind: "goal", nodeId: 10 } }]);
+    expect(written).toEqual([{ command: "add_mcp_root", args: { nodeKind: "goal", nodeId: storedRowId(10) } }]);
     expect(useMcpAccessStore.getState().revision).toBe(1);
   });
 
@@ -66,7 +66,7 @@ describe("useMcpRoots", () => {
 
     await act(() => result.current.removeRoot({ node_kind: "domain", node_id: storedRowId(2) }));
 
-    expect(written).toEqual([{ command: "remove_mcp_root", args: { nodeKind: "domain", nodeId: 2 } }]);
+    expect(written).toEqual([{ command: "remove_mcp_root", args: { nodeKind: "domain", nodeId: storedRowId(2) } }]);
   });
 
   it("says why an edit was refused rather than dropping it", async () => {

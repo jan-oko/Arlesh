@@ -5,7 +5,7 @@ import { goalSaveFields, infoSaveFields, shownTitle, taskSaveFields } from "@/ut
 import { storedRowId } from "@/test/stored-id";
 
 const node: MindmapNode = {
-  id: "task-1", rowId: storedRowId(1), kind: "task", title: "Write", tagIds: [], position: 0, children: [],
+  id: `task-${storedRowId(1)}`, rowId: storedRowId(1), kind: "task", title: "Write", tagIds: [], position: 0, children: [],
   status: "todo", taskStatus: { kind: "ordinary", status: "todo" },
 };
 
@@ -19,7 +19,7 @@ describe("taskSaveFields", () => {
   it("carries the form's own values and no derived field", () => {
     const fields = taskSaveFields(node, save);
     expect(fields).toMatchObject({
-      title: "Write more", blockReasons: ["waiting"], tagIds: [3], plan: null, timeScope: null,
+      title: "Write more", blockReasons: ["waiting"], tagIds: [storedRowId(3)], plan: null, timeScope: null,
       agentic: null, asynchronous: false, agenticBrief: null,
     });
     for (const derived of ["inheritedPlan", "inheritedAgentic", "overdue", "timing", "blocked", "archived"]) {

@@ -15,13 +15,13 @@ async fn board() -> (ArleshMcp, SqlitePool) {
         .unwrap();
     crate::database::run_migrations(&pool).await.unwrap();
     for sql in [
-        "INSERT INTO domains (id, title, subtype) VALUES (901, 'Growth', 'aspect')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (902, 'Arlesh', 'project', 901, 'active')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (10, 'Ship', 'domain', 902, 'active')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (11, 'Launch', 'domain', 902, 'active')",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (100, 'Docs', 'goal', 10, 'agentic_todo', 1)",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (101, 'Announce', 'goal', 11, 'agentic_todo', 1)",
-        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', 901)",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000385', 'Growth', 'aspect')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000386', 'Arlesh', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000a', 'Ship', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000b', 'Launch', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000064', 'Docs', 'goal', '00000000-0000-7000-8000-00000000000a', 'agentic_todo', 1)",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000065', 'Announce', 'goal', '00000000-0000-7000-8000-00000000000b', 'agentic_todo', 1)",
+        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', '00000000-0000-7000-8000-000000000385')",
     ] {
         sqlx::query(sql).execute(&pool).await.unwrap();
     }
@@ -1231,7 +1231,7 @@ async fn a_child_whose_task_is_still_on_an_agent_is_kept() {
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
     child_claims(&session, &token, "task", "100").await;
-    sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = 100")
+    sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = '00000000-0000-7000-8000-000000000064'")
         .execute(&pool)
         .await
         .unwrap();
@@ -1250,13 +1250,13 @@ async fn a_child_whose_task_was_given_back_is_removed_unless_a_wait_is_open_unde
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
     child_claims(&session, &token, "task", "100").await;
-    sqlx::query("INSERT INTO expectations (id, title, parent_type, parent_id, status, archival, agentic) VALUES (900, 'CI', 'task', 100, 'pending', 'live', 1)")
+    sqlx::query("INSERT INTO expectations (id, title, parent_type, parent_id, status, archival, agentic) VALUES ('00000000-0000-7000-8000-000000000384', 'CI', 'task', '00000000-0000-7000-8000-000000000064', 'pending', 'live', 1)")
         .execute(&pool)
         .await
         .unwrap();
 
     let waiting = finish(&session, "sub-1").await;
-    sqlx::query("UPDATE expectations SET status = 'released' WHERE id = 900")
+    sqlx::query("UPDATE expectations SET status = 'released' WHERE id = '00000000-0000-7000-8000-000000000384'")
         .execute(&pool)
         .await
         .unwrap();

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useOccurrenceCompletion } from "./use-occurrence-completion";
@@ -18,7 +19,7 @@ const OCCURRENCE: MindmapNode = {
   ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }),
 };
 
-const MILK = [{ child_type: "task" as const, child_id: 12, title: "buy milk" }];
+const MILK = [{ child_type: "task" as const, child_id: storedRowId(12), title: "buy milk" }];
 const HOLDING = { kind: "needs_confirmation", message: "still holds work", details: { children: MILK } };
 const WRITTEN: WriteResult = { outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } };
 

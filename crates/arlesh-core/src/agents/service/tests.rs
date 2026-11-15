@@ -40,15 +40,15 @@ async fn board() -> Board {
         .unwrap();
     crate::database::run_migrations(&pool).await.unwrap();
     for sql in [
-        "INSERT INTO domains (id, title, subtype) VALUES (901, 'Growth', 'aspect')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (902, 'Arlesh', 'project', 901, 'active')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (903, 'Body', 'project', 901, 'active')",
-        "INSERT INTO domains (id, title, subtype) VALUES (904, 'Elsewhere', 'aspect')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (10, 'Ship', 'domain', 902, 'active')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (11, 'Launch', 'domain', 902, 'active')",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (100, 'Docs', 'goal', 10, 'agentic_todo', 1)",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (101, 'Announce', 'goal', 11, 'agentic_todo', 1)",
-        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', 901)",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000385', 'Growth', 'aspect')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000386', 'Arlesh', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000387', 'Body', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000388', 'Elsewhere', 'aspect')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000a', 'Ship', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000b', 'Launch', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000064', 'Docs', 'goal', '00000000-0000-7000-8000-00000000000a', 'agentic_todo', 1)",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000065', 'Announce', 'goal', '00000000-0000-7000-8000-00000000000b', 'agentic_todo', 1)",
+        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', '00000000-0000-7000-8000-000000000385')",
     ] {
         sqlx::query(sql).execute(&pool).await.unwrap();
     }
@@ -368,7 +368,7 @@ async fn a_task_moved_out_of_the_claim_leaves_the_view_at_once() {
         .await
         .unwrap();
 
-    sqlx::query("UPDATE tasks SET parent_id = 11 WHERE id = 100")
+    sqlx::query("UPDATE tasks SET parent_id = '00000000-0000-7000-8000-00000000000b' WHERE id = '00000000-0000-7000-8000-000000000064'")
         .execute(&board.pool)
         .await
         .unwrap();
@@ -394,7 +394,7 @@ async fn a_claim_moved_under_an_older_one_is_shadowed_and_sees_nothing() {
         .await
         .unwrap();
 
-    sqlx::query("UPDATE goals SET parent_type = 'domain', parent_id = 903 WHERE id = 10")
+    sqlx::query("UPDATE goals SET parent_type = 'domain', parent_id = '00000000-0000-7000-8000-000000000387' WHERE id = '00000000-0000-7000-8000-00000000000a'")
         .execute(&board.pool)
         .await
         .unwrap();
@@ -870,7 +870,7 @@ async fn setting_the_claimed_task_done_removes_that_child_and_not_a_sibling() {
             .await
             .unwrap();
 
-        sqlx::query("UPDATE tasks SET status = ? WHERE id = 100")
+        sqlx::query("UPDATE tasks SET status = ? WHERE id = '00000000-0000-7000-8000-000000000064'")
             .bind(done)
             .execute(&board.pool)
             .await
