@@ -1,1 +1,0 @@
-- **An open dropdown no longer moves the board behind it.** Arrowing through a menu such as the status preset also moved the selection on the board; a menu now holds the keyboard while open.

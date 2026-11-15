@@ -1,1 +1,0 @@
-- **Shortcuts no longer fire with extra modifiers held.** A shortcut needs exactly the modifiers it names: **Ctrl+E** no longer opens the editor, **Ctrl+Shift+C/X/V** no longer cut, copy or paste, and **Shift+Tab** no longer creates a child.

@@ -1,1 +1,0 @@
-- **Emptying a field empties it.** Clearing a Time Scope, on-exit choice, Plan, delegate, a note's details, or a Flow's Duration, Phase window or root Cycle Plan reported success but kept the old value. If something you cleared came back, clear it again and it will stick.

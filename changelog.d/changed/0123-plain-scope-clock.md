@@ -1,1 +1,0 @@
-- **No red X over the Time Scope clock.** An item whose window has passed no longer draws its clock badge crossed out: an Overdue item has the amber border, and a Missed or Completed one the archive box.

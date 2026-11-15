@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-py"
-version = "0.3.0"
+version = "1.0.0"
 description = "Python bindings for arlesh-core"
 edition = "2021"
 publish = false

@@ -66,7 +66,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "arlesh"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "arlesh-backend",
@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "arlesh-backend"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "arlesh-core",
  "async-trait",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "arlesh-core"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "arlesh-rules",
@@ -133,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "arlesh-py"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "arlesh-backend",
  "arlesh-core",
@@ -150,7 +150,7 @@ dependencies = [
 
 [[package]]
 name = "arlesh-rules"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "schemars 1.2.2",

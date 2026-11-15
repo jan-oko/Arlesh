@@ -1,1 +1,0 @@
-- **A Flow's target list no longer offers Habit repetitions**, which saved a target that did not exist and broke the check that limits a scoped Flow's targets to ones that can hold it. Only real nodes are offered, and the check works again.

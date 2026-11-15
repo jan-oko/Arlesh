@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-rules"
-version = "0.3.0"
+version = "1.0.0"
 description = "Arlesh's pure rules layer and the domain models it reads, with no database, runtime or host"
 edition = "2021"
 

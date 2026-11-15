@@ -1,6 +1,6 @@
 [package]
 name = "arlesh-rules-wasm"
-version = "0.3.0"
+version = "1.0.0"
 description = "arlesh-rules compiled to wasm32 for the frontend's optimistic lane"
 edition = "2021"
 publish = false

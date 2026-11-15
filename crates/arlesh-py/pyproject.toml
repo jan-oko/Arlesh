@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "arlesh"
-version = "0.3.0"
+version = "1.0.0"
 description = "Arlesh's core — the board, its rules and its writes — from Python"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.7"]

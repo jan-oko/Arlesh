@@ -1,1 +1,0 @@
-- **A Tag can hold Info notes.** Creating, dropping or pasting a note on a Tag was refused although the database allowed it. A Tag now holds Info notes, and only those.

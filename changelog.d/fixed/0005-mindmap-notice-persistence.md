@@ -1,1 +1,0 @@
-- **A Mindmap notice about a node that is off screen still shows**, at a fixed spot, instead of silently not appearing.
