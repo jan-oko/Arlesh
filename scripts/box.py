@@ -1220,6 +1220,60 @@ def shared_inputs_key(wt: Path) -> str:
     return digest.hexdigest()
 
 
+# ---- The compiler cache: sccache under every build through `owned_target` --------------------
+#
+# The shared target holds one version of each workspace crate, so going back to a branch built
+# before recompiles whatever differs. sccache keys rustc's output on its inputs, so that becomes a
+# hit. It never touches the target's own records: cargo still decides what to compile, `owned_target`
+# still drops what is not the branch's, and sccache only answers a compile it has seen.
+
+# sccache does not cache incremental compilations, and cargo compiles workspace crates
+# incrementally by default (dependencies from the registry never are). With the cache in use,
+# True turns incremental off (CARGO_INCREMENTAL=0) so the workspace crates can hit; False leaves
+# it as the caller has it, so the cache serves dependencies only. The user ruled on 2026-11-15: True.
+CACHE_TURNS_INCREMENTAL_OFF = True
+
+CACHE_SIZE = "10G"
+
+
+def cache_dir() -> Path:
+    return home() / ".cache" / "arlesh" / "sccache"
+
+
+def cache_environment() -> dict[str, str]:
+    """The variables that put sccache under cargo, or {} (with one note) when it is not installed.
+
+    What the caller set wins: an own RUSTC_WRAPPER, SCCACHE_DIR, SCCACHE_CACHE_SIZE or
+    CARGO_INCREMENTAL is left alone.
+    """
+    if os.environ.get("RUSTC_WRAPPER"):
+        return {}
+    binary = shutil.which("sccache")
+    if binary is None:
+        note("compiler cache: sccache is not installed, so builds are not cached (cargo install sccache --locked)")
+        return {}
+    wanted = {
+        "RUSTC_WRAPPER": binary,
+        "SCCACHE_DIR": str(cache_dir()),
+        "SCCACHE_CACHE_SIZE": CACHE_SIZE,
+    }
+    if CACHE_TURNS_INCREMENTAL_OFF:
+        wanted["CARGO_INCREMENTAL"] = "0"
+    return {k: v for k, v in wanted.items() if k not in os.environ}
+
+
+@contextlib.contextmanager
+def compiler_cache() -> Iterator[None]:
+    """Cache variables in this process's environment for the length of a build (children inherit)."""
+    added = cache_environment()
+    os.environ.update(added)
+    try:
+        yield
+    finally:
+        for key in added:
+            os.environ.pop(key, None)
+
+
 LOCK_FILE = ".arlesh-box.lock"
 
 
@@ -1246,7 +1300,7 @@ def target_lock(target: Path) -> Iterator[None]:
 @contextlib.contextmanager
 def owned_target(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
     """`own_records` under `target_lock`: the whole build of one worktree holds the target alone."""
-    with target_lock(target), own_records(wt, target, unkeyed):
+    with target_lock(target), own_records(wt, target, unkeyed), compiler_cache():
         yield
 
 
