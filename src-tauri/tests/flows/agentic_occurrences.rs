@@ -448,7 +448,11 @@ mod over_the_mcp {
     }
 
     /// An operation as an agent sends it, read through the wire's own parsing.
-    fn operation(value: serde_json::Value) -> params::TasksOperation {
+    /// A write asks for the whole Task, so the assertions can read every field.
+    fn operation(mut value: serde_json::Value) -> params::TasksOperation {
+        if let Some(fields) = value.as_object_mut() {
+            fields.entry("verbose").or_insert(true.into());
+        }
         serde_json::from_value(value).expect("a well-formed operation")
     }
 
@@ -527,6 +531,7 @@ mod over_the_mcp {
         let tidy = occurrence(item);
         let mcp = mcp(&pool).await;
         let start = |expected| params::TasksOperation::SetStatus {
+            verbose: Some(true),
             id: named(&tidy),
             expected,
             status: params::AgenticStatusParam::OnAgent,
@@ -552,6 +557,7 @@ mod over_the_mcp {
         let moved = tasks(
             &mcp,
             params::TasksOperation::Move {
+                verbose: Some(true),
                 id: named(&tidy),
                 parent_type: "aspect".into(),
                 parent_id: 2_i64.into(),
@@ -560,7 +566,14 @@ mod over_the_mcp {
         .await;
         assert_eq!(refused(&moved), "invalid_request");
 
-        let archived = tasks(&mcp, params::TasksOperation::Archive { id: named(&tidy) }).await;
+        let archived = tasks(
+            &mcp,
+            params::TasksOperation::Archive {
+                id: named(&tidy),
+                verbose: Some(true),
+            },
+        )
+        .await;
         assert_eq!(succeeded(&archived)["archived"], true);
         let board = served(&pool).await;
         assert!(

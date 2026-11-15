@@ -144,8 +144,12 @@ fn create(parent_type: &str, parent_id: impl Into<NodeIdParam>, title: &str) -> 
     }))
 }
 
-/// An operation as an agent sends it, read through the wire's own parsing.
-fn operation(value: serde_json::Value) -> TasksOperation {
+/// An operation as an agent sends it, read through the wire's own parsing. A write asks for the
+/// whole Task unless the test says `verbose` itself, so the assertions can read every field.
+fn operation(mut value: serde_json::Value) -> TasksOperation {
+    if let Some(fields) = value.as_object_mut() {
+        fields.entry("verbose").or_insert(true.into());
+    }
     serde_json::from_value(value).expect("a well-formed operation")
 }
 
@@ -277,6 +281,63 @@ async fn an_agent_creates_an_agentic_task_inside_a_root() {
     .await
     .expect("the task was journaled");
     assert_eq!(source, "mcp");
+}
+
+#[tokio::test]
+async fn a_task_write_answers_briefly_unless_asked_for_the_whole_task() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    let mcp = mcp(&pool);
+    let create_with = |verbose: serde_json::Value| {
+        operation(serde_json::json!({
+            "operation": "create",
+            "parent_type": "project",
+            "parent_id": board.inside.to_string(),
+            "title": "Long task",
+            "brief": { "priority": "B", "spec": "A very long spec" },
+            "verbose": verbose,
+        }))
+    };
+
+    let created = run(&mcp, create_with(serde_json::Value::Null)).await;
+    let created = succeeded(&created).clone();
+    let kept: Vec<&str> = created
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(kept, ["full_id", "id", "short_id", "status", "title"]);
+    let id = created["id"].as_i64().expect("a stored row");
+
+    let updated = run(
+        &mcp,
+        operation(serde_json::json!({
+            "operation": "update",
+            "id": id.to_string(),
+            "title": "Renamed",
+            "brief": { "notes": "n" },
+            "verbose": false,
+        })),
+    )
+    .await;
+    let updated = succeeded(&updated);
+    assert_eq!(updated["title"], "Renamed");
+    assert_eq!(updated["changed"], serde_json::json!(["title", "brief"]));
+    assert!(updated.get("agentic_brief").is_none(), "no brief echoed");
+
+    let whole = run(
+        &mcp,
+        operation(serde_json::json!({
+            "operation": "update", "id": id.to_string(), "title": "Whole", "verbose": true,
+        })),
+    )
+    .await;
+    assert_eq!(
+        succeeded(&whole)["agentic_brief"]["spec"],
+        "A very long spec"
+    );
 }
 
 #[tokio::test]
