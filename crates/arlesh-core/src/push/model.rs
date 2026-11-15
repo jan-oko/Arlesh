@@ -8,7 +8,7 @@ pub const CAPACITY_KEY: &str = "capacity";
 
 /// The kind of event a notification tells of. Each is one Android notification channel, named by
 /// [`Channel::as_str`], so the user can switch each off in the system settings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Channel {
     /// An agent asked a question: a Task went to Review.
@@ -24,6 +24,15 @@ pub enum Channel {
 }
 
 impl Channel {
+    /// Every channel, in the order the app lists them.
+    pub const ALL: [Channel; 5] = [
+        Self::AgentQuestion,
+        Self::TaskOverdue,
+        Self::TaskGenerated,
+        Self::CapacityLocked,
+        Self::CapacityCleared,
+    ];
+
     /// The channel's id on the wire and on the phone.
     pub fn as_str(self) -> &'static str {
         match self {

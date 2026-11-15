@@ -6,6 +6,7 @@ pub mod backend;
 pub mod client_mode;
 pub mod commands;
 pub mod icon;
+pub mod notifications;
 pub mod tray;
 pub mod windows;
 
@@ -28,6 +29,9 @@ pub fn run() {
         .init();
 
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    // The system's notification service, for the board events the phone is told of too.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_notification::init());
     // One handler for every window, rather than one attached per window at creation: a torn-off
     // window is a window like any other, and a handler wired up at creation time is one a future
     // path that creates a window could forget. A phone has one window and nothing to hide into.
@@ -72,6 +76,9 @@ pub fn run() {
             ));
 
             #[cfg(desktop)]
+            commands::notifications::install(app.handle(), &app_dir);
+
+            #[cfg(desktop)]
             setup_desktop_shell(app, &app_dir)?;
 
             Ok(())
@@ -94,6 +101,8 @@ pub fn run() {
             commands::push::push_state,
             commands::push::register_push,
             commands::push::unregister_push,
+            commands::notifications::notification_switches,
+            commands::notifications::set_notification_enabled,
             commands::undo::open_gesture,
             commands::undo::close_gesture,
             commands::undo::abort_gesture,

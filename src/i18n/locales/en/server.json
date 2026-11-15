@@ -51,6 +51,8 @@
   },
   "notifications": {
     "notAvailable": "Phone notifications are for the Android app connected to a server.",
+    "desktopIntro": "While Arlesh is running, in the tray too, your system shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, and when the agent capacity lock is set or cleared. The switches are for this device only.",
+    "desktopClick": "Clicking a notification does not open its task: the system's notification service gives the app no click on the desktop.",
     "intro": "Your phone can be told when an agent asks you a question, a task becomes overdue, a task is generated, and when the agent capacity lock is set or cleared.",
     "loading": "Checking…",
     "unsupported": "This build cannot receive push notifications.",
