@@ -41,9 +41,12 @@ RUN case "$TARGETARCH" in \
  && rustup target add "$(cat /rust-target)"
 
 # manylinux_2_28 is far below bookworm's glibc (2.36), so the wheel runs in the runtime stage.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/src/src-tauri/target \
+# The amd64 and arm64 builds of this stage run at once on a multi-platform build, and both use the
+# BUILD platform's toolchain. Cargo's registry unpacks into one directory, so two builds sharing
+# a cache mount race on it (".cargo-ok"): each target gets its own cache, by id.
+RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target-${TARGETARCH},target=/src/src-tauri/target \
     maturin build --release --locked --zig \
       --manifest-path crates/arlesh-py/Cargo.toml \
       --target "$(cat /rust-target)" --compatibility manylinux_2_28 \
