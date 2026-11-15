@@ -1041,6 +1041,108 @@ class SharedTargetOwnership(IsolatedEnv):
         self.assertEqual(self.build(self.wt_b)["arlesh-core"], "compiled in b")
 
 
+class SharedTargetLock(IsolatedEnv):
+    """Two box builds into one target take turns: the second waits, says so, and sees the first's records."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        patcher = mock.patch.object(box, "note")
+        self.notes = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_free_target_is_taken_without_a_word(self) -> None:
+        with box.target_lock(self.target):
+            pass
+        self.notes.assert_not_called()
+
+    def test_a_second_build_waits_for_the_first_and_says_so_once(self) -> None:
+        order: list[str] = []
+        first_in, release = threading.Event(), threading.Event()
+
+        def first() -> None:
+            with box.target_lock(self.target):
+                order.append("first in")
+                first_in.set()
+                release.wait(5)
+                order.append("first out")
+
+        def second() -> None:
+            with box.target_lock(self.target):
+                order.append("second in")
+
+        a = threading.Thread(target=first)
+        a.start()
+        self.assertTrue(first_in.wait(5))
+        b = threading.Thread(target=second)
+        b.start()
+        time.sleep(0.3)
+        self.assertEqual(order, ["first in"])  # still queued
+        release.set()
+        a.join(5)
+        b.join(5)
+        self.assertEqual(order, ["first in", "first out", "second in"])
+        self.assertEqual(self.notes.call_count, 1)
+
+    def test_the_lock_is_released_when_the_build_raises(self) -> None:
+        with self.assertRaises(RuntimeError), box.target_lock(self.target):
+            raise RuntimeError("compile error")
+        with box.target_lock(self.target):
+            pass
+        self.notes.assert_not_called()
+
+
+class CargoCommand(IsolatedEnv):
+    """`box cargo -- <args>`: cargo in this worktree, in the shared target, under the lock."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        self.calls: list[dict[str, Any]] = []
+        self.owned: list[tuple[Path, Path]] = []
+        self.exit_code = 0
+
+        @contextlib.contextmanager
+        def fake_owned(wt: Path, target: Path, unkeyed: Any = ()) -> Any:
+            self.owned.append((wt, target))
+            yield
+
+        def fake_run(cmd: list[str], **kwargs: Any) -> Any:
+            self.calls.append({"cmd": cmd, **kwargs})
+            return subprocess.CompletedProcess(cmd, self.exit_code)
+
+        for patcher in (
+            mock.patch.object(box, "owned_target", fake_owned),
+            mock.patch.object(box, "shared_target", lambda: self.target),
+            mock.patch.object(box.subprocess, "run", fake_run),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_everything_after_cargo_is_cargos_own_including_flags_and_a_second_double_dash(self) -> None:
+        box.main(["cargo", "--", "test", "-p", "arlesh-core", "-j", "3", "--", "--nocapture"])
+        self.assertEqual(self.calls[0]["cmd"], ["cargo", "test", "-p", "arlesh-core", "-j", "3", "--", "--nocapture"])
+
+    def test_it_builds_this_worktree_into_the_shared_target_under_ownership(self) -> None:
+        box.main(["cargo", "check"])
+        self.assertEqual(self.owned, [(box.repo_root(), self.target)])
+        self.assertEqual(self.calls[0]["cwd"], box.repo_root())
+        self.assertEqual(self.calls[0]["env"]["CARGO_TARGET_DIR"], str(self.target))
+
+    def test_the_callers_environment_reaches_cargo(self) -> None:
+        with mock.patch.dict(os.environ, {"CARGO_INCREMENTAL": "0"}):
+            box.main(["cargo", "check"])
+        self.assertEqual(self.calls[0]["env"]["CARGO_INCREMENTAL"], "0")
+
+    def test_cargos_exit_code_is_returned(self) -> None:
+        self.exit_code = 101
+        self.assertEqual(box.main(["cargo", "test"]), 101)
+
+    def test_without_arguments_it_is_a_usage_error(self) -> None:
+        self.assertEqual(box.main(["cargo"]), 2)
+        self.assertEqual(self.calls, [])
+
+
 class ContentKeys(unittest.TestCase):
     """The content key of a crate, on a real git repository."""
 

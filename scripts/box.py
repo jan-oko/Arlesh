@@ -185,6 +185,7 @@ import argparse
 import atexit
 import base64
 import contextlib
+import fcntl
 import getpass
 import hashlib
 import ipaddress
@@ -1204,8 +1205,38 @@ def shared_inputs_key(wt: Path) -> str:
     return digest.hexdigest()
 
 
+LOCK_FILE = ".arlesh-box.lock"
+
+
+@contextlib.contextmanager
+def target_lock(target: Path) -> Iterator[None]:
+    """Exclusive lock on the shared `target` for one whole box build (keys, drop, cargo, record).
+
+    Cargo locks its target directory itself, but only while it runs: box's drop of a crate's
+    `.fingerprint/` and `build/` records happens outside that lock, so a second box command
+    dropping them mid-build made the first fail ("invoked.timestamp: No such file or directory").
+    Holding this lock around the drop, the build and the record serialises builds instead: the
+    second waits, says so once, and then finds the first one's records and keys.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    with open(target / LOCK_FILE, "a") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            note("shared target: another build holds it; waiting for it to finish...")
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield  # closing the file releases the lock, also when the build raised or was signalled
+
+
 @contextlib.contextmanager
 def owned_target(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
+    """`own_records` under `target_lock`: the whole build of one worktree holds the target alone."""
+    with target_lock(target), own_records(wt, target, unkeyed):
+        yield
+
+
+@contextlib.contextmanager
+def own_records(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
     """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
 
     Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
@@ -4035,6 +4066,28 @@ LIST_HEADER = (
 )
 
 
+def cmd_cargo(args: argparse.Namespace) -> int:
+    """`cargo <args>` in this worktree, into the shared target, under the target lock.
+
+    The same `owned_target` every box build uses, so a branch never links another branch's
+    workspace-crate output, and two builds queue instead of breaking each other. The caller's
+    environment (CARGO_INCREMENTAL, RUSTFLAGS, ...) reaches cargo as it is, and cargo's exit
+    code is this command's. Runs from the worktree root, whatever directory it was started in.
+    """
+    if not args.cargo_args:
+        raise UsageError(f"Usage: {CMD} cargo -- <cargo arguments>  (for example: test -p arlesh-core -j 3)")
+    wt = repo_root()
+    target = shared_target()
+    with owned_target(wt, target):
+        result = subprocess.run(
+            ["cargo", *args.cargo_args],
+            cwd=wt,
+            env=project_env({"CARGO_TARGET_DIR": str(target)}),
+            check=False,
+        )
+    return result.returncode
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     blocker = gh_unavailable()
     prs: list[dict[str, Any]] | None = None
@@ -4569,6 +4622,13 @@ def build_parser() -> argparse.ArgumentParser:
     seedsub.add_parser("show", help="what is configured (never prints the token)")
     seed.set_defaults(fn=cmd_seed)
 
+    cargo = sub.add_parser(
+        "cargo",
+        help="cargo in this worktree, built into the shared target (builds queue; one at a time)",
+    )
+    cargo.add_argument("cargo_args", nargs="*")
+    cargo.set_defaults(fn=cmd_cargo)
+
     reseed = sub.add_parser(
         "reseed", help="replace a branch's databases with a fresh server snapshot"
     )
@@ -4579,7 +4639,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    args = build_parser().parse_args(list(argv))
+    argv = list(argv)
+    if argv[:1] == ["cargo"]:
+        # Everything after `cargo` (an optional `--` first) is cargo's, flags included.
+        rest = argv[1:]
+        rest = rest[1:] if rest[:1] == ["--"] else rest
+        return argparse.Namespace(cmd="cargo", fn=cmd_cargo, cargo_args=rest)
+    args = build_parser().parse_args(argv)
     if not getattr(args, "fn", None):
         args.fn = cmd_list
     return args
@@ -4590,7 +4656,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         load_env_file()
         args = parse_args(sys.argv[1:] if argv is None else argv)
         SEED.local = bool(getattr(args, "local_seed", False))
-        args.fn(args)
+        code = args.fn(args)
+        return code if isinstance(code, int) else 0
     except UsageError as exc:
         note(str(exc))
         return 2
