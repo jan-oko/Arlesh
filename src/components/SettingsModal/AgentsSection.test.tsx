@@ -8,6 +8,7 @@ import {
   applyAgentAction, fetchAgents, issueAgentPin, setAgentAccountLocked,
 } from "@/api/agents";
 import type { AgentSummary, AgentsOverview } from "@/api/agents";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -46,7 +47,7 @@ function summary(over: Partial<AgentSummary> & { id?: number; parent_id?: number
   return {
     agent: {
       id: over.id ?? 1, name: over.name ?? "writer", account: "work", session_uuid: "s",
-      claim: { root: { node_kind: "goal", node_id: 10 }, status, claimed_at: "2026-11-07T09:00:00" },
+      claim: { root: { node_kind: "goal", node_id: storedRowId(10) }, status, claimed_at: "2026-11-07T09:00:00" },
       locked: false, created_at: "2026-11-07T09:00:00", last_seen_at: null, parent_id: over.parent_id ?? null,
     },
     standing: over.standing ?? status,

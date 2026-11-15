@@ -4,17 +4,18 @@ import QuickDependencyPicker from "./QuickDependencyPicker";
 import type { QuickDependencyTarget } from "@/hooks/use-quick-dependency";
 import type { DependencyCandidate } from "@/utils/dependency-candidates";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const dependent: MindmapNode = { id: "task-1", rowId: 1, kind: "task", title: "Ship it", position: 0, tagIds: [], children: [] };
+const dependent: MindmapNode = { id: "task-1", rowId: storedRowId(1), kind: "task", title: "Ship it", position: 0, tagIds: [], children: [] };
 
 const CANDIDATES: DependencyCandidate[] = [
-  { id: "task-2", title: "Write the tests", kind: "task", path: ["Release"], dependency: { type: "task", id: 2 } },
-  { id: "task-3", title: "Review", kind: "task", path: ["Release"], dependency: { type: "task", id: 3 } },
-  { id: "expectation-7", title: "Tests from Dana", kind: "expectation", path: [], dependency: { type: "expectation", id: 7 } },
+  { id: "task-2", title: "Write the tests", kind: "task", path: ["Release"], dependency: { type: "task", id: storedRowId(2) } },
+  { id: "task-3", title: "Review", kind: "task", path: ["Release"], dependency: { type: "task", id: storedRowId(3) } },
+  { id: "expectation-7", title: "Tests from Dana", kind: "expectation", path: [], dependency: { type: "expectation", id: storedRowId(7) } },
 ];
 
 function target(candidates: DependencyCandidate[] | null = CANDIDATES): QuickDependencyTarget {

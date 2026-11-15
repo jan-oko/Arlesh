@@ -7,6 +7,7 @@ import type { Domain } from "@/api/domains";
 import type { Flow, FlowItemCycle, FlowTask } from "@/api/flows";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -19,35 +20,35 @@ vi.mock("@/api/flows", async (importOriginal) => ({
 }));
 
 const ASPECT: Domain = {
-  id: 1, title: "Health", description: null, subtype: "aspect", parent_id: null, position: 0, is_private: false,
+  id: storedRowId(1), title: "Health", description: null, subtype: "aspect", parent_id: null, position: 0, is_private: false,
   status: null, knowledge_base_directory: null, color: null,
 } satisfies Domain;
 
 // A task-instance weekly flow whose root is planned into Day 1, with one item on Day 3 planned
 // into its second part of day — the rows exactly as `load_mindmap` sends them.
 const FLOW: Flow = {
-  id: 5, title: "Sample", instance_type: "task", parent_type: "aspect", parent_id: 1,
+  id: storedRowId(5), title: "Sample", instance_type: "task", parent_type: "aspect", parent_id: storedRowId(1),
   target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
   flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
   root_plan_kind: "day", root_plan_start: 1, root_plan_end: 1,
   verdict_window_n: null, verdict_window_kind: null, is_habit: true, position: 0, is_private: false,
 };
 const ITEM: FlowTask = {
-  id: 9, flow_id: 5, title: "Prepare", parent_type: "flow", parent_id: 5, position: 0, is_private: false,
+  id: storedRowId(9), flow_id: storedRowId(5), title: "Prepare", parent_type: "flow", parent_id: storedRowId(5), position: 0, is_private: false,
 };
 const PAIR: FlowItemCycle = {
-  id: 3, flow_id: 5, item_type: "flow_task", item_id: 9, scope_kind: "day", scope_index: 3,
+  id: storedRowId(3), flow_id: storedRowId(5), item_type: "flow_task", item_id: storedRowId(9), scope_kind: "day", scope_index: 3,
   plan_kind: "part_of_day", plan_start: 2, plan_end: 2, position: 0,
 };
 
 // A goal-instance daily flow whose items fall on parts of the day — the shape of a meals Habit.
 const MEALS: Flow = {
-  ...FLOW, id: 4, title: "Meals", instance_type: "goal", flow_duration_kind: "day",
+  ...FLOW, id: storedRowId(4), title: "Meals", instance_type: "goal", flow_duration_kind: "day",
   root_plan_kind: null, root_plan_start: null, root_plan_end: null,
 };
-const BREAKFAST: FlowTask = { ...ITEM, id: 4, flow_id: 4, title: "Breakfast", parent_id: 4 };
+const BREAKFAST: FlowTask = { ...ITEM, id: storedRowId(4), flow_id: storedRowId(4), title: "Breakfast", parent_id: storedRowId(4) };
 const MORNING: FlowItemCycle = {
-  ...PAIR, id: 1, flow_id: 4, item_id: 4, scope_kind: "part_of_day", scope_index: 1,
+  ...PAIR, id: storedRowId(1), flow_id: storedRowId(4), item_id: storedRowId(4), scope_kind: "part_of_day", scope_index: 1,
   plan_kind: null, plan_start: null, plan_end: null,
 };
 

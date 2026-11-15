@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { testKey } from "@/test/scope-key";
 import { occurrenceRow } from "@/test/occurrence";
+import { storedRowId } from "@/test/stored-id";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,13 +31,13 @@ beforeEach(() => {
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "task-5",
-    rowId: 5,
+    rowId: storedRowId(5),
     kind: "task",
     title: "Write tests",
     status: "todo",
     blockReasons: [],
     position: 0,
-    tagIds: [2],
+    tagIds: [storedRowId(2)],
     children: [],
     ...overrides,
   };
@@ -59,7 +60,7 @@ const defaultProps = {
 };
 
 describe("TaskEditorModal — virtual blockers from dependencies", () => {
-  const GOAL_DEP: MindmapNode = { id: "goal-9", rowId: 9, kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
+  const GOAL_DEP: MindmapNode = { id: "goal-9", rowId: storedRowId(9), kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
 
   function withDep() {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
@@ -590,12 +591,12 @@ describe("TaskEditorModal — the Agentic status model", () => {
 
   it("shows Review read-only while the agent's question is open, with the question to answer", async () => {
     const question: MindmapNode = {
-      id: "expectation-9", rowId: 9, kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
+      id: "expectation-9", rowId: storedRowId(9), kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
       agentWaiting: { note: "CI is green.", question: true, answer: null },
     };
     const onAnswer = vi.fn().mockResolvedValue(true);
     // The board names the open question (the load's `open_question` fact); the editor draws it.
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [9] })} onAnswer={onAnswer} />);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [storedRowId(9)] })} onAnswer={onAnswer} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
@@ -838,7 +839,7 @@ describe("TaskEditorModal — the Due field", () => {
       rowId: "0b3f0f9e-7a52-5a4e-9d3c-1c2b3a4d5e6f",
       timeScope: JULY_WEEK,
       origin: {
-        kind: "habit", habit_id: 3, item_type: "flow_task", item_id: 4, cycle_id: 0,
+        kind: "habit", habit_id: storedRowId(3), item_type: "flow_task", item_id: storedRowId(4), cycle_id: storedRowId(0),
         iteration_scope: {
           index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
           scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
@@ -963,7 +964,7 @@ describe("TaskEditorModal — reopened after a refused Save", () => {
   it("holds what the user typed, saves it again, and shows the reason on its error line", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const draft = {
-      title: "Typed title", status: { kind: "ordinary", status: "in_progress" }, blockReasons: [], tagIds: [1],
+      title: "Typed title", status: { kind: "ordinary", status: "in_progress" }, blockReasons: [], tagIds: [storedRowId(1)],
       addedDeps: [], removedDeps: [], timeScope: null, onScopeExit: null, plan: null, archival: "live",
       agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
     } satisfies import("./TaskEditorModal").TaskSaveData;

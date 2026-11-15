@@ -46,6 +46,7 @@ async fn tamper(path: &Path, sql: &str) {
 
 fn new_domain(title: &str) -> CreateDomainRequest {
     CreateDomainRequest {
+        id: None,
         title: title.to_string(),
         description: None,
         subtype: DomainSubtype::Domain,

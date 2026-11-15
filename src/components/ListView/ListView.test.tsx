@@ -17,6 +17,7 @@ import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -766,7 +767,7 @@ describe("ListView", () => {
   });
 
   it("clicking a task's tag pill adds a shared tag filter", () => {
-    mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [7] }) })] }));
+    mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [storedRowId(7)] }) })] }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByTitle("filterByTag"));
     expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 7, mode: "any" }]);
@@ -1787,7 +1788,7 @@ describe("ListView — expectations", () => {
 
   it("completes a check task's check on Enter, and leaves D free", () => {
     const onCycleStatus = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(1), due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

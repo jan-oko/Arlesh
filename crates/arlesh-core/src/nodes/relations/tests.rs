@@ -28,6 +28,6 @@ fn an_edge_names_each_end_by_the_id_it_travels_under() {
 
 #[test]
 fn an_endpoint_fills_exactly_one_column() {
-    assert_eq!(Endpoint::Stored(tid(3)).columns(), (Some(3), None));
+    assert_eq!(Endpoint::Stored(tid(3)).columns(), (Some(tid(3)), None));
     assert_eq!(Endpoint::Derived("k".into()).columns(), (None, Some("k")));
 }

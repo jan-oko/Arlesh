@@ -11,6 +11,7 @@ import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -37,17 +38,17 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", rowId: 5, kind: "task", title: "Old title", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: storedRowId(5), kind: "task", title: "Old title", tagIds: [], position: 0, children: [],
   status: "todo", taskStatus: { kind: "ordinary", status: "todo" },
 };
 const goalNode: MindmapNode = {
-  id: "goal-2", rowId: 2, kind: "goal", title: "Goal", status: "active", tagIds: [], position: 0, children: [],
+  id: "goal-2", rowId: storedRowId(2), kind: "goal", title: "Goal", status: "active", tagIds: [], position: 0, children: [],
 };
 const infoNode: MindmapNode = {
-  id: "info-3", rowId: 3, kind: "info", title: "Body", tagIds: [], position: 0, children: [],
+  id: "info-3", rowId: storedRowId(3), kind: "info", title: "Body", tagIds: [], position: 0, children: [],
 };
 const tagNode: MindmapNode = {
-  id: "domain-4", rowId: 4, kind: "tag", title: "Tag", tagIds: [], position: 0, children: [],
+  id: "domain-4", rowId: storedRowId(4), kind: "tag", title: "Tag", tagIds: [], position: 0, children: [],
 };
 const root: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", tagIds: [], position: 0, children: [taskNode, goalNode, infoNode, tagNode],

@@ -7,7 +7,7 @@ import type { HabitChildKind } from "@/api/flows";
  */
 export interface LeftBehindChild {
   child_type: HabitChildKind;
-  child_id: number;
+  child_id: string;
   /** Its display title (an Info's body). */
   title: string;
 }
@@ -24,7 +24,7 @@ function isLeftBehindChild(value: unknown): value is LeftBehindChild {
   if (typeof value !== "object" || value === null) return false;
   const childType: unknown = Reflect.get(value, "child_type");
   return HABIT_CHILD_KINDS.some((kind) => kind === childType)
-    && typeof Reflect.get(value, "child_id") === "number"
+    && typeof Reflect.get(value, "child_id") === "string"
     && typeof Reflect.get(value, "title") === "string";
 }
 

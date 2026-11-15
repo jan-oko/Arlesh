@@ -14,6 +14,7 @@ import { agentic, ordinary } from "@/utils/status-mapping";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import type { ModeStatus } from "@/api/client-mode";
+import { storedRowId } from "@/test/stored-id";
 
 // What a press writes is predicted by `utils/task-gestures.ts` (pinned by the corpus) and decided
 // by the backend; these pin what the hook does with it: what the board shows at once, what it
@@ -48,7 +49,7 @@ function setup(nodes: MindmapNode[]) {
 
 function task(id: number, status: Task["status"]): Task {
   return {
-    id, title: `task-${id}`, parent_type: "aspect", parent_id: 1, status,
+    id, title: `task-${id}`, parent_type: "aspect", parent_id: storedRowId(1), status,
     delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null,
     plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
   };

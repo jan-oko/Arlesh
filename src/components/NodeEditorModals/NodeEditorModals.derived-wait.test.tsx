@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import NodeEditorModals from "./NodeEditorModals";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -24,18 +25,18 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
 const PLAN = { start_id: { kind: "week" as const, date: "2026-09-28" }, end_id: { kind: "week" as const, date: "2026-09-28" } };
 const spawned = node("sw-5", "expectation", {
   rowId: "5b1d7c3e-0000-5000-8000-000000000005", title: "Waiting on the reply", status: "pending",
-  origin: { kind: "spawned_wait", task_id: 5 }, timeScope: null, checkEvery: null,
+  origin: { kind: "spawned_wait", task_id: storedRowId(5) }, timeScope: null, checkEvery: null,
 });
 const task = node("task-5", "task", {
-  rowId: 5, title: "Send the email", status: "done", asynchronous: true, plan: PLAN, children: [spawned],
+  rowId: storedRowId(5), title: "Send the email", status: "done", asynchronous: true, plan: PLAN, children: [spawned],
 });
-const stored = node("wait-3", "expectation", { rowId: 3, title: "Stored wait", status: "pending", timeScope: null, checkEvery: null });
+const stored = node("wait-3", "expectation", { rowId: storedRowId(3), title: "Stored wait", status: "pending", timeScope: null, checkEvery: null });
 // A delegated Task's wait, drawn with a label round its Task's title.
 const delegation = node("dw-6", "expectation", {
   rowId: "6c2e8d4f-0000-5000-8000-000000000006", title: "Tuli finish: Review the PR", rowTitle: "Review the PR",
-  status: "pending", origin: { kind: "delegation_wait", task_id: 6 }, timeScope: null, checkEvery: null,
+  status: "pending", origin: { kind: "delegation_wait", task_id: storedRowId(6) }, timeScope: null, checkEvery: null,
 });
-const delegated = node("task-6", "task", { rowId: 6, title: "Review the PR", status: "todo", children: [delegation] });
+const delegated = node("task-6", "task", { rowId: storedRowId(6), title: "Review the PR", status: "todo", children: [delegation] });
 const tree = node("root", "domain", { children: [task, stored, delegated] });
 
 /** A view's editor wiring, as the Mindmap, List and Steps views have it: `E` calls `onDoubleClick`. */

@@ -19,6 +19,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 import { currentBoard } from "@/test/current-board";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -42,7 +43,7 @@ vi.mock("@/hooks/use-scope-labels", () => ({
 
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
-    id: 1, title: "Domain", description: null, subtype: "aspect",
+    id: storedRowId(1), title: "Domain", description: null, subtype: "aspect",
     parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
@@ -50,7 +51,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
-    id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Goal", parent_type: "domain", parent_id: storedRowId(1),
     status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -58,7 +59,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 1, title: "Task", parent_type: "goal", parent_id: 1,
+    id: storedRowId(1), title: "Task", parent_type: "goal", parent_id: storedRowId(1),
     status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -66,14 +67,14 @@ function mkTask(overrides: Partial<Task> = {}): Task {
 
 function mkInfo(overrides: Partial<Info> = {}): Info {
   return {
-    id: 1, body: "Note", details: null, parent_type: "task", parent_id: 1, position: 0, is_private: false,
+    id: storedRowId(1), body: "Note", details: null, parent_type: "task", parent_id: storedRowId(1), position: 0, is_private: false,
     ...overrides,
   };
 }
 
 function mkFlow(overrides: Partial<Flow> = {}): Flow {
   return {
-    id: 1, title: "Flow", instance_type: "task", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Flow", instance_type: "task", parent_type: "domain", parent_id: storedRowId(1),
     target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week",
     flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
     is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
@@ -96,11 +97,11 @@ describe("buildTree", () => {
   // Node ids are frozen as spelled (Arlesh-z7n): tab state persisted before rowId existed —
   // selection, collapse, subtree root — names nodes by these strings and must still find them.
   it("keeps every id spelled as before, and carries the row it draws as rowId", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 4, parent_type: "domain", parent_id: 1 });
-    const task = mkTask({ id: 9, parent_type: "goal", parent_id: 4 });
-    const info = mkInfo({ id: 2, parent_type: "task", parent_id: 9 });
-    const flow = mkFlow({ id: 3, parent_type: "domain", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(4), parent_type: "domain", parent_id: storedRowId(1) });
+    const task = mkTask({ id: storedRowId(9), parent_type: "goal", parent_id: storedRowId(4) });
+    const info = mkInfo({ id: storedRowId(2), parent_type: "task", parent_id: storedRowId(9) });
+    const flow = mkFlow({ id: storedRowId(3), parent_type: "domain", parent_id: storedRowId(1) });
     const flowGoal = { id: 6, flow_id: 3, title: "M", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
     const flowTask = { id: 7, flow_id: 3, title: "S", parent_type: "flow_goal", parent_id: 6, position: 0, is_private: false };
     const root = buildTree([aspect], [goal], [task], [info], [], [flow], [flowGoal], [flowTask]);
@@ -119,11 +120,11 @@ describe("buildTree", () => {
   });
 
   it("draws a Compound Task's derived block among its virtual blockers, never as a stored reason", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, parent_type: "domain", parent_id: 1, compound: true });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), compound: true });
     const root = buildTree(
       [aspect], [], [task], [], [], [], [], [], [], [],
-      [{ owner_type: "task", owner_id: 1, reason: "All open sub-items are blocked", position: 0, derived: "compound" }],
+      [{ owner_type: "task", owner_id: storedRowId(1), reason: "All open sub-items are blocked", position: 0, derived: "compound" }],
       [], [], [], (title) => title, (title) => title, "Sub-items all blocked",
     );
     const node = root.children[0]?.children.find((n) => n.id === "task-1");
@@ -133,12 +134,12 @@ describe("buildTree", () => {
   });
 
   it("draws a Habit cooldown's derived block as a virtual blocker that names when it lifts", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, parent_type: "domain", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
     const root = buildTree(
       [aspect], [], [task], [], [], [], [], [], [], [],
       [{
-        owner_type: "task", owner_id: 1, reason: "Cooling down until Mon 2026-10-05 02:00", position: 0,
+        owner_type: "task", owner_id: storedRowId(1), reason: "Cooling down until Mon 2026-10-05 02:00", position: 0,
         derived: "cooldown", until: "2026-10-05T02:00:00",
       }],
       [], [], [], (title) => title, (title) => title, "compound", "capacity", (until) => `cool ${until}`,
@@ -150,9 +151,9 @@ describe("buildTree", () => {
   });
 
   it("carries a task's stored Backlog state onto its node", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });
-    const live = mkTask({ id: 2, parent_type: "domain", parent_id: 1, archival: "live" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const aside = mkTask({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), archival: "backlog" });
+    const live = mkTask({ id: storedRowId(2), parent_type: "domain", parent_id: storedRowId(1), archival: "live" });
     const root = buildTree([aspect], [], [aside, live], []);
     const tasks = root.children[0]?.children ?? [];
     expect(tasks.find((n) => n.id === "task-1")?.backlogged).toBe(true);
@@ -174,25 +175,25 @@ describe("buildTree", () => {
   });
 
   it("wires a child domain to its parent domain", () => {
-    const parent = mkDomain({ id: 1, subtype: "aspect", parent_id: null });
-    const child = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Child" });
+    const parent = mkDomain({ id: storedRowId(1), subtype: "aspect", parent_id: null });
+    const child = mkDomain({ id: storedRowId(2), subtype: "project", parent_id: storedRowId(1), title: "Child" });
     const root = buildTree([parent, child], [], [], []);
     expect(root.children[0]?.children[0]?.id).toBe("domain-2");
     expect(root.children[0]?.children[0]?.kind).toBe("project");
   });
 
   it("wires a goal to its domain parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, parent_type: "domain", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [goal], [], []);
     expect(root.children[0]?.children[0]?.id).toBe("goal-1");
     expect(root.children[0]?.children[0]?.kind).toBe("goal");
   });
 
   it("wires a goal to a goal parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const parentGoal = mkGoal({ id: 1, parent_type: "domain", parent_id: 1 });
-    const childGoal = mkGoal({ id: 2, title: "Sub-goal", parent_type: "goal", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const parentGoal = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
+    const childGoal = mkGoal({ id: storedRowId(2), title: "Sub-goal", parent_type: "goal", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [parentGoal, childGoal], [], []);
     const goalNode = root.children[0]?.children[0];
     expect(goalNode?.id).toBe("goal-1");
@@ -200,24 +201,24 @@ describe("buildTree", () => {
   });
 
   it("wires a task to its goal parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, parent_type: "domain", parent_id: 1 });
-    const task = mkTask({ id: 1, parent_type: "goal", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
+    const task = mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [goal], [task], []);
     expect(root.children[0]?.children[0]?.children[0]?.id).toBe("task-1");
   });
 
   it("wires a task to its domain parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [task], []);
     expect(root.children[0]?.children[0]?.id).toBe("task-1");
   });
 
   it("wires a task to a task parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const parentTask = mkTask({ id: 1, parent_type: "project", parent_id: 1 });
-    const childTask = mkTask({ id: 2, parent_type: "task", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const parentTask = mkTask({ id: storedRowId(1), parent_type: "project", parent_id: storedRowId(1) });
+    const childTask = mkTask({ id: storedRowId(2), parent_type: "task", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [parentTask, childTask], []);
     const taskNode = root.children[0]?.children[0];
     expect(taskNode?.id).toBe("task-1");
@@ -225,9 +226,9 @@ describe("buildTree", () => {
   });
 
   it("wires an info node to its task parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, parent_type: "project", parent_id: 1 });
-    const info = mkInfo({ id: 1, parent_type: "task", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), parent_type: "project", parent_id: storedRowId(1) });
+    const info = mkInfo({ id: storedRowId(1), parent_type: "task", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [task], [info]);
     const taskNode = root.children[0]?.children[0];
     expect(taskNode?.children[0]?.id).toBe("info-1");
@@ -235,19 +236,19 @@ describe("buildTree", () => {
   });
 
   it("wires an info node to its goal parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, parent_type: "domain", parent_id: 1 });
-    const info = mkInfo({ id: 1, parent_type: "goal", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
+    const info = mkInfo({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [goal], [], [info]);
     const goalNode = root.children[0]?.children[0];
     expect(goalNode?.children[0]?.id).toBe("info-1");
   });
 
   it("wires an info node to another info node parent", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, parent_type: "project", parent_id: 1 });
-    const parentInfo = mkInfo({ id: 1, parent_type: "task", parent_id: 1 });
-    const childInfo = mkInfo({ id: 2, parent_type: "info", parent_id: 1, body: "Child note" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), parent_type: "project", parent_id: storedRowId(1) });
+    const parentInfo = mkInfo({ id: storedRowId(1), parent_type: "task", parent_id: storedRowId(1) });
+    const childInfo = mkInfo({ id: storedRowId(2), parent_type: "info", parent_id: storedRowId(1), body: "Child note" });
     const root = buildTree([aspect], [], [task], [parentInfo, childInfo]);
     const taskNode = root.children[0]?.children[0];
     const infoNode = taskNode?.children[0];
@@ -256,25 +257,25 @@ describe("buildTree", () => {
   });
 
   it("wires an info node to a domain parent (aspect/domain/project)", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const info = mkInfo({ id: 1, parent_type: "aspect", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const info = mkInfo({ id: storedRowId(1), parent_type: "aspect", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [], [info]);
     expect(root.children[0]?.children[0]?.id).toBe("info-1");
   });
 
   it("sets title of info nodes from their body field", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const info = mkInfo({ id: 1, body: "My note text", parent_type: "aspect", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const info = mkInfo({ id: storedRowId(1), body: "My note text", parent_type: "aspect", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [], [info]);
     expect(root.children[0]?.children[0]?.title).toBe("My note text");
   });
 
   it("stores goal status and its ordered block reasons on the node", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, status: "frozen", parent_type: "domain", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(1), status: "frozen", parent_type: "domain", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [goal], [], [], [], [], [], [], [], [], [
-      { owner_type: "goal", owner_id: 1, reason: "waiting on X", position: 0 },
-      { owner_type: "goal", owner_id: 1, reason: "needs sign-off", position: 1 },
+      { owner_type: "goal", owner_id: storedRowId(1), reason: "waiting on X", position: 0 },
+      { owner_type: "goal", owner_id: storedRowId(1), reason: "needs sign-off", position: 1 },
     ]);
     const goalNode = root.children[0]?.children[0];
     expect(goalNode?.status).toBe("frozen");
@@ -282,15 +283,15 @@ describe("buildTree", () => {
   });
 
   it("names a dependency the backend says blocks a task by its short id, and carries the short id on its node", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
-    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const blocker = mkTask({ id: storedRowId(2), title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: storedRowId(1) });
+    const blocked = mkTask({ id: storedRowId(3), title: "Waiter", parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree(
       [aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [],
-      [{ task_id: 3, dependency_type: "task", dependency_id: 2 }],
+      [{ task_id: storedRowId(3), dependency_type: "task", dependency_id: storedRowId(2) }],
       [], [], (title) => title, (title) => title, "compound", "capacity", (until) => until,
       { "task-2": "6f3", "task-3": "a1c" }, new Map(),
-      { "task-3": { dependency_blocks: [{ kind: "task", id: 2, short_id: "6f3", title: "Dep" }] } },
+      { "task-3": { dependency_blocks: [{ kind: "task", id: storedRowId(2), short_id: "6f3", title: "Dep" }] } },
     );
     const tasks = root.children[0]?.children ?? [];
     expect(tasks.find((c) => c.id === "task-3")?.virtualBlockers).toEqual(["Blocked by task 6f3 (Dep)"]);
@@ -298,16 +299,16 @@ describe("buildTree", () => {
   });
 
   it("draws each dependency block the backend sends, with the target's node id Start's gate reads", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const blocked = mkTask({ id: storedRowId(3), title: "Waiter", parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree(
       [aspect], [], [blocked], [], [], [], [], [], [], [], [], [], [], [],
       (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
       {
         "task-3": {
           dependency_blocks: [
-            { kind: "task", id: 2, title: "Dep" },
-            { kind: "goal", id: 7, title: "Aim" },
+            { kind: "task", id: storedRowId(2), title: "Dep" },
+            { kind: "goal", id: storedRowId(7), title: "Aim" },
           ],
         },
       },
@@ -318,11 +319,11 @@ describe("buildTree", () => {
   });
 
   it("draws the agent capacity lock's derived reason as a virtual blocker, in its own words", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 3, title: "Agent work", parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(3), title: "Agent work", parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [task], [], [], [], [], [], [], [], [
-      { owner_type: "task", owner_id: 3, reason: "waiting on review", position: 0 },
-      { owner_type: "task", owner_id: 3, reason: "Agents at capacity", position: 1, derived: "agent_capacity" },
+      { owner_type: "task", owner_id: storedRowId(3), reason: "waiting on review", position: 0 },
+      { owner_type: "task", owner_id: storedRowId(3), reason: "Agents at capacity", position: 1, derived: "agent_capacity" },
     ], [], [], [], (title) => title, (title) => title, "COMPOUND", "LOCKED");
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.blockReasons).toEqual(["waiting on review"]);
@@ -332,11 +333,11 @@ describe("buildTree", () => {
   });
 
   it("draws no dependency block the backend does not send, whatever the edges say", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
-    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const blocker = mkTask({ id: storedRowId(2), title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: storedRowId(1) });
+    const blocked = mkTask({ id: storedRowId(3), title: "Waiter", parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
-      { task_id: 3, dependency_type: "task", dependency_id: 2 },
+      { task_id: storedRowId(3), dependency_type: "task", dependency_id: storedRowId(2) },
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual([]);
@@ -344,13 +345,13 @@ describe("buildTree", () => {
   });
 
   it("stamps what a node inherits, its open question and whether it expired off the backend's facts", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 3, title: "Agent work", parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(3), title: "Agent work", parent_type: "project", parent_id: storedRowId(1) });
     const scope = { start_id: { kind: "day", date: "2026-10-03" }, end_id: { kind: "day", date: "2026-10-03" } } as const;
     const root = buildTree(
       [aspect], [], [task], [], [], [], [], [], [], [], [], [], [], [],
       (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
-      { "task-3": { inherited_agentic: true, inherited_time_scope: scope, open_question: 9, open_questions: [9] } },
+      { "task-3": { inherited_agentic: true, inherited_time_scope: scope, open_question: storedRowId(9), open_questions: [storedRowId(9)] } },
     );
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.inheritedAgentic).toBe(true);
@@ -359,16 +360,16 @@ describe("buildTree", () => {
   });
 
   it("stores task tag_ids on the node", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const task = mkTask({ id: 1, tag_ids: [3, 7], parent_type: "project", parent_id: 1 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(1), tag_ids: [storedRowId(3), storedRowId(7)], parent_type: "project", parent_id: storedRowId(1) });
     const root = buildTree([aspect], [], [task], []);
     expect(root.children[0]?.children[0]?.tagIds).toEqual([3, 7]);
   });
 
   it("sorts children by position so mixed-type siblings respect insertion order", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const goal = mkGoal({ id: 1, parent_type: "domain", parent_id: 1, position: 2 });
-    const task = mkTask({ id: 1, parent_type: "project", parent_id: 1, position: 0 });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const goal = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), position: 2 });
+    const task = mkTask({ id: storedRowId(1), parent_type: "project", parent_id: storedRowId(1), position: 0 });
     const root = buildTree([aspect], [goal], [task], []);
     const children = root.children[0]?.children ?? [];
     expect(children[0]?.id).toBe("task-1");
@@ -376,37 +377,37 @@ describe("buildTree", () => {
   });
 
   it("sorts aspect root children by position", () => {
-    const a1 = mkDomain({ id: 1, subtype: "aspect", position: 5 });
-    const a2 = mkDomain({ id: 2, subtype: "aspect", title: "Second", position: 1 });
+    const a1 = mkDomain({ id: storedRowId(1), subtype: "aspect", position: 5 });
+    const a2 = mkDomain({ id: storedRowId(2), subtype: "aspect", title: "Second", position: 1 });
     const root = buildTree([a1, a2], [], [], []);
     expect(root.children[0]?.id).toBe("domain-2");
     expect(root.children[1]?.id).toBe("domain-1");
   });
 
   it("propagates aspect color to non-aspect domain children", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect", color: "#3af" });
-    const child = mkDomain({ id: 2, subtype: "project", parent_id: 1, title: "Project" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect", color: "#3af" });
+    const child = mkDomain({ id: storedRowId(2), subtype: "project", parent_id: storedRowId(1), title: "Project" });
     const root = buildTree([aspect, child], [], [], []);
     const childNode = root.children[0]?.children[0];
     expect(childNode?.color).toBe("#3af");
   });
 
   it("keeps the aspect node's own color (propagation does not overwrite the source)", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect", color: "#3af" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect", color: "#3af" });
     const root = buildTree([aspect], [], [], []);
     expect(root.children[0]?.color).toBe("#3af");
   });
 
   it("maps tag subtype to tag kind on the node", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const tag = mkDomain({ id: 2, subtype: "tag", parent_id: 1, title: "Tag", color: null });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const tag = mkDomain({ id: storedRowId(2), subtype: "tag", parent_id: storedRowId(1), title: "Tag", color: null });
     const root = buildTree([aspect, tag], [], [], []);
     const tagNode = root.children[0]?.children[0];
     expect(tagNode?.kind).toBe("tag");
   });
 
   it("wires flow items under their flow with cycles, deps, and the flow's scope", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
     const flow = { id: 5, title: "Feature", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 2, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false };
     const specify = { id: 1, flow_id: 5, title: "Specify", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 0, is_private: false };
     const implement = { id: 2, flow_id: 5, title: "Implement", parent_type: "flow", parent_id: 5, blocked_reason: null, position: 1, is_private: false };
@@ -430,7 +431,7 @@ describe("buildTree", () => {
   });
 
   it("wires Commitment and wait items under their in-flow parents with their own fields", () => {
-    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
     const flow = { id: 5, title: "Routine", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false };
     const promise = { id: 3, flow_id: 5, title: "Asleep by 23:00", parent_type: "flow", parent_id: 5, position: 0, is_private: false, verdict_window: { n: 2, kind: "day" } };
     const wait = { id: 4, flow_id: 5, title: "Coach replies", parent_type: "flow_commitment", parent_id: 3, position: 0, is_private: false, check_every: { n: 1, kind: "day" }, first_check: { kind: "day", index: 3 } };
@@ -496,7 +497,7 @@ describe("useMindmapData", () => {
   });
 
   it("populates the tree from API data on mount", async () => {
-    const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Work" });
+    const aspect: Domain = mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") return Promise.resolve(currentBoard(mindmapEnvelope({ domains: [aspect] })));
       return Promise.resolve(null);
@@ -521,7 +522,7 @@ describe("useMindmapData", () => {
   });
 
   it("stamps the nodes the MCP can see with the root the board says they are seen through", async () => {
-    const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Growth" });
+    const aspect: Domain = mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Growth" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
         return Promise.resolve(currentBoard(mindmapEnvelope({ domains: [aspect], facts: { "domain-1": { mcp_visible_via: "Growth" } } })));
@@ -548,7 +549,7 @@ describe("useMindmapData", () => {
   });
 
   it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {
-    const flow = mkFlow({ id: 7, title: "Standup" });
+    const flow = mkFlow({ id: storedRowId(7), title: "Standup" });
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
         return Promise.resolve(currentBoard(
@@ -556,7 +557,7 @@ describe("useMindmapData", () => {
             flows: [flow],
             habits: [
               {
-                flow_id: 7,
+                flow_id: storedRowId(7),
                 flow_title: "Standup",
                 result: { outcome: "failed", message: "a habit requires a scoped flow" },
               },
@@ -580,7 +581,7 @@ describe("useMindmapData", () => {
   });
 
   it("lists every failed flow, not just the first, when several fail", async () => {
-    const flows = [mkFlow({ id: 7, title: "Standup" }), mkFlow({ id: 8, title: "Retro" })];
+    const flows = [mkFlow({ id: storedRowId(7), title: "Standup" }), mkFlow({ id: storedRowId(8), title: "Retro" })];
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
         return Promise.resolve(currentBoard(
@@ -609,7 +610,7 @@ describe("useMindmapData", () => {
   it("reports no load condition when every flow loads", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
-        return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [mkFlow({ id: 7, title: "Standup" })] })));
+        return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [mkFlow({ id: storedRowId(7), title: "Standup" })] })));
       }
       return Promise.resolve(null);
     });
@@ -623,8 +624,8 @@ describe("useMindmapData", () => {
   it("names a commitment habit whose template holds a goal item, whose iterations it cannot draw", async () => {
     // Its derivation did not fail — the backend has nothing to object to until someone starts it.
     // The frontend refuses to draw a Goal under a Commitment, so it says which habit went missing.
-    const nightly = mkFlow({ id: 7, title: "Asleep by 23:00", instance_type: "commitment", is_habit: true });
-    const milestone: FlowGoal = { id: 9, flow_id: 7, title: "Milestone", parent_type: "flow", parent_id: 7, position: 0, is_private: false };
+    const nightly = mkFlow({ id: storedRowId(7), title: "Asleep by 23:00", instance_type: "commitment", is_habit: true });
+    const milestone: FlowGoal = { id: storedRowId(9), flow_id: storedRowId(7), title: "Milestone", parent_type: "flow", parent_id: storedRowId(7), position: 0, is_private: false };
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") {
         return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [nightly], flow_goals: [milestone] })));
@@ -642,9 +643,9 @@ describe("useMindmapData", () => {
   });
 
   it("clears a previously reported load condition once a subsequent load has no failures", async () => {
-    const flow = mkFlow({ id: 7, title: "Standup" });
+    const flow = mkFlow({ id: storedRowId(7), title: "Standup" });
     let habits: MindmapLoad["habits"] = [
-      { flow_id: 7, flow_title: "Standup", result: { outcome: "failed", message: "nope" } },
+      { flow_id: storedRowId(7), flow_title: "Standup", result: { outcome: "failed", message: "nope" } },
     ];
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "load_mindmap") return Promise.resolve(currentBoard(mindmapEnvelope({ flows: [flow], habits })));
@@ -655,7 +656,7 @@ describe("useMindmapData", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
 
-    habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded" } }];
+    habits = [{ flow_id: storedRowId(7), flow_title: "Standup", result: { outcome: "loaded" } }];
     await act(async () => {
       await result.current.settle();
     });
@@ -667,10 +668,10 @@ describe("useMindmapData", () => {
 // --- useMindmapData mutation tests ---
 
 describe("useMindmapData — mutations", () => {
-  const ASPECT = mkDomain({ id: 1, subtype: "aspect", title: "Work" });
-  const GOAL = mkGoal({ id: 1, parent_type: "domain", parent_id: 1, title: "Ship MVP" });
-  const TASK = mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code", position: 0 });
-  const TASK2 = mkTask({ id: 2, parent_type: "goal", parent_id: 1, title: "Review PR", position: 1 });
+  const ASPECT = mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" });
+  const GOAL = mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), title: "Ship MVP" });
+  const TASK = mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: "Write code", position: 0 });
+  const TASK2 = mkTask({ id: storedRowId(2), parent_type: "goal", parent_id: storedRowId(1), title: "Review PR", position: 1 });
 
   /**
    * Stubs `invoke`. `extras` is still keyed by the command a test is thinking of — the thirteen
@@ -769,7 +770,7 @@ describe("useMindmapData — mutations", () => {
 
   describe("createNode", () => {
     it("domain child kind: calls create_domain with the correct subtype and parent_id", async () => {
-      const newDomain = mkDomain({ id: 10, subtype: "project", title: "Ops", parent_id: 1 });
+      const newDomain = mkDomain({ id: storedRowId(10), subtype: "project", title: "Ops", parent_id: storedRowId(1) });
       setupInvoke({ create_domain: newDomain });
       const { result } = await loadedHook();
 
@@ -789,7 +790,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("goal child kind: calls create_goal with kindToParentType of the parent", async () => {
-      const newGoal = mkGoal({ id: 20, title: "New Goal" });
+      const newGoal = mkGoal({ id: storedRowId(20), title: "New Goal" });
       setupInvoke({ create_goal: newGoal });
       const { result } = await loadedHook();
 
@@ -803,7 +804,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("task child kind: calls create_task with the parent_type", async () => {
-      const newTask = mkTask({ id: 30, title: "New Task" });
+      const newTask = mkTask({ id: storedRowId(30), title: "New Task" });
       setupInvoke({ create_task: newTask });
       const { result } = await loadedHook();
 
@@ -834,13 +835,13 @@ describe("useMindmapData — mutations", () => {
       // The same gesture as anywhere else — Tab on the selected node — and the same command: the
       // occurrence is a row with a UUID id, and the backend hangs the child on that iteration.
       const occurrence = mkTask({
-        id: "6f1c2d4e-0000-5000-8000-000000000003", title: "Groceries", parent_type: "goal", parent_id: 1,
+        id: "6f1c2d4e-0000-5000-8000-000000000003", title: "Groceries", parent_type: "goal", parent_id: storedRowId(1),
         origin: occurrenceOrigin({ habitId: 3, itemType: "flow_root", itemId: 3 }),
       });
       const envelope = mindmapEnvelope({ domains: [ASPECT], goals: [GOAL], tasks: [occurrence] });
       vi.mocked(invoke).mockImplementation((cmd: string) => {
         if (cmd === "load_mindmap") return Promise.resolve(currentBoard(envelope));
-        if (cmd === "create_task") return Promise.resolve(mkTask({ id: 42, title: "buy milk" }));
+        if (cmd === "create_task") return Promise.resolve(mkTask({ id: storedRowId(42), title: "buy milk" }));
         return Promise.resolve(null);
       });
       const { result } = await loadedHook();
@@ -888,7 +889,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("info: calls update_info with body as title", async () => {
-      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      const INFO = mkInfo({ id: storedRowId(5), parent_type: "goal", parent_id: storedRowId(1) });
       setupInvoke({ list_infos: [INFO], update_info: { ...INFO, body: "Updated" } });
       const { result } = await loadedHook();
 
@@ -969,7 +970,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("info: calls update_info with the new parent and position", async () => {
-      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      const INFO = mkInfo({ id: storedRowId(5), parent_type: "goal", parent_id: storedRowId(1) });
       setupInvoke({ list_infos: [INFO], update_info: INFO });
       const { result } = await loadedHook();
 
@@ -986,7 +987,7 @@ describe("useMindmapData — mutations", () => {
     // `update_domain` — reparenting whichever domain happened to share that id (here the
     // aspect, which is also id 1) while the flow itself never moved.
     it("flow: calls update_flow with the new parent and never touches a domain", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      const FLOW = mkFlow({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -1001,7 +1002,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: records a goal parent as parent_type \"goal\"", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      const FLOW = mkFlow({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -1018,7 +1019,7 @@ describe("useMindmapData — mutations", () => {
     // the iterations are placed. So a move rewrites the parent and nothing else: the instances come
     // along by construction, with no inference in the move path.
     it("flow: writes no Target Node for a flow whose target is the derived parent", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: null, target_id: null });
+      const FLOW = mkFlow({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), target_type: null, target_id: null });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -1032,7 +1033,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: leaves a Target Node pointed somewhere other than its parent alone", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1 });
+      const FLOW = mkFlow({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1), target_type: "goal", target_id: storedRowId(1) });
       setupInvoke({ list_flows: [FLOW], update_flow: FLOW });
       const { result } = await loadedHook();
 
@@ -1046,7 +1047,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: refuses a parent a flow may not hang from", async () => {
-      const FLOW = mkFlow({ id: 1, parent_type: "domain", parent_id: 1 });
+      const FLOW = mkFlow({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) });
       setupInvoke({ list_flows: [FLOW] });
       const { result } = await loadedHook();
 
@@ -1059,8 +1060,8 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow_goal: calls update_flow_goal with its in-flow parent", async () => {
-      const FLOW = mkFlow({ id: 5 });
-      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
+      const FLOW = mkFlow({ id: storedRowId(5) });
+      const FLOW_GOAL: FlowGoal = { id: storedRowId(3), flow_id: storedRowId(5), title: "Milestone", parent_type: "flow", parent_id: storedRowId(5), position: 0, is_private: false };
       setupInvoke({ list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], update_flow_goal: FLOW_GOAL });
       const { result } = await loadedHook();
 
@@ -1074,9 +1075,9 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow_task: calls update_flow_task with its in-flow parent", async () => {
-      const FLOW = mkFlow({ id: 5 });
-      const FLOW_GOAL: FlowGoal = { id: 3, flow_id: 5, title: "Milestone", parent_type: "flow", parent_id: 5, position: 0, is_private: false };
-      const FLOW_TASK: FlowTask = { id: 4, flow_id: 5, title: "Step", parent_type: "flow", parent_id: 5, position: 1, is_private: false };
+      const FLOW = mkFlow({ id: storedRowId(5) });
+      const FLOW_GOAL: FlowGoal = { id: storedRowId(3), flow_id: storedRowId(5), title: "Milestone", parent_type: "flow", parent_id: storedRowId(5), position: 0, is_private: false };
+      const FLOW_TASK: FlowTask = { id: storedRowId(4), flow_id: storedRowId(5), title: "Step", parent_type: "flow", parent_id: storedRowId(5), position: 1, is_private: false };
       setupInvoke({
         list_flows: [FLOW], list_all_flow_goals: [FLOW_GOAL], list_all_flow_tasks: [FLOW_TASK],
         update_flow_task: FLOW_TASK,
@@ -1093,7 +1094,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("tag: calls update_domain with the new parent and position", async () => {
-      const TAG = mkDomain({ id: 7, subtype: "tag", parent_id: 1, title: "urgent" });
+      const TAG = mkDomain({ id: storedRowId(7), subtype: "tag", parent_id: storedRowId(1), title: "urgent" });
       setupInvoke({ list_domains: [ASPECT, TAG], update_domain: TAG });
       const { result } = await loadedHook();
 
@@ -1171,7 +1172,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("info: calls duplicate_info with the target's own kind as parent type", async () => {
-      const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
+      const INFO = mkInfo({ id: storedRowId(5), parent_type: "goal", parent_id: storedRowId(1) });
       setupInvoke({ list_infos: [INFO], duplicate_info: { copy: INFO, left_behind: [] } });
       const { result } = await loadedHook();
 
@@ -1185,7 +1186,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("project: calls duplicate_domain, which takes a target id and no target type", async () => {
-      const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
+      const PROJECT = mkDomain({ id: storedRowId(5), subtype: "project", parent_id: storedRowId(1), title: "Ops" });
       setupInvoke({ list_domains: [ASPECT, PROJECT], duplicate_domain: { copy: PROJECT, left_behind: [] } });
       const { result } = await loadedHook();
 
@@ -1211,7 +1212,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("flow: calls duplicate_flow with the parent the paste chose", async () => {
-      setupInvoke({ list_flows: [mkFlow()], duplicate_flow: mkFlow({ id: 2 }) });
+      setupInvoke({ list_flows: [mkFlow()], duplicate_flow: mkFlow({ id: storedRowId(2) }) });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1337,7 +1338,7 @@ describe("useMindmapData — mutations", () => {
       const { result } = await loadedHook();
 
       // Wire a project under the aspect so it can be deleted
-      const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
+      const PROJECT = mkDomain({ id: storedRowId(5), subtype: "project", parent_id: storedRowId(1), title: "Ops" });
       setupInvoke({ list_domains: [ASPECT, PROJECT], delete_nodes: undefined });
       await act(async () => { await result.current.settle(); });
       await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -1380,7 +1381,7 @@ describe("useMindmapData — mutations", () => {
 
   describe("createChild", () => {
     it("creates a goal child when parent is a goal", async () => {
-      const newGoal = mkGoal({ id: 50, title: "" });
+      const newGoal = mkGoal({ id: storedRowId(50), title: "" });
       setupInvoke({ create_goal: newGoal });
       const { result } = await loadedHook();
 
@@ -1392,7 +1393,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("creates a task child when parent is a task", async () => {
-      const newTask = mkTask({ id: 50, title: "" });
+      const newTask = mkTask({ id: storedRowId(50), title: "" });
       setupInvoke({ create_task: newTask });
       // Wire a task under the goal so createChild has a task node to act on
       const { result } = renderHook(() => useMindmapData());
@@ -1408,7 +1409,7 @@ describe("useMindmapData — mutations", () => {
 
   describe("moveNode — domain variant", () => {
     it("domain/project kind: calls update_domain via dynamic import with parent_id and position", async () => {
-      const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
+      const PROJECT = mkDomain({ id: storedRowId(5), subtype: "project", parent_id: storedRowId(1), title: "Ops" });
       setupInvoke({ list_domains: [ASPECT, PROJECT], update_domain: PROJECT });
       const { result } = await loadedHook();
 
@@ -1426,9 +1427,9 @@ describe("useMindmapData — mutations", () => {
 describe("decorateIterationRoots", () => {
   function mkHabit(overrides: Partial<Flow> = {}): Flow {
     return {
-      id: 3, title: "Exercise", instance_type: "task",
-      parent_type: "domain", parent_id: 1,
-      target_type: "goal", target_id: 5,
+      id: storedRowId(3), title: "Exercise", instance_type: "task",
+      parent_type: "domain", parent_id: storedRowId(1),
+      target_type: "goal", target_id: storedRowId(5),
       flow_duration_n: 1, flow_duration_kind: "week",
       flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
       is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
@@ -1518,7 +1519,7 @@ describe("decorateIterationRoots", () => {
       id: "task-item", kind: "task", title: "Stretch", position: 0, tagIds: [], children: [],
       ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }),
     };
-    const stored: MindmapNode = { id: "task-1", rowId: 1, kind: "task", title: "Plain", position: 0, tagIds: [], children: [] };
+    const stored: MindmapNode = { id: "task-1", rowId: storedRowId(1), kind: "task", title: "Plain", position: 0, tagIds: [], children: [] };
     const parent: MindmapNode = { id: "root", kind: "domain", title: "", position: 0, tagIds: [], children: [item, stored] };
     decorateIterationRoots(parent, [mkHabit()], LABELS, "2026-01-06T09:00:00", CARRIES);
     expect(item.title).toBe("Stretch");
@@ -1549,7 +1550,7 @@ describe("buildTree — a delegated Task's wait and its holder", () => {
 
   it("names a Person by their name, and carries it on the Task for its badge", () => {
     const { waitNode, taskNode } = build(
-      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      mkTask({ id: storedRowId(9), title: "Book the venue", delegate_to: { kind: "person", id: storedRowId(4) } }),
       delegationWait(9, "Book the venue"),
       new Map([[4, "Tuli"]]),
     );
@@ -1560,7 +1561,7 @@ describe("buildTree — a delegated Task's wait and its holder", () => {
 
   it("calls a Person whose name is not known by the fallback", () => {
     const { waitNode } = build(
-      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      mkTask({ id: storedRowId(9), title: "Book the venue", delegate_to: { kind: "person", id: storedRowId(4) } }),
       delegationWait(9, "Book the venue"),
     );
     expect(waitNode?.title).toBe("? finish: Book the venue");
@@ -1568,7 +1569,7 @@ describe("buildTree — a delegated Task's wait and its holder", () => {
 
   it("draws a wait given a title of its own with that title", () => {
     const { waitNode } = build(
-      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      mkTask({ id: storedRowId(9), title: "Book the venue", delegate_to: { kind: "person", id: storedRowId(4) } }),
       delegationWait(9, "Hear back about the venue"),
       new Map([[4, "Tuli"]]),
     );

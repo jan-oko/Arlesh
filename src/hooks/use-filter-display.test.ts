@@ -4,6 +4,7 @@ import { useFilterDisplay } from "./use-filter-display";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/MindmapView/use-mindmap-data");
@@ -23,12 +24,12 @@ const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
   children: [
     {
-      id: "domain-1", rowId: 1, kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
+      id: "domain-1", rowId: storedRowId(1), kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
       children: [
-        { id: "domain-2", rowId: 2, kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-        { id: "project-1", rowId: 1, kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
-          { id: "goal-1", rowId: 1, kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-          { id: "task-1", rowId: 1, kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: "domain-2", rowId: storedRowId(2), kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: "project-1", rowId: storedRowId(1), kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
+          { id: "goal-1", rowId: storedRowId(1), kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+          { id: "task-1", rowId: storedRowId(1), kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
         ] },
       ],
     },
@@ -39,14 +40,14 @@ describe("useFilterDisplay", () => {
   it("resolves a tag's name and inherited aspect color", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.tagName(2)).toBe("urgent");
-    expect(result.current.tagColor(2)).toBe("#e74c3c");
+    expect(result.current.tagName(storedRowId(2))).toBe("urgent");
+    expect(result.current.tagColor(storedRowId(2))).toBe("#e74c3c");
   });
 
   it("falls back to #<id> for an unknown tag", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.tagName(999)).toBe("#999");
+    expect(result.current.tagName(storedRowId(999))).toBe("#999");
   });
 
   it("resolves any tree node's label and color by ref, for parent/dependency chips", () => {
@@ -99,11 +100,11 @@ describe("useFilterDisplay", () => {
     const ARCHIVED_TREE: MindmapNode = {
       id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
       children: [
-        { id: "project-1", rowId: 1, kind: "project", title: "Live", position: 0, tagIds: [], children: [] },
-        { id: "project-2", rowId: 2, kind: "project", title: "Shelved", status: "archived", position: 1, tagIds: [], children: [
-          { id: "task-5", rowId: 5, kind: "task", title: "Inside", status: "todo", position: 0, tagIds: [], children: [] },
+        { id: "project-1", rowId: storedRowId(1), kind: "project", title: "Live", position: 0, tagIds: [], children: [] },
+        { id: "project-2", rowId: storedRowId(2), kind: "project", title: "Shelved", status: "archived", position: 1, tagIds: [], children: [
+          { id: "task-5", rowId: storedRowId(5), kind: "task", title: "Inside", status: "todo", position: 0, tagIds: [], children: [] },
         ] },
-        { id: "task-6", rowId: 6, kind: "task", title: "Lapsed", status: "todo", archived: true, position: 2, tagIds: [], children: [] },
+        { id: "task-6", rowId: storedRowId(6), kind: "task", title: "Lapsed", status: "todo", archived: true, position: 2, tagIds: [], children: [] },
       ],
     };
 

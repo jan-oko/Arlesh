@@ -14,7 +14,7 @@ use crate::{
 
 fn occurrence(item_type: TemplateKind, item_id: i64) -> OccurrenceKey {
     OccurrenceKey {
-        item: TemplateItem { item_type, tid(item_id) },
+        item: TemplateItem { item_type, item_id: tid(item_id) },
         iteration: crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
         cycle: tid(0),
     }

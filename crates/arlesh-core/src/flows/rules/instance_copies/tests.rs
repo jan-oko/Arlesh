@@ -31,8 +31,8 @@ fn run() -> Vec<InstanceNode> {
 #[test]
 fn a_copied_run_keeps_the_original_flow_and_start_and_points_at_the_copies() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Goal, 10, 20);
-    copies.record(NodeTable::Task, 11, 21);
+    copies.record(NodeTable::Goal, tid(10), tid(20));
+    copies.record(NodeTable::Task, tid(11), tid(21));
     assert_eq!(
         copied_instances(&run(), &copies),
         vec![InstanceCopy {
@@ -60,7 +60,7 @@ fn a_copied_run_keeps_the_original_flow_and_start_and_points_at_the_copies() {
 #[test]
 fn a_run_reached_below_its_root_is_rooted_at_its_first_copied_node() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Task, 11, 21);
+    copies.record(NodeTable::Task, tid(11), tid(21));
     let [copy] = copied_instances(&run(), &copies).try_into().unwrap();
     assert_eq!(copy.root, node("task", 21));
     assert_eq!(copy.nodes.len(), 1);
@@ -70,6 +70,6 @@ fn a_run_reached_below_its_root_is_rooted_at_its_first_copied_node() {
 #[test]
 fn a_run_the_copy_did_not_reach_is_left_alone() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Task, 99, 100);
+    copies.record(NodeTable::Task, tid(99), tid(100));
     assert!(copied_instances(&run(), &copies).is_empty());
 }

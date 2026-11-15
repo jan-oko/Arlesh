@@ -13,7 +13,7 @@ export interface Goal {
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
-  tag_ids: number[];
+  tag_ids: string[];
   position: number;
   is_private: boolean;
   // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
@@ -43,7 +43,7 @@ export interface UpdateGoalRequest {
   is_private?: boolean;
 }
 
-export async function getGoal(id: number): Promise<Goal> {
+export async function getGoal(id: string): Promise<Goal> {
   return invoke<Goal>("get_goal", { id });
 }
 
@@ -70,18 +70,18 @@ export async function deleteGoal(id: RowId): Promise<void> {
 }
 
 export async function duplicateGoal(
-  id: number,
+  id: string,
   targetType: string,
-  targetId: number,
+  targetId: string,
   position: number,
 ): Promise<DuplicatedSubtree<Goal>> {
   return invoke<DuplicatedSubtree<Goal>>("duplicate_goal", { id, targetType, targetId, position });
 }
 
-export async function addTagToGoal(goalId: RowId, tagId: number): Promise<void> {
+export async function addTagToGoal(goalId: RowId, tagId: string): Promise<void> {
   return invoke<void>("add_tag_to_goal", { goalId, tagId });
 }
 
-export async function removeTagFromGoal(goalId: RowId, tagId: number): Promise<void> {
+export async function removeTagFromGoal(goalId: RowId, tagId: string): Promise<void> {
   return invoke<void>("remove_tag_from_goal", { goalId, tagId });
 }

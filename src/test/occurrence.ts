@@ -1,11 +1,14 @@
 import type { HabitOrigin } from "@/api/node-id";
 import type { NodeCapabilities } from "@/api/mindmap";
+import { NO_CYCLE } from "@/api/flows";
+import { storedRowId } from "@/test/stored-id";
 
 /** What a test says about the occurrence it draws; everything else takes a plain default. */
 interface OccurrenceFixture {
   habitId?: number;
   itemType?: HabitOrigin["item_type"];
   itemId?: number;
+  /** `0` is the "no cycle" pair: the nil UUID. */
   cycleId?: number;
   index?: number;
   startDate?: string;
@@ -19,14 +22,14 @@ export function occurrenceOrigin({
 }: OccurrenceFixture = {}): HabitOrigin {
   return {
     kind: "habit",
-    habit_id: habitId,
+    habit_id: storedRowId(habitId),
     iteration_scope: {
       index, start_date: startDate, window_end: windowEnd, scope_id: { kind: "day", date: startDate },
       kind: "day", status: "active",
     },
     item_type: itemType,
-    item_id: itemId,
-    cycle_id: cycleId,
+    item_id: storedRowId(itemId),
+    cycle_id: cycleId === 0 ? NO_CYCLE : storedRowId(cycleId),
   };
 }
 
@@ -37,10 +40,11 @@ export function occurrenceOrigin({
 export function occurrenceRow(fixture: OccurrenceFixture = {}): {
   rowId: string; origin: HabitOrigin; capabilities: NodeCapabilities;
 } {
+  const { habitId = 1, itemId = 1, cycleId = 0 } = fixture;
   const origin = occurrenceOrigin(fixture);
   return {
     capabilities: { delete: true, copy: false, drag: true, compound: true, dependencies: true },
-    rowId: `00000000-0000-5000-8${String(origin.iteration_scope.index).padStart(3, "0")}-${String(origin.habit_id).padStart(4, "0")}${String(origin.item_id).padStart(4, "0")}${String(origin.cycle_id).padStart(4, "0")}`,
+    rowId: `00000000-0000-8000-8${String(origin.iteration_scope.index).padStart(3, "0")}-${String(habitId).padStart(4, "0")}${String(itemId).padStart(4, "0")}${String(cycleId).padStart(4, "0")}`,
     origin,
   };
 }

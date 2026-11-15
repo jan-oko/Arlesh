@@ -69,8 +69,8 @@ fn a_moved_cycle_scope_is_a_new_pair_and_orphans_the_old_one() {
     let wanted = [asked(2, None)];
     let diff = diff_cycles(&existing, &wanted);
     assert_eq!(diff.added, vec![0]);
-    assert_eq!(diff.removed, vec![10]);
-    assert_eq!(orphaned_cycle_ids(&existing, &wanted, &diff), vec![10]);
+    assert_eq!(diff.removed, vec![tid(10)]);
+    assert_eq!(orphaned_cycle_ids(&existing, &wanted, &diff), vec![tid(10)]);
 }
 
 #[test]
@@ -103,5 +103,5 @@ fn giving_an_unpaired_item_its_first_pair_orphans_the_no_pair_occurrence() {
 fn taking_every_pair_away_orphans_each_of_them() {
     let existing = [stored(10, 1, None), stored(11, 3, None)];
     let diff = diff_cycles(&existing, &[]);
-    assert_eq!(orphaned_cycle_ids(&existing, &[], &diff), vec![10, 11]);
+    assert_eq!(orphaned_cycle_ids(&existing, &[], &diff), vec![tid(10), tid(11)]);
 }

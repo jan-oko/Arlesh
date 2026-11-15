@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { archiveNodes } from "./multi-node-gestures";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -12,9 +13,9 @@ beforeEach(() => {
 describe("archiveNodes", () => {
   it("runs one archive-nodes gesture whose writes archive each kind", async () => {
     await archiveNodes([
-      { kind: "task", id: 1, archive: true },
-      { kind: "commitment", id: 2, archive: true },
-      { kind: "domain", id: 3, archive: true },
+      { kind: "task", id: storedRowId(1), archive: true },
+      { kind: "commitment", id: storedRowId(2), archive: true },
+      { kind: "domain", id: storedRowId(3), archive: true },
     ]);
 
     expect(invoke).toHaveBeenCalledWith("run_gesture", {
@@ -28,7 +29,7 @@ describe("archiveNodes", () => {
   });
 
   it("brings a node back with the live state", async () => {
-    await archiveNodes([{ kind: "task", id: 1, archive: false }]);
+    await archiveNodes([{ kind: "task", id: storedRowId(1), archive: false }]);
 
     expect(invoke).toHaveBeenCalledWith("run_gesture", {
       name: "archive-nodes",

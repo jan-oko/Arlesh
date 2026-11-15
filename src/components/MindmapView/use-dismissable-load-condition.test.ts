@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
 import type { LoadCondition } from "./use-mindmap-data";
+import { storedRowId } from "@/test/stored-id";
 
 function condition(...ids: number[]): LoadCondition {
   return { failedFlows: ids.map((id) => ({ id, title: `Flow ${id}` })), unrenderableCommitmentFlows: [] };
@@ -78,8 +79,8 @@ describe("useDismissableLoadCondition", () => {
     rerender({
       c: {
         failedFlows: [
-          { id: 8, title: "Flow 8" },
-          { id: 7, title: "Flow 7" },
+          { id: storedRowId(8), title: "Flow 8" },
+          { id: storedRowId(7), title: "Flow 7" },
         ],
         unrenderableCommitmentFlows: [],
       },
@@ -90,14 +91,14 @@ describe("useDismissableLoadCondition", () => {
   it("shows an unrenderable commitment habit under the same dismissal as a failed derivation", () => {
     const condition: LoadCondition = {
       failedFlows: [],
-      unrenderableCommitmentFlows: [{ id: 11, title: "Asleep by 23:00" }],
+      unrenderableCommitmentFlows: [{ id: storedRowId(11), title: "Asleep by 23:00" }],
     };
     const { result, rerender } = renderHook(({ c }) => useDismissableLoadCondition(c), {
       initialProps: { c: condition },
     });
     expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([{ id: 11, title: "Asleep by 23:00" }]);
     act(() => result.current.dismiss());
-    rerender({ c: { failedFlows: [], unrenderableCommitmentFlows: [{ id: 11, title: "Asleep by 23:00" }] } });
+    rerender({ c: { failedFlows: [], unrenderableCommitmentFlows: [{ id: storedRowId(11), title: "Asleep by 23:00" }] } });
     expect(result.current.visibleUnrenderableCommitmentFlows).toEqual([]);
   });
 });

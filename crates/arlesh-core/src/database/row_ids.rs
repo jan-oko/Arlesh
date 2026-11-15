@@ -7,7 +7,8 @@
 //! scratch tables the migration reads and then drops:
 //!
 //! * `uuid_map (kind, old_id, new_id)`: one row per stored row.
-//! * `key_map (old_key, new_key)`: every node key that spells a row id inside it, rewritten. A Habit
+//! * `key_map (old_key, new_key)`: every node key that spells a row id inside it, rewritten, and each
+//!   derived node's old id beside its new one. A Habit
 //!   occurrence's key is `flow_task:12:{scope}:3`; its id is the hash of that text, so it moves with
 //!   the ids inside it (the one id this migration does change, and spelled as a version-8 UUID from
 //!   now on, which is how a derived id is told from a stored one).
@@ -258,8 +259,12 @@ pub(super) async fn prepare(pool: &DatabasePool) -> Result<(), sqlx::Error> {
     }
     keys.sort();
     keys.dedup();
-    for (old, new) in rewrite_keys(&keys, &mut ids) {
-        sqlx::query("INSERT INTO key_map (old_key, new_key) VALUES (?, ?)")
+    let mut renamed = rewrite_keys(&keys, &mut ids);
+    // A derived node's old id (the hash of its old key) beside its new one: `push_sent` names a
+    // derived task by it.
+    renamed.extend(ids.derived.iter().map(|(old, new)| (old.clone(), new.clone())));
+    for (old, new) in renamed {
+        sqlx::query("INSERT OR IGNORE INTO key_map (old_key, new_key) VALUES (?, ?)")
             .bind(old)
             .bind(new)
             .execute(&mut *transaction)

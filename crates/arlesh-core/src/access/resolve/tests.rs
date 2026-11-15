@@ -259,22 +259,22 @@ fn effective_names_the_nearest_root_each_node_is_seen_through() {
     let entries = map.effective();
     let proofread = entries
         .iter()
-        .find(|entry| entry.node_kind == NodeTable::Task && entry.node_id == 101)
+        .find(|entry| entry.node_kind == NodeTable::Task && entry.node_id == tid(101))
         .expect("the proofread task is visible");
     assert_eq!(
         (proofread.root_kind, proofread.root_id),
-        (NodeTable::Task, 100)
+        (NodeTable::Task, tid(100))
     );
 
     let launch = entries
         .iter()
         .find(|entry| entry.node_kind == NodeTable::Flow)
         .expect("the flow is visible");
-    assert_eq!((launch.root_kind, launch.root_id), (NodeTable::Domain, 1));
+    assert_eq!((launch.root_kind, launch.root_id), (NodeTable::Domain, tid(1)));
     assert!(
         !entries
             .iter()
-            .any(|entry| entry.node_kind == NodeTable::Task && entry.node_id == 102),
+            .any(|entry| entry.node_kind == NodeTable::Task && entry.node_id == tid(102)),
         "a private node is not listed"
     );
     assert_eq!(map.root_of(flow(20)), Some(domain(1)));

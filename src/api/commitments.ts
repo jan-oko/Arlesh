@@ -25,7 +25,7 @@ export interface Commitment {
   // any scope kind. Absent inherits the nearest ancestor Commitment's; nothing above setting one
   // means it never expires.
   verdict_window?: DurationSpec;
-  tag_ids: number[];
+  tag_ids: string[];
   position: number;
   is_private: boolean;
   // Its own archive. Absent reads as live.
@@ -65,7 +65,7 @@ export async function listCommitments(now: string): Promise<Commitment[]> {
   return invoke<Commitment[]>("list_commitments", { now });
 }
 
-export async function getCommitment(id: number): Promise<Commitment> {
+export async function getCommitment(id: string): Promise<Commitment> {
   return invoke<Commitment>("get_commitment", { id });
 }
 
@@ -90,10 +90,10 @@ export async function deleteCommitment(id: RowId): Promise<void> {
   return invoke<void>("delete_commitment", { id });
 }
 
-export async function addTagToCommitment(commitmentId: RowId, tagId: number): Promise<void> {
+export async function addTagToCommitment(commitmentId: RowId, tagId: string): Promise<void> {
   return invoke<void>("add_tag_to_commitment", { commitmentId, tagId });
 }
 
-export async function removeTagFromCommitment(commitmentId: RowId, tagId: number): Promise<void> {
+export async function removeTagFromCommitment(commitmentId: RowId, tagId: string): Promise<void> {
   return invoke<void>("remove_tag_from_commitment", { commitmentId, tagId });
 }

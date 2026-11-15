@@ -17,8 +17,8 @@ function mint(structuralKey: string): string {
   return uuidV5(structuralKey, ARLESH_NODE_NAMESPACE);
 }
 
-/** The node id of the Expectation with this row id — a stored one's integer, or a derived one's
- * UUID (a Task's spawned wait, a delegated Task's wait). */
+/** The node id of the Expectation with this row id — a stored one's UUID, or a derived one's
+ * (a Task's spawned wait, a delegated Task's wait). */
 export function expectationNodeId(expectationId: RowId): string {
   return mint(`expectation/${expectationId}`);
 }

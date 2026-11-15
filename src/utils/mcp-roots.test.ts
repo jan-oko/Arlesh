@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { catalogueKeyOf, describeRoots, rootCandidates } from "@/utils/mcp-roots";
 import type { McpCatalogueNode, McpNodeKind } from "@/api/mcp-access";
+import { storedRowId } from "@/test/stored-id";
 
 function node(
   kind: McpNodeKind, id: number, title: string, parent: [McpNodeKind, number] | null,
@@ -23,9 +24,9 @@ const NODES: McpCatalogueNode[] = [
 describe("describeRoots", () => {
   it("names each root with its kind and its path from the top of the board", () => {
     const rows = describeRoots(
-      [{ node_kind: "task", node_id: 100 }],
+      [{ node_kind: "task", node_id: storedRowId(100) }],
       NODES,
-      [{ node_kind: "task", node_id: 100, root_kind: "task", root_id: 100 }],
+      [{ node_kind: "task", node_id: storedRowId(100), root_kind: "task", root_id: storedRowId(100) }],
     );
 
     expect(rows).toEqual([{
@@ -38,17 +39,17 @@ describe("describeRoots", () => {
   });
 
   it("reads a domain-table root by its subtype", () => {
-    const [row] = describeRoots([{ node_kind: "domain", node_id: 2 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "domain", node_id: storedRowId(2) }], NODES, []);
     expect(row?.kind).toBe("project");
   });
 
   it("marks a root the backend did not list as visible — a private one", () => {
-    const [row] = describeRoots([{ node_kind: "goal", node_id: 10 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "goal", node_id: storedRowId(10) }], NODES, []);
     expect(row?.visible).toBe(false);
   });
 
   it("keeps a root whose row is gone, unnamed, rather than dropping it silently", () => {
-    const [row] = describeRoots([{ node_kind: "task", node_id: 9 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "task", node_id: storedRowId(9) }], NODES, []);
     expect(row).toMatchObject({ title: null, kind: null, path: [] });
   });
 });

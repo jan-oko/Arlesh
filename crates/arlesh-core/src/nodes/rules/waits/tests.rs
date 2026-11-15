@@ -65,7 +65,7 @@ fn check_key() -> CheckKey {
 fn state(overlay: TaskOverlay) -> CheckState {
     CheckState {
         overlays: HashMap::from([(check_key().node_key(), overlay)]),
-        tags: HashMap::from([(check_key().node_key(), vec![(3, true), (4, false)])]),
+        tags: HashMap::from([(check_key().node_key(), vec![(tid(3), true), (tid(4), false)])]),
         reasons: HashMap::from([(check_key().node_key(), vec!["phone is off".to_string()])]),
     }
 }
@@ -102,7 +102,7 @@ fn an_open_check_task_is_a_task_under_its_wait_reading_its_overlay() {
         ("expectation", &NodeId::Stored(tid(5)))
     );
     assert_eq!(task.status, Status::Ordinary(TaskStatus::InProgress));
-    assert_eq!(task.tag_ids, vec![3]);
+    assert_eq!(task.tag_ids, vec![tid(3)]);
     assert!(task.time_scope.is_some());
     assert_eq!(rows.block_reasons.len(), 1);
     assert_eq!(rows.block_reasons[0].owner_id, task.id);

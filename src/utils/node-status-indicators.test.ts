@@ -4,6 +4,7 @@ import { deriveStatusIndicators } from "./node-status-indicators";
 import type { StatusIndicatorType } from "./node-status-indicators";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
@@ -42,7 +43,7 @@ describe("deriveStatusIndicators — Agentic", () => {
   });
 
   it("sits alongside the other badges rather than replacing any of them", () => {
-    const flagged = node("task", { status: "todo", agentic: true, backlogged: true, tagIds: [3] });
+    const flagged = node("task", { status: "todo", agentic: true, backlogged: true, tagIds: [storedRowId(3)] });
     expect(types(flagged)).toEqual(["backlog", "agentic", "tags"]);
   });
 });
@@ -66,7 +67,7 @@ describe("deriveStatusIndicators — Asynchronous", () => {
   });
 
   it("sits alongside the other badges rather than replacing any of them", () => {
-    const flagged = node("task", { status: "todo", agentic: true, asynchronous: true, tagIds: [3] });
+    const flagged = node("task", { status: "todo", agentic: true, asynchronous: true, tagIds: [storedRowId(3)] });
     expect(types(flagged)).toEqual(["agentic", "asynchronous", "tags"]);
   });
 });
@@ -156,7 +157,7 @@ describe("deriveStatusIndicators", () => {
   });
 
   it("shows a tag mark when the node carries tags", () => {
-    expect(types(node("task", { status: "todo", tagIds: [3, 7] }))).toEqual(["tags"]);
+    expect(types(node("task", { status: "todo", tagIds: [storedRowId(3), storedRowId(7)] }))).toEqual(["tags"]);
     expect(types(node("task", { status: "todo", tagIds: [] }))).toEqual([]);
   });
 
@@ -170,7 +171,7 @@ describe("deriveStatusIndicators", () => {
       archived: true,
       plan: scope,
       fromFlow: true,
-      tagIds: [1],
+      tagIds: [storedRowId(1)],
     });
     expect(types(busy)).toEqual(["scope", "archived", "planned", "flowInstance", "tags"]);
   });
@@ -245,9 +246,9 @@ describe("deriveStatusIndicators — an agent waiting on you", () => {
   });
 
   it("marks a Task with an open question or review, each in its own way", () => {
-    expect(types(node("task", { agentWaits: [wait(1, false)], openQuestionIds: [1] }))).toEqual(["openQuestion"]);
-    expect(types(node("task", { agentWaits: [wait(2, true)], openQuestionIds: [2] }))).toEqual(["openReview"]);
-    expect(types(node("task", { agentWaits: [wait(1, false), wait(2, true)], openQuestionIds: [1, 2] })))
+    expect(types(node("task", { agentWaits: [wait(1, false)], openQuestionIds: [storedRowId(1)] }))).toEqual(["openQuestion"]);
+    expect(types(node("task", { agentWaits: [wait(2, true)], openQuestionIds: [storedRowId(2)] }))).toEqual(["openReview"]);
+    expect(types(node("task", { agentWaits: [wait(1, false), wait(2, true)], openQuestionIds: [storedRowId(1), storedRowId(2)] })))
       .toEqual(["openQuestion", "openReview"]);
   });
 
@@ -280,7 +281,7 @@ describe("deriveStatusIndicators — Private", () => {
   it("badges derived rows off their own flag — a Habit occurrence and a derived wait", () => {
     const occurrence = node("task", { status: "todo", isPrivate: true, ...occurrenceRow() });
     const derivedWait = node("expectation", {
-      rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 }, status: "pending", isPrivate: true,
+      rowId: "d-5", origin: { kind: "delegation_wait", task_id: storedRowId(5) }, status: "pending", isPrivate: true,
     });
     expect(types(occurrence)).toContain("private");
     expect(types(derivedWait)).toContain("private");
@@ -289,9 +290,9 @@ describe("deriveStatusIndicators — Private", () => {
 
 describe("deriveStatusIndicators — Delegated", () => {
   it("badges a task delegated to a Person, right after Agentic", () => {
-    expect(types(node("task", { status: "todo", agentic: true, asynchronous: true, delegate: { kind: "person", id: 4 } })))
+    expect(types(node("task", { status: "todo", agentic: true, asynchronous: true, delegate: { kind: "person", id: storedRowId(4) } })))
       .toEqual(["agentic", "delegated", "asynchronous"]);
-    expect(types(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toEqual(["delegated"]);
+    expect(types(node("task", { status: "todo", delegate: { kind: "person", id: storedRowId(4) } }))).toEqual(["delegated"]);
   });
 
   it("does not badge a task nobody holds", () => {

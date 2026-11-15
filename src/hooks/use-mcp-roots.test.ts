@@ -4,22 +4,23 @@ import { invoke } from "@tauri-apps/api/core";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { McpAccessCatalogue, McpVisibility } from "@/api/mcp-access";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const CATALOGUE: McpAccessCatalogue = {
-  roots: [{ node_kind: "domain", node_id: 2 }],
+  roots: [{ node_kind: "domain", node_id: storedRowId(2) }],
   nodes: [
-    { node_kind: "domain", node_id: 1, subtype: "aspect", title: "Growth", parent_kind: null, parent_id: null, is_private: false, agentic: null },
-    { node_kind: "domain", node_id: 2, subtype: "project", title: "Arlesh", parent_kind: "domain", parent_id: 1, is_private: false, agentic: null },
-    { node_kind: "goal", node_id: 10, subtype: null, title: "Ship", parent_kind: "domain", parent_id: 2, is_private: false, agentic: null },
+    { node_kind: "domain", node_id: storedRowId(1), subtype: "aspect", title: "Growth", parent_kind: null, parent_id: null, is_private: false, agentic: null },
+    { node_kind: "domain", node_id: storedRowId(2), subtype: "project", title: "Arlesh", parent_kind: "domain", parent_id: storedRowId(1), is_private: false, agentic: null },
+    { node_kind: "goal", node_id: storedRowId(10), subtype: null, title: "Ship", parent_kind: "domain", parent_id: storedRowId(2), is_private: false, agentic: null },
   ],
   // What the backend offers: every node that is not a root already.
-  candidates: [{ node_kind: "domain", node_id: 1 }, { node_kind: "goal", node_id: 10 }],
+  candidates: [{ node_kind: "domain", node_id: storedRowId(1) }, { node_kind: "goal", node_id: storedRowId(10) }],
 };
 const VISIBLE: McpVisibility[] = [
-  { node_kind: "domain", node_id: 2, root_kind: "domain", root_id: 2 },
-  { node_kind: "goal", node_id: 10, root_kind: "domain", root_id: 2 },
+  { node_kind: "domain", node_id: storedRowId(2), root_kind: "domain", root_id: storedRowId(2) },
+  { node_kind: "goal", node_id: storedRowId(10), root_kind: "domain", root_id: storedRowId(2) },
 ];
 
 let written: { command: string; args: unknown }[] = [];
@@ -63,7 +64,7 @@ describe("useMcpRoots", () => {
     const { result } = renderHook(() => useMcpRoots());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    await act(() => result.current.removeRoot({ node_kind: "domain", node_id: 2 }));
+    await act(() => result.current.removeRoot({ node_kind: "domain", node_id: storedRowId(2) }));
 
     expect(written).toEqual([{ command: "remove_mcp_root", args: { nodeKind: "domain", nodeId: 2 } }]);
   });

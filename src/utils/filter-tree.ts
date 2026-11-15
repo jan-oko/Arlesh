@@ -58,7 +58,7 @@ export const NEXT_OVERRIDE_MODE: Record<OverrideMode, OverrideMode> = {
 
 /** One tag filter: a tag id in one of the three modes. */
 export interface TagFilter {
-  tagId: number;
+  tagId: string;
   mode: TagFilterMode;
 }
 
@@ -637,7 +637,7 @@ export function passesTags(node: MindmapNode, f: FilterState): boolean {
   if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment" && node.kind !== "expectation") {
     return true;
   }
-  const has = (id: number) => node.tagIds.includes(id);
+  const has = (id: string) => node.tagIds.includes(id);
   const any = f.tagFilters.filter((t) => t.mode === "any");
   if (any.length > 0 && !any.some((t) => has(t.tagId))) return false;
   if (!f.tagFilters.filter((t) => t.mode === "all").every((t) => has(t.tagId))) return false;

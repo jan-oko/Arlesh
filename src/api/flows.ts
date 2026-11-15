@@ -14,13 +14,13 @@ export type InstanceType = "goal" | "task" | "commitment";
 /** A flow (template), mirrored from the Rust `flows::model::Flow`. */
 /** A Flow, with its root's template fields flattened onto it. */
 export interface Flow extends TemplateFields {
-  id: number;
+  id: string;
   title: string;
   instance_type: InstanceType;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   target_type: string | null;
-  target_id: number | null;
+  target_id: string | null;
   flow_duration_n: number | null;
   // Span ("day"|"week"|"month"|"season") or Phase ("part"|"exact").
   flow_duration_kind: string | null;
@@ -51,7 +51,7 @@ export interface Flow extends TemplateFields {
   agentic?: boolean | null;
   asynchronous?: boolean;
   archival?: TaskArchival;
-  tag_ids?: number[];
+  tag_ids?: string[];
   block_reasons?: string[];
 }
 
@@ -59,9 +59,9 @@ export interface CreateFlowRequest {
   title: string;
   instance_type?: InstanceType;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   target_type?: string | null;
-  target_id?: number | null;
+  target_id?: string | null;
   flow_duration_n?: number | null;
   flow_duration_kind?: string | null;
   flow_window_part?: string | null;
@@ -81,7 +81,7 @@ export interface UpdateFlowRequest extends TemplateUpdate {
   instance_type?: InstanceType;
   // Absent = leave unchanged, null = clear, value = set.
   target_type?: string | null;
-  target_id?: number | null;
+  target_id?: string | null;
   flow_duration_n?: number | null;
   flow_duration_kind?: string | null;
   flow_window_part?: string | null;
@@ -93,7 +93,7 @@ export interface UpdateFlowRequest extends TemplateUpdate {
   verdict_window_n?: number | null;
   verdict_window_kind?: string | null;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: string;
   position?: number;
   is_private?: boolean;
 }
@@ -102,7 +102,7 @@ export async function listFlows(): Promise<Flow[]> {
   return invoke<Flow[]>("list_flows");
 }
 
-export async function getFlow(id: number): Promise<Flow> {
+export async function getFlow(id: string): Promise<Flow> {
   return invoke<Flow>("get_flow", { id });
 }
 
@@ -110,11 +110,11 @@ export async function createFlow(request: CreateFlowRequest): Promise<Flow> {
   return invoke<Flow>("create_flow", { request });
 }
 
-export async function updateFlow(id: number, request: UpdateFlowRequest): Promise<Flow> {
+export async function updateFlow(id: string, request: UpdateFlowRequest): Promise<Flow> {
   return invoke<Flow>("update_flow", { id, request });
 }
 
-export async function deleteFlow(id: number): Promise<void> {
+export async function deleteFlow(id: string): Promise<void> {
   return invoke<void>("delete_flow", { id });
 }
 
@@ -123,7 +123,7 @@ export async function deleteFlow(id: number): Promise<void> {
 export interface StartFlowRequest {
   title: string;
   target_type: string;
-  target_id: number;
+  target_id: string;
   /** A date within the anchor scope of the flow's kind (ISO "YYYY-MM-DD"). */
   anchor_date: string;
 }
@@ -131,10 +131,10 @@ export interface StartFlowRequest {
 /** The materialized root of a started flow. */
 export interface MaterializedFlow {
   root_type: "goal" | "task";
-  root_id: number;
+  root_id: string;
 }
 
-export async function startFlow(flowId: number, request: StartFlowRequest): Promise<MaterializedFlow> {
+export async function startFlow(flowId: string, request: StartFlowRequest): Promise<MaterializedFlow> {
   return invoke<MaterializedFlow>("start_flow", { flowId, request });
 }
 
@@ -143,13 +143,13 @@ export async function startFlow(flowId: number, request: StartFlowRequest): Prom
 /** A candidate target node, referenced by kind and numeric id. */
 export interface TargetRef {
   node_type: string;
-  node_id: number;
+  node_id: string;
 }
 
 /** A materialized node's originating flow (for the "from flow X" annotation). */
 export interface FlowOrigin {
   node_type: string;
-  node_id: number;
+  node_id: string;
   flow_title: string;
 }
 
@@ -191,7 +191,7 @@ export type CooldownKind = "part" | "day" | "week" | "month";
 
 /** A Habit's Recurrence — Repetition (start/gap/end) plus its clock. */
 export interface FlowRecurrence {
-  flow_id: number;
+  flow_id: string;
   start_scope_id: ScopeKey;
   gap_n: number | null;
   gap_kind: string | null;
@@ -218,17 +218,17 @@ export interface SetRecurrenceRequest {
 }
 
 /** Sets (creates or replaces) a flow's Recurrence, making it a Habit. */
-export async function setFlowRecurrence(flowId: number, request: SetRecurrenceRequest): Promise<FlowRecurrence> {
+export async function setFlowRecurrence(flowId: string, request: SetRecurrenceRequest): Promise<FlowRecurrence> {
   return invoke<FlowRecurrence>("set_flow_recurrence", { flowId, request });
 }
 
 /** Fetches a flow's Recurrence, or null if it is a plain (non-habit) flow. */
-export async function getFlowRecurrence(flowId: number): Promise<FlowRecurrence | null> {
+export async function getFlowRecurrence(flowId: string): Promise<FlowRecurrence | null> {
   return invoke<FlowRecurrence | null>("get_flow_recurrence", { flowId });
 }
 
 /** Deletes a flow's Recurrence, demoting the Habit back to a plain flow. */
-export async function deleteFlowRecurrence(flowId: number): Promise<void> {
+export async function deleteFlowRecurrence(flowId: string): Promise<void> {
   return invoke<void>("delete_flow_recurrence", { flowId });
 }
 
@@ -242,7 +242,7 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
  * The `cycle_id` of an occurrence that came from no cycle pair — an item that declares none, and
  * the flow root, which never has any.
  */
-export const NO_CYCLE = 0;
+export const NO_CYCLE = "00000000-0000-0000-0000-000000000000";
 
 /** What a node hung on a Habit occurrence can be: anything a Task can parent. */
 export type HabitChildKind = "task" | "goal" | "commitment" | "info" | "expectation";
@@ -250,7 +250,7 @@ export type HabitChildKind = "task" | "goal" | "commitment" | "info" | "expectat
 /** An added child that is not finished, as the completion guard names it. */
 export interface UnfinishedChild {
   child_type: HabitChildKind;
-  child_id: number;
+  child_id: string;
   title: string;
 }
 
@@ -259,7 +259,7 @@ function isUnfinishedChild(value: unknown): value is UnfinishedChild {
   if (!("child_type" in value) || !("child_id" in value) || !("title" in value)) return false;
   return (
     typeof value.child_type === "string" &&
-    typeof value.child_id === "number" &&
+    typeof value.child_id === "string" &&
     typeof value.title === "string"
   );
 }
@@ -283,12 +283,12 @@ export function unfinishedChildren(error: unknown): UnfinishedChild[] | null {
 }
 
 /** Number of distinct completed iterations of a Habit (divergence check for reconciliation). */
-export async function habitCompletionCount(flowId: number): Promise<number> {
+export async function habitCompletionCount(flowId: string): Promise<number> {
   return invoke<number>("habit_completion_count", { flowId });
 }
 
 /** Clears every Habit Modification for a flow (delete-and-regenerate reconciliation). */
-export async function clearHabitModifications(flowId: number): Promise<void> {
+export async function clearHabitModifications(flowId: string): Promise<void> {
   return invoke<void>("clear_habit_modifications", { flowId });
 }
 
@@ -297,7 +297,7 @@ export async function clearHabitModifications(flowId: number): Promise<void> {
  * the original Habit — it stops recurring after the Day holding `now` (a local wall-clock
  * `YYYY-MM-DDTHH:MM:SS`), keeping the iterations that had begun — in one backend transaction.
  */
-export async function forkFlow(flowId: number, now: string): Promise<Flow> {
+export async function forkFlow(flowId: string, now: string): Promise<Flow> {
   return invoke<Flow>("fork_flow", { flowId, now });
 }
 
@@ -307,9 +307,9 @@ export async function forkFlow(flowId: number, now: string): Promise<Flow> {
  * privacy. No completion history and no started instances come with it.
  */
 export async function duplicateFlow(
-  flowId: number,
+  flowId: string,
   parentType: string,
-  parentId: number,
+  parentId: string,
   position: number,
 ): Promise<Flow> {
   return invoke<Flow>("duplicate_flow", { flowId, parentType, parentId, position });
@@ -322,12 +322,12 @@ export async function duplicateFlow(
  */
 export async function duplicateFlowItem(
   itemType: FlowItemType,
-  itemId: number,
+  itemId: string,
   parentType: string,
-  parentId: number,
+  parentId: string,
   position: number,
-): Promise<number> {
-  return invoke<number>("duplicate_flow_item", { itemType, itemId, parentType, parentId, position });
+): Promise<string> {
+  return invoke<string>("duplicate_flow_item", { itemType, itemId, parentType, parentId, position });
 }
 
 /**
@@ -337,7 +337,7 @@ export async function duplicateFlowItem(
  */
 export async function convertToFlow(
   nodeType: string,
-  nodeId: number,
+  nodeId: string,
   keepDependencies: boolean,
   mapScopes: boolean,
 ): Promise<Flow> {
@@ -359,7 +359,7 @@ export interface TemplateFields {
   agentic?: boolean | null;
   asynchronous?: boolean;
   archival?: TaskArchival;
-  tag_ids?: number[];
+  tag_ids?: string[];
   block_reasons?: string[];
   /** The agentic brief every occurrence reads, field by field, until it says otherwise. */
   agentic_brief?: AgenticBrief | null;
@@ -376,7 +376,7 @@ export interface TemplateUpdate {
   agentic?: TaskAgentic;
   asynchronous?: boolean;
   archival?: TaskArchival;
-  tag_ids?: number[];
+  tag_ids?: string[];
   block_reasons?: string[];
   // Absent = leave unchanged, null = no brief, value = this brief.
   agentic_brief?: AgenticBrief | null;
@@ -388,22 +388,22 @@ export interface TemplateUpdate {
 
 /** A flow-goal template item. */
 export interface FlowGoal extends TemplateFields {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   position: number;
   is_private: boolean;
 }
 
 /** A flow-task template item. */
 export interface FlowTask extends TemplateFields {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   position: number;
   is_private: boolean;
 }
@@ -413,11 +413,11 @@ export interface FlowTask extends TemplateFields {
  * Cycle Scope or else its iteration's window. Its Verdict Window is copied to every occurrence.
  */
 export interface FlowCommitment extends TemplateFields {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   position: number;
   is_private: boolean;
   verdict_window: DurationSpec | null;
@@ -437,11 +437,11 @@ export interface FirstCheck {
  * every from its first check in its window.
  */
 export interface FlowExpectation extends TemplateFields {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   position: number;
   is_private: boolean;
   check_every: DurationSpec | null;
@@ -450,10 +450,10 @@ export interface FlowExpectation extends TemplateFields {
 
 /** A relative (Cycle Scope, Cycle Plan) pair carried by a flow item. */
 export interface FlowItemCycle {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   item_type: FlowItemType;
-  item_id: number;
+  item_id: string;
   scope_kind: string | null;
   scope_index: number | null;
   plan_kind: string | null;
@@ -473,25 +473,25 @@ export interface FlowCycleInput {
 
 /** An intra-flow dependency: `dependent` waits on `depends_on`. */
 export interface FlowDependency {
-  id: number;
-  flow_id: number;
+  id: string;
+  flow_id: string;
   dependent_type: FlowItemType;
-  dependent_id: number;
+  dependent_id: string;
   depends_on_type: FlowItemType;
-  depends_on_id: number;
+  depends_on_id: string;
 }
 
 export interface CreateFlowItemRequest {
-  flow_id: number;
+  flow_id: string;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
 }
 
 export interface UpdateFlowItemRequest extends TemplateUpdate {
   title?: string;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: string;
   position?: number;
   is_private?: boolean;
   /** A Commitment item's alone. Absent = leave unchanged, null = none. */
@@ -534,19 +534,19 @@ export async function createFlowExpectation(request: CreateFlowItemRequest): Pro
   return invoke<FlowExpectation>("create_flow_expectation", { request });
 }
 
-export async function updateFlowCommitment(id: number, request: UpdateFlowItemRequest): Promise<FlowCommitment> {
+export async function updateFlowCommitment(id: string, request: UpdateFlowItemRequest): Promise<FlowCommitment> {
   return invoke<FlowCommitment>("update_flow_commitment", { id, request });
 }
 
-export async function updateFlowExpectation(id: number, request: UpdateFlowItemRequest): Promise<FlowExpectation> {
+export async function updateFlowExpectation(id: string, request: UpdateFlowItemRequest): Promise<FlowExpectation> {
   return invoke<FlowExpectation>("update_flow_expectation", { id, request });
 }
 
-export async function updateFlowGoal(id: number, request: UpdateFlowItemRequest): Promise<FlowGoal> {
+export async function updateFlowGoal(id: string, request: UpdateFlowItemRequest): Promise<FlowGoal> {
   return invoke<FlowGoal>("update_flow_goal", { id, request });
 }
 
-export async function updateFlowTask(id: number, request: UpdateFlowItemRequest): Promise<FlowTask> {
+export async function updateFlowTask(id: string, request: UpdateFlowItemRequest): Promise<FlowTask> {
   return invoke<FlowTask>("update_flow_task", { id, request });
 }
 
@@ -559,7 +559,7 @@ export function isFlowItemType(kind: string): kind is FlowItemType {
 export async function createFlowItem(
   kind: FlowItemType,
   request: CreateFlowItemRequest,
-): Promise<{ id: number; title: string; position: number }> {
+): Promise<{ id: string; title: string; position: number }> {
   switch (kind) {
     case "flow_goal": return createFlowGoal(request);
     case "flow_task": return createFlowTask(request);
@@ -569,7 +569,7 @@ export async function createFlowItem(
 }
 
 /** Updates a flow item of any kind. */
-export async function updateFlowItem(kind: FlowItemType, id: number, request: UpdateFlowItemRequest): Promise<void> {
+export async function updateFlowItem(kind: FlowItemType, id: string, request: UpdateFlowItemRequest): Promise<void> {
   switch (kind) {
     case "flow_goal": await updateFlowGoal(id, request); return;
     case "flow_task": await updateFlowTask(id, request); return;
@@ -579,11 +579,11 @@ export async function updateFlowItem(kind: FlowItemType, id: number, request: Up
 }
 
 /** The board's node id for a flow item — `flowtask-12`, `flowcommitment-3` — distinct from real rows. */
-export function flowItemNodeId(kind: FlowItemType, id: number): string {
+export function flowItemNodeId(kind: FlowItemType, id: string): string {
   return `${kind.replace("_", "")}-${id}`;
 }
 
-export async function deleteFlowItem(itemType: FlowItemType, id: number): Promise<void> {
+export async function deleteFlowItem(itemType: FlowItemType, id: string): Promise<void> {
   return invoke<void>("delete_flow_item", { itemType, id });
 }
 
@@ -593,11 +593,11 @@ export type CycleReconcile = "fork" | "discard";
 
 /** The fork an Archive & new item edit landed on, with the old→new item ids. */
 export interface ForkedTemplate {
-  flow_id: number;
-  goals: [number, number][];
-  tasks: [number, number][];
-  commitments: [number, number][];
-  expectations: [number, number][];
+  flow_id: string;
+  goals: [string, string][];
+  tasks: [string, string][];
+  commitments: [string, string][];
+  expectations: [string, string][];
 }
 
 /**
@@ -606,9 +606,9 @@ export interface ForkedTemplate {
  * Archive & new (with `now`) or Discard & regenerate.
  */
 export async function setFlowItemCycles(
-  flowId: number,
+  flowId: string,
   itemType: FlowItemType,
-  itemId: number,
+  itemId: string,
   cycles: FlowCycleInput[],
   reconcile?: CycleReconcile,
   now?: string,
@@ -630,10 +630,10 @@ export function orphanedEditCount(error: unknown): number | null {
   return "iterations" in details && typeof details.iterations === "number" ? details.iterations : null;
 }
 
-export async function addFlowDependency(flowId: number, dependentType: FlowItemType, dependentId: number, dependsOnType: FlowItemType, dependsOnId: number): Promise<void> {
+export async function addFlowDependency(flowId: string, dependentType: FlowItemType, dependentId: string, dependsOnType: FlowItemType, dependsOnId: string): Promise<void> {
   return invoke<void>("add_flow_dependency", { flowId, dependentType, dependentId, dependsOnType, dependsOnId });
 }
 
-export async function removeFlowDependency(dependentType: FlowItemType, dependentId: number, dependsOnType: FlowItemType, dependsOnId: number): Promise<void> {
+export async function removeFlowDependency(dependentType: FlowItemType, dependentId: string, dependsOnType: FlowItemType, dependsOnId: string): Promise<void> {
   return invoke<void>("remove_flow_dependency", { dependentType, dependentId, dependsOnType, dependsOnId });
 }

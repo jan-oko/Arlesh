@@ -2,11 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import ExpectationEditorModal from "./ExpectationEditorModal";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }) }));
 
 const WAIT: MindmapNode = {
-  id: "wait", kind: "expectation", rowId: 3, title: "Reviewer replies", status: "pending",
+  id: "wait", kind: "expectation", rowId: storedRowId(3), title: "Reviewer replies", status: "pending",
   checkEvery: { n: 3, kind: "day" }, checkStarting: "2026-07-03T02:00:00", timeScope: null,
   position: 0, tagIds: [], children: [],
 };
@@ -35,7 +36,7 @@ describe("ExpectationEditorModal — no agent switch", () => {
 
 describe("ExpectationEditorModal — a wait an Asynchronous Task spawned", () => {
   const SPAWNED: MindmapNode = {
-    ...WAIT, rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 },
+    ...WAIT, rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: storedRowId(5) },
   };
 
   it("offers every field a stored wait's editor does, and saves what was changed", async () => {

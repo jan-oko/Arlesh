@@ -2316,6 +2316,26 @@ CREATE TABLE tags_on_flow_task_async_templates (
 INSERT INTO tags_on_flow_task_async_templates (flow_task_id, tag_id)
 SELECT flow_task_id, tag_id FROM carry_tags_on_flow_task_async_templates;
 
+-- The undo journal names rows by SQLite rowid, and every rebuilt table's rowids were renumbered: an
+-- entry written before this migration points at the wrong row, so none is kept (startup truncates
+-- the journal anyway).
+DELETE FROM undo_journal;
+
+-- `push_sent` remembers which notifications a device was told by a key that spells a task's id
+-- (`overdue:{id}`, `generated:{id}`); left as it is, every device would be told again, once.
+UPDATE push_sent SET key = 'overdue:' || coalesce(
+    CASE WHEN substr(key, 9) NOT GLOB '*[^0-9]*' THEN
+        (SELECT new_id FROM uuid_map WHERE kind = 'task' AND old_id = CAST(substr(key, 9) AS INTEGER)) END,
+    (SELECT new_key FROM key_map WHERE old_key = substr(key, 9)),
+    substr(key, 9))
+ WHERE key LIKE 'overdue:%';
+UPDATE push_sent SET key = 'generated:' || coalesce(
+    CASE WHEN substr(key, 11) NOT GLOB '*[^0-9]*' THEN
+        (SELECT new_id FROM uuid_map WHERE kind = 'task' AND old_id = CAST(substr(key, 11) AS INTEGER)) END,
+    (SELECT new_key FROM key_map WHERE old_key = substr(key, 11)),
+    substr(key, 11))
+ WHERE key LIKE 'generated:%';
+
 DROP TABLE carry_agents;
 DROP TABLE carry_block_reasons;
 DROP TABLE carry_commitment_overlays;

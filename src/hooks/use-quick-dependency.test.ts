@@ -7,6 +7,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
 import { fixtureRowId } from "@/test/node-fixture";
+import { storedRowId } from "@/test/stored-id";
 
 /**
  * Nothing between the hook and Tauri is stubbed: the candidates and the write go through the real
@@ -36,7 +37,7 @@ interface Backend {
 
 /** Every node of {@link board} but `task-1`, as the backend names them. */
 const EVERY_OTHER: Dependency[] = [
-  { type: "task", id: 2 }, { type: "task", id: 3 }, { type: "expectation", id: 7 }, { type: "goal", id: 4 },
+  { type: "task", id: storedRowId(2) }, { type: "task", id: storedRowId(3) }, { type: "expectation", id: storedRowId(7) }, { type: "goal", id: storedRowId(4) },
 ];
 
 /** A backend that serves the candidates and journals every write with its Gesture. */
@@ -124,7 +125,7 @@ describe("useQuickDependency — opening", () => {
   it("offers only what the backend offers for the Task", async () => {
     // Leaving out what it already depends on and what depends on it is the backend's
     // (`tasks::rules::dependencies::candidates`); the picker offers what comes back.
-    installBackend({ candidates: [{ type: "goal", id: 4 }] });
+    installBackend({ candidates: [{ type: "goal", id: storedRowId(4) }] });
     const { result } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());

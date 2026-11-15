@@ -694,7 +694,7 @@ fn a_habit_flow_drops_out_of_start_and_every_flow_drops_out_of_do() {
 fn tags_combine_as_any_and_all_and_not_exclude() {
     let tagged = |ids: &[i64]| {
         let mut node = task("todo");
-        node.tag_ids = ids.to_vec();
+        node.tag_ids = ids.iter().copied().map(tid).collect();
         node
     };
     let with = |tags: Vec<(i64, TagMode)>| BoardFilter {

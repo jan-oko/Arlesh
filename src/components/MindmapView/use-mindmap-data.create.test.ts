@@ -13,6 +13,7 @@ import { settleLane } from "@/test/lane-helpers";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
 import { currentBoard } from "@/test/current-board";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -38,7 +39,7 @@ vi.mock("@/hooks/use-scope-labels", () => ({ useScopeLabels: () => SCOPE_LABELS 
 // One Aspect, a Goal and a Task to rename.
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
-    id: 1, title: "Domain", description: null, subtype: "aspect",
+    id: storedRowId(1), title: "Domain", description: null, subtype: "aspect",
     parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
@@ -46,7 +47,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
-    id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Goal", parent_type: "domain", parent_id: storedRowId(1),
     status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -54,16 +55,16 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 1, title: "Task", parent_type: "goal", parent_id: 1,
+    id: storedRowId(1), title: "Task", parent_type: "goal", parent_id: storedRowId(1),
     status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
 
 const ROWS = {
-  domains: [mkDomain({ id: 1, subtype: "aspect", title: "Work" })],
-  goals: [mkGoal({ id: 1, parent_type: "domain", parent_id: 1 })],
-  tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code" })],
+  domains: [mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" })],
+  goals: [mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) })],
+  tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: "Write code" })],
 };
 
 

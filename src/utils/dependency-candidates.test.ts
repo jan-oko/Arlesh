@@ -5,13 +5,14 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
 import { canHoldDependencies, dependencyCandidates, matchCandidates } from "./dependency-candidates";
 import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
 const checkTask = node("task-90", "task", {
-  origin: { kind: "check", wait_kind: "stored", wait_id: 7, due_at: "2026-09-01T00:00:00" },
+  origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(7), due_at: "2026-09-01T00:00:00" },
   capabilities: DERIVED_WAIT_CAPABILITIES,
 });
 
@@ -43,7 +44,7 @@ describe("dependencyCandidates", () => {
   // this pins how its answer is found in the search pool.
   it("finds each offered prerequisite in the search pool, in search order, with the edge it writes", () => {
     const tree = board();
-    const allowed: Dependency[] = [{ type: "expectation", id: 7 }, { type: "task", id: 3 }, { type: "goal", id: 1 }];
+    const allowed: Dependency[] = [{ type: "expectation", id: storedRowId(7) }, { type: "task", id: storedRowId(3) }, { type: "goal", id: storedRowId(1) }];
     const found = dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), allowed);
     expect(found.map((c) => [c.id, c.dependency])).toEqual([
       ["goal-1", { type: "goal", id: 1 }],
@@ -69,7 +70,7 @@ describe("matchCandidates", () => {
     const tree = node("root", "domain", {
       children: [node("task-1", "task", { title: "Write report" }), node("task-2", "task", { title: "Call the bank" }), node("task-3", "task", { title: "Review REPORT" })],
     });
-    const allowed: Dependency[] = [{ type: "task", id: 1 }, { type: "task", id: 3 }];
+    const allowed: Dependency[] = [{ type: "task", id: storedRowId(1) }, { type: "task", id: storedRowId(3) }];
     const all = dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), allowed);
     expect(matchCandidates(all, "  ", 8)).toEqual([]);
     expect(matchCandidates(all, "report", 8).map((c) => c.id)).toEqual(["task-1", "task-3"]);

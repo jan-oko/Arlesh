@@ -25,7 +25,7 @@ interface Props {
   tree: MindmapNode;
   editors: CreateEditors;
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
 }
 
 /**

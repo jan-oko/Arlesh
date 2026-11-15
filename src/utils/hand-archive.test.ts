@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { archiveOfferFor, canArchiveByHand } from "./hand-archive";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { occurrenceRow } from "@/test/occurrence";
+import { storedRowId } from "@/test/stored-id";
 
 function node(overrides: Partial<MindmapNode>): MindmapNode {
-  return { id: "task-1", kind: "task", title: "T", position: 0, tagIds: [], children: [], rowId: 1, ...overrides };
+  return { id: "task-1", kind: "task", title: "T", position: 0, tagIds: [], children: [], rowId: storedRowId(1), ...overrides };
 }
 
 describe("canArchiveByHand", () => {
@@ -15,7 +16,7 @@ describe("canArchiveByHand", () => {
 
   it("refuses a Habit occurrence, a wait's check task, and every other kind", () => {
     expect(canArchiveByHand(node({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) }))).toBe(false);
-    expect(canArchiveByHand(node({ origin: { kind: "check", wait_kind: "stored", wait_id: 2, due_at: "2026-10-03T02:00:00" } }))).toBe(false);
+    expect(canArchiveByHand(node({ origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(2), due_at: "2026-10-03T02:00:00" } }))).toBe(false);
     expect(canArchiveByHand(node({ kind: "goal" }))).toBe(false);
     expect(canArchiveByHand(node({ kind: "expectation" }))).toBe(false);
   });

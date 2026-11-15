@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import TagPicker from "./TagPicker";
 import type { Domain } from "@/api/domains";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -18,7 +19,7 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 describe("TagPicker", () => {
   it("shows selected tags as pills and nothing in the dropdown until focused", () => {
-    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[2]} onChange={vi.fn()} />);
+    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[storedRowId(2)]} onChange={vi.fn()} />);
     expect(screen.getByText("urgent")).toBeInTheDocument(); // pill
     expect(screen.queryByText("backend")).not.toBeInTheDocument(); // dropdown closed
   });
@@ -40,7 +41,7 @@ describe("TagPicker", () => {
 
   it("adds a tag on click, producing the full id set", () => {
     const onChange = vi.fn();
-    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[2]} onChange={onChange} />);
+    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[storedRowId(2)]} onChange={onChange} />);
     fireEvent.focus(screen.getByPlaceholderText("placeholderTagSearch"));
     fireEvent.mouseDown(screen.getByText("backend"));
     expect(onChange).toHaveBeenCalledWith([2, 1]);
@@ -48,7 +49,7 @@ describe("TagPicker", () => {
 
   it("removes a selected tag via its pill", () => {
     const onChange = vi.fn();
-    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[1, 2]} onChange={onChange} />);
+    render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[storedRowId(1), storedRowId(2)]} onChange={onChange} />);
     const removeButtons = screen.getAllByRole("button", { name: "removeTag" });
     fireEvent.click(removeButtons[0]!);
     expect(onChange).toHaveBeenCalledWith([2]);

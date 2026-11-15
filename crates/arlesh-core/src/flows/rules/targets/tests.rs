@@ -15,16 +15,16 @@ fn a_flow_targets_a_container_a_goal_or_a_task_and_nothing_else() {
 
 fn copies() -> CopiedNodes {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Domain, 5, 50);
-    copies.record(NodeTable::Goal, 6, 60);
-    copies.record(NodeTable::Task, 7, 70);
+    copies.record(NodeTable::Domain, tid(5), tid(50));
+    copies.record(NodeTable::Goal, tid(6), tid(60));
+    copies.record(NodeTable::Task, tid(7), tid(70));
     copies
 }
 
 #[test]
 fn a_target_the_copy_carried_is_remapped_to_its_copy() {
-    assert_eq!(copied_target_id(Some("goal"), Some(tid(6)), &copies()), Some(60));
-    assert_eq!(copied_target_id(Some("task"), Some(tid(7)), &copies()), Some(70));
+    assert_eq!(copied_target_id(Some("goal"), Some(tid(6)), &copies()), Some(tid(60)));
+    assert_eq!(copied_target_id(Some("task"), Some(tid(7)), &copies()), Some(tid(70)));
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn a_domains_row_is_found_whichever_subtype_spelling_names_it() {
     for spelling in ["aspect", "project", "domain", "tag"] {
         assert_eq!(
             copied_target_id(Some(spelling), Some(tid(5)), &copies()),
-            Some(50),
+            Some(tid(50)),
             "{spelling}"
         );
     }

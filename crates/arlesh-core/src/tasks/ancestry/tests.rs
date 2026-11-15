@@ -49,7 +49,7 @@ async fn insert_goal(pool: &DatabasePool, id: i64, parent_type: &str, parent_id:
 }
 
 /// The `(kind, id)` of each link, which is all the shape assertions need.
-fn shape(chain: &AncestryChain) -> Vec<(NodeKind, i64)> {
+fn shape(chain: &AncestryChain) -> Vec<(NodeKind, RowId)> {
     chain
         .links
         .iter()
@@ -77,7 +77,7 @@ fn task_link(id: i64) -> AncestryLink {
     AncestryLink {
         kind: NodeKind::Task,
         id: tid(id),
-        parent: NodeRef::new("task", tid(id) + 1),
+        parent: NodeRef::new("task", tid(id + 1)),
         time_scope: None,
         plan: None,
         on_scope_exit: None,
@@ -90,7 +90,7 @@ fn goal_link(id: i64) -> AncestryLink {
     AncestryLink {
         kind: NodeKind::Goal,
         id: tid(id),
-        parent: NodeRef::new("goal", tid(id) + 1),
+        parent: NodeRef::new("goal", tid(id + 1)),
         time_scope: None,
         plan: None,
         on_scope_exit: None,
@@ -103,7 +103,7 @@ fn commitment_link(id: i64) -> AncestryLink {
     AncestryLink {
         kind: NodeKind::Commitment,
         id: tid(id),
-        parent: NodeRef::new("commitment", tid(id) + 1),
+        parent: NodeRef::new("commitment", tid(id + 1)),
         time_scope: None,
         plan: None,
         on_scope_exit: Some(OnScopeExit::Keep),
@@ -299,7 +299,7 @@ fn the_write_policy_rejects_an_undetermined_search_with_the_reference_it_could_n
     let missing = broken_at(vec![task_link(1)], NodeKind::Goal, 2);
     assert!(matches!(
         missing.nearest_scoped().or_reject(),
-        Err(TaskError::GoalNotFound(tid(2)))
+        Err(TaskError::GoalNotFound(id)) if id == tid(2)
     ));
 
     let cyclic = AncestryChain {
@@ -312,7 +312,7 @@ fn the_write_policy_rejects_an_undetermined_search_with_the_reference_it_could_n
     };
     assert!(matches!(
         cyclic.nearest_scoped().or_reject(),
-        Err(TaskError::AncestorCycle { node_id: tid(1) })
+        Err(TaskError::AncestorCycle { node_id }) if node_id == tid(1)
     ));
 }
 
@@ -549,7 +549,7 @@ fn a_missing_commitment_reference_rejects_a_write_by_name() {
     };
     assert!(matches!(
         undetermined.or_reject(),
-        Err(TaskError::CommitmentNotFound(tid(5))),
+        Err(TaskError::CommitmentNotFound(id)) if id == tid(5),
     ));
 }
 

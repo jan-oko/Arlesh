@@ -3,11 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { mockCommandOnce, mockGestureProtocol } from "@/test/command-mock";
 import { listInfos, createInfo, updateInfo, deleteInfo } from "./infos";
 import type { Info, CreateInfoRequest } from "./infos";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockInfo: Info = {
-  id: 1, body: "Remember to update docs", details: null, parent_type: "task", parent_id: 3, position: 0, is_private: false,
+  id: storedRowId(1), body: "Remember to update docs", details: null, parent_type: "task", parent_id: storedRowId(3), position: 0, is_private: false,
 };
 
 beforeEach(() => {
@@ -28,7 +29,7 @@ describe("createInfo", () => {
   it("calls invoke with create_info and wraps the request", async () => {
     mockCommandOnce(mockInfo);
     const req: CreateInfoRequest = {
-      body: "Remember to update docs", parent_type: "task", parent_id: 3, position: 0,
+      body: "Remember to update docs", parent_type: "task", parent_id: storedRowId(3), position: 0,
     };
     const result = await createInfo(req);
     expect(invoke).toHaveBeenCalledWith("create_info", { request: req });
@@ -40,7 +41,7 @@ describe("updateInfo", () => {
   it("calls invoke with update_info, the id, and the partial request", async () => {
     const updated = { ...mockInfo, body: "Updated note" };
     mockCommandOnce(updated);
-    const result = await updateInfo(1, { body: "Updated note" });
+    const result = await updateInfo(storedRowId(1), { body: "Updated note" });
     expect(invoke).toHaveBeenCalledWith("update_info", { id: 1, request: { body: "Updated note" } });
     expect(result.body).toBe("Updated note");
   });
@@ -49,7 +50,7 @@ describe("updateInfo", () => {
 describe("deleteInfo", () => {
   it("calls invoke with delete_info and the id", async () => {
     mockCommandOnce(undefined);
-    await deleteInfo(1);
+    await deleteInfo(storedRowId(1));
     expect(invoke).toHaveBeenCalledWith("delete_info", { id: 1 });
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isReviewWait, isSendableAnswer, openWaits } from "@/utils/open-question";
+import { storedRowId } from "@/test/stored-id";
 
 function wait(id: string, over: Partial<MindmapNode> = {}): MindmapNode {
   return {
@@ -20,14 +21,14 @@ function task(waits: MindmapNode[], openQuestionIds?: number[]): MindmapNode {
 
 describe("openWaits", () => {
   it("finds the waits the backend named as the task's open ones, in its order", () => {
-    const first = wait("a", { rowId: 1 });
-    const second = wait("b", { rowId: 2 });
-    const closed = wait("c", { rowId: 3 });
+    const first = wait("a", { rowId: storedRowId(1) });
+    const second = wait("b", { rowId: storedRowId(2) });
+    const closed = wait("c", { rowId: storedRowId(3) });
     expect(openWaits(task([first, second, closed], [2, 1])).map((open) => open.id)).toEqual(["b", "a"]);
   });
 
   it("finds nothing when the backend named no open wait", () => {
-    expect(openWaits(task([wait("a", { rowId: 1 })]))).toEqual([]);
+    expect(openWaits(task([wait("a", { rowId: storedRowId(1) })]))).toEqual([]);
   });
 });
 

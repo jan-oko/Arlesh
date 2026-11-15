@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 import TaskRow from "./TaskRow";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map([[7, "urgent"]]) }));
@@ -189,7 +190,7 @@ describe("TaskRow", () => {
 
   it("clicking a tag pill adds a tag filter, resolving the tag's name", () => {
     const onAddTagFilter = vi.fn();
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", tagIds: [7] }) }), onAddTagFilter })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", tagIds: [storedRowId(7)] }) }), onAddTagFilter })} />);
     fireEvent.click(screen.getByText("urgent"));
     expect(onAddTagFilter).toHaveBeenCalledWith(7);
   });

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import CommitmentEditorModal from "./CommitmentEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -28,7 +29,7 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
     title: "Asleep by 23:00",
     verdict: "unresolved",
     position: 0,
-    tagIds: [2],
+    tagIds: [storedRowId(2)],
     children: [],
     ...overrides,
   };

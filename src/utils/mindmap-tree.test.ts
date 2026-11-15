@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { connectedNodeIds, pathToNode, owningFlowId, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, collectSearchableNodes, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
@@ -422,7 +423,7 @@ describe("collectSearchableNodes with skipArchived", () => {
       { id: "goal-1", kind: "goal", title: "Done goal", status: "archived", position: 0, tagIds: [], children: [
         { id: "task-1", kind: "task", title: "Under it", status: "todo", position: 0, tagIds: [], children: [] },
       ] },
-      { id: "task-2", kind: "task", title: "Delegated", status: "todo", delegate: { kind: "person", id: 4 }, position: 1, tagIds: [], children: [] },
+      { id: "task-2", kind: "task", title: "Delegated", status: "todo", delegate: { kind: "person", id: storedRowId(4) }, position: 1, tagIds: [], children: [] },
       { id: "task-3", kind: "task", title: "Live", status: "todo", position: 2, tagIds: [], children: [] },
     ],
   };

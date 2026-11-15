@@ -7,12 +7,12 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 interface Props {
   allTags: Domain[];
   /** Domain id → title, for sectioning tags under their parent domain. */
-  domainNames: Map<number, string>;
-  selectedIds: number[];
-  onChange: (ids: number[]) => void;
+  domainNames: Map<string, string>;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
 }
 
-const NO_PARENT = -1;
+const NO_PARENT = "";
 
 /**
  * Tag picker: chosen tags shown as removable pills, plus a search dropdown whose options are grouped
@@ -52,7 +52,7 @@ export default function TagPicker({ allTags, domainNames, selectedIds, onChange 
     const available = validTags.filter(
       (tag) => !selectedIds.includes(tag.id) && tag.title.toLowerCase().includes(q),
     );
-    const byParent = new Map<number, Domain[]>();
+    const byParent = new Map<string, Domain[]>();
     for (const tag of available) {
       const key = tag.parent_id ?? NO_PARENT;
       const list = byParent.get(key);
@@ -70,8 +70,8 @@ export default function TagPicker({ allTags, domainNames, selectedIds, onChange 
 
   if (validTags.length === 0) return null;
 
-  function add(id: number) { onChange([...selectedIds, id]); setQuery(""); }
-  function remove(id: number) { onChange(selectedIds.filter((x) => x !== id)); }
+  function add(id: string) { onChange([...selectedIds, id]); setQuery(""); }
+  function remove(id: string) { onChange(selectedIds.filter((x) => x !== id)); }
 
   return (
     <div className={styles.label}>

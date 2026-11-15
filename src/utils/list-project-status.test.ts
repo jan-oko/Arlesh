@@ -5,6 +5,7 @@ import { filterTaskList, DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
+import { storedRowId } from "@/test/stored-id";
 
 /**
  * End-to-end cover for List View's Project-status filter: tree -> rows -> filter.
@@ -15,17 +16,17 @@ import type { Task } from "@/api/tasks";
  */
 
 const ASPECT: Domain = {
-  id: 2, title: "Connections", description: null, subtype: "aspect",
+  id: storedRowId(2), title: "Connections", description: null, subtype: "aspect",
   parent_id: null, color: null, status: null, knowledge_base_directory: null,
   position: 0, is_private: false,
 };
 const PROJECT: Domain = {
-  id: 25, title: "LOVE", description: null, subtype: "project",
-  parent_id: 2, color: null, status: "active", knowledge_base_directory: null,
+  id: storedRowId(25), title: "LOVE", description: null, subtype: "project",
+  parent_id: storedRowId(2), color: null, status: "active", knowledge_base_directory: null,
   position: 0, is_private: false,
 };
 const TASK: Task = {
-  id: 25, title: "talk to M", parent_type: "project", parent_id: 25,
+  id: storedRowId(25), title: "talk to M", parent_type: "project", parent_id: storedRowId(25),
   status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null,
   plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
 };

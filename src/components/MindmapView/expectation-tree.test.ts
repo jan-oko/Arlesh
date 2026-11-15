@@ -11,15 +11,16 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 const ASPECT: Domain = {
-  id: 1, title: "Work", description: null, subtype: "aspect", parent_id: null, color: null,
+  id: storedRowId(1), title: "Work", description: null, subtype: "aspect", parent_id: null, color: null,
   status: null, knowledge_base_directory: null, position: 0, is_private: false,
 };
 
 function task(over: Partial<Task> = {}): Task {
   return {
-    id: 5, title: "Send the draft", parent_type: "project", parent_id: 1, status: { kind: "ordinary", status: "todo" },
+    id: storedRowId(5), title: "Send the draft", parent_type: "project", parent_id: storedRowId(1), status: { kind: "ordinary", status: "todo" },
     delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null,
     plan: null, archival: "live", tag_ids: [], position: 1, is_private: false, ...over,
   };
@@ -27,7 +28,7 @@ function task(over: Partial<Task> = {}): Task {
 
 function wait(over: Partial<Expectation> = {}): Expectation {
   return {
-    id: 3, title: "Reviewer replies", parent_type: "project", parent_id: 1, status: "pending",
+    id: storedRowId(3), title: "Reviewer replies", parent_type: "project", parent_id: storedRowId(1), status: "pending",
     archival: "live", time_scope: null, tag_ids: [], position: 2, is_private: false,
     ...over,
   };
@@ -43,7 +44,7 @@ const DELEGATION_ID = "2d5e3f52-1b20-5c3d-8e6f-000000000005";
 /** A wait's check task, as the Task virtual table serves it. */
 function check(over: Partial<Task> = {}): Task {
   return task({
-    id: CHECK_ID, title: "Reviewer replies", parent_type: "expectation", parent_id: 3,
+    id: CHECK_ID, title: "Reviewer replies", parent_type: "expectation", parent_id: storedRowId(3),
     time_scope: DUE, position: Number.MIN_SAFE_INTEGER,
     origin: { kind: "check", wait_kind: "stored", wait_id: 3, due_at: "2026-07-10T02:00:00" },
     ...over,
@@ -62,7 +63,7 @@ function build(
 describe("buildTree — expectations", () => {
   it("draws a stored wait under its parent, keyed by a minted UUID and carrying its row", () => {
     const root = build([], [wait()]);
-    const node = findNode(root, expectationNodeId(3));
+    const node = findNode(root, expectationNodeId(storedRowId(3)));
     expect(node).toMatchObject({ kind: "expectation", rowId: 3, status: "pending", checkEvery: null });
     expect(node?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
@@ -75,19 +76,19 @@ describe("buildTree — expectations", () => {
       title: "Check: Reviewer replies", rowTitle: "Reviewer replies",
     });
     expect(node?.virtual).toBeUndefined();
-    expect(findNode(root, expectationNodeId(3))?.children.map((child) => child.id)).toEqual([`task-${CHECK_ID}`]);
+    expect(findNode(root, expectationNodeId(storedRowId(3)))?.children.map((child) => child.id)).toEqual([`task-${CHECK_ID}`]);
   });
 
   it("keeps a task's wait dependencies, and draws the block the backend says the wait makes", () => {
-    const edge: TaskDependencyEdge = { task_id: 5, dependency_type: "expectation", dependency_id: 3 };
+    const edge: TaskDependencyEdge = { task_id: storedRowId(5), dependency_type: "expectation", dependency_id: storedRowId(3) };
     const pending = findNode(buildTree(
       [ASPECT], [], [task()], [], [], [], [], [], [], [], [], [edge], [], [wait()],
       (title) => `waiting on ${title}`, (title) => `Check: ${title}`, "compound", "capacity", (until) => until,
       {}, new Map(),
-      { "task-5": { dependency_blocks: [{ kind: "expectation", id: 3, title: "Reviewer replies" }] } },
+      { "task-5": { dependency_blocks: [{ kind: "expectation", id: storedRowId(3), title: "Reviewer replies" }] } },
     ), "task-5");
     expect(pending?.virtualBlockers).toEqual(["Blocked by expectation 3 (Reviewer replies)"]);
-    expect(pending?.blockingDependencyIds).toEqual([expectationNodeId(3)]);
+    expect(pending?.blockingDependencyIds).toEqual([expectationNodeId(storedRowId(3))]);
     expect(pending?.expectationDependencyIds).toEqual([3]);
     const released = findNode(build([task()], [wait({ status: "released" })], [edge]), "task-5");
     expect(released?.virtualBlockers).toEqual([]);
@@ -95,9 +96,9 @@ describe("buildTree — expectations", () => {
   });
 
   it("draws a delegated task's wait row beneath it, titled as what it waits on", () => {
-    const root = build([task({ delegate_to: { kind: "person", id: 4 } })], [wait({
-      id: DELEGATION_ID, title: "Send the draft", parent_type: "task", parent_id: 5,
-      origin: { kind: "delegation_wait", task_id: 5 },
+    const root = build([task({ delegate_to: { kind: "person", id: storedRowId(4) } })], [wait({
+      id: DELEGATION_ID, title: "Send the draft", parent_type: "task", parent_id: storedRowId(5),
+      origin: { kind: "delegation_wait", task_id: storedRowId(5) },
     })]);
     const node = findNode(root, expectationNodeId(DELEGATION_ID));
     expect(node).toMatchObject({
@@ -112,12 +113,12 @@ describe("buildTree — expectations", () => {
         task({ status: { kind: "ordinary", status: "done" }, asynchronous: true }),
         check({
           parent_id: SPAWNED_ID, title: "Waiting on Send the draft",
-          origin: { kind: "check", wait_kind: "spawned", wait_id: 5, due_at: "2026-09-22T10:00:00" },
+          origin: { kind: "check", wait_kind: "spawned", wait_id: storedRowId(5), due_at: "2026-09-22T10:00:00" },
         }),
       ],
       [wait({
-        id: SPAWNED_ID, title: "Waiting on Send the draft", parent_type: "task", parent_id: 5,
-        check_every: EVERY, time_scope: DUE, tag_ids: [4], origin: { kind: "spawned_wait", task_id: 5 },
+        id: SPAWNED_ID, title: "Waiting on Send the draft", parent_type: "task", parent_id: storedRowId(5),
+        check_every: EVERY, time_scope: DUE, tag_ids: [storedRowId(4)], origin: { kind: "spawned_wait", task_id: storedRowId(5) },
       })],
     );
     const spawned = findNode(root, expectationNodeId(SPAWNED_ID));
@@ -130,7 +131,7 @@ describe("buildTree — expectations", () => {
 
   it("reads asynchronous from the task's own flag, with or without a template", () => {
     const template = { title: "Waiting on Send the draft", tag_ids: [4], check_every: EVERY };
-    const root = build([task({ asynchronous: true, async_template: template }), task({ id: 8, asynchronous: true })], []);
+    const root = build([task({ asynchronous: true, async_template: template }), task({ id: storedRowId(8), asynchronous: true })], []);
     expect(findNode(root, "task-5")).toMatchObject({ asynchronous: true, asyncTemplate: template });
     expect(findNode(root, "task-8")).toMatchObject({ asynchronous: true });
   });
@@ -169,7 +170,7 @@ describe("buildTree — expectations", () => {
 
   it("stamps a spawned wait with the lifecycle filed under its row", () => {
     const tree = build([task({ status: { kind: "ordinary", status: "done" } })], [wait({
-      id: SPAWNED_ID, parent_type: "task", parent_id: 5, origin: { kind: "spawned_wait", task_id: 5 },
+      id: SPAWNED_ID, parent_type: "task", parent_id: storedRowId(5), origin: { kind: "spawned_wait", task_id: storedRowId(5) },
     })]);
     const lifecycle: ItemLifecycle = {
       node_type: "expectation", node_id: SPAWNED_ID, timing: "lapsed", archival: "live", archival_conflict: false,
@@ -179,8 +180,8 @@ describe("buildTree — expectations", () => {
   });
 
   it("hangs a note under a wait", () => {
-    const note: Info = { id: 9, body: "asked Monday", details: null, parent_type: "expectation", parent_id: 3, position: 0, is_private: false };
+    const note: Info = { id: storedRowId(9), body: "asked Monday", details: null, parent_type: "expectation", parent_id: storedRowId(3), position: 0, is_private: false };
     const root = build([], [wait()], [], [note]);
-    expect(findNode(root, expectationNodeId(3))?.children.map((child) => child.id)).toEqual(["info-9"]);
+    expect(findNode(root, expectationNodeId(storedRowId(3)))?.children.map((child) => child.id)).toEqual(["info-9"]);
   });
 });

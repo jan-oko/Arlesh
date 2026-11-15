@@ -19,7 +19,7 @@ fn domain_row(id: i64, parent: Option<i64>) -> Domain {
             "project"
         }
         .to_string(),
-        parent_id: parent,
+        parent_id: parent.map(tid),
         color: None,
         status: parent.map(|_| "active".to_string()),
         knowledge_base_directory: None,
@@ -107,7 +107,7 @@ fn everything() -> Blocking {
     Blocking {
         subtrees: vec![crate::access::model::NodeKey::new(
             crate::access::model::NodeTable::Domain,
-            1: tid(1),
+            tid(1),
         )],
     }
 }

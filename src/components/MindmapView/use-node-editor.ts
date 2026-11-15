@@ -89,7 +89,7 @@ function clampSteps(conflicts: ViolatingDescendant[], window: TimeScope): Gestur
 }
 
 /** The writes that put on the tags in `after` and take off those only in `before`. */
-function tagSteps(kind: string, id: RowId, before: readonly number[], after: readonly number[]): GestureStep[] {
+function tagSteps(kind: string, id: RowId, before: readonly string[], after: readonly string[]): GestureStep[] {
   return [
     ...after.filter((tag) => !before.includes(tag)).map((tag_id) => ({ op: "set_tag", kind, id, tag_id, present: true })),
     ...before.filter((tag) => !after.includes(tag)).map((tag_id) => ({ op: "set_tag", kind, id, tag_id, present: false })),
@@ -113,7 +113,7 @@ export interface NodeEditorHandles {
   editorModal: EditorModalState | null;
   setEditorModal: (m: EditorModalState | null) => void;
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
   availableForDep: MindmapNode[];
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
@@ -128,7 +128,7 @@ export interface NodeEditorHandles {
   onFlowSave: (data: FlowSaveData) => Promise<void>;
   onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
-  checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  checkScopeClamp: (nodeType: "task" | "goal", dbId: string, timeScope: TimeScope) => Promise<boolean>;
   /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). The
    * prompt itself is `ScopeClampPrompt`, mounted at the root, so every view gets it. */
   confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
@@ -140,7 +140,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
   const showToast = useMindmapStore((s) => s.showToast);
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
-  const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
+  const [domainNames, setDomainNames] = useState<Map<string, string>>(new Map());
   const askScopeClamp = useScopeClampStore((s) => s.ask);
   const enqueue = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
@@ -199,7 +199,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
 
   // Returns true if the save may proceed: no orphaned descendants, or the user chose to clamp them.
   const checkScopeClamp = useCallback(
-    async (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope): Promise<boolean> => {
+    async (nodeType: "task" | "goal", dbId: string, timeScope: TimeScope): Promise<boolean> => {
       const conflicts = await scopeContainmentConflicts(nodeType, dbId, timeScope);
       if (conflicts.length === 0) return true;
       return confirmScopeClamp(conflicts);
@@ -466,13 +466,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       // backend hands back.
       // One gesture operation. Each later write names its node through the first one, which
       // answers the Habit an *Archive & new* forked, if it forked one: its items' new ids.
-      const onto = (type: FlowItemType, id: number): StepTarget => ({ step: 0, forked: type, id });
+      const onto = (type: FlowItemType, id: string): StepTarget => ({ step: 0, forked: type, id });
       const flowId: StepTarget = { step: 0, forked: "flow", id: flowItem.flowId };
       const itemId = onto(flowItem.itemType, dbId);
       const patch = {
         title: data.title, is_private: data.isPrivate, ...data.template, ...data.itemFields,
       } satisfies UpdateFlowItemRequest;
-      const dependency = (dep: { type: FlowItemType; id: number }, present: boolean): GestureStep => ({
+      const dependency = (dep: { type: FlowItemType; id: string }, present: boolean): GestureStep => ({
         op: "set_flow_dependency", flow_id: flowId, dependent_type: flowItem.itemType, dependent_id: itemId,
         depends_on_type: dep.type, depends_on_id: onto(dep.type, dep.id), present,
       });

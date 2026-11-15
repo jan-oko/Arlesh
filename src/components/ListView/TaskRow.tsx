@@ -33,7 +33,7 @@ interface Props {
   onOpenEditor: (nodeId: string) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
-  onAddTagFilter: (tagId: number) => void;
+  onAddTagFilter: (tagId: string) => void;
   /** Opens the row's context menu at the pointer. */
   onContextMenu?: (nodeId: string, x: number, y: number) => void;
   /** On a **Review** row: answers one of the agent's open waits, from the row. */

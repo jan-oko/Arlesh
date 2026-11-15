@@ -43,7 +43,7 @@ fn item(
         id: tid(id),
         title: title.to_string(),
         parent_type: parent.0.to_string(),
-        parent_id: tid(parent).1,
+        parent_id: tid(parent.1),
         position,
         is_private: false,
     }
@@ -54,7 +54,7 @@ fn cycle(id: i64, item: (FlowItemType, i64), position: i64) -> FlowItemCycle {
         id: tid(id),
         flow_id: tid(FLOW_ID),
         item_type: item.0.as_str().to_string(),
-        item_id: tid(item).1,
+        item_id: tid(item.1),
         scope_kind: Some("day".to_string()),
         scope_index: Some(position + 1),
         plan_kind: None,
@@ -73,9 +73,9 @@ fn dependency(
         id: tid(id),
         flow_id: tid(FLOW_ID),
         dependent_type: dependent.0.as_str().to_string(),
-        dependent_id: tid(dependent).1,
+        dependent_id: tid(dependent.1),
         depends_on_type: blocker.0.as_str().to_string(),
-        depends_on_id: tid(blocker).1,
+        depends_on_id: tid(blocker.1),
     }
 }
 
@@ -90,7 +90,7 @@ fn table(cycle_ids: &[i64]) -> ScopeTable {
             .iter()
             .map(|id| {
                 (
-                    *id,
+                    tid(*id),
                     ResolvedPair {
                         time_scope: scope(*id * 100),
                         plan: None,
@@ -313,12 +313,12 @@ fn planned_cycles_keeps_pairs_of_items_reached_through_a_parent_chain() {
         ..Default::default()
     };
 
-    let kept: Vec<i64> = template
+    let kept: Vec<RowId> = template
         .planned_cycles(tid(FLOW_ID))
         .iter()
         .map(|cycle| cycle.id)
         .collect();
-    assert_eq!(kept, [10, 20]);
+    assert_eq!(kept, [tid(10), tid(20)]);
 }
 
 // ---- The fan-in remapping ----------------------------------------------------------------

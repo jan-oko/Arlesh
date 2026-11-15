@@ -10,6 +10,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { occurrenceRow } from "@/test/occurrence";
 import { habitRunId } from "@/utils/habit-collapse";
 import type { HabitIterationMeta, MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 // The options go into the text, so a card's title shows the tally the fold labelled it with.
 vi.mock("react-i18next", () => ({
@@ -78,10 +79,10 @@ function hostWith(iterations: MindmapNode[]): MindmapNode {
   return {
     id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
     children: [{
-      id: "goal-5", rowId: 5, kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
+      id: "goal-5", rowId: storedRowId(5), kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
       children: [
         ...iterations,
-        { id: "task-9", rowId: 9, kind: "task", title: "Live task", status: "todo", position: 9, tagIds: [], children: [] },
+        { id: "task-9", rowId: storedRowId(9), kind: "task", title: "Live task", status: "todo", position: 9, tagIds: [], children: [] },
       ],
     }],
   };

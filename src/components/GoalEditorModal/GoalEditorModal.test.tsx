@@ -5,6 +5,7 @@ import GoalEditorModal from "./GoalEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -26,13 +27,13 @@ vi.mock("@/api/scopes", () => ({
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "goal-1",
-    rowId: 1,
+    rowId: storedRowId(1),
     kind: "goal",
     title: "Ship it",
     status: "active",
     blockReasons: [],
     position: 0,
-    tagIds: [2],
+    tagIds: [storedRowId(2)],
     children: [],
     ...overrides,
   };
@@ -220,7 +221,7 @@ describe("GoalEditorModal — reopened after a refused Save", () => {
         {...defaultProps}
         reopened={{
           draft: {
-            title: "Typed title", status: "achieved", blockReasons: ["waiting"], tagIds: [1],
+            title: "Typed title", status: "achieved", blockReasons: ["waiting"], tagIds: [storedRowId(1)],
             timeScope: null, onScopeExit: null, isPrivate: true,
           },
           error: "Goal title is taken",

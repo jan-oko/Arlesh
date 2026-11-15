@@ -21,7 +21,7 @@ export type McpNodeKind =
 /** One stored node, as a root is named. */
 export interface McpNodeKey {
   node_kind: McpNodeKind;
-  node_id: number;
+  node_id: string;
 }
 
 /** One stored node as the Agents settings page lists it. */
@@ -31,7 +31,7 @@ export interface McpCatalogueNode extends McpNodeKey {
   /** Its title — an Info's body. */
   title: string;
   parent_kind: McpNodeKind | null;
-  parent_id: number | null;
+  parent_id: string | null;
   is_private: boolean;
   agentic: boolean | null;
 }
@@ -47,7 +47,7 @@ export interface McpAccessCatalogue {
 /** One stored node the MCP can see, and the root it is seen through. */
 export interface McpVisibility extends McpNodeKey {
   root_kind: McpNodeKind;
-  root_id: number;
+  root_id: string;
 }
 
 /** The roots and every stored node, for the settings page. */

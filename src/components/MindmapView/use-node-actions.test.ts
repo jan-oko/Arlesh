@@ -44,6 +44,7 @@ import { stepTaskStatus } from "@/api/node-gestures";
 import { fixtureRowId } from "@/test/node-fixture";
 import { ordinary } from "@/utils/status-mapping";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { storedRowId } from "@/test/stored-id";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   // A stored Task always carries its typed status; the fixture derives it from the spelled one.
@@ -87,7 +88,7 @@ const FLOW_NODE_2 = mkNode("flow-2", "flow", []);
 const HABIT_RUN = mkNode("habitgroup-3-run", "habit_group", [], {
   virtual: true,
   habitGroup: {
-    flowId: 3, level: "run", passed: 3, done: 2, missed: 1,
+    flowId: storedRowId(3), level: "run", passed: 3, done: 2, missed: 1,
     spanStart: "2026-09-14", spanEnd: "2026-09-16", spanLabel: "2026-09-14..2026-09-16",
   },
 });

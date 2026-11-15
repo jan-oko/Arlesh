@@ -117,8 +117,8 @@ fn nested() -> (Vec<InstanceKey>, HashMap<InstanceKey, InstanceKey>) {
         (item(6), no_cycle()),
     ];
     let parents = HashMap::from([
-        ((item(5), 7), (root(1), no_cycle())),
-        ((item(5), 8), (root(1), no_cycle())),
+        ((item(5), tid(7)), (root(1), no_cycle())),
+        ((item(5), tid(8)), (root(1), no_cycle())),
         ((item(6), no_cycle()), (item(5), tid(7))),
     ]);
     (keys, parents)
@@ -153,8 +153,8 @@ fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() 
 #[test]
 fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
     let (keys, parents) = nested();
-    let aside = set_aside(&keys, &HashSet::from([(item(5), 7)]), &parents);
-    assert_eq!(aside, HashSet::from([(item(5), 7), (item(6), no_cycle())]));
+    let aside = set_aside(&keys, &HashSet::from([(item(5), tid(7))]), &parents);
+    assert_eq!(aside, HashSet::from([(item(5), tid(7)), (item(6), no_cycle())]));
     // The evening occurrence and the root still have to be done.
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(item(5), 20, 7), archived());
@@ -506,7 +506,7 @@ fn children_nest_under_their_parents_first_occurrence() {
         .map(|task| (task.id, task))
         .collect(),
         cycles: [(
-            ("flow_task".to_string(), 1),
+            ("flow_task".to_string(), tid(1)),
             vec![pair(11, 1, 0), pair(12, 1, 1)],
         )]
         .into_iter()
@@ -520,17 +520,17 @@ fn children_nest_under_their_parents_first_occurrence() {
         "an unknown parent falls back to the root"
     );
     assert_eq!(template.parent_of(root(1)), None);
-    assert_eq!(template.first_cycle(TemplateKind::FlowTask, tid(1)), 11);
+    assert_eq!(template.first_cycle(TemplateKind::FlowTask, tid(1)), tid(11));
     assert_eq!(template.first_cycle(TemplateKind::FlowTask, tid(2)), no_cycle());
 }
 
 #[test]
 fn an_occurrences_tags_are_its_templates_with_its_own_differences() {
-    assert_eq!(effective_tags(&[tid(3), tid(1)], None), vec![1, 3]);
-    let differences = vec![(3, false), (7, true), (1, true)];
+    assert_eq!(effective_tags(&[tid(3), tid(1)], None), vec![tid(1), tid(3)]);
+    let differences = vec![(tid(3), false), (tid(7), true), (tid(1), true)];
     assert_eq!(
         effective_tags(&[tid(3), tid(1)], Some(&differences)),
-        vec![1, 7],
+        vec![tid(1), tid(7)],
         "a removed template tag goes, an added one comes, and a repeat is not doubled"
     );
 }

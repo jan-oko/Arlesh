@@ -64,7 +64,7 @@ export interface TaskSaveData {
    * changes the flag, and refuses when there is no counterpart. */
   status: TaskStatus;
   blockReasons: string[];
-  tagIds: number[];
+  tagIds: string[];
   addedDeps: Dependency[];
   removedDeps: Dependency[];
   timeScope: TimeScope | null;
@@ -142,12 +142,12 @@ function depEquals(a: Dependency, b: Dependency): boolean { return a.type === b.
 interface Props {
   node: MindmapNode;
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
   /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
   reopened?: { draft: TaskSaveData; error: string } | undefined;
-  onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: string, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
   onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
@@ -164,7 +164,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
   const [status, setStatus] = useState<TaskStatus>(draft?.status ?? taskStatusOf(node));
   const [blockReasons, setBlockReasons] = useState<string[]>(draft?.blockReasons ?? node.blockReasons ?? []);
-  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [tagIds, setTagIds] = useState<string[]>(draft?.tagIds ?? node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(draft ? draft.onScopeExit : node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(draft ? draft.plan : node.plan ?? null);

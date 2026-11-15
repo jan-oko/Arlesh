@@ -7,14 +7,14 @@ use crate::tasks::model::{Dependency, TaskAgentic};
 fn dependency_parts_task_variant() {
     let (ty, id) = dependency_parts(&Dependency::Task { id: 42.into() }).unwrap();
     assert_eq!(ty, "task");
-    assert_eq!(id, 42);
+    assert_eq!(id, tid(42));
 }
 
 #[test]
 fn dependency_parts_goal_variant() {
     let (ty, id) = dependency_parts(&Dependency::Goal { id: 99.into() }).unwrap();
     assert_eq!(ty, "goal");
-    assert_eq!(id, 99);
+    assert_eq!(id, tid(99));
 }
 
 fn stored_task() -> Task {
@@ -382,7 +382,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default()).unwrap();
     assert!(write.reparent.is_none());
     assert_eq!(write.parent_type, "project");
-    assert_eq!(write.parent_id, 7);
+    assert_eq!(write.parent_id, tid(7));
     assert_eq!(write.title, "Stored");
     assert_eq!(write.delegate_to, Some(Delegate::Person { id: tid(3) }));
     assert_eq!(write.agentic, None);
@@ -429,9 +429,9 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
         },
     )
     .unwrap();
-    assert_eq!(full.reparent, Some(("goal".to_string(), 42)));
+    assert_eq!(full.reparent, Some(("goal".to_string(), tid(42))));
     assert_eq!(full.parent_type, "goal");
-    assert_eq!(full.parent_id, 42);
+    assert_eq!(full.parent_id, tid(42));
 }
 
 #[test]

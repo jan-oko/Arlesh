@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useWaitEditor } from "@/hooks/use-wait-editor";
+import { storedRowId } from "@/test/stored-id";
 
 const createExpectation = vi.fn((_request: unknown) => Promise.resolve({ id: 42 }));
 // A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
@@ -30,7 +31,7 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
 }
 
 function board(task: MindmapNode): MindmapNode {
-  return node("root", "domain", { children: [node("domain-1", "project", { rowId: 1, children: [task] })] });
+  return node("root", "domain", { children: [node("domain-1", "project", { rowId: storedRowId(1), children: [task] })] });
 }
 
 const SAVE = {
@@ -42,7 +43,7 @@ describe("useWaitEditor — Shift+E", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("creates a stored wait under a row, bound to nothing", async () => {
-    const tree = board(node("task-5", "task", { rowId: 5 }));
+    const tree = board(node("task-5", "task", { rowId: storedRowId(5) }));
     const { result } = renderHook(() => useWaitEditor(tree, vi.fn(() => Promise.resolve())));
     act(() => result.current.createUnder("task-5"));
     expect(result.current.create).toEqual({ parentType: "task", parentId: 5 });

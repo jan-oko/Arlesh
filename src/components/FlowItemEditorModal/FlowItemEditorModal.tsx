@@ -61,7 +61,7 @@ interface Props {
   node: MindmapNode;
   availableDeps: MindmapNode[];
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
   onSave: (data: FlowItemSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -83,7 +83,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const template = node.flowItem?.template ?? {};
   const [blockReasons, setBlockReasons] = useState<string[]>(template.block_reasons ?? []);
-  const [tagIds, setTagIds] = useState<number[]>(template.tag_ids ?? []);
+  const [tagIds, setTagIds] = useState<string[]>(template.tag_ids ?? []);
   const [isBacklogged, setIsBacklogged] = useState(template.archival === TASK_ARCHIVAL.BACKLOG);
   const [isAsynchronous, setIsAsynchronous] = useState(template.asynchronous === true);
   const [isCompound, setIsCompound] = useState(template.compound === true);

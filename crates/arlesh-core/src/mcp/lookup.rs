@@ -163,15 +163,10 @@ impl Board {
     }
 }
 
-/// The row id `id` names, for an entity that is not a node and has no full id — a Person: the
-/// id's text in decimal, and `None` for anything else.
+/// The id `id` names, for an entity that is not a node and has no full id — a Person: the id's
+/// text read as a UUID, and `None` for anything else.
 pub(super) fn plain_row(id: &NodeIdParam) -> Option<RowId> {
-    let text = id.text();
-    let text = text.trim();
-    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    text.parse().ok()
+    id.text().trim().parse().ok()
 }
 
 /// The visible node of kind `node_type` (any kind, when `None`) that `text` names, refused unless

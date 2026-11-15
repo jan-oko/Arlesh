@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useFilterStore } from "./use-filter-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { FilterState } from "@/utils/filter-tree";
+import { storedRowId } from "@/test/stored-id";
 
 beforeEach(() => {
   useFilterStore.setState({ filter: DEFAULT_FILTER });
@@ -36,16 +37,16 @@ describe("cycleDelegatedMode", () => {
 
 describe("tag filters", () => {
   it("adds a tag in the mode it is given, once", () => {
-    useFilterStore.getState().addTagFilter(3, "exclude");
-    useFilterStore.getState().addTagFilter(3, "all");
+    useFilterStore.getState().addTagFilter(storedRowId(3), "exclude");
+    useFilterStore.getState().addTagFilter(storedRowId(3), "all");
     expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 3, mode: "exclude" }]);
   });
 
   it("cycles a tag All → Any → Not → All", () => {
-    useFilterStore.getState().addTagFilter(3, "all");
+    useFilterStore.getState().addTagFilter(storedRowId(3), "all");
     const modes: string[] = [];
     for (let step = 0; step < 3; step += 1) {
-      useFilterStore.getState().cycleTagFilter(3);
+      useFilterStore.getState().cycleTagFilter(storedRowId(3));
       modes.push(useFilterStore.getState().filter.tagFilters[0]?.mode ?? "");
     }
     expect(modes).toEqual(["any", "exclude", "all"]);

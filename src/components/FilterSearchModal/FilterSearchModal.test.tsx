@@ -10,6 +10,7 @@ import { useFilterDisplay } from "@/hooks/use-filter-display";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { dismissTopSheet } from "@/utils/dismiss-sheet";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -294,7 +295,7 @@ describe("FilterSearchModal", () => {
 
 describe("FilterSearchModal — active filters", () => {
   function withActive() {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "all" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(1), mode: "all" }] } });
     useListFilterStore.setState({
       filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, taskStatus: [{ value: "done", mode: "exclude" }] } },
     });

@@ -10,6 +10,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -292,7 +293,7 @@ describe("TopBar", () => {
 
   describe("active filter chips", () => {
     it("shows a chip for an active shared tag filter", () => {
-      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "any" }] } });
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(1), mode: "any" }] } });
       mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, tagName: () => "urgent" });
       render(<TopBar />);
       expect(screen.getByText("urgent")).toBeInTheDocument();

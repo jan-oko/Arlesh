@@ -19,7 +19,7 @@ fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>)
         title: format!("domain {id}"),
         description: None,
         subtype: subtype.to_string(),
-        parent_id: parent,
+        parent_id: parent.map(tid),
         color: None,
         status: status.map(str::to_string),
         knowledge_base_directory: None,
@@ -275,7 +275,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
 
     // The done task is gone, and so is everything the payload said about it.
-    assert!(load.tasks.iter().all(|task| task.id != 22));
+    assert!(load.tasks.iter().all(|task| task.id != tid(22)));
     assert!(load.infos.is_empty(), "the note under it went with it");
     assert!(load.lifecycles.is_empty());
     assert!(load.block_reasons.is_empty());
@@ -295,14 +295,14 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
             .iter()
             .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
-        [20]
+        [tid(20)]
     );
     assert_eq!(
         load.domains
             .iter()
             .map(|domain| domain.id)
             .collect::<Vec<_>>(),
-        [1, 2]
+        [tid(1), tid(2)]
     );
     assert_eq!(load.goals.len(), 1);
 }
@@ -310,13 +310,13 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
 #[test]
 fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
     let mut load = board();
-    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == 21) {
+    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == tid(21)) {
         task.archival = TaskArchival::Backlog;
     }
 
     let mut planned = load.clone();
     narrow(&mut planned, &BoardFilter::preset(Preset::Plan));
-    assert!(planned.tasks.iter().all(|task| task.id != 21));
+    assert!(planned.tasks.iter().all(|task| task.id != tid(21)));
 
     // Task 20 is task 21's parent: it does not match Backlog itself, and comes back only as the
     // ancestor that reaches what does.
@@ -328,7 +328,7 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
             .iter()
             .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
-        [20, 21]
+        [tid(20), tid(21)]
     );
     assert!(
         backlogged.commitments.is_empty(),
@@ -543,7 +543,7 @@ fn a_pill_narrows_to_the_rows_the_list_keeps_with_the_chains_they_hang_from() {
     // Task 21 is the row; task 20, goal 10 and both domains are the chain it hangs from. The
     // done task, the commitment the kind selector leaves out, and the info are not rows.
     let tasks: Vec<_> = load.tasks.iter().map(|task| task.id.clone()).collect();
-    assert_eq!(tasks, [20, 21]);
+    assert_eq!(tasks, [tid(20), tid(21)]);
     assert_eq!(load.goals.len(), 1);
     assert_eq!(load.domains.len(), 2);
     assert!(load.commitments.is_empty());
@@ -565,7 +565,7 @@ fn a_task_carries_its_dependencies_met_or_not_and_its_own_flags() {
             dependency_id: 10.into(),
         },
     ];
-    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == 21) {
+    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == tid(21)) {
         task.asynchronous = true;
     }
     let forest = forest(&load);

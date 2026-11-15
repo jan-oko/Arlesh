@@ -3,6 +3,7 @@ import { drawnPathToNode, fallbackRootFor, storedSubtreeBase } from "@/utils/dra
 import type { FoldReading } from "@/utils/drawn-path";
 import { habitGroupFlowId, habitRunId } from "@/utils/habit-collapse";
 import type { HabitIterationMeta, MindmapNode } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 const FLOW = 7;
 const RUN = habitRunId(FLOW);
@@ -25,7 +26,7 @@ function iteration(date: string, index: number, done = false): MindmapNode {
 const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
   children: [{
-    id: "goal-5", rowId: 5, kind: "goal", title: "Fitness", position: 0, tagIds: [],
+    id: "goal-5", rowId: storedRowId(5), kind: "goal", title: "Fitness", position: 0, tagIds: [],
     children: ["2026-09-08", "2026-09-09", "2026-09-15", "2026-09-16"].map((date, index) => iteration(date, index)),
   }],
 };
@@ -87,7 +88,7 @@ describe("where a root that is no longer drawn climbs to", () => {
 
   it("anything else, or a Habit no longer on the board, goes to the true root", () => {
     expect(fallbackRootFor(TREE, "task-404", reading())).toBeNull();
-    expect(fallbackRootFor(TREE, habitRunId(99), reading())).toBeNull();
+    expect(fallbackRootFor(TREE, habitRunId(storedRowId(99)), reading())).toBeNull();
   });
 });
 

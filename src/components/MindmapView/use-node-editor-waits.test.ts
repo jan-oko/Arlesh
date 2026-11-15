@@ -7,6 +7,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from "@/api/expectations";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { expectationNodeId } from "@/utils/node-uuid";
+import { storedRowId } from "@/test/stored-id";
 
 // A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
 vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
@@ -29,8 +30,8 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
 
 const CHECK = { kind: "check" as const, wait_kind: "stored" as const, wait_id: 3, due_at: "2026-07-10T02:00:00" };
 const check = node("check-3", "task", { rowId: "c-3", origin: CHECK });
-const wait = node(expectationNodeId(3), "expectation", { rowId: 3, checkEvery: { n: 3, kind: "day" }, children: [check] });
-const task = node("task-5", "task", { rowId: 5 });
+const wait = node(expectationNodeId(storedRowId(3)), "expectation", { rowId: storedRowId(3), checkEvery: { n: 3, kind: "day" }, children: [check] });
+const task = node("task-5", "task", { rowId: storedRowId(5) });
 const root = node("root", "domain", { children: [wait, task] });
 
 function setup() {
@@ -47,7 +48,7 @@ describe("useNodeEditor — waits", () => {
   });
 
   it("E on a spawned wait opens its own Expectation editor, not its Task's", () => {
-    const spawnedWait = node("sw-5", "expectation", { rowId: "s-5", origin: { kind: "spawned_wait", task_id: 5 } });
+    const spawnedWait = node("sw-5", "expectation", { rowId: "s-5", origin: { kind: "spawned_wait", task_id: storedRowId(5) } });
     const tree = node("root", "domain", { children: [task, spawnedWait] });
     const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("sw-5"));
@@ -55,7 +56,7 @@ describe("useNodeEditor — waits", () => {
   });
 
   it("E on a delegation wait opens its own Expectation editor too", () => {
-    const delegationWait = node("dw-5", "expectation", { rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 } });
+    const delegationWait = node("dw-5", "expectation", { rowId: "d-5", origin: { kind: "delegation_wait", task_id: storedRowId(5) } });
     const tree = node("root", "domain", { children: [task, delegationWait] });
     const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("dw-5"));
@@ -64,14 +65,14 @@ describe("useNodeEditor — waits", () => {
 
   it("saves every field of a spawned wait by its own id, and its tags as that wait's", async () => {
     const spawnedWait = node("sw-5", "expectation", {
-      rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 }, tagIds: [4],
+      rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: storedRowId(5) }, tagIds: [storedRowId(4)],
     });
     const tree = node("root", "domain", { children: [task, spawnedWait] });
     const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.setEditorModal({ nodeId: spawnedWait.id, node: spawnedWait }));
     await act(() => result.current.onExpectationSave({
       title: "Chase the reviewer", status: "released", checkEvery: { n: 2, kind: "day" }, checkStartingDate: null,
-      timeScope: null, tagIds: [6], archived: true, isPrivate: true,
+      timeScope: null, tagIds: [storedRowId(6)], archived: true, isPrivate: true,
     }));
     await settleLane();
     expect(updateExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", expect.objectContaining({

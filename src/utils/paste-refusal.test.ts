@@ -10,6 +10,7 @@ import { ALL_NODE_KINDS } from "./tree-layout";
 import warnings from "@/i18n/locales/en/warnings.json";
 import i18n from "@/i18n";
 import { fixtureRowId } from "@/test/node-fixture";
+import { storedRowId } from "@/test/stored-id";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -81,8 +82,8 @@ describe("occurrenceChildrenLeftBehind", () => {
 
   it("names each row the copy reported, in the order it reported them", () => {
     expect(occurrenceChildrenLeftBehind([
-      { child_type: "task", child_id: 4, title: "buy milk" },
-      { child_type: "info", child_id: 9, title: "oat, not soy" },
+      { child_type: "task", child_id: storedRowId(4), title: "buy milk" },
+      { child_type: "info", child_id: storedRowId(9), title: "oat, not soy" },
     ])).toEqual([leftBehind("buy milk"), leftBehind("oat, not soy")]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave, isEmptyAsyncTemplate } from "@/utils/async-template";
+import { storedRowId } from "@/test/stored-id";
 
 describe("asyncTemplateToSave", () => {
   it("saves no template while Asynchronous is off", () => {
@@ -12,7 +13,7 @@ describe("asyncTemplateToSave", () => {
   });
 
   it("gives a section with anything but a title the default title", () => {
-    const saved = asyncTemplateToSave({ title: "  ", tag_ids: [4] }, true, "Waiting on X");
+    const saved = asyncTemplateToSave({ title: "  ", tag_ids: [storedRowId(4)] }, true, "Waiting on X");
     expect(saved).toEqual({ title: "Waiting on X", tag_ids: [4] });
   });
 
