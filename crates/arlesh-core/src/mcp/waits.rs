@@ -22,7 +22,7 @@ use super::{
     params::{NodeIdParam, WaitsOperation},
     result,
     result::attempt,
-    ArleshMcp,
+    short, wait_list, ArleshMcp,
 };
 use crate::{
     access::model::{AccessLevel, NodeTable},
@@ -69,6 +69,20 @@ impl ArleshMcp {
     /// A wait already released is refused when released again (a question or a review): the
     /// user's answer is never overwritten.
     ///
+    /// `list` finds waits cheaply, and is how to reach the open questions of one project without
+    /// paging the snapshot: `status` (`pending`, the default, `released` or `all`), `under` (a
+    /// project, domain, goal or Task: only waits anywhere beneath it; use the short id, a row id
+    /// several kinds of node share is refused as ambiguous), `question` (`true` for questions and
+    /// reviews, `false` for the others) and `cursor`. Each row has only `id`, `short_id`,
+    /// `full_id`, `title`, `status`, `question` and `task` (the Task it hangs under: `id`,
+    /// `short_id`, `full_id`, `title`), oldest first, with `next_cursor` (pass it back with the
+    /// same filters until it is null). The note and the answer come from `get`.
+    ///
+    /// `raise`, `ask`, `raise_review` and `release` answer briefly, without the note or the
+    /// answer you just sent: the ids, `title`, `status`, `question`, `task_id`, `task_short_id`,
+    /// and for a review `review: true` (and its `verdict` once released). `verbose: true` returns
+    /// the whole wait as `get` does.
+    ///
     /// `get` returns one wait as the snapshot's `expectations` carry it — `status`, `question`,
     /// `agentic_note`, `answer`, and for a review the `review` object (`links`, `hand_tests` and,
     /// once the user has answered, `verdict`) — so you can poll for the user's answer without the
@@ -112,7 +126,25 @@ impl ArleshMcp {
         let now = self.now();
         let board = attempt!(self.board(&mut db, now).await);
 
+        // Whether the answer to a write carries the wait whole, note and answer included.
+        let verbose_answer;
         let (task_id, title, note, question, review) = match operation {
+            WaitsOperation::List {
+                status,
+                under,
+                question,
+                cursor,
+            } => {
+                return wait_list::list(
+                    &board,
+                    &wait_list::Query {
+                        status,
+                        under: under.as_ref(),
+                        question,
+                        cursor: cursor.as_deref(),
+                    },
+                )
+            }
             WaitsOperation::Get { id } => return get(&board, &id),
             WaitsOperation::Watch { ids } => return watch(&board, &ids),
             WaitsOperation::GetMany { ids } => return get_many(&board, &ids),
@@ -120,6 +152,7 @@ impl ArleshMcp {
                 id,
                 answer,
                 verdict,
+                verbose,
             } => {
                 let id = found!(board.resolve(&id, "expectation"));
                 let wait = found!(released_wait(&board, &id));
@@ -147,32 +180,44 @@ impl ArleshMcp {
                 attempt!(db.undo().set_source(user_source).await);
                 attempt!(db.commit().await);
                 (self.announce)(None);
-                return result::ok(stamped_wait(&board, &released));
+                return result::ok(written_wait(&board, &released, short::is_verbose(verbose)));
             }
             WaitsOperation::Ask {
                 task_id,
                 title,
                 note,
-            } => (task_id, title, note, true, None),
+                verbose,
+            } => {
+                verbose_answer = short::is_verbose(verbose);
+                (task_id, title, note, true, None)
+            }
             WaitsOperation::RaiseReview {
                 task_id,
                 title,
                 summary,
                 links,
                 hand_tests,
-            } => (
-                task_id,
-                title,
-                Some(summary),
-                true,
-                Some(ReviewDetails { links, hand_tests }),
-            ),
+                verbose,
+            } => {
+                verbose_answer = short::is_verbose(verbose);
+                (
+                    task_id,
+                    title,
+                    Some(summary),
+                    true,
+                    Some(ReviewDetails { links, hand_tests }),
+                )
+            }
             WaitsOperation::Raise {
                 task_id,
                 title,
                 note,
                 question,
-            } => (task_id, title, note, question, None),
+                verbose,
+            } => {
+                verbose_answer = short::is_verbose(verbose);
+                (task_id, title, note, question, None)
+            }
         };
 
         let task_id = found!(board.resolve(&task_id, "task"));
@@ -218,7 +263,16 @@ impl ArleshMcp {
         attempt!(db.commit().await);
         (self.announce)(None);
 
-        result::ok(stamped_wait(&board, &wait))
+        result::ok(written_wait(&board, &wait, verbose_answer))
+    }
+}
+
+/// The answer to a write of `wait`: the whole wait when `verbose`, else the short one.
+fn written_wait(board: &Board, wait: &Expectation, verbose: bool) -> serde_json::Value {
+    let row = stamped_wait(board, wait);
+    match verbose {
+        true => row,
+        false => short::wait(&row),
     }
 }
 

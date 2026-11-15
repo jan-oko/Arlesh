@@ -25,7 +25,7 @@ use super::{
     relations::{Asked, Relations},
     result,
     result::attempt,
-    ArleshMcp,
+    short, ArleshMcp,
 };
 use crate::{
     access::model::{AccessLevel, NodeTable},
@@ -96,6 +96,10 @@ impl ArleshMcp {
     /// brings it back. A write to a Habit occurrence lands in its overlay, as the user's own edit
     /// would.
     ///
+    /// **A write answers briefly**: `id`, `short_id`, `full_id`, `title` and `status` (an `update`
+    /// adds `changed`, the names of the fields it set), not the Task's whole brief. Pass
+    /// `verbose: true` for the whole Task as `get` returns it.
+    ///
     /// Ids are row ids or short ids (the snapshot's `short_id`); a short id matching several
     /// nodes is refused as `ambiguous_id`, listing them. A node outside the MCP roots, or one you
     /// may not write, is refused as `not_permitted`. What `get` returns is cut to the roots.
@@ -120,6 +124,10 @@ impl ArleshMcp {
         let now = self.now();
         let board = attempt!(self.board(&mut db, now).await);
 
+        // What the write answers with: set by the arm that runs it, from its `verbose`.
+        let verbose_answer: bool;
+        // The fields an `update` sets, named in its short answer.
+        let mut changed: Option<Vec<&'static str>> = None;
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,
             TasksOperation::ContainmentConflicts { node, time_scope } => {
@@ -162,7 +170,9 @@ impl ArleshMcp {
                 tags,
                 block_reasons,
                 delegate,
+                verbose,
             } => {
+                verbose_answer = short::is_verbose(verbose);
                 let parent = found!(board.resolve(&parent_id, &parent_type));
                 if !board.may_create_under(&parent_type, &parent) {
                     return result::not_permitted(format!(
@@ -214,7 +224,26 @@ impl ArleshMcp {
                 remove_tags,
                 block_reasons,
                 delegate,
+                verbose,
             } => {
+                verbose_answer = short::is_verbose(verbose);
+                changed = Some(changed_fields(&[
+                    ("title", title.is_some()),
+                    ("brief", brief.is_some()),
+                    ("backlog", backlog.is_some()),
+                    ("time_scope", time_scope.is_some()),
+                    ("on_scope_exit", on_scope_exit.is_some()),
+                    ("plan", plan.is_some()),
+                    ("due_scope", due_scope.is_some()),
+                    ("asynchronous", asynchronous.is_some()),
+                    ("compound", compound.is_some()),
+                    ("add_dependencies", !add_dependencies.is_empty()),
+                    ("remove_dependencies", !remove_dependencies.is_empty()),
+                    ("add_tags", !add_tags.is_empty()),
+                    ("remove_tags", !remove_tags.is_empty()),
+                    ("block_reasons", block_reasons.is_some()),
+                    ("delegate", delegate.is_some()),
+                ]));
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
                 let delegate_to = match delegate {
                     Some(delegate) => Some(found!(delegate_named(&mut db, delegate).await)),
@@ -261,7 +290,9 @@ impl ArleshMcp {
                 id,
                 expected,
                 status,
+                verbose,
             } => {
+                verbose_answer = short::is_verbose(verbose);
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
                 // The compare half of the compare-and-set, against the status the board shows —
                 // Review included. The session holds SQLite's one writer lock from its first
@@ -290,7 +321,9 @@ impl ArleshMcp {
                 id,
                 parent_type,
                 parent_id,
+                verbose,
             } => {
+                verbose_answer = short::is_verbose(verbose);
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
                 if matches!(id, NodeId::Derived(_)) {
                     return result::refused(format!(
@@ -317,7 +350,8 @@ impl ArleshMcp {
                     Relations::default(),
                 )
             }
-            TasksOperation::Archive { id } => {
+            TasksOperation::Archive { id, verbose } => {
+                verbose_answer = short::is_verbose(verbose);
                 let (id, _) = found!(writable(&mut db, &board, &id, now).await);
                 match id {
                     NodeId::Stored(_) => Write::Update(
@@ -331,7 +365,8 @@ impl ArleshMcp {
                     NodeId::Derived(_) => Write::ArchiveOccurrence(id),
                 }
             }
-            TasksOperation::Unarchive { id } => {
+            TasksOperation::Unarchive { id, verbose } => {
+                verbose_answer = short::is_verbose(verbose);
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
                 if matches!(id, NodeId::Derived(_)) {
                     return result::refused(format!(
@@ -364,7 +399,11 @@ impl ArleshMcp {
         result::ok(match written {
             Some(mut task) => {
                 access::restrict_task(&mut task, &board.map);
-                board.names.stamped(task, NodeTable::Task)
+                let row = board.names.stamped(task, NodeTable::Task);
+                match verbose_answer {
+                    true => row,
+                    false => short::task(&row, changed.as_deref()),
+                }
             }
             None => serde_json::json!({ "archived": true }),
         })
@@ -518,6 +557,15 @@ async fn delegate_named(
         }
     }
     Ok(delegate.map(Delegate::from))
+}
+
+/// The names of the fields whose `(name, was set)` pair says they were.
+fn changed_fields(fields: &[(&'static str, bool)]) -> Vec<&'static str> {
+    fields
+        .iter()
+        .filter(|(_, set)| *set)
+        .map(|(name, _)| *name)
+        .collect()
 }
 
 /// A window parameter as the update request takes it: left out, cleared, or a scope to convert.

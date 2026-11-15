@@ -555,6 +555,7 @@ async fn roots(app: &App<MockRuntime>) -> Vec<arlesh_lib::access::model::NodeKey
 
 async fn ask(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
     mcp.waits(Parameters(params::WaitsOperation::Ask {
+        verbose: Some(true),
         task_id: task_id.into(),
         title: "Which colour?".into(),
         note: Some("Red or blue for the badge?".into()),
