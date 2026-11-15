@@ -9,6 +9,9 @@ Releases are cut by merging `dev` into `master`; entries for the next release co
 
 ## [Unreleased]
 
+### Added
+- **Desktop notifications.** While Arlesh is running, in the tray too, your system shows a notification when an agent asks you a question, a task becomes overdue, a task is generated, or the agent capacity lock is set or cleared: the same events and defaults as the phone, in Standalone and in Client mode. Settings → Notifications has a switch for each event, kept on this device. What was already true when the app started is not announced, and neither are tasks that your own changes made overdue or generated. Clicking a notification does not open its task, because the desktop's notification service gives the app no click.
+
 ### Changed
 - **Agents list waits cheaply and Task writes answer briefly.** `arlesh_waits` has a `list` operation: the pending waits (or released ones, or both), optionally only those beneath a project, domain, goal or Task, or only the questions, each as a short row (ids, title, status, and the Task it hangs under) with the note and answer left to `get`. The snapshot now sends pending waits before released ones. `arlesh_tasks` writes (create, update, set status, move, archive, unarchive) and `arlesh_waits` writes now answer with the ids, title and status instead of the whole brief or note; `verbose: true` brings the full answer back.
 
