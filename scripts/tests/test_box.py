@@ -1138,6 +1138,11 @@ class CargoCommand(IsolatedEnv):
         self.exit_code = 101
         self.assertEqual(box.main(["cargo", "test"]), 101)
 
+    def test_clean_is_refused_because_it_would_empty_the_shared_target(self) -> None:
+        self.assertEqual(box.main(["cargo", "--", "clean", "-p", "arlesh-core"]), 2)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.owned, [])
+
     def test_without_arguments_it_is_a_usage_error(self) -> None:
         self.assertEqual(box.main(["cargo"]), 2)
         self.assertEqual(self.calls, [])

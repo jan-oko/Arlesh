@@ -4091,6 +4091,12 @@ def cmd_cargo(args: argparse.Namespace) -> int:
     """
     if not args.cargo_args:
         raise UsageError(f"Usage: {CMD} cargo -- <cargo arguments>  (for example: test -p arlesh-core -j 3)")
+    if args.cargo_args[0] == "clean":
+        raise UsageError(
+            f"`{CMD} cargo clean` is refused: it would empty the target every worktree shares. "
+            "Run `cargo clean -p <crate>` with CARGO_TARGET_DIR set by hand, or remove this "
+            "worktree's own target, if you really mean it."
+        )
     wt = repo_root()
     target = shared_target()
     with owned_target(wt, target):
