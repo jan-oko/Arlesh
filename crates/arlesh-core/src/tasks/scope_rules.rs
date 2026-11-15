@@ -15,6 +15,7 @@
 //! takes [`Search::or_unconstrained`](super::ancestry::Search::or_unconstrained) and keeps going,
 //! a write takes [`Search::or_reject`](super::ancestry::Search::or_reject) and refuses.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
@@ -39,7 +40,8 @@ pub struct ViolatingDescendant {
     /// `"task"` or `"goal"`.
     pub node_type: String,
     /// The descendant's id.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
@@ -112,7 +114,7 @@ pub(super) async fn ancestry_index<M: SessionMode>(
 pub async fn nearest_scoped_ancestor_window<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<Option<Bounds>, TaskError> {
     let chain = ancestry::climb(db, parent_type, parent_id).await?;
     let Some((time_scope, _)) = chain.nearest_scoped().or_reject()? else {
@@ -126,7 +128,7 @@ pub async fn nearest_scoped_ancestor_window<M: SessionMode>(
 pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<Option<TimeScope>, TaskError> {
     let chain = ancestry::climb(db, parent_type, parent_id).await?;
     Ok(chain
@@ -149,9 +151,9 @@ pub(super) async fn nearest_scoped_ancestor_time_scope<M: SessionMode>(
 /// afterwards passes `Some`.
 async fn write_chain<M: SessionMode>(
     db: &mut Db<M>,
-    node: Option<(ancestry::NodeKind, i64)>,
+    node: Option<(ancestry::NodeKind, RowId)>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<ancestry::AncestryChain, TaskError> {
     if let Some((kind, id)) = node {
         if let Some(occurrence) = ancestry::occurrence_of(db, kind, id).await? {
@@ -182,7 +184,7 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
     db: &mut Db<M>,
     id: Option<TaskId>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     task: &WrittenTask<'_>,
     now: NaiveDateTime,
 ) -> Result<(), TaskError> {
@@ -232,7 +234,7 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     db: &mut Db<M>,
     id: Option<GoalId>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     time_scope: &Option<TimeScope>,
 ) -> Result<(), TaskError> {
     let Some(own) = time_scope else {
@@ -268,7 +270,7 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
     db: &mut Db<M>,
     id: Option<CommitmentId>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     time_scope: &Option<TimeScope>,
 ) -> Result<(), TaskError> {
     let node = id.map(|id| (ancestry::NodeKind::Commitment, id.0));
@@ -298,7 +300,7 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
 pub(super) async fn validate_expectation_scope<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     time_scope: &Option<TimeScope>,
 ) -> Result<(), TaskError> {
     let Some(own) = time_scope else {
@@ -320,8 +322,8 @@ pub(super) async fn validate_expectation_scope<M: SessionMode>(
 async fn child_items<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
-) -> Result<Vec<(String, i64)>, TaskError> {
+    node_id: RowId,
+) -> Result<Vec<(String, RowId)>, TaskError> {
     let mut children = Vec::new();
     let task_ids = db.tasks().child_ids(node_type, node_id).await?;
     children.extend(task_ids.into_iter().map(|id| ("task".to_string(), id)));
@@ -339,7 +341,7 @@ async fn child_items<M: SessionMode>(
 async fn item_time_scope<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
 ) -> Result<Option<TimeScope>, TaskError> {
     match node_type {
         "task" => Ok(db.tasks().get(TaskId(node_id)).await?.time_scope),
@@ -359,7 +361,7 @@ async fn item_time_scope<M: SessionMode>(
 pub(super) async fn descendants_violating_window<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
     window: Bounds,
 ) -> Result<Vec<ViolatingDescendant>, TaskError> {
     let mut violators = Vec::new();
@@ -397,9 +399,9 @@ pub struct ReparentConflicts {
 pub async fn reparent_conflicts<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
     new_parent_type: &str,
-    new_parent_id: i64,
+    new_parent_id: RowId,
 ) -> Result<ReparentConflicts, TaskError> {
     let Some(ancestor) =
         nearest_scoped_ancestor_time_scope(db, new_parent_type, new_parent_id).await?
@@ -432,7 +434,7 @@ pub async fn reparent_conflicts<M: SessionMode>(
 pub async fn conflicts_for_new_time_scope<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
     time_scope: &TimeScope,
 ) -> Result<Vec<ViolatingDescendant>, TaskError> {
     let window = time_scope.window();

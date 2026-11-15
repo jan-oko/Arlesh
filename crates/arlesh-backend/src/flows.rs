@@ -1,6 +1,7 @@
 //! The `flows` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `flows` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     flows::{
@@ -21,16 +22,16 @@ pub trait FlowsPort: Send + Sync {
     async fn create_flow(&self, request: CreateFlowRequest) -> Result<Flow, WireError>;
 
     /// Fetches a flow by id.
-    async fn get_flow(&self, id: i64) -> Result<Flow, WireError>;
+    async fn get_flow(&self, id: RowId) -> Result<Flow, WireError>;
 
     /// Lists all flows.
     async fn list_flows(&self) -> Result<Vec<Flow>, WireError>;
 
     /// Updates a flow.
-    async fn update_flow(&self, id: i64, request: UpdateFlowRequest) -> Result<Flow, WireError>;
+    async fn update_flow(&self, id: RowId, request: UpdateFlowRequest) -> Result<Flow, WireError>;
 
     /// Deletes a flow (and its items).
-    async fn delete_flow(&self, id: i64) -> Result<(), WireError>;
+    async fn delete_flow(&self, id: RowId) -> Result<(), WireError>;
 
     /// Creates a flow-goal item.
     async fn create_flow_goal(&self, request: CreateFlowItemRequest)
@@ -55,22 +56,22 @@ pub trait FlowsPort: Send + Sync {
     /// Updates a flow **Commitment** item.
     async fn update_flow_commitment(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowCommitment, WireError>;
 
     /// Updates a flow **wait** item.
     async fn update_flow_expectation(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowExpectation, WireError>;
 
     /// Lists a flow's goal items.
-    async fn list_flow_goals(&self, flow_id: i64) -> Result<Vec<FlowGoal>, WireError>;
+    async fn list_flow_goals(&self, flow_id: RowId) -> Result<Vec<FlowGoal>, WireError>;
 
     /// Lists a flow's task items.
-    async fn list_flow_tasks(&self, flow_id: i64) -> Result<Vec<FlowTask>, WireError>;
+    async fn list_flow_tasks(&self, flow_id: RowId) -> Result<Vec<FlowTask>, WireError>;
 
     /// Lists every flow's goal items.
     async fn list_all_flow_goals(&self) -> Result<Vec<FlowGoal>, WireError>;
@@ -81,21 +82,21 @@ pub trait FlowsPort: Send + Sync {
     /// Updates a flow-goal item.
     async fn update_flow_goal(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, WireError>;
 
     /// Updates a flow-task item.
     async fn update_flow_task(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, WireError>;
 
     /// Starts a flow, materialising it into a real subtree under the target.
     async fn start_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: StartFlowRequest,
     ) -> Result<MaterializedFlow, WireError>;
 
@@ -111,15 +112,15 @@ pub trait FlowsPort: Send + Sync {
     /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.
     async fn set_flow_recurrence(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: SetRecurrenceRequest,
     ) -> Result<FlowRecurrence, WireError>;
 
     /// Fetches a flow's Recurrence, or `null` if it is a plain (non-habit) flow.
-    async fn get_flow_recurrence(&self, flow_id: i64) -> Result<Option<FlowRecurrence>, WireError>;
+    async fn get_flow_recurrence(&self, flow_id: RowId) -> Result<Option<FlowRecurrence>, WireError>;
 
     /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
-    async fn delete_flow_recurrence(&self, flow_id: i64) -> Result<(), WireError>;
+    async fn delete_flow_recurrence(&self, flow_id: RowId) -> Result<(), WireError>;
 
     /// For each of `nodes` that was materialised from a flow, returns its originating flow title.
     async fn flow_origins(&self, nodes: Vec<TargetRef>) -> Result<Vec<FlowOrigin>, WireError>;
@@ -128,14 +129,14 @@ pub trait FlowsPort: Send + Sync {
     async fn list_flow_instance_nodes(&self) -> Result<Vec<TargetRef>, WireError>;
 
     /// Deletes a flow item (goal or task) and its cycles and dependency links.
-    async fn delete_flow_item(&self, item_type: FlowItemType, id: i64) -> Result<(), WireError>;
+    async fn delete_flow_item(&self, item_type: FlowItemType, id: RowId) -> Result<(), WireError>;
 
     /// Saves a flow item's cycle pairs, keeping every pair that survives. A change that would orphan
     async fn set_flow_item_cycles(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         cycles: Vec<FlowCycleInput>,
         reconcile: Option<flows::cycles::Reconcile>,
         now: Option<chrono::NaiveDateTime>,
@@ -147,40 +148,40 @@ pub trait FlowsPort: Send + Sync {
     /// Adds an intra-flow dependency (`dependent` waits on `depends_on`).
     async fn add_flow_dependency(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError>;
 
     /// Removes an intra-flow dependency.
     async fn remove_flow_dependency(
         &self,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError>;
 
     /// Lists every flow's dependencies.
     async fn list_all_flow_dependencies(&self) -> Result<Vec<FlowDependency>, WireError>;
 
     /// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).
-    async fn habit_completion_count(&self, flow_id: i64) -> Result<i64, WireError>;
+    async fn habit_completion_count(&self, flow_id: RowId) -> Result<i64, WireError>;
 
     /// Clears every Habit Modification for a flow (delete-and-regenerate reconciliation).
-    async fn clear_habit_modifications(&self, flow_id: i64) -> Result<(), WireError>;
+    async fn clear_habit_modifications(&self, flow_id: RowId) -> Result<(), WireError>;
 
     /// The archive-and-new reconciliation arm: deep-clones a flow's template into a new flow and
-    async fn fork_flow(&self, flow_id: i64, now: chrono::NaiveDateTime) -> Result<Flow, WireError>;
+    async fn fork_flow(&self, flow_id: RowId, now: chrono::NaiveDateTime) -> Result<Flow, WireError>;
 
     /// Copies a Flow — template, Recurrence and all — under a new parent (the Mindmap's Copy+Paste).
     async fn duplicate_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
     ) -> Result<Flow, WireError>;
 
@@ -188,17 +189,17 @@ pub trait FlowsPort: Send + Sync {
     async fn duplicate_flow_item(
         &self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
-    ) -> Result<i64, WireError>;
+    ) -> Result<RowId, WireError>;
 
     /// Converts a real Task/Goal subtree into a Flow template of the same Instance Type.
     async fn convert_to_flow(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         keep_dependencies: bool,
         map_scopes: bool,
     ) -> Result<Flow, WireError>;

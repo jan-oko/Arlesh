@@ -18,12 +18,15 @@ use std::fmt;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-use super::id::{DerivedId, NodeId};
+use super::id::{nil_row_id, parse_row_id, DerivedId, NodeId, RowId};
 use crate::scopes::key::ScopeKey;
 use crate::tasks::waits::{instant_column, WaitRef};
 
-/// The cycle-pair sentinel of an occurrence no pair drew: the root, and an item declaring none.
-pub const NO_CYCLE: i64 = 0;
+/// The cycle-pair sentinel of an occurrence no pair drew: the root, and an item declaring none. The
+/// nil UUID, where it was `0` while ids were integers.
+pub fn no_cycle() -> RowId {
+    nil_row_id()
+}
 
 /// Which template row an occurrence is drawn from.
 #[derive(
@@ -102,7 +105,8 @@ pub struct TemplateItem {
     /// Which template table.
     pub item_type: TemplateKind,
     /// The row's id — the flow's own id for a root.
-    pub item_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
 }
 
 /// One occurrence of a Habit: a template item in one iteration, drawn by one cycle pair.
@@ -112,12 +116,12 @@ pub struct OccurrenceKey {
     pub item: TemplateItem,
     /// The scope anchoring the occurrence's iteration.
     pub iteration: ScopeKey,
-    /// The cycle pair that drew it, or [`NO_CYCLE`].
-    pub cycle: i64,
+    /// The cycle pair that drew it, or [`no_cycle()`].
+    pub cycle: RowId,
 }
 
 impl OccurrenceKey {
-    /// The canonical spelling: `flow_task:12:{"kind":"week","date":"2026-09-20"}:3` — item type,
+    /// The canonical spelling: `flow_task:{item id}:{"kind":"week","date":"2026-09-20"}:{cycle id}` — item type,
     /// item id, the iteration's scope key in its canonical text ([`ScopeKey::canonical`]), and the
     /// cycle pair.
     pub fn node_key(&self) -> String {
@@ -135,12 +139,12 @@ impl OccurrenceKey {
     pub fn parse(node_key: &str) -> Option<Self> {
         let mut front = node_key.splitn(3, ':');
         let item_type = TemplateKind::from_db(front.next()?)?;
-        let item_id = front.next()?.parse().ok()?;
+        let item_id = parse_row_id(front.next()?).ok()?;
         let (scope, cycle) = front.next()?.rsplit_once(':')?;
         Some(Self {
             item: TemplateItem { item_type, item_id },
             iteration: scope.parse().ok()?,
-            cycle: cycle.parse().ok()?,
+            cycle: parse_row_id(cycle).ok()?,
         })
     }
 
@@ -180,12 +184,9 @@ impl CheckKey {
     }
 }
 
-/// A row id read back from its spelling: an integer is a stored row, anything else a UUID.
-fn node_id_of(spelling: &str) -> NodeId {
-    match spelling.parse::<i64>() {
-        Ok(id) => NodeId::Stored(id),
-        Err(_) => NodeId::Derived(DerivedId::from_existing(spelling)),
-    }
+/// A row id read back from its spelling: a UUID, whose version says stored or derived.
+fn node_id_of(spelling: &str) -> Option<NodeId> {
+    spelling.parse::<NodeId>().ok()
 }
 
 /// What a derived node is derived from — its value key, whichever derivation made it.
@@ -217,8 +218,8 @@ impl DerivedKey {
         let (head, rest) = node_key.split_once(':')?;
         match head {
             "check" => CheckKey::parse(rest).map(Self::Check),
-            "spawned_wait" => Some(Self::SpawnedWait(node_id_of(rest))),
-            "delegation_wait" => Some(Self::DelegationWait(node_id_of(rest))),
+            "spawned_wait" => node_id_of(rest).map(Self::SpawnedWait),
+            "delegation_wait" => node_id_of(rest).map(Self::DelegationWait),
             _ => OccurrenceKey::parse(node_key).map(Self::Occurrence),
         }
     }

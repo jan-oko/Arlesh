@@ -1,7 +1,8 @@
+use crate::nodes::id::tid;
 use super::*;
 
 fn id(n: i64) -> NodeId {
-    NodeId::Stored(n)
+    NodeId::Stored(tid(n))
 }
 
 fn entry(node_type: &str, n: i64) -> ItemLifecycle {

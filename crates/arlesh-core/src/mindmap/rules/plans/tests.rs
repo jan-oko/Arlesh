@@ -1,5 +1,6 @@
 //! The board's Plans: what each Task reads, what it breaks, and where Start finds its Plan.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::{
     scopes::{key::ScopeKey, model::ScopeKind},
@@ -60,7 +61,7 @@ fn lifecycle(id: i64, overdue: bool) -> ItemLifecycle {
 
 fn audit_of(tasks: &[Task], lifecycles: &[ItemLifecycle], habits: &[HabitEdge]) -> PlanAudit {
     audit(&PlanRows {
-        domains: vec![(1, None)],
+        domains: vec![(tid(1), None)],
         goals: &[],
         tasks,
         commitments: &[],
@@ -111,7 +112,7 @@ fn a_habit_outside_its_targets_window_is_named() {
     let mut target = task_row(1, "domain", 1);
     target.time_scope = Some(week("2026-10-04"));
     let habit = HabitEdge {
-        flow_id: 7,
+        flow_id: tid(7),
         title: "Water the plants".to_string(),
         host: "task-1".to_string(),
         span: HabitSpan {
@@ -137,11 +138,11 @@ fn moving_a_parents_plan_names_the_child_to_clamp() {
     let mut child = task_row(2, "task", 1);
     child.plan = Some(week("2026-10-04"));
     let audit = audit_of(&[parent, child], &[], &[]);
-    let targets = clamp_targets(&audit, &NodeId::Stored(1), Some(&week("2026-10-11")));
+    let targets = clamp_targets(&audit, &NodeId::Stored(tid(1)), Some(&week("2026-10-11")));
     assert_eq!(
         targets,
         vec![PlanClampTarget {
-            id: NodeId::Stored(2),
+            id: NodeId::Stored(tid(2)),
             title: "task 2".to_string(),
             clamp_to: Some(week("2026-10-11")),
         }]
@@ -157,7 +158,7 @@ fn a_write_reaches_its_subtree_and_the_habits_hung_there_and_nothing_above() {
         task_row(4, "domain", 1),
     ];
     let habit = HabitEdge {
-        flow_id: 7,
+        flow_id: tid(7),
         title: "Habit".to_string(),
         host: "task-3".to_string(),
         span: HabitSpan::default(),

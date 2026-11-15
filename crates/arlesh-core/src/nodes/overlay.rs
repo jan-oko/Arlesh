@@ -10,6 +10,7 @@
 //! Reads are by Habit, since the virtual tables derive a Habit's occurrences together; writes
 //! replace one occurrence's whole row, read-modify-write, inside the caller's transaction.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use sqlx::SqliteConnection;
@@ -38,7 +39,7 @@ pub struct TaskOverlay {
     /// Its own delegate's kind.
     pub delegate_kind: Option<String>,
     /// Its own delegate's Person.
-    pub delegate_id: Option<i64>,
+    pub delegate_id: Option<RowId>,
     /// Whether the delegate above is its own, possibly nobody.
     pub delegate_set: bool,
     /// Its own Agentic flag.
@@ -90,7 +91,7 @@ pub(crate) struct TaskOverlayRow {
     plan_end_id: Option<DbScopeKey>,
     plan_set: bool,
     delegate_kind: Option<String>,
-    delegate_id: Option<i64>,
+    delegate_id: Option<RowId>,
     delegate_set: bool,
     agentic: Option<bool>,
     agentic_set: bool,
@@ -367,7 +368,7 @@ struct AsyncTemplateRow {
 }
 
 impl AsyncTemplateRow {
-    fn into_template(self, tag_ids: Vec<i64>) -> AsyncTemplate {
+    fn into_template(self, tag_ids: Vec<RowId>) -> AsyncTemplate {
         let spec = |n: Option<i64>, kind: Option<String>| {
             Some(crate::tasks::model::DurationSpec { n: n?, kind: kind? })
         };
@@ -392,7 +393,7 @@ impl<'session> OverlayOperator<'session> {
     }
 
     /// Every overlay one Habit's occurrences carry.
-    pub async fn for_habit(&mut self, flow_id: i64) -> Result<HabitOverlays, sqlx::Error> {
+    pub async fn for_habit(&mut self, flow_id: RowId) -> Result<HabitOverlays, sqlx::Error> {
         let tasks: Vec<KeyedTask> = sqlx::query_as(&format!(
             "SELECT node_key, {TASK_COLUMNS} FROM task_overlays WHERE flow_id = ?"
         ))
@@ -431,7 +432,7 @@ impl<'session> OverlayOperator<'session> {
 
     /// The iterations of one Habit that carry an overlay — among the future iterations the virtual
     /// tables must still derive, so that an edit is never lost.
-    pub async fn touched_iterations(&mut self, flow_id: i64) -> Result<Vec<ScopeKey>, sqlx::Error> {
+    pub async fn touched_iterations(&mut self, flow_id: RowId) -> Result<Vec<ScopeKey>, sqlx::Error> {
         let keys: Vec<DbScopeKey> = sqlx::query_scalar(
             "SELECT iteration_scope FROM task_overlays WHERE flow_id = ?1 AND origin = 'habit'
              UNION SELECT iteration_scope FROM goal_overlays WHERE flow_id = ?1
@@ -494,7 +495,7 @@ impl<'session> OverlayOperator<'session> {
     /// Replaces one occurrence's Task overlay; an empty one deletes the row.
     pub async fn put_task(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         key: &OccurrenceKey,
         overlay: &TaskOverlay,
     ) -> Result<(), sqlx::Error> {
@@ -668,7 +669,7 @@ impl<'session> OverlayOperator<'session> {
     /// Replaces one occurrence's Goal overlay; an empty one deletes the row.
     pub async fn put_goal(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         key: &OccurrenceKey,
         overlay: &GoalOverlay,
     ) -> Result<(), sqlx::Error> {
@@ -710,7 +711,7 @@ impl<'session> OverlayOperator<'session> {
     /// Replaces one occurrence's Commitment overlay; an empty one deletes the row.
     pub async fn put_commitment(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         key: &OccurrenceKey,
         overlay: &CommitmentOverlay,
     ) -> Result<(), sqlx::Error> {
@@ -750,7 +751,7 @@ impl<'session> OverlayOperator<'session> {
     /// Every Expectation template one Habit's occurrences carry of their own, by node key.
     pub async fn async_templates_for_habit(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
     ) -> Result<HashMap<String, AsyncTemplate>, sqlx::Error> {
         let rows: Vec<AsyncTemplateRow> = sqlx::query_as(
             "SELECT node_key, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind
@@ -786,7 +787,7 @@ impl<'session> OverlayOperator<'session> {
         Ok(Some(row.into_template(tag_ids)))
     }
 
-    async fn async_template_tags(&mut self, node_key: &str) -> Result<Vec<i64>, sqlx::Error> {
+    async fn async_template_tags(&mut self, node_key: &str) -> Result<Vec<RowId>, sqlx::Error> {
         sqlx::query_scalar(
             "SELECT tag_id FROM tags_on_occurrence_async_templates WHERE node_key = ? ORDER BY tag_id",
         )
@@ -798,7 +799,7 @@ impl<'session> OverlayOperator<'session> {
     /// Replaces one occurrence's own Expectation template, or removes it for `None`.
     pub async fn put_async_template(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         node_key: &str,
         template: Option<&AsyncTemplate>,
     ) -> Result<(), sqlx::Error> {
@@ -891,7 +892,7 @@ impl<'session> OverlayOperator<'session> {
     /// Writes the status and archive of the wait one occurrence spawned.
     pub async fn put_spawned_wait_state(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         node_key: &str,
         status: ExpectationStatus,
         archival: ExpectationArchival,
@@ -921,7 +922,7 @@ impl<'session> OverlayOperator<'session> {
     }
 
     /// Deletes every overlay and relation one Habit's occurrences carry — delete-and-regenerate.
-    pub async fn clear_habit(&mut self, flow_id: i64) -> Result<(), sqlx::Error> {
+    pub async fn clear_habit(&mut self, flow_id: RowId) -> Result<(), sqlx::Error> {
         for table in [
             "task_overlays",
             "goal_overlays",
@@ -944,7 +945,7 @@ impl<'session> OverlayOperator<'session> {
     /// Every wait item occurrence's Expectation overlay in one Habit, by node key.
     pub async fn wait_items_for_habit(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
     ) -> Result<HashMap<String, super::wait_overlay::ExpectationOverlay>, sqlx::Error> {
         Ok(self
             .expectations_where(flow_id, "flow_expectation:%")
@@ -954,7 +955,7 @@ impl<'session> OverlayOperator<'session> {
     }
 
     /// Deletes every overlay drawn from one template item — the item itself is going.
-    pub async fn clear_item(&mut self, item_type: &str, item_id: i64) -> Result<(), sqlx::Error> {
+    pub async fn clear_item(&mut self, item_type: &str, item_id: RowId) -> Result<(), sqlx::Error> {
         for table in ["task_overlays", "goal_overlays", "commitment_overlays"] {
             sqlx::query(&format!(
                 "DELETE FROM {table} WHERE item_type = ? AND item_id = ?"

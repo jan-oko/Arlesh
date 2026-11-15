@@ -19,6 +19,7 @@
 //! from reordering anything — goal rows and task rows are written in exactly the sequence the
 //! single-pass version wrote them.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use super::model::{Flow, FlowDependency, FlowItemCycle, FlowItemType, InstanceType};
@@ -37,7 +38,7 @@ pub(crate) enum PlannedSource {
     /// The flow root itself; recorded against `("flow", flow_id)`.
     Root,
     /// One flow item, by table and id.
-    Item(FlowItemType, i64),
+    Item(FlowItemType, RowId),
 }
 
 /// What a planned node materialises as: the root's Instance Type, or an item's kind.
@@ -126,13 +127,13 @@ pub(crate) struct TemplateItem {
     /// Which flow-item table the row came from.
     pub kind: FlowItemType,
     /// Row id within that table.
-    pub id: i64,
+    pub id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type (`flow` or an item kind).
     pub parent_type: String,
     /// In-flow parent id.
-    pub parent_id: i64,
+    pub parent_id: RowId,
     /// Sort position among its siblings.
     pub position: i64,
     /// Whether the materialised node should be private.
@@ -161,8 +162,8 @@ impl FlowTemplate {
     /// parent chain does not lead back to `"flow"` is never walked, so the single-pass version
     /// never resolved its pairs. Handing the gather every pair the flow owns would turn a
     /// malformed orphan from harmless into a hard error.
-    pub fn planned_cycles(&self, flow_id: i64) -> Vec<FlowItemCycle> {
-        let by_id: HashMap<i64, &FlowItemCycle> =
+    pub fn planned_cycles(&self, flow_id: RowId) -> Vec<FlowItemCycle> {
+        let by_id: HashMap<RowId, &FlowItemCycle> =
             self.cycles.iter().map(|cycle| (cycle.id, cycle)).collect();
         visit_order(self, flow_id)
             .iter()
@@ -192,7 +193,7 @@ pub(crate) struct ScopeTable {
     /// The root's Cycle Plan under that window.
     pub root_plan: Option<TimeScope>,
     /// Resolved pairs, keyed by [`FlowItemCycle::id`]. A pair with no entry inherits the root.
-    pub pairs: HashMap<i64, ResolvedPair>,
+    pub pairs: HashMap<RowId, ResolvedPair>,
 }
 
 /// One template item the walk reaches, in the order it reaches it.
@@ -204,7 +205,7 @@ struct Visit {
     parent: Option<usize>,
     /// The item's cycle pair ids in position order, or a single `None` when it has none — an
     /// unpaired item still materialises exactly once, unscoped.
-    pairs: Vec<Option<i64>>,
+    pairs: Vec<Option<RowId>>,
 }
 
 /// Walks the flow's in-flow parent links from the root, yielding each reachable item once, in the
@@ -224,9 +225,9 @@ struct Visit {
 ///
 /// A parent always precedes its children, so callers may resolve a parent's placeholder before
 /// they need it.
-fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
+fn visit_order(template: &FlowTemplate, flow_id: RowId) -> Vec<Visit> {
     let mut visits: Vec<Visit> = Vec::new();
-    let mut stack: Vec<(String, i64, Option<usize>)> = vec![("flow".to_string(), flow_id, None)];
+    let mut stack: Vec<(String, RowId, Option<usize>)> = vec![("flow".to_string(), flow_id, None)];
 
     while let Some((parent_type, parent_id, parent_visit)) = stack.pop() {
         let mut children: Vec<(usize, &TemplateItem)> = template
@@ -244,7 +245,7 @@ fn visit_order(template: &FlowTemplate, flow_id: i64) -> Vec<Visit> {
                 .filter(|cycle| cycle.item_type == child.kind.as_str() && cycle.item_id == child.id)
                 .collect();
             pairs.sort_by_key(|cycle| cycle.position);
-            let pairs: Vec<Option<i64>> = if pairs.is_empty() {
+            let pairs: Vec<Option<RowId>> = if pairs.is_empty() {
                 vec![None]
             } else {
                 pairs.iter().map(|cycle| Some(cycle.id)).collect()
@@ -293,7 +294,7 @@ pub(crate) fn render(
     }];
 
     // Template item -> the nodes it became, in pair order, with the kind the fan-in filters on.
-    let mut instances: HashMap<(String, i64), Vec<(PlannedKind, NodeRef)>> = HashMap::new();
+    let mut instances: HashMap<(String, RowId), Vec<(PlannedKind, NodeRef)>> = HashMap::new();
     // Per visit, the node its children nest under: the FIRST instance of that item.
     let mut first_instance: Vec<NodeRef> = Vec::new();
 

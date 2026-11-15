@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::scopes::key::test_key;
 
@@ -17,7 +18,7 @@ fn stored() -> Commitment {
             n: 2,
             kind: "day".to_string(),
         }),
-        tag_ids: vec![3],
+        tag_ids: vec![tid(3)],
         position: 100,
         is_private: false,
         archival: Default::default(),

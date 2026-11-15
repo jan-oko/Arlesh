@@ -1,17 +1,19 @@
 //! Task, Goal, Commitment and Expectation operation errors.
 
+use crate::nodes::id::RowId;
+
 /// Errors that can occur during task, goal or commitment operations.
 #[derive(Debug, thiserror::Error)]
 pub enum TaskError {
     /// The requested task does not exist.
     #[error("task {0} not found")]
-    TaskNotFound(i64),
+    TaskNotFound(RowId),
     /// The requested goal does not exist.
     #[error("goal {0} not found")]
-    GoalNotFound(i64),
+    GoalNotFound(RowId),
     /// The requested commitment does not exist.
     #[error("commitment {0} not found")]
-    CommitmentNotFound(i64),
+    CommitmentNotFound(RowId),
     /// A Commitment would be left with no **effective** Time Scope — neither its own nor a
     /// scoped ancestor's.
     ///
@@ -25,7 +27,7 @@ pub enum TaskError {
     CommitmentUnscoped,
     /// The requested expectation does not exist.
     #[error("expectation {0} not found")]
-    ExpectationNotFound(i64),
+    ExpectationNotFound(RowId),
     /// A check was completed on a wait with no check due — no Check every, or no longer pending.
     /// A stale view, most likely; saying so beats pretending.
     #[error("there is no check due on this wait")]
@@ -37,7 +39,7 @@ pub enum TaskError {
     CheckNotReopenable,
     /// A spawned wait was asked for on a task whose completion has spawned none.
     #[error("task {0} has no spawned wait")]
-    NoSpawnedWait(i64),
+    NoSpawnedWait(RowId),
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,
@@ -57,7 +59,7 @@ pub enum TaskError {
     #[error("ancestor chain above node {node_id} contains a cycle")]
     AncestorCycle {
         /// The node the chain closed back onto.
-        node_id: i64,
+        node_id: RowId,
     },
     /// A write would leave a Task both backlogged and planned — the one state the two axes cannot
     /// hold at once, since a Plan says "this week" and the backlog says "not now".
@@ -102,7 +104,7 @@ pub enum TaskError {
         "task {0} consists of its sub-items, so its status follows them; change the sub-items, \
          or turn compound off"
     )]
-    CompoundStatus(i64),
+    CompoundStatus(RowId),
     /// A Task was set Done while counted sub-items are not: a Task is finished once what it holds
     /// is. Refused out loud; the answer is to complete or archive what is left. Backlogged
     /// sub-items, pending waits and Unresolved Commitments count as open.

@@ -4,6 +4,7 @@ pub mod error;
 pub mod model;
 mod rows;
 
+use crate::nodes::id::RowId;
 use crate::scopes::db::DbScopeKey;
 use error::KnowledgeBaseError;
 use model::{
@@ -37,13 +38,12 @@ impl<'session> PersonOperator<'session> {
     ) -> Result<Person, KnowledgeBaseError> {
         let aliases = serde_json::to_string(&request.aliases.unwrap_or_default())
             .unwrap_or_else(|_| "[]".into());
-        let id = sqlx::query("INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?)")
+        let id = sqlx::query_scalar::<_, RowId>("INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?) RETURNING id")
             .bind(&request.name)
             .bind(&aliases)
             .bind(&request.linked_note)
-            .execute(&mut *self.connection)
-            .await?
-            .last_insert_rowid();
+            .fetch_one(&mut *self.connection)
+            .await?;
         self.get(PersonId(id)).await
     }
 
@@ -127,16 +127,15 @@ impl<'session> EventOperator<'session> {
         &mut self,
         request: CreateEventRequest,
     ) -> Result<Event, KnowledgeBaseError> {
-        let id = sqlx::query(
-            "INSERT INTO events (title, scope_id, event_time, linked_note) VALUES (?, ?, ?, ?)",
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO events (title, scope_id, event_time, linked_note) VALUES (?, ?, ?, ?) RETURNING id",
         )
         .bind(&request.title)
         .bind(request.scope_id.map(DbScopeKey))
         .bind(&request.event_time)
         .bind(&request.linked_note)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query_as::<_, EventRow>("SELECT * FROM events WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
@@ -157,7 +156,7 @@ impl<'session> EventOperator<'session> {
     /// Deletes an event by id.
     ///
     /// A single `DELETE`, so it is atomic on its own.
-    pub async fn delete(&mut self, id: i64) -> Result<(), KnowledgeBaseError> {
+    pub async fn delete(&mut self, id: RowId) -> Result<(), KnowledgeBaseError> {
         let rows = sqlx::query("DELETE FROM events WHERE id = ?")
             .bind(id)
             .execute(&mut *self.connection)
@@ -192,12 +191,11 @@ impl<'session> ThreadOperator<'session> {
         &mut self,
         request: CreateThreadRequest,
     ) -> Result<Thread, KnowledgeBaseError> {
-        let id = sqlx::query("INSERT INTO threads (title, linked_note) VALUES (?, ?)")
+        let id = sqlx::query_scalar::<_, RowId>("INSERT INTO threads (title, linked_note) VALUES (?, ?) RETURNING id")
             .bind(&request.title)
             .bind(&request.linked_note)
-            .execute(&mut *self.connection)
-            .await?
-            .last_insert_rowid();
+            .fetch_one(&mut *self.connection)
+            .await?;
         sqlx::query_as::<_, ThreadRow>("SELECT * FROM threads WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
@@ -218,7 +216,7 @@ impl<'session> ThreadOperator<'session> {
     /// Deletes a thread by id.
     ///
     /// A single `DELETE`, so it is atomic on its own.
-    pub async fn delete(&mut self, id: i64) -> Result<(), KnowledgeBaseError> {
+    pub async fn delete(&mut self, id: RowId) -> Result<(), KnowledgeBaseError> {
         let rows = sqlx::query("DELETE FROM threads WHERE id = ?")
             .bind(id)
             .execute(&mut *self.connection)

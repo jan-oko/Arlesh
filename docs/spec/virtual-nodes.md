@@ -18,11 +18,16 @@ derivation follows recurrence rules that live in Rust, and every reader goes thr
 load, the filters and the snapshot all see derived rows, and none of them has a second code path
 for them.
 
-A derived row's **id** is a **UUID-v5** of its value key, hashed under the app's node namespace
-(`0d75ff4b-9652-4596-9d2f-1909230b662b`, the one the frontend mints display keys under). A stored row
-keeps its integer id. On the wire a row's `id` is therefore a number or a string, and every request
-that names a node takes either: a request naming a derived row goes into its overlay, one naming a
-stored row where it always went. The backend keeps a lookup from UUID back to value key, filled as
+A derived row's **id** is a **version-8 UUID** of its value key (SHA-1 under the app's node namespace
+`0d75ff4b-9652-4596-9d2f-1909230b662b`, the one the frontend mints display keys under, with the
+version nibble set to 8; until ADR 0017 it was a version-5 UUID). A stored row's id is a UUID too,
+never version 8 (existing rows keep their old v5 full id, new ones are v7), so on the wire both are
+strings and the version nibble tells them apart. Every request that names a node takes either: a
+request naming a derived row goes into its overlay, one naming a stored row where it always went.
+A key spells the ids of the rows it is drawn from (`flow_task:{item id}:{scope}:{cycle id}`, the
+cycle id being the nil UUID when no pair drew it), so every derived id changed once, in migration
+0107, when those ids became UUIDs; the overlay and relation rows keep their keys, rewritten the same
+way, so nothing recorded against an occurrence is lost. The backend keeps a lookup from UUID back to value key, filled as
 derived rows are served; an id it has not served yet is answered by deriving again.
 
 Every row carries an **`origin`**, a union discriminated on `kind`:
@@ -130,7 +135,7 @@ A stored node keeps today's relation tables. A derived node's relations live in 
   the derived key) the edge's uniqueness is over. `added = 0` removes one of the template's own edges
   from one occurrence.
 - `derived_children` — a stored node hung on a derived one. The child's own parent columns name the
-  Habit's host, since a derived node has no integer id for them to hold; this attachment is what makes
+  Habit's host, since a derived node has no stored id for them to hold; this attachment is what makes
   the occurrence its parent, and the virtual table reads the child's parent as the occurrence. A child
   whose occurrence is not derived keeps its stored parent, so it stays on the board beside where it was
   rather than vanishing.

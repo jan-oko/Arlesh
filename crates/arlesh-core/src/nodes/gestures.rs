@@ -13,6 +13,7 @@
 
 pub mod steps;
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
@@ -77,7 +78,7 @@ async fn delete_one(
 }
 
 /// The stored row id a kind with no derived rows is named by.
-fn stored(node: &GestureNode) -> Result<i64, WireError> {
+fn stored(node: &GestureNode) -> Result<RowId, WireError> {
     node.id.stored().ok_or_else(|| {
         WireError::invalid_request(format!("a derived {} cannot be deleted by id", node.kind))
     })

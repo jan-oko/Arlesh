@@ -1,5 +1,6 @@
 //! The wire form: what an MCP caller writes, and what it means when they leave a field out.
 
+use crate::nodes::id::tid;
 use super::*;
 
 #[test]
@@ -42,7 +43,7 @@ fn every_axis_is_spelled_the_way_the_wire_spells_it() {
     assert_eq!(
         filter.tags,
         vec![TagFilter {
-            tag_id: 7,
+            tag_id: tid(7),
             mode: TagMode::Exclude
         }]
     );

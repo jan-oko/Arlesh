@@ -14,7 +14,7 @@ pub use super::rules::compound_readings::Readings;
 use super::rules::compound_readings::{provisional_compounds, readings_in};
 
 /// Each compound occurrence's [`Reading`] in the iterations of `habit` something was done in.
-#[tracing::instrument(skip(db, flow, habit), fields(flow_id = flow.id))]
+#[tracing::instrument(skip(db, flow, habit), fields(flow_id = %flow.id))]
 pub(super) async fn readings<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,

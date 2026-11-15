@@ -5,6 +5,7 @@
 //! Pure functions over a Flow's template and recurrence, told `now` where they need it. The reads
 //! and writes that use them live in [`crate::flows`], which imports these names (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
@@ -15,7 +16,7 @@ use crate::flows::{
     habits::{self, instance_timing, Clock, SlotWindow},
     model::{
         ClockKind, Flow, FlowItemCycle, FlowItemType, FlowRecurrence, HabitInstance,
-        IterationStatus, MissPolicy, SetRecurrenceRequest, NO_CYCLE,
+        IterationStatus, MissPolicy, SetRecurrenceRequest, no_cycle,
     },
     render::{ResolvedPair, ScopeTable},
 };
@@ -597,7 +598,7 @@ pub(in crate::flows) struct ClonePlacement {
     /// The clone's `parent_type` (`aspect`/`project`/`domain`/`goal`).
     pub(in crate::flows) parent_type: String,
     /// The clone's parent id.
-    pub(in crate::flows) parent_id: i64,
+    pub(in crate::flows) parent_id: RowId,
     /// The clone's sort position.
     pub(in crate::flows) position: i64,
 }
@@ -610,15 +611,15 @@ pub(in crate::flows) struct TemplateClone {
     /// The new flow row.
     pub(in crate::flows) flow: Flow,
     /// Old→new item ids, by `(kind, old id)`.
-    pub(in crate::flows) items: HashMap<(FlowItemType, i64), i64>,
+    pub(in crate::flows) items: HashMap<(FlowItemType, RowId), RowId>,
 }
 
 /// Where one cloned item row lands.
 pub(in crate::flows) struct ItemLanding<'parent> {
     /// The flow the clone belongs to; `None` keeps the original's.
-    pub(in crate::flows) flow_id: Option<i64>,
+    pub(in crate::flows) flow_id: Option<RowId>,
     /// The clone's `(parent_type, parent_id)`.
-    pub(in crate::flows) parent: (&'parent str, i64),
+    pub(in crate::flows) parent: (&'parent str, RowId),
     /// The clone's sort position; `None` keeps the original's.
     pub(in crate::flows) position: Option<i64>,
     /// Whether the clone keeps the original's privacy (a paste does; a template clone leaves it
@@ -629,8 +630,8 @@ pub(in crate::flows) struct ItemLanding<'parent> {
 /// A list of copied items as an old→new id map keyed by `(kind, old id)`, for remapping
 /// references that name an item by `(item_type, item_id)`.
 pub(in crate::flows) fn item_id_maps(
-    copied: &[(FlowItemType, i64, i64)],
-) -> HashMap<(FlowItemType, i64), i64> {
+    copied: &[(FlowItemType, RowId, RowId)],
+) -> HashMap<(FlowItemType, RowId), RowId> {
     copied
         .iter()
         .map(|(kind, old_id, new_id)| ((*kind, *old_id), *new_id))
@@ -695,10 +696,10 @@ pub(in crate::flows) fn clock_slots(
 /// about the single iteration being resolved.
 pub(in crate::flows) struct HabitShape<'template> {
     /// Every flow item, in render order: goals then tasks, each in position order.
-    pub(in crate::flows) items: &'template [(String, i64)],
+    pub(in crate::flows) items: &'template [(String, RowId)],
     /// Each item's cycle pairs in position order, keyed `(item_type, item_id)`. An item missing
     /// from the map declares none.
-    pub(in crate::flows) cycles: &'template HashMap<(String, i64), Vec<FlowItemCycle>>,
+    pub(in crate::flows) cycles: &'template HashMap<(String, RowId), Vec<FlowItemCycle>>,
     /// The Habit's clock, which decides when an occurrence's passed window makes it past.
     pub(in crate::flows) clock: Clock,
     /// Whether the flow has a window — an Unscoped Interval Habit's cycle pairs resolve to none.
@@ -739,7 +740,7 @@ pub(in crate::flows) fn resolve_iteration_instances(
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
                 item_id: *item_id,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
                 time_scope: None,
                 plan: None,
                 timing: instance_timing(shape.clock, status, (slot.start, slot.end), now),
@@ -897,7 +898,7 @@ pub(in crate::flows) fn resolve_scopes(
     // The root's relative Cycle Plan (task instance type only), against the window start.
     let root_plan = resolve_root_plan(flow, window_start)?;
 
-    let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());
+    let mut pairs: HashMap<RowId, ResolvedPair> = HashMap::with_capacity(cycles.len());
     for cycle in cycles {
         let (time_scope, plan) = resolve_pair(Some(cycle), window_start)?;
         pairs.insert(cycle.id, ResolvedPair { time_scope, plan });

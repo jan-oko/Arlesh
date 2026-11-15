@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::tasks::model::TaskAgentic;
 
@@ -15,7 +16,7 @@ fn a_template_table_names_its_relation_rows_and_its_own_table() {
 fn only_the_task_columns_count_as_task_only() {
     assert!(!TemplateUpdate::default().touches_task_columns());
     let relations = TemplateUpdate {
-        tag_ids: Some(vec![1]),
+        tag_ids: Some(vec![tid(1)]),
         block_reasons: Some(vec!["x".into()]),
         ..TemplateUpdate::default()
     };

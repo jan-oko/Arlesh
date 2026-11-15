@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `flows` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     flows::{
@@ -25,7 +26,7 @@ impl FlowsPort for HttpBackend {
             .await
     }
 
-    async fn get_flow(&self, id: i64) -> Result<Flow, WireError> {
+    async fn get_flow(&self, id: RowId) -> Result<Flow, WireError> {
         self.read(Call::new(Method::GET, format!("/flows/{}", segment(&id))))
             .await
     }
@@ -34,12 +35,12 @@ impl FlowsPort for HttpBackend {
         self.read(Call::new(Method::GET, "/flows".to_owned())).await
     }
 
-    async fn update_flow(&self, id: i64, request: UpdateFlowRequest) -> Result<Flow, WireError> {
+    async fn update_flow(&self, id: RowId, request: UpdateFlowRequest) -> Result<Flow, WireError> {
         self.write(Call::new(Method::PATCH, format!("/flows/{}", segment(&id))).json(&request))
             .await
     }
 
-    async fn delete_flow(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_flow(&self, id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/flows/{}", segment(&id)),
@@ -83,7 +84,7 @@ impl FlowsPort for HttpBackend {
 
     async fn update_flow_commitment(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowCommitment, WireError> {
         self.write(
@@ -98,7 +99,7 @@ impl FlowsPort for HttpBackend {
 
     async fn update_flow_expectation(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowExpectation, WireError> {
         self.write(
@@ -111,7 +112,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn list_flow_goals(&self, flow_id: i64) -> Result<Vec<FlowGoal>, WireError> {
+    async fn list_flow_goals(&self, flow_id: RowId) -> Result<Vec<FlowGoal>, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/flows/{}/goals", segment(&flow_id)),
@@ -119,7 +120,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn list_flow_tasks(&self, flow_id: i64) -> Result<Vec<FlowTask>, WireError> {
+    async fn list_flow_tasks(&self, flow_id: RowId) -> Result<Vec<FlowTask>, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/flows/{}/tasks", segment(&flow_id)),
@@ -139,7 +140,7 @@ impl FlowsPort for HttpBackend {
 
     async fn update_flow_goal(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, WireError> {
         self.write(
@@ -154,7 +155,7 @@ impl FlowsPort for HttpBackend {
 
     async fn update_flow_task(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, WireError> {
         self.write(
@@ -169,7 +170,7 @@ impl FlowsPort for HttpBackend {
 
     async fn start_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: StartFlowRequest,
     ) -> Result<MaterializedFlow, WireError> {
         self.write(
@@ -197,7 +198,7 @@ impl FlowsPort for HttpBackend {
 
     async fn set_flow_recurrence(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: SetRecurrenceRequest,
     ) -> Result<FlowRecurrence, WireError> {
         self.write(
@@ -210,7 +211,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn get_flow_recurrence(&self, flow_id: i64) -> Result<Option<FlowRecurrence>, WireError> {
+    async fn get_flow_recurrence(&self, flow_id: RowId) -> Result<Option<FlowRecurrence>, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/flows/{}/recurrence", segment(&flow_id)),
@@ -218,7 +219,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn delete_flow_recurrence(&self, flow_id: i64) -> Result<(), WireError> {
+    async fn delete_flow_recurrence(&self, flow_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/flows/{}/recurrence", segment(&flow_id)),
@@ -236,7 +237,7 @@ impl FlowsPort for HttpBackend {
             .await
     }
 
-    async fn delete_flow_item(&self, item_type: FlowItemType, id: i64) -> Result<(), WireError> {
+    async fn delete_flow_item(&self, item_type: FlowItemType, id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/flow-items/{}/{}", segment(&item_type), segment(&id)),
@@ -246,9 +247,9 @@ impl FlowsPort for HttpBackend {
 
     async fn set_flow_item_cycles(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         cycles: Vec<FlowCycleInput>,
         reconcile: Option<flows::cycles::Reconcile>,
         now: Option<chrono::NaiveDateTime>,
@@ -277,11 +278,11 @@ impl FlowsPort for HttpBackend {
 
     async fn add_flow_dependency(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError> {
         self.write(
             Call::new(
@@ -299,9 +300,9 @@ impl FlowsPort for HttpBackend {
     async fn remove_flow_dependency(
         &self,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
@@ -324,7 +325,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn habit_completion_count(&self, flow_id: i64) -> Result<i64, WireError> {
+    async fn habit_completion_count(&self, flow_id: RowId) -> Result<i64, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/flows/{}/completion-count", segment(&flow_id)),
@@ -332,7 +333,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn clear_habit_modifications(&self, flow_id: i64) -> Result<(), WireError> {
+    async fn clear_habit_modifications(&self, flow_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/flows/{}/habit-modifications", segment(&flow_id)),
@@ -340,7 +341,7 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn fork_flow(&self, flow_id: i64, now: chrono::NaiveDateTime) -> Result<Flow, WireError> {
+    async fn fork_flow(&self, flow_id: RowId, now: chrono::NaiveDateTime) -> Result<Flow, WireError> {
         self.write(
             Call::new(Method::POST, format!("/flows/{}/fork", segment(&flow_id)))
                 .query("now", &now),
@@ -350,9 +351,9 @@ impl FlowsPort for HttpBackend {
 
     async fn duplicate_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
     ) -> Result<Flow, WireError> {
         self.write(
@@ -370,11 +371,11 @@ impl FlowsPort for HttpBackend {
     async fn duplicate_flow_item(
         &self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
-    ) -> Result<i64, WireError> {
+    ) -> Result<RowId, WireError> {
         self.write(
             Call::new(
                 Method::POST,
@@ -394,7 +395,7 @@ impl FlowsPort for HttpBackend {
     async fn convert_to_flow(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         keep_dependencies: bool,
         map_scopes: bool,
     ) -> Result<Flow, WireError> {

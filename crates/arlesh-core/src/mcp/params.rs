@@ -11,6 +11,7 @@
 //! `serde_json::Value`, so the domain models serialise straight through with the serde
 //! representation the frontend already receives.
 
+use crate::nodes::id::RowId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -95,26 +96,34 @@ pub struct DurationSpec {
     pub kind: String,
 }
 
-/// A node's id, as an agent may give it: a string, matched against everything the MCP can see
-/// both as a node's **row id** in decimal and as a **prefix** (3 characters or more) of its full
-/// id — the snapshot's `short_id` is always one. A match of both kinds, or of several nodes, is
-/// refused as `ambiguous_id`, listing them; no match as `not_permitted`. A JSON number is
-/// accepted too, read as its decimal string.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-pub enum NodeIdParam {
-    /// Sent as a number.
-    Row(i64),
-    /// Sent as a string.
-    Short(String),
-}
+/// A node's id, as an agent may give it: a string, matched against everything the MCP can see as a
+/// **prefix** (3 characters or more) of a node's full id — the snapshot's `short_id` is always one,
+/// and a whole UUID is the longest. A match of several nodes is refused as `ambiguous_id`, listing
+/// them; no match as `not_permitted`. A JSON number is refused: row numbers went when ids became
+/// UUIDs (ADR 0017), and read as a prefix a stale one would name some other node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeIdParam(String);
 
 impl NodeIdParam {
+    /// An id given as `text`.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
     /// The id as the string it is matched as.
     pub fn text(&self) -> String {
-        match self {
-            Self::Row(row) => row.to_string(),
-            Self::Short(text) => text.clone(),
+        self.0.clone()
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeIdParam {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::String(text) => Ok(Self(text)),
+            other => Err(serde::de::Error::custom(format!(
+                "a node id is a string, the id or its short_id (3 or more characters), not {other}: \
+                 row numbers no longer exist"
+            ))),
         }
     }
 }
@@ -127,21 +136,21 @@ impl JsonSchema for NodeIdParam {
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
             "type": "string",
-            "description": "A node id: its row id or a prefix (3+ characters) of its full id, \
-                            such as the snapshot's short_id."
+            "description": "A node id: a prefix (3+ characters) of its full id, such as the \
+                            snapshot's short_id, or the whole id."
         })
     }
 }
 
-impl From<i64> for NodeIdParam {
-    fn from(id: i64) -> Self {
-        Self::Row(id)
+impl From<RowId> for NodeIdParam {
+    fn from(id: RowId) -> Self {
+        Self(id.to_string())
     }
 }
 
 impl From<String> for NodeIdParam {
     fn from(id: String) -> Self {
-        Self::Short(id)
+        Self(id)
     }
 }
 
@@ -424,7 +433,8 @@ pub enum DelegateParam {
     /// A Person, by their row id (see `arlesh_kb`). The Person must exist.
     Person {
         /// The Person's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
 }
 
@@ -523,6 +533,14 @@ pub enum TasksOperation {
     /// domain or project, a goal, a task, a commitment, or a Habit occurrence. Never under a Task
     /// explicitly marked Not agentic.
     Create {
+        /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
+        /// otherwise the server mints a UUIDv7.
+        #[serde(
+            default,
+            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+        )]
+        #[schemars(with = "Option<String>")]
+        id: Option<RowId>,
         /// The parent's kind: `domain`, `project`, `goal`, `task` or `commitment`.
         parent_type: String,
         /// The parent's id: a row id or a short id.
@@ -764,6 +782,14 @@ pub enum WaitsOperation {
     /// Raises a **question** wait under an Agentic Task the MCP can write: "the agent is waiting
     /// on you". The same as `raise` with `question: true`.
     Ask {
+        /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
+        /// otherwise the server mints a UUIDv7.
+        #[serde(
+            default,
+            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+        )]
+        #[schemars(with = "Option<String>")]
+        id: Option<RowId>,
         /// The Agentic Task the agent is working, which the wait hangs under.
         task_id: NodeIdParam,
         /// What the agent is waiting for, as the wait's title.
@@ -779,6 +805,14 @@ pub enum WaitsOperation {
     /// Raises an agentic wait under an Agentic Task the MCP can write — a question for the user,
     /// or (`question: false`) a wait on something non-human, like CI.
     Raise {
+        /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
+        /// otherwise the server mints a UUIDv7.
+        #[serde(
+            default,
+            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+        )]
+        #[schemars(with = "Option<String>")]
+        id: Option<RowId>,
         /// The Agentic Task the agent is working, which the wait hangs under.
         task_id: NodeIdParam,
         /// What the agent is waiting for, as the wait's title.
@@ -799,6 +833,14 @@ pub enum WaitsOperation {
     /// back for the user's verdict. The Task reads Review until the user answers (or you release
     /// the review with the verdict they gave you).
     RaiseReview {
+        /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
+        /// otherwise the server mints a UUIDv7.
+        #[serde(
+            default,
+            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+        )]
+        #[schemars(with = "Option<String>")]
+        id: Option<RowId>,
         /// The Agentic Task the agent is working, which the review hangs under. It must be held by
         /// you (On Agent or Review): claim it first.
         task_id: NodeIdParam,
@@ -894,6 +936,14 @@ pub enum InfosOperation {
     /// Creates an Info under an Agentic Task the MCP can write — for instance the full wording of
     /// a Task whose title the agent shortened.
     Create {
+        /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
+        /// otherwise the server mints a UUIDv7.
+        #[serde(
+            default,
+            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+        )]
+        #[schemars(with = "Option<String>")]
+        id: Option<RowId>,
         /// The Agentic Task the Info hangs under.
         task_id: NodeIdParam,
         /// The Info's one-line text — its title.

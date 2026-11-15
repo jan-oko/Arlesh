@@ -1,16 +1,17 @@
 //! The domains table's rows: what a query decodes, before it becomes a domain value (ADR 0010,
 //! decision 8).
 
+use crate::nodes::id::RowId;
 use super::model::Domain;
 
 /// A [`Domain`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct DomainRow {
-    id: i64,
+    id: RowId,
     title: String,
     description: Option<String>,
     subtype: String,
-    parent_id: Option<i64>,
+    parent_id: Option<RowId>,
     color: Option<String>,
     status: Option<String>,
     knowledge_base_directory: Option<String>,

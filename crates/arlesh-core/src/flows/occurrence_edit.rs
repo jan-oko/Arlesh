@@ -11,6 +11,7 @@
 //! Delete does to one. A request that merely repeats the occurrence's current window or parent,
 //! as a full editor save does, is not a move and is let through.
 
+use crate::nodes::id::RowId;
 use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
@@ -825,7 +826,7 @@ pub struct OccurrenceHost {
     /// The host's parent type, as a child row spells it.
     pub host_type: String,
     /// The host's row id.
-    pub host_id: i64,
+    pub host_id: RowId,
 }
 
 /// The host a node hung on the occurrence `key` is written under.
@@ -881,7 +882,7 @@ pub async fn attach(
     host: &OccurrenceHost,
     key: &OccurrenceKey,
     child_type: &str,
-    child_id: i64,
+    child_id: RowId,
 ) -> Result<(), FlowError> {
     db.flows()
         .detach_instance_child(child_type, child_id)

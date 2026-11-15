@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `access` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     access::{
         self,
@@ -45,7 +46,7 @@ impl AccessPort for SqliteBackend {
         Ok(map.effective())
     }
 
-    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         db.access()
             .add_root(NodeKey::new(node_kind, node_id))
@@ -58,7 +59,7 @@ impl AccessPort for SqliteBackend {
         Ok(())
     }
 
-    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         let mut db = self
             .factory
             .connect()

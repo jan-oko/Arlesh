@@ -18,6 +18,7 @@
 //! carries an overlay or an attached child — so an edit made to a future occurrence is never lost
 //! — and any window a caller names ([`Horizon::through`]).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use chrono::{NaiveDate, NaiveDateTime};
@@ -42,7 +43,7 @@ use crate::{
     flows::template::TemplateFields,
     nodes::{
         id::NodeId,
-        key::{DerivedKey, OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE},
+        key::{DerivedKey, OccurrenceKey, TemplateItem, TemplateKind, no_cycle},
         origin::{HabitOrigin, IterationScope, Origin},
         overlay::{CommitmentOverlay, GoalOverlay, HabitOverlays, TaskOverlay},
         registry,
@@ -121,8 +122,8 @@ pub(in crate::flows) struct HabitRelations {
 }
 
 /// The template's tags with one occurrence's differences applied.
-pub(crate) fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bool)>>) -> Vec<i64> {
-    let mut tags: Vec<i64> = template.to_vec();
+pub(crate) fn effective_tags(template: &[RowId], differences: Option<&Vec<(RowId, bool)>>) -> Vec<RowId> {
+    let mut tags: Vec<RowId> = template.to_vec();
     for (tag, added) in differences.map(Vec::as_slice).unwrap_or_default() {
         tags.retain(|existing| existing != tag);
         if *added {
@@ -135,22 +136,22 @@ pub(crate) fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bo
 
 /// A Habit's template, as the rows are built from it.
 pub(in crate::flows) struct Template {
-    pub(in crate::flows) goals: HashMap<i64, FlowGoal>,
-    pub(in crate::flows) tasks: HashMap<i64, FlowTask>,
-    pub(in crate::flows) commitments: HashMap<i64, FlowCommitment>,
-    pub(in crate::flows) expectations: HashMap<i64, FlowExpectation>,
+    pub(in crate::flows) goals: HashMap<RowId, FlowGoal>,
+    pub(in crate::flows) tasks: HashMap<RowId, FlowTask>,
+    pub(in crate::flows) commitments: HashMap<RowId, FlowCommitment>,
+    pub(in crate::flows) expectations: HashMap<RowId, FlowExpectation>,
     /// Each item's pairs, in position order; an item with none is absent.
-    pub(in crate::flows) cycles: HashMap<(String, i64), Vec<FlowItemCycle>>,
+    pub(in crate::flows) cycles: HashMap<(String, RowId), Vec<FlowItemCycle>>,
 }
 
 impl Template {
     /// The cycle pair an item's **first** occurrence in an iteration is drawn by — where its
     /// children nest, as they do when the flow is started.
-    pub(in crate::flows) fn first_cycle(&self, item_type: TemplateKind, item_id: i64) -> i64 {
+    pub(in crate::flows) fn first_cycle(&self, item_type: TemplateKind, item_id: RowId) -> RowId {
         self.cycles
             .get(&(item_type.as_str().to_string(), item_id))
             .and_then(|pairs| pairs.first())
-            .map_or(NO_CYCLE, |pair| pair.id)
+            .map_or(no_cycle(), |pair| pair.id)
     }
 
     /// The template row an item's occurrences nest under, or `None` for the root.
@@ -192,7 +193,7 @@ impl Template {
 }
 
 /// One occurrence within an iteration, as its template item and cycle pair.
-pub(in crate::flows) type InstanceKey = (TemplateItem, i64);
+pub(in crate::flows) type InstanceKey = (TemplateItem, RowId);
 
 /// [`Template::occurrence_parents`] from a template already read.
 pub(in crate::flows) fn occurrence_parents_of(
@@ -214,7 +215,7 @@ impl Template {
                 item_type: TemplateKind::FlowRoot,
                 item_id: flow_id.0,
             },
-            NO_CYCLE,
+            no_cycle(),
         );
         keys.iter()
             .filter(|(item, _)| item.item_type != TemplateKind::FlowRoot)
@@ -318,12 +319,12 @@ pub(in crate::flows) struct LoadedHabit {
     /// The iterations that carry an overlay, a relation or an attached child.
     pub(in crate::flows) touched: HashSet<ScopeKey>,
     /// The node its iteration roots render under, as a child row's parent reference.
-    pub(in crate::flows) host: (String, i64),
+    pub(in crate::flows) host: (String, RowId),
     /// Whether the Habit's host reads as Agentic.
     pub(in crate::flows) host_agentic: bool,
     /// Every template item an iteration draws, as `(item type, item id)`: its goal items, then
     /// its task items, each in list order.
-    pub(in crate::flows) instance_items: Vec<(String, i64)>,
+    pub(in crate::flows) instance_items: Vec<(String, RowId)>,
     /// When each wait item occurrence was last checked on, by its node key.
     pub(in crate::flows) last_checks: HashMap<String, NaiveDateTime>,
 }
@@ -767,7 +768,7 @@ pub(in crate::flows) fn verdict_instants(
             let node_key = OccurrenceKey {
                 item: *root,
                 iteration: slot.scope_id,
-                cycle: NO_CYCLE,
+                cycle: no_cycle(),
             }
             .node_key();
             let overlay = overlays.commitments.get(&node_key)?;
@@ -869,7 +870,7 @@ pub(in crate::flows) fn build_iteration(
         missed_from: context.missed_from,
         owed: owed(flow, clock, context, now),
     };
-    let origin_of = |item: TemplateItem, cycle: i64| {
+    let origin_of = |item: TemplateItem, cycle: RowId| {
         Origin::Habit(HabitOrigin {
             habit_id: flow.id,
             iteration_scope: iteration_scope.clone(),
@@ -886,7 +887,7 @@ pub(in crate::flows) fn build_iteration(
     let root_key = OccurrenceKey {
         item: root_item,
         iteration,
-        cycle: NO_CYCLE,
+        cycle: no_cycle(),
     };
     let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
         (Some(kind), Some(id)) => (target_parent_type(kind), id),
@@ -923,7 +924,7 @@ pub(in crate::flows) fn build_iteration(
         // The root closes with its iteration: only a Done iteration's root is finished, so a root
         // ticked off above work still open keeps that work company.
         closes_when_done: iteration_done && window_passed(context.slot.end),
-        origin: origin_of(root_item, NO_CYCLE),
+        origin: origin_of(root_item, no_cycle()),
         parent_key: None,
         fields: flow.template.clone(),
     }];
@@ -1017,7 +1018,7 @@ pub(in crate::flows) fn build_iteration(
                     context.due,
                 ),
             };
-            let cycle = pair.map_or(NO_CYCLE, |pair| pair.id);
+            let cycle = pair.map_or(no_cycle(), |pair| pair.id);
             occurrences.push(Occurrence {
                 key: OccurrenceKey {
                     item,
@@ -1494,7 +1495,7 @@ pub(in crate::flows) fn template_edges(
     occurrences: &[Occurrence],
     relations: &HabitRelations,
 ) -> Vec<TaskDependencyEdge> {
-    let of_item = |item_type: &str, item_id: i64| {
+    let of_item = |item_type: &str, item_id: RowId| {
         occurrences
             .iter()
             .filter(move |occurrence| {
@@ -2041,18 +2042,18 @@ fn schedule(
 }
 
 /// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
-/// once per pair it declares (once, with [`NO_CYCLE`], when it declares none).
+/// once per pair it declares (once, with [`no_cycle()`], when it declares none).
 fn instance_keys(
     flow: &Flow,
-    items: &[(String, i64)],
-    cycles: &HashMap<(String, i64), Vec<FlowItemCycle>>,
-) -> Vec<(TemplateItem, i64)> {
+    items: &[(String, RowId)],
+    cycles: &HashMap<(String, RowId), Vec<FlowItemCycle>>,
+) -> Vec<(TemplateItem, RowId)> {
     let mut keys = vec![(
         TemplateItem {
             item_type: TemplateKind::FlowRoot,
             item_id: flow.id,
         },
-        NO_CYCLE,
+        no_cycle(),
     )];
     for (item_type, item_id) in items {
         let (item_type, item_id) = (item_type.clone(), *item_id);
@@ -2067,7 +2068,7 @@ fn instance_keys(
             Some(pairs) if !pairs.is_empty() => {
                 keys.extend(pairs.iter().map(|pair| (item, pair.id)));
             }
-            _ => keys.push((item, NO_CYCLE)),
+            _ => keys.push((item, no_cycle())),
         }
     }
     keys
@@ -2084,7 +2085,7 @@ pub struct HabitSource {
 /// `(parent_type, parent_id)` reference.
 pub type HabitReach = (
     crate::tasks::rules::plan_inheritance::HabitSpan,
-    (String, i64),
+    (String, RowId),
 );
 
 impl HabitSource {

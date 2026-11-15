@@ -9,14 +9,15 @@
 //! * `uuid_map (kind, old_id, new_id)`: one row per stored row.
 //! * `key_map (old_key, new_key)`: every node key that spells a row id inside it, rewritten. A Habit
 //!   occurrence's key is `flow_task:12:{scope}:3`; its id is the hash of that text, so it moves with
-//!   the ids inside it (the one id this migration does change).
+//!   the ids inside it (the one id this migration does change, and spelled as a version-8 UUID from
+//!   now on, which is how a derived id is told from a stored one).
 //!
 //! Both tables are written only when the database still holds the integer schema; on any other
 //! database [`prepare`] does nothing.
 
 use std::collections::HashMap;
 
-use arlesh_rules::nodes::id::{uuid_v5, NODE_NAMESPACE};
+use arlesh_rules::nodes::id::{uuid_v5, DerivedId, NODE_NAMESPACE};
 
 use super::DatabasePool;
 
@@ -180,8 +181,10 @@ pub fn rewrite_keys(keys: &[String], ids: &mut IdMap) -> Vec<(String, String)> {
                 continue;
             }
             if let Some(new) = rewrite_key(key, ids) {
-                ids.derived
-                    .insert(uuid_v5(&NODE_NAMESPACE, key), uuid_v5(&NODE_NAMESPACE, &new));
+                ids.derived.insert(
+                    uuid_v5(&NODE_NAMESPACE, key),
+                    DerivedId::of_key(&new).as_str().to_string(),
+                );
                 done.insert(key.clone(), new);
             }
         }

@@ -7,12 +7,13 @@
 //! Pure. The database climb that drives [`AgenticClimb`] a row at a time lives in
 //! [`crate::tasks::agentic`], which re-exports the write rules (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::flows::model::{
     ChildAttachment, Flow, FlowCommitment, FlowExpectation, FlowGoal, FlowTask,
 };
-use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
+use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, no_cycle};
 use crate::nodes::overlay::TaskOverlay;
 use crate::scopes::key::ScopeKey;
 use crate::tasks::error::TaskError;
@@ -69,7 +70,7 @@ pub(crate) fn require_spec(agentic: bool, brief: &Option<AgenticBrief>) -> Resul
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::tasks) enum Cursor {
     /// A stored row, by its kind and id.
-    Stored(String, i64),
+    Stored(String, RowId),
     /// A Habit occurrence.
     Template {
         /// Its template item.
@@ -77,7 +78,7 @@ pub(in crate::tasks) enum Cursor {
         /// Its iteration.
         iteration: ScopeKey,
         /// Its cycle pair.
-        cycle: i64,
+        cycle: RowId,
         /// Whether to skip this row's own value and start at its parent — for an occurrence being
         /// set back to Inherit in the very write being checked.
         skip_own: bool,
@@ -91,7 +92,7 @@ pub(in crate::tasks) enum TemplateParent {
     /// Another template row.
     Item(TemplateItem),
     /// The Habit's host, spelled as a child row's parent type.
-    Host(String, i64),
+    Host(String, RowId),
 }
 
 /// The cursor a Habit occurrence's own climb starts at.
@@ -112,7 +113,7 @@ pub(in crate::tasks) enum StoredRead {
         /// Its own Agentic flag.
         flag: Option<bool>,
         /// Its parent reference.
-        parent: (String, i64),
+        parent: (String, RowId),
         /// The occurrence it hangs on.
         holding: Option<OccurrenceKey>,
     },
@@ -123,7 +124,7 @@ pub(in crate::tasks) enum StoredRead {
 /// What a climb needs read next.
 pub(in crate::tasks) enum AgenticStep {
     /// The stored row `(kind, id)`.
-    Stored(String, i64),
+    Stored(String, RowId),
     /// The occurrence `key`'s own value (unless `skip_own`) and its template item's parent.
     Template {
         /// The occurrence.
@@ -147,7 +148,7 @@ pub(in crate::tasks) enum AgenticStep {
 /// and from the root the Habit's host.
 pub(in crate::tasks) struct AgenticClimb {
     cursor: Cursor,
-    seen_stored: HashSet<(String, i64)>,
+    seen_stored: HashSet<(String, RowId)>,
     seen_template: HashSet<TemplateItem>,
 }
 
@@ -235,7 +236,7 @@ impl AgenticClimb {
                 iteration: key.iteration,
                 // An iteration's root is drawn by no cycle pair.
                 cycle: if parent.item_type == TemplateKind::FlowRoot {
-                    NO_CYCLE
+                    no_cycle()
                 } else {
                     key.cycle
                 },
@@ -249,7 +250,7 @@ impl AgenticClimb {
 
 /// The host an iteration's root renders under: the Target Node, else the Flow's parent — spelled
 /// as a child row's parent type.
-pub(in crate::tasks) fn flow_host(flow: &Flow) -> (String, i64) {
+pub(in crate::tasks) fn flow_host(flow: &Flow) -> (String, RowId) {
     let (kind, id) = match (&flow.target_type, flow.target_id) {
         (Some(kind), Some(id)) => (kind.clone(), id),
         _ => (flow.parent_type.clone(), flow.parent_id),
@@ -276,17 +277,17 @@ pub(in crate::tasks) fn template_kind_of(parent_type: &str) -> Option<TemplateKi
 /// Every row an Agentic climb reads, loaded once for a whole board.
 #[derive(Debug, Default)]
 pub struct AgenticIndex {
-    tasks: HashMap<i64, (Option<bool>, String, i64)>,
-    goals: HashMap<i64, (String, i64)>,
-    commitments: HashMap<i64, (String, i64)>,
-    holding: HashMap<(String, i64), String>,
+    tasks: HashMap<RowId, (Option<bool>, String, RowId)>,
+    goals: HashMap<RowId, (String, RowId)>,
+    commitments: HashMap<RowId, (String, RowId)>,
+    holding: HashMap<(String, RowId), String>,
     overlays: HashMap<String, (Option<bool>, bool)>,
-    flows: HashMap<i64, Flow>,
-    flow_tasks: HashMap<i64, FlowTask>,
-    flow_goals: HashMap<i64, FlowGoal>,
+    flows: HashMap<RowId, Flow>,
+    flow_tasks: HashMap<RowId, FlowTask>,
+    flow_goals: HashMap<RowId, FlowGoal>,
     /// Where each Commitment and wait item hangs — what a Task item under a Commitment item climbs
     /// through. Neither carries an Agentic flag of its own.
-    item_parents: HashMap<TemplateItem, (String, i64)>,
+    item_parents: HashMap<TemplateItem, (String, RowId)>,
 }
 
 /// The rows an [`AgenticIndex`] is built from.
@@ -298,7 +299,7 @@ pub struct AgenticRows<'rows> {
     /// The stored Commitments.
     pub commitments: &'rows [Commitment],
     /// Every added child's attachment, as `(child_type, child_id, attachment)`.
-    pub attachments: &'rows [(String, i64, ChildAttachment)],
+    pub attachments: &'rows [(String, RowId, ChildAttachment)],
     /// Every Task overlay, by node key.
     pub overlays: &'rows HashMap<String, TaskOverlay>,
     /// Every Flow.
@@ -403,7 +404,7 @@ impl AgenticIndex {
     }
 
     /// What the stored node `(node_type, node_id)` reads as for Agentic.
-    pub fn reads_agentic(&self, node_type: &str, node_id: i64) -> bool {
+    pub fn reads_agentic(&self, node_type: &str, node_id: RowId) -> bool {
         self.climb(Cursor::Stored(node_type.to_string(), node_id))
     }
 
@@ -425,7 +426,7 @@ impl AgenticIndex {
         }
     }
 
-    fn stored(&self, kind: &str, id: i64) -> StoredRead {
+    fn stored(&self, kind: &str, id: RowId) -> StoredRead {
         let found = match kind {
             "task" => self
                 .tasks

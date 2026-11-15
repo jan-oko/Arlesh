@@ -5,6 +5,7 @@
 //! Task it is `tasks.done_at`; a Habit occurrence keeps it in its overlay (see
 //! [`crate::flows::done_date`]).
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{error::TaskError, model::Status, waits, TaskOperator};
@@ -30,7 +31,7 @@ pub fn check_done_date(
 
 impl TaskOperator<'_> {
     /// A stored Task's status and stored done date, as the columns hold them.
-    async fn done_columns(&mut self, id: i64) -> Result<(String, Option<String>), TaskError> {
+    async fn done_columns(&mut self, id: RowId) -> Result<(String, Option<String>), TaskError> {
         let row: Option<(String, Option<String>)> =
             sqlx::query_as("SELECT status, done_at FROM tasks WHERE id = ?")
                 .bind(id)
@@ -40,7 +41,7 @@ impl TaskOperator<'_> {
     }
 
     /// Writes a stored Task's done date.
-    async fn write_done_at(&mut self, id: i64, at: NaiveDateTime) -> Result<(), TaskError> {
+    async fn write_done_at(&mut self, id: RowId, at: NaiveDateTime) -> Result<(), TaskError> {
         sqlx::query("UPDATE tasks SET done_at = ? WHERE id = ?")
             .bind(waits::instant_column(at))
             .bind(id)
@@ -54,7 +55,7 @@ impl TaskOperator<'_> {
 /// dates were recorded).
 pub async fn stored_done_at(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
 ) -> Result<Option<NaiveDateTime>, TaskError> {
     let (status, done_at) = db.tasks().done_columns(id).await?;
     if !Status::is_done_db(Some(&status)) {
@@ -67,7 +68,7 @@ pub async fn stored_done_at(
 #[tracing::instrument(skip(db))]
 pub async fn set_stored_done_at(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     at: NaiveDateTime,
     now: NaiveDateTime,
 ) -> Result<(), TaskError> {

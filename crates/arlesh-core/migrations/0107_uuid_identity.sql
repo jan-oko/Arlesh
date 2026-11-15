@@ -258,7 +258,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'block_reason' AND old_id = id)
        reason AS reason,
        position AS position,
        created_at AS created_at
-  FROM block_reasons;
+  FROM block_reasons ORDER BY id;
 
 CREATE TABLE carry_commitment_overlays AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'commitment_overlay' AND old_id = id) AS id,
@@ -292,7 +292,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'commitment_overlay' AND old_id
        title AS title,
        is_private AS is_private,
        position AS position
-  FROM commitment_overlays;
+  FROM commitment_overlays ORDER BY id;
 
 CREATE TABLE carry_commitments AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'commitment' AND old_id = id) AS id,
@@ -329,7 +329,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'commitment' AND old_id = id) A
        is_private AS is_private,
        verdict_at AS verdict_at,
        archival AS archival
-  FROM commitments;
+  FROM commitments ORDER BY id;
 
 CREATE TABLE carry_derived_block_reasons AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_block_reason' AND old_id = id) AS id,
@@ -338,7 +338,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_block_reason' AND old_
        coalesce((SELECT new_key FROM key_map WHERE old_key = node_key), node_key) AS node_key,
        reason AS reason,
        position AS position
-  FROM derived_block_reasons;
+  FROM derived_block_reasons ORDER BY id;
 
 CREATE TABLE carry_derived_children AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_child' AND old_id = id) AS id,
@@ -368,7 +368,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_child' AND old_id = id
                 WHEN 'event' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = child_id), CASE WHEN child_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', child_id) END)
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = child_id), CASE WHEN child_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', child_id) END)
                 ELSE CASE WHEN child_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', child_id) END END AS child_id
-  FROM derived_children;
+  FROM derived_children ORDER BY id;
 
 CREATE TABLE carry_derived_dependencies AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_dependency' AND old_id = id) AS id,
@@ -398,7 +398,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_dependency' AND old_id
                 ELSE CASE WHEN target_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', target_id) END END AS target_id,
        coalesce((SELECT new_key FROM key_map WHERE old_key = target_key), target_key) AS target_key,
        added AS added
-  FROM derived_dependencies;
+  FROM derived_dependencies ORDER BY id;
 
 CREATE TABLE carry_derived_tags AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_tag' AND old_id = id) AS id,
@@ -407,7 +407,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'derived_tag' AND old_id = id) 
        coalesce((SELECT new_key FROM key_map WHERE old_key = node_key), node_key) AS node_key,
        coalesce((SELECT new_id FROM uuid_map WHERE kind = 'domain' AND old_id = tag_id), CASE WHEN tag_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', tag_id) END) AS tag_id,
        added AS added
-  FROM derived_tags;
+  FROM derived_tags ORDER BY id;
 
 CREATE TABLE carry_domains AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'domain' AND old_id = id) AS id,
@@ -420,7 +420,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'domain' AND old_id = id) AS id
        knowledge_base_directory AS knowledge_base_directory,
        position AS position,
        is_private AS is_private
-  FROM domains;
+  FROM domains ORDER BY id;
 
 CREATE TABLE carry_events AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = id) AS id,
@@ -428,7 +428,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = id) AS id,
        scope_id AS scope_id,
        event_time AS event_time,
        linked_note AS linked_note
-  FROM events;
+  FROM events ORDER BY id;
 
 CREATE TABLE carry_expectation_overlays AS
 SELECT coalesce((SELECT new_key FROM key_map WHERE old_key = node_key), node_key) AS node_key,
@@ -499,7 +499,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'expectation' AND old_id = id) 
        released_at AS released_at,
        agentic_review AS agentic_review,
        agentic_verdict AS agentic_verdict
-  FROM expectations;
+  FROM expectations ORDER BY id;
 
 CREATE TABLE carry_flow_async_templates AS
 SELECT coalesce((SELECT new_id FROM uuid_map WHERE kind = 'flow' AND old_id = flow_id), CASE WHEN flow_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', flow_id) END) AS flow_id,
@@ -539,7 +539,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_commitment' AND old_id = 
        is_private AS is_private,
        verdict_window_n AS verdict_window_n,
        verdict_window_kind AS verdict_window_kind
-  FROM flow_commitments;
+  FROM flow_commitments ORDER BY id;
 
 CREATE TABLE carry_flow_dependencies AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_dependency' AND old_id = id) AS id,
@@ -586,7 +586,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_dependency' AND old_id = 
                 WHEN 'event' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = depends_on_id), CASE WHEN depends_on_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', depends_on_id) END)
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = depends_on_id), CASE WHEN depends_on_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', depends_on_id) END)
                 ELSE CASE WHEN depends_on_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', depends_on_id) END END AS depends_on_id
-  FROM flow_dependencies;
+  FROM flow_dependencies ORDER BY id;
 
 CREATE TABLE carry_flow_expectations AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_expectation' AND old_id = id) AS id,
@@ -619,7 +619,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_expectation' AND old_id =
        check_every_kind AS check_every_kind,
        first_check_kind AS first_check_kind,
        first_check_index AS first_check_index
-  FROM flow_expectations;
+  FROM flow_expectations ORDER BY id;
 
 CREATE TABLE carry_flow_goals AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_goal' AND old_id = id) AS id,
@@ -648,7 +648,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_goal' AND old_id = id) AS
                 ELSE CASE WHEN parent_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', parent_id) END END AS parent_id,
        position AS position,
        is_private AS is_private
-  FROM flow_goals;
+  FROM flow_goals ORDER BY id;
 
 CREATE TABLE carry_flow_instance_nodes AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_instance_node' AND old_id = id) AS id,
@@ -716,7 +716,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_instance_node' AND old_id
                 WHEN 'event' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = original_parent_id), CASE WHEN original_parent_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', original_parent_id) END)
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = original_parent_id), CASE WHEN original_parent_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', original_parent_id) END)
                 ELSE CASE WHEN original_parent_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', original_parent_id) END END AS original_parent_id
-  FROM flow_instance_nodes;
+  FROM flow_instance_nodes ORDER BY id;
 
 CREATE TABLE carry_flow_instances AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_instance' AND old_id = id) AS id,
@@ -743,7 +743,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_instance' AND old_id = id
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = root_id), CASE WHEN root_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', root_id) END)
                 ELSE CASE WHEN root_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', root_id) END END AS root_id,
        started_at AS started_at
-  FROM flow_instances;
+  FROM flow_instances ORDER BY id;
 
 CREATE TABLE carry_flow_item_cycles AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_item_cycle' AND old_id = id) AS id,
@@ -775,7 +775,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_item_cycle' AND old_id = 
        plan_start AS plan_start,
        plan_end AS plan_end,
        position AS position
-  FROM flow_item_cycles;
+  FROM flow_item_cycles ORDER BY id;
 
 CREATE TABLE carry_flow_recurrences AS
 SELECT coalesce((SELECT new_id FROM uuid_map WHERE kind = 'flow' AND old_id = flow_id), CASE WHEN flow_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', flow_id) END) AS flow_id,
@@ -831,7 +831,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow_task' AND old_id = id) AS
        asynchronous AS asynchronous,
        archival AS archival,
        compound AS compound
-  FROM flow_tasks;
+  FROM flow_tasks ORDER BY id;
 
 CREATE TABLE carry_flows AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow' AND old_id = id) AS id,
@@ -897,7 +897,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'flow' AND old_id = id) AS id,
        asynchronous AS asynchronous,
        archival AS archival,
        compound AS compound
-  FROM flows;
+  FROM flows ORDER BY id;
 
 CREATE TABLE carry_goal_knowledge_base_links AS
 SELECT coalesce((SELECT new_id FROM uuid_map WHERE kind = 'goal' AND old_id = goal_id), CASE WHEN goal_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', goal_id) END) AS goal_id,
@@ -957,7 +957,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'goal_overlay' AND old_id = id)
        is_private AS is_private,
        position AS position,
        block_reasons_set AS block_reasons_set
-  FROM goal_overlays;
+  FROM goal_overlays ORDER BY id;
 
 CREATE TABLE carry_goals AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'goal' AND old_id = id) AS id,
@@ -992,7 +992,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'goal' AND old_id = id) AS id,
        on_scope_exit AS on_scope_exit,
        is_private AS is_private,
        achieved_at AS achieved_at
-  FROM goals;
+  FROM goals ORDER BY id;
 
 CREATE TABLE carry_infos AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'info' AND old_id = id) AS id,
@@ -1023,7 +1023,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'info' AND old_id = id) AS id,
        updated_at AS updated_at,
        details AS details,
        is_private AS is_private
-  FROM infos;
+  FROM infos ORDER BY id;
 
 CREATE TABLE carry_mcp_roots AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'mcp_root' AND old_id = id) AS id,
@@ -1048,7 +1048,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'mcp_root' AND old_id = id) AS 
                 WHEN 'event' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'event' AND old_id = node_id), CASE WHEN node_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', node_id) END)
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = node_id), CASE WHEN node_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', node_id) END)
                 ELSE CASE WHEN node_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', node_id) END END AS node_id
-  FROM mcp_roots;
+  FROM mcp_roots ORDER BY id;
 
 CREATE TABLE carry_occurrence_async_templates AS
 SELECT coalesce((SELECT new_key FROM key_map WHERE old_key = node_key), node_key) AS node_key,
@@ -1073,7 +1073,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'person' AND old_id = id) AS id
        name AS name,
        aliases AS aliases,
        linked_note AS linked_note
-  FROM people;
+  FROM people ORDER BY id;
 
 CREATE TABLE carry_retired_beads_ids AS
 SELECT table_name AS table_name,
@@ -1268,7 +1268,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'task_overlay' AND old_id = id)
        due_scope_end_id AS due_scope_end_id,
        compound AS compound,
        async_template_set AS async_template_set
-  FROM task_overlays;
+  FROM task_overlays ORDER BY id;
 
 CREATE TABLE carry_tasks AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'task' AND old_id = id) AS id,
@@ -1313,7 +1313,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'task' AND old_id = id) AS id,
        due_scope_start_id AS due_scope_start_id,
        due_scope_end_id AS due_scope_end_id,
        compound AS compound
-  FROM tasks;
+  FROM tasks ORDER BY id;
 
 CREATE TABLE carry_template_agentic_briefs AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_agentic_brief' AND old_id = id) AS id,
@@ -1343,7 +1343,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_agentic_brief' AND ol
        design AS design,
        acceptance AS acceptance,
        notes AS notes
-  FROM template_agentic_briefs;
+  FROM template_agentic_briefs ORDER BY id;
 
 CREATE TABLE carry_template_block_reasons AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_block_reason' AND old_id = id) AS id,
@@ -1370,7 +1370,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_block_reason' AND old
                 ELSE CASE WHEN item_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', item_id) END END AS item_id,
        reason AS reason,
        position AS position
-  FROM template_block_reasons;
+  FROM template_block_reasons ORDER BY id;
 
 CREATE TABLE carry_template_tags AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_tag' AND old_id = id) AS id,
@@ -1396,13 +1396,13 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'template_tag' AND old_id = id)
                 WHEN 'thread' THEN coalesce((SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = item_id), CASE WHEN item_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', item_id) END)
                 ELSE CASE WHEN item_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', item_id) END END AS item_id,
        coalesce((SELECT new_id FROM uuid_map WHERE kind = 'domain' AND old_id = tag_id), CASE WHEN tag_id IS NULL THEN NULL ELSE '00000000-0000-4000-8000-' || printf('%012x', tag_id) END) AS tag_id
-  FROM template_tags;
+  FROM template_tags ORDER BY id;
 
 CREATE TABLE carry_threads AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'thread' AND old_id = id) AS id,
        title AS title,
        linked_note AS linked_note
-  FROM threads;
+  FROM threads ORDER BY id;
 
 CREATE TABLE carry_wait_checks AS
 SELECT (SELECT new_id FROM uuid_map WHERE kind = 'wait_check' AND old_id = id) AS id,
@@ -1430,7 +1430,7 @@ SELECT (SELECT new_id FROM uuid_map WHERE kind = 'wait_check' AND old_id = id) A
        coalesce((SELECT new_key FROM key_map WHERE old_key = wait_key), wait_key) AS wait_key,
        due_at AS due_at,
        resolved_at AS resolved_at
-  FROM wait_checks;
+  FROM wait_checks ORDER BY id;
 
 DROP TABLE tags_on_flow_task_async_templates;
 DROP TABLE tags_on_occurrence_async_templates;
@@ -1515,7 +1515,7 @@ CREATE UNIQUE INDEX agents_child_per_client ON agents (parent_id, session_uuid)
     WHERE parent_id IS NOT NULL;
 
 CREATE TABLE block_reasons (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     owner_type  TEXT NOT NULL CHECK (owner_type IN ('task', 'goal')),
     owner_id    TEXT NOT NULL,
     reason      TEXT NOT NULL,
@@ -1527,7 +1527,7 @@ SELECT id, owner_type, owner_id, reason, position, created_at FROM carry_block_r
 CREATE INDEX idx_block_reasons_owner ON block_reasons (owner_type, owner_id);
 
 CREATE TABLE "commitments" (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     parent_type              TEXT NOT NULL
                                  CHECK (parent_type IN ('domain', 'goal', 'task', 'commitment')),
@@ -1553,7 +1553,7 @@ SELECT id, title, parent_type, parent_id, verdict, time_scope_start_id, time_sco
 CREATE INDEX idx_commitments_parent ON commitments (parent_type, parent_id);
 
 CREATE TABLE domains (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     description              TEXT,
     subtype                  TEXT NOT NULL CHECK (subtype IN ('aspect', 'project', 'domain', 'tag')),
@@ -1566,7 +1566,7 @@ INSERT INTO domains (id, title, description, subtype, parent_id, color, status, 
 SELECT id, title, description, subtype, parent_id, color, status, knowledge_base_directory, position, is_private FROM carry_domains;
 
 CREATE TABLE "events" (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     scope_id                 TEXT,
     event_time               TEXT,
@@ -1577,7 +1577,7 @@ INSERT INTO events (id, title, scope_id, event_time, linked_note)
 SELECT id, title, scope_id, event_time, linked_note FROM carry_events;
 
 CREATE TABLE "expectations" (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     parent_type              TEXT NOT NULL
                                  CHECK (parent_type IN ('domain', 'goal', 'task', 'commitment')),
@@ -1604,7 +1604,7 @@ SELECT id, title, parent_type, parent_id, status, archival, position, is_private
 CREATE INDEX idx_expectations_parent ON expectations (parent_type, parent_id);
 
 CREATE TABLE "goals" (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     parent_type              TEXT NOT NULL CHECK (parent_type IN ('domain', 'goal')),
     parent_id                TEXT NOT NULL,
@@ -1625,7 +1625,7 @@ INSERT INTO goals (id, title, parent_type, parent_id, status, position, time_sco
 SELECT id, title, parent_type, parent_id, status, position, time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind, on_scope_exit, is_private, achieved_at FROM carry_goals;
 
 CREATE TABLE "infos" (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     body        TEXT NOT NULL,
     parent_type TEXT NOT NULL
                     CHECK (parent_type IN ('domain', 'goal', 'task', 'commitment', 'expectation', 'info')),
@@ -1640,7 +1640,7 @@ INSERT INTO infos (id, body, parent_type, parent_id, position, created_at, updat
 SELECT id, body, parent_type, parent_id, position, created_at, updated_at, details, is_private FROM carry_infos;
 
 CREATE TABLE mcp_roots (
-    id        TEXT PRIMARY KEY NOT NULL,
+    id        TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     node_kind TEXT NOT NULL CHECK (node_kind IN
                   ('domain', 'goal', 'task', 'commitment', 'expectation', 'info',
                    'flow', 'flow_goal', 'flow_task')),
@@ -1651,7 +1651,7 @@ INSERT INTO mcp_roots (id, node_kind, node_id)
 SELECT id, node_kind, node_id FROM carry_mcp_roots;
 
 CREATE TABLE people (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     name        TEXT NOT NULL UNIQUE,
     aliases     TEXT NOT NULL DEFAULT '[]',
     linked_note TEXT
@@ -1669,7 +1669,7 @@ INSERT INTO retired_beads_ids (table_name, row_id, beads_id)
 SELECT table_name, row_id, beads_id FROM carry_retired_beads_ids;
 
 CREATE TABLE template_agentic_briefs (
-    id         TEXT PRIMARY KEY NOT NULL,
+    id         TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     item_type  TEXT NOT NULL CHECK (item_type IN ('flow', 'flow_task')),
     item_id    TEXT NOT NULL,
     priority   INTEGER CHECK (priority IS NULL OR priority BETWEEN 0 AND 3),
@@ -1683,7 +1683,7 @@ INSERT INTO template_agentic_briefs (id, item_type, item_id, priority, spec, des
 SELECT id, item_type, item_id, priority, spec, design, acceptance, notes FROM carry_template_agentic_briefs;
 
 CREATE TABLE template_block_reasons (
-    id        TEXT PRIMARY KEY NOT NULL,
+    id        TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     item_type TEXT NOT NULL CHECK (item_type IN ('flow', 'flow_goal', 'flow_task')),
     item_id   TEXT NOT NULL,
     reason    TEXT NOT NULL,
@@ -1694,7 +1694,7 @@ SELECT id, item_type, item_id, reason, position FROM carry_template_block_reason
 CREATE INDEX idx_template_block_reasons_item ON template_block_reasons (item_type, item_id);
 
 CREATE TABLE threads (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title       TEXT NOT NULL,
     linked_note TEXT
 );
@@ -1702,7 +1702,7 @@ INSERT INTO threads (id, title, linked_note)
 SELECT id, title, linked_note FROM carry_threads;
 
 CREATE TABLE wait_checks (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     wait_kind   TEXT NOT NULL CHECK (wait_kind IN ('stored', 'spawned', 'occurrence')),
     wait_id     TEXT,
     wait_key    TEXT,
@@ -1716,7 +1716,7 @@ SELECT id, wait_kind, wait_id, wait_key, due_at, resolved_at FROM carry_wait_che
 CREATE UNIQUE INDEX idx_wait_checks_check ON wait_checks (wait_kind, coalesce(wait_id, wait_key), due_at);
 
 CREATE TABLE "flows" (
-    id                     TEXT PRIMARY KEY NOT NULL,
+    id                     TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                  TEXT NOT NULL,
     instance_type          TEXT NOT NULL CHECK (instance_type IN ('goal', 'task', 'commitment')),
     parent_type            TEXT NOT NULL CHECK (parent_type IN ('domain', 'goal')),
@@ -1773,7 +1773,7 @@ INSERT INTO tags_on_goals (goal_id, tag_id)
 SELECT goal_id, tag_id FROM carry_tags_on_goals;
 
 CREATE TABLE "tasks" (
-    id                       TEXT PRIMARY KEY NOT NULL,
+    id                       TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     title                    TEXT NOT NULL,
     parent_type              TEXT NOT NULL
                                  CHECK (parent_type IN ('domain', 'goal', 'task', 'commitment')),
@@ -1811,7 +1811,7 @@ INSERT INTO tasks (id, title, parent_type, parent_id, status, delegate_kind, del
 SELECT id, title, parent_type, parent_id, status, delegate_kind, delegate_id, position, time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind, plan_start_id, plan_end_id, on_scope_exit, is_private, archival, agentic, asynchronous, done_at, due_scope_start_id, due_scope_end_id, compound FROM carry_tasks;
 
 CREATE TABLE "template_tags" (
-    id        TEXT PRIMARY KEY NOT NULL,
+    id        TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     item_type TEXT NOT NULL
                   CHECK (item_type IN ('flow', 'flow_goal', 'flow_task', 'flow_commitment', 'flow_expectation')),
     item_id   TEXT NOT NULL,
@@ -1822,7 +1822,7 @@ INSERT INTO template_tags (id, item_type, item_id, tag_id)
 SELECT id, item_type, item_id, tag_id FROM carry_template_tags;
 
 CREATE TABLE "commitment_overlays" (
-    id                TEXT PRIMARY KEY NOT NULL,
+    id                TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id           TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     -- A commitment Habit's iteration root, and each occurrence of a Commitment item.
     item_type         TEXT NOT NULL CHECK (item_type IN ('flow_root', 'flow_commitment')),
@@ -1846,7 +1846,7 @@ CREATE UNIQUE INDEX idx_commitment_overlays_key ON commitment_overlays (node_key
 CREATE INDEX idx_commitment_overlays_flow ON commitment_overlays (flow_id, iteration_scope);
 
 CREATE TABLE derived_block_reasons (
-    id         TEXT PRIMARY KEY NOT NULL,
+    id         TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id    TEXT REFERENCES flows(id) ON DELETE CASCADE,
     node_kind  TEXT NOT NULL CHECK (node_kind IN ('task', 'goal')),
     node_key   TEXT NOT NULL,
@@ -1858,7 +1858,7 @@ SELECT id, flow_id, node_kind, node_key, reason, position FROM carry_derived_blo
 CREATE INDEX idx_derived_block_reasons_node ON derived_block_reasons (node_key);
 
 CREATE TABLE "derived_children" (
-    id                  TEXT PRIMARY KEY NOT NULL,
+    id                  TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id             TEXT REFERENCES flows(id) ON DELETE CASCADE,
     parent_kind         TEXT NOT NULL CHECK (parent_kind IN ('task', 'goal', 'commitment', 'expectation')),
     parent_key          TEXT NOT NULL,
@@ -1878,7 +1878,7 @@ CREATE INDEX idx_derived_children_parent ON derived_children (parent_key);
 CREATE INDEX idx_derived_children_flow ON derived_children (flow_id);
 
 CREATE TABLE derived_dependencies (
-    id             TEXT PRIMARY KEY NOT NULL,
+    id             TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id        TEXT REFERENCES flows(id) ON DELETE CASCADE,
     dependent_id   TEXT REFERENCES tasks(id) ON DELETE CASCADE,
     dependent_key  TEXT,
@@ -1899,7 +1899,7 @@ CREATE UNIQUE INDEX idx_derived_dependencies_edge ON derived_dependencies (depen
 CREATE INDEX idx_derived_dependencies_flow ON derived_dependencies (flow_id);
 
 CREATE TABLE derived_tags (
-    id        TEXT PRIMARY KEY NOT NULL,
+    id        TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id   TEXT REFERENCES flows(id) ON DELETE CASCADE,
     node_kind TEXT NOT NULL CHECK (node_kind IN ('task', 'goal', 'commitment', 'expectation')),
     node_key  TEXT NOT NULL,
@@ -1955,7 +1955,7 @@ INSERT INTO flow_async_templates (flow_id, title, time_scope_n, time_scope_kind,
 SELECT flow_id, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind FROM carry_flow_async_templates;
 
 CREATE TABLE flow_commitments (
-    id                  TEXT PRIMARY KEY NOT NULL,
+    id                  TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id             TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     title               TEXT NOT NULL,
     parent_type         TEXT NOT NULL
@@ -1971,7 +1971,7 @@ INSERT INTO flow_commitments (id, flow_id, title, parent_type, parent_id, positi
 SELECT id, flow_id, title, parent_type, parent_id, position, is_private, verdict_window_n, verdict_window_kind FROM carry_flow_commitments;
 
 CREATE TABLE "flow_dependencies" (
-    id              TEXT PRIMARY KEY NOT NULL,
+    id              TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id         TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     dependent_type  TEXT NOT NULL CHECK (dependent_type IN ('flow_goal', 'flow_task')),
     dependent_id    TEXT NOT NULL,
@@ -1984,7 +1984,7 @@ INSERT INTO flow_dependencies (id, flow_id, dependent_type, dependent_id, depend
 SELECT id, flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id FROM carry_flow_dependencies;
 
 CREATE TABLE flow_expectations (
-    id                TEXT PRIMARY KEY NOT NULL,
+    id                TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id           TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     title             TEXT NOT NULL,
     parent_type       TEXT NOT NULL
@@ -2004,7 +2004,7 @@ INSERT INTO flow_expectations (id, flow_id, title, parent_type, parent_id, posit
 SELECT id, flow_id, title, parent_type, parent_id, position, is_private, check_every_n, check_every_kind, first_check_kind, first_check_index FROM carry_flow_expectations;
 
 CREATE TABLE flow_goals (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id     TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     title       TEXT NOT NULL,
     parent_type TEXT NOT NULL CHECK (parent_type IN ('flow', 'flow_goal')),
@@ -2016,7 +2016,7 @@ INSERT INTO flow_goals (id, flow_id, title, parent_type, parent_id, position, is
 SELECT id, flow_id, title, parent_type, parent_id, position, is_private FROM carry_flow_goals;
 
 CREATE TABLE flow_instances (
-    id         TEXT PRIMARY KEY NOT NULL,
+    id         TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id    TEXT REFERENCES flows(id) ON DELETE SET NULL,
     root_type  TEXT NOT NULL CHECK (root_type IN ('goal', 'task', 'commitment')),
     root_id    TEXT NOT NULL,
@@ -2026,7 +2026,7 @@ INSERT INTO flow_instances (id, flow_id, root_type, root_id, started_at)
 SELECT id, flow_id, root_type, root_id, started_at FROM carry_flow_instances;
 
 CREATE TABLE "flow_item_cycles" (
-    id          TEXT PRIMARY KEY NOT NULL,
+    id          TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id     TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     item_type   TEXT NOT NULL
                     CHECK (item_type IN ('flow_goal', 'flow_task', 'flow_commitment', 'flow_expectation')),
@@ -2063,7 +2063,7 @@ INSERT INTO flow_recurrences (flow_id, start_scope_id, gap_n, gap_kind, end_scop
 SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy, cooldown_n, cooldown_kind FROM carry_flow_recurrences;
 
 CREATE TABLE "flow_tasks" (
-    id            TEXT PRIMARY KEY NOT NULL,
+    id            TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id       TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     title         TEXT NOT NULL,
     parent_type   TEXT NOT NULL
@@ -2082,7 +2082,7 @@ INSERT INTO flow_tasks (id, flow_id, title, parent_type, parent_id, position, is
 SELECT id, flow_id, title, parent_type, parent_id, position, is_private, delegate_kind, delegate_id, agentic, asynchronous, archival, compound FROM carry_flow_tasks;
 
 CREATE TABLE goal_overlays (
-    id                TEXT PRIMARY KEY NOT NULL,
+    id                TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_id           TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
     item_type         TEXT NOT NULL CHECK (item_type IN ('flow_goal', 'flow_root')),
     item_id           TEXT NOT NULL,
@@ -2188,7 +2188,7 @@ INSERT INTO task_knowledge_base_links (task_id, entity_type, entity_id)
 SELECT task_id, entity_type, entity_id FROM carry_task_knowledge_base_links;
 
 CREATE TABLE "task_overlays" (
-    id                TEXT PRIMARY KEY NOT NULL,
+    id                TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     -- Which derivation the row belongs to: a Habit occurrence, or a wait's check task.
     origin            TEXT NOT NULL DEFAULT 'habit' CHECK (origin IN ('habit', 'check')),
     -- Habit occurrence key.
@@ -2252,7 +2252,7 @@ CREATE INDEX idx_task_overlays_item ON task_overlays (item_type, item_id);
 CREATE INDEX idx_task_overlays_flow ON task_overlays (flow_id, iteration_scope);
 
 CREATE TABLE "flow_instance_nodes" (
-    id                   TEXT PRIMARY KEY NOT NULL,
+    id                   TEXT PRIMARY KEY NOT NULL DEFAULT (lower(substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 1, 8) || '-' || substr(printf('%012x', cast((julianday('now') - 2440587.5) * 86400000 as integer)), 9, 4) || '-7' || substr(hex(randomblob(2)), 2, 3) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2, 3) || '-' || hex(randomblob(6)))),
     flow_instance_id     TEXT NOT NULL REFERENCES flow_instances(id) ON DELETE CASCADE,
     node_type            TEXT NOT NULL
                              CHECK (node_type IN ('goal', 'task', 'commitment', 'expectation')),

@@ -4,6 +4,7 @@
 //! Mindmap's tree and [`list`](super::list) applies them to a flat row and its ancestor chain, so
 //! the two cannot answer the same node differently.
 
+use crate::nodes::id::RowId;
 use std::collections::HashSet;
 
 use crate::{
@@ -640,8 +641,8 @@ pub fn passes_tags(node: &NodeFacts, filter: &BoardFilter) -> bool {
 
 /// The same formula over a bare list of values, so that a caller with tag ids and no node — a
 /// test, or a future pill dimension — reaches the one implementation.
-pub fn matches_tag_group(filters: &[TagFilter], tag_ids: &[i64]) -> bool {
-    let has = |id: i64| tag_ids.contains(&id);
+pub fn matches_tag_group(filters: &[TagFilter], tag_ids: &[RowId]) -> bool {
+    let has = |id: RowId| tag_ids.contains(&id);
     let mut any = filters.iter().filter(|f| f.mode == TagMode::Any).peekable();
     if any.peek().is_some() && !any.any(|f| has(f.tag_id)) {
         return false;

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::database::hold::AppHold;
 use crate::domains::model::{CreateDomainRequest, DomainSubtype};
@@ -48,7 +49,7 @@ fn new_domain(title: &str) -> CreateDomainRequest {
         title: title.to_string(),
         description: None,
         subtype: DomainSubtype::Domain,
-        parent_id: Some(1),
+        parent_id: Some(tid(1)),
         status: None,
         knowledge_base_directory: None,
     }

@@ -1,5 +1,6 @@
 //! The lock as a derived block: who it blocks, and how the reason is carried.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::{
     domains::model::Domain,
@@ -9,7 +10,7 @@ use crate::{
 
 fn domain_row(id: i64, parent: Option<i64>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: if parent.is_none() {
@@ -106,7 +107,7 @@ fn everything() -> Blocking {
     Blocking {
         subtrees: vec![crate::access::model::NodeKey::new(
             crate::access::model::NodeTable::Domain,
-            1,
+            1: tid(1),
         )],
     }
 }
@@ -156,7 +157,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         .all(|reason| reason.reason == AGENT_CAPACITY_REASON));
     let on_20 = derived
         .iter()
-        .find(|reason| reason.owner_id.stored() == Some(20))
+        .find(|reason| reason.owner_id.stored() == Some(tid(20)))
         .unwrap();
     assert_eq!(on_20.position, 1, "numbered on from the Task's own reason");
 }
@@ -239,7 +240,7 @@ fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
 
 #[test]
 fn an_agent_at_capacity_blocks_only_the_agentic_tasks_inside_its_claim() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Goal, 30);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Goal, tid(30));
     let blocking = Blocking {
         subtrees: vec![claim],
     };
@@ -252,7 +253,7 @@ fn an_agent_at_capacity_blocks_only_the_agentic_tasks_inside_its_claim() {
 
 #[test]
 fn a_claim_on_a_task_blocks_that_task_and_everything_below_it() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Task, 20);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Task, tid(20));
     let blocking = Blocking {
         subtrees: vec![claim],
     };
@@ -265,7 +266,7 @@ fn a_claim_on_a_task_blocks_that_task_and_everything_below_it() {
 
 #[test]
 fn a_claim_on_a_domain_blocks_what_hangs_under_it() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Domain, 2);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Domain, tid(2));
     let blocking = Blocking {
         subtrees: vec![claim],
     };

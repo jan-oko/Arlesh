@@ -1,11 +1,13 @@
+use crate::nodes::key::no_cycle;
+use crate::nodes::id::tid;
 use super::*;
 
 fn stored(id: i64, scope_index: i64, plan_start: Option<i64>) -> FlowItemCycle {
     FlowItemCycle {
-        id,
-        flow_id: 1,
+        id: tid(id),
+        flow_id: tid(1),
         item_type: "flow_task".into(),
-        item_id: 2,
+        item_id: tid(2),
         scope_kind: Some("day".into()),
         scope_index: Some(scope_index),
         plan_kind: plan_start.map(|_| "part_of_day".into()),
@@ -34,11 +36,11 @@ fn asking_for_the_same_pairs_keeps_every_id_and_orphans_nothing() {
         diff.kept,
         vec![
             KeptPair {
-                id: 10,
+                id: tid(10),
                 position: 0
             },
             KeptPair {
-                id: 11,
+                id: tid(11),
                 position: 1
             }
         ]
@@ -54,7 +56,7 @@ fn a_plan_only_change_keeps_the_pair() {
     assert_eq!(
         diff.kept,
         vec![KeptPair {
-            id: 10,
+            id: tid(10),
             position: 0
         }]
     );
@@ -79,11 +81,11 @@ fn reordered_pairs_keep_their_ids_at_their_new_positions() {
         diff.kept,
         vec![
             KeptPair {
-                id: 11,
+                id: tid(11),
                 position: 0
             },
             KeptPair {
-                id: 10,
+                id: tid(10),
                 position: 1
             }
         ]
@@ -94,7 +96,7 @@ fn reordered_pairs_keep_their_ids_at_their_new_positions() {
 fn giving_an_unpaired_item_its_first_pair_orphans_the_no_pair_occurrence() {
     let wanted = [asked(1, None)];
     let diff = diff_cycles(&[], &wanted);
-    assert_eq!(orphaned_cycle_ids(&[], &wanted, &diff), vec![NO_CYCLE]);
+    assert_eq!(orphaned_cycle_ids(&[], &wanted, &diff), vec![no_cycle()]);
 }
 
 #[test]

@@ -6,6 +6,7 @@
 //! SQLite core does. It adds no rule of its own: each arm is one port call, and the answer is the
 //! serde form the port returns.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_backend::Backend;
 use arlesh_core::{
     error::{WireError, WireErrorKind},
@@ -426,7 +427,7 @@ async fn set_tag(
     backend: &dyn Backend,
     kind: &str,
     id: arlesh_core::nodes::id::NodeId,
-    tag_id: i64,
+    tag_id: RowId,
     present: bool,
 ) -> Result<Value, WireError> {
     match (kind, present) {

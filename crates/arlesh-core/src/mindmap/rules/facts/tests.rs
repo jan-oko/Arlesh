@@ -1,6 +1,7 @@
 //! The board's facts: what each node inherits, which dependencies block it, its open question,
 //! and what the agents are doing.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::{
     domains::model::Domain,
@@ -13,7 +14,7 @@ use crate::{
 
 fn domain_row(id: i64, parent: Option<i64>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: if parent.is_none() {
@@ -285,9 +286,9 @@ fn a_node_is_seen_through_its_root_and_a_derived_one_through_its_nearest_stored_
     load.tasks.push(occurrence);
     let seen = |table: NodeTable, id: i64| EffectiveAccess {
         node_kind: table,
-        node_id: id,
+        node_id: tid(id),
         root_kind: NodeTable::Domain,
-        root_id: 2,
+        root_id: tid(2),
     };
     let access = [seen(NodeTable::Domain, 2), seen(NodeTable::Task, 10)];
     let (facts, _) = derive(&load, Some(&access));

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use chrono::NaiveDate;
 
@@ -380,10 +381,10 @@ fn wait_under(
     time_scope: Option<TimeScope>,
 ) -> Expectation {
     Expectation {
-        id: NodeId::Stored(id),
+        id: NodeId::Stored(tid(id)),
         title: "wait".to_string(),
         parent_type: parent_type.to_string(),
-        parent_id: NodeId::Stored(parent_id),
+        parent_id: NodeId::Stored(tid(parent_id)),
         status: ExpectationStatus::Pending,
         archival: ExpectationArchival::Live,
         time_scope,
@@ -406,7 +407,7 @@ fn wait_under(
 fn entry(node_type: &str, id: i64, timing: Timing) -> ItemLifecycle {
     ItemLifecycle {
         node_type: node_type.to_string(),
-        node_id: NodeId::Stored(id),
+        node_id: NodeId::Stored(tid(id)),
         timing,
         resolution: None,
         overdue: false,
@@ -420,7 +421,7 @@ fn entry(node_type: &str, id: i64, timing: Timing) -> ItemLifecycle {
 fn timing_of(lifecycles: &[ItemLifecycle], id: i64) -> Option<Timing> {
     lifecycles
         .iter()
-        .find(|entry| entry.node_type == EXPECTATION && entry.node_id == NodeId::Stored(id))
+        .find(|entry| entry.node_type == EXPECTATION && entry.node_id == NodeId::Stored(tid(id)))
         .map(|entry| entry.timing)
 }
 

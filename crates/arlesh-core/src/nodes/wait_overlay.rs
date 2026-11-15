@@ -12,6 +12,7 @@
 //! in `spawned_waits` / `occurrence_spawned_waits`. A delegation wait has no state table, so its
 //! archive is here; its status is its Task's to say.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -137,7 +138,7 @@ const EXPECTATION_COLUMNS: &str = "title, time_scope_start_id, time_scope_end_id
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WaitHome {
     /// The Habit, for a wait under an occurrence.
-    pub flow_id: Option<i64>,
+    pub flow_id: Option<RowId>,
     /// The occurrence's canonical node key.
     pub occurrence_key: Option<String>,
 }
@@ -326,7 +327,7 @@ impl OverlayOperator<'_> {
     /// One Habit's Expectation overlays whose node key is `LIKE` `pattern`.
     pub(crate) async fn expectations_where(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         pattern: &str,
     ) -> Result<Vec<(String, ExpectationOverlay)>, sqlx::Error> {
         let rows: Vec<KeyedExpectation> = sqlx::query_as(&format!(
@@ -402,7 +403,7 @@ impl OverlayOperator<'_> {
     }
 
     /// Forgets the overlays of the waits a stored Task that is going drew.
-    pub async fn forget_task_waits(&mut self, task_id: i64) -> Result<(), sqlx::Error> {
+    pub async fn forget_task_waits(&mut self, task_id: RowId) -> Result<(), sqlx::Error> {
         for kind in ["spawned_wait", "delegation_wait"] {
             let key = format!("{kind}:{task_id}");
             sqlx::query("DELETE FROM expectation_overlays WHERE node_key = ?")

@@ -1,5 +1,6 @@
 //! A Compound Task blocked when every one of its open counted items is.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::tasks::{
     model::{ExpectationStatus, Status, Task, Verdict},
@@ -75,7 +76,7 @@ fn every_open_item_blocked_blocks_the_compound() {
     };
     // One by a reason, one by a dependency on an unfinished task; the done one is not open.
     let found = blocked(&board, &[reason("task", 2)], &[edge(3, "task", 5)]);
-    assert_eq!(found, vec![NodeId::Stored(1)]);
+    assert_eq!(found, vec![NodeId::Stored(tid(1))]);
 }
 
 #[test]
@@ -140,7 +141,7 @@ fn a_pending_wait_or_an_unresolved_commitment_is_open_and_never_blocked() {
     };
     assert_eq!(
         blocked(&settled, &[reason("task", 2)], &[]),
-        vec![NodeId::Stored(1)]
+        vec![NodeId::Stored(tid(1))]
     );
 }
 
@@ -156,7 +157,7 @@ fn an_open_goal_counts_by_its_own_block_and_an_achieved_one_is_done() {
     };
     assert_eq!(
         blocked(&board, &[reason("goal", 2)], &[]),
-        vec![NodeId::Stored(1)]
+        vec![NodeId::Stored(tid(1))]
     );
     assert!(blocked(&board, &[], &[]).is_empty());
 }
@@ -173,7 +174,7 @@ fn a_compound_inside_counts_by_its_own_derived_block() {
     };
     let mut found = blocked(&board, &[reason("task", 3)], &[]);
     found.sort();
-    assert_eq!(found, vec![NodeId::Stored(1), NodeId::Stored(2)]);
+    assert_eq!(found, vec![NodeId::Stored(tid(1)), NodeId::Stored(tid(2))]);
 }
 
 #[test]

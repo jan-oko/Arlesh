@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `commitments` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::{id::NodeId, write},
@@ -24,7 +25,7 @@ impl CommitmentsPort for SqliteBackend {
         Ok(commitment)
     }
 
-    async fn get_commitment(&self, id: i64) -> Result<Commitment, WireError> {
+    async fn get_commitment(&self, id: RowId) -> Result<Commitment, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -78,7 +79,7 @@ impl CommitmentsPort for SqliteBackend {
     async fn add_tag_to_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(
@@ -97,7 +98,7 @@ impl CommitmentsPort for SqliteBackend {
     async fn remove_tag_from_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(

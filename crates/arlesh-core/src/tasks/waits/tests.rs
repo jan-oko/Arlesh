@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::tasks::rules::waits::scope_kind;
 use chrono::NaiveDate;
@@ -109,7 +110,7 @@ fn a_check_exists_only_once_it_is_due() {
 
 fn spawned(began: Option<&str>, last: Option<&str>) -> SpawnedWait {
     SpawnedWait {
-        task_id: 1,
+        task_id: tid(1),
         spawned_at: began.map(at),
         status: ExpectationStatus::Pending,
         archival: ExpectationArchival::Live,

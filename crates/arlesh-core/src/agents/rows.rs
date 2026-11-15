@@ -2,6 +2,7 @@
 //!
 //! Domain types carry no `sqlx`; a query decodes into a row here and converts with `From`.
 
+use crate::nodes::id::RowId;
 use super::{
     error::AgentError,
     model::{Agent, AgentId, Claim, ClaimStatus, UsageWindow},
@@ -16,7 +17,7 @@ pub(super) struct AgentRow {
     pub account: String,
     pub session_uuid: String,
     pub claim_kind: Option<String>,
-    pub claim_id: Option<i64>,
+    pub claim_id: Option<RowId>,
     pub claim_paused: bool,
     pub claimed_at: Option<String>,
     pub locked: bool,

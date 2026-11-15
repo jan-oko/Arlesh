@@ -4,6 +4,7 @@
 //! Pure. The checks and spawned waits they read are loaded in [`crate::tasks::waits`], which
 //! re-exports these names (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::{NaiveDate, NaiveDateTime, Timelike};
@@ -176,7 +177,7 @@ pub fn next_spawned_check(
 }
 
 /// The canonical node key of the wait a stored Task spawned — what its overlay is kept under.
-pub fn spawned_key(task_id: i64) -> String {
+pub fn spawned_key(task_id: RowId) -> String {
     crate::nodes::key::DerivedKey::SpawnedWait(crate::nodes::id::NodeId::Stored(task_id)).node_key()
 }
 
@@ -228,7 +229,7 @@ pub struct WaitSources<'rows> {
     /// The waits stored Tasks spawned.
     pub spawned: &'rows [SpawnedWait],
     /// Each Asynchronous Task's Expectation template, by Task id.
-    pub templates: &'rows HashMap<i64, AsyncTemplate>,
+    pub templates: &'rows HashMap<RowId, AsyncTemplate>,
     /// Every derived wait's Expectation overlay, by node key.
     pub overlays: &'rows HashMap<String, ExpectationOverlay>,
 }

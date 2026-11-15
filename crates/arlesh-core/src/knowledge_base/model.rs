@@ -1,19 +1,20 @@
 //! Knowledge-base entity models: People, Events, Threads.
 
+use crate::nodes::id::RowId;
 use serde::{Deserialize, Serialize};
 
 use crate::scopes::key::ScopeKey;
 
 /// Identifies a person row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct PersonId(pub i64);
+pub struct PersonId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for PersonId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for PersonId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<PersonId> for i64 {
+impl From<PersonId> for RowId {
     fn from(id: PersonId) -> Self {
         id.0
     }
@@ -23,7 +24,8 @@ impl From<PersonId> for i64 {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Person {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Display name (equals note title).
     pub name: String,
     /// JSON array of alias strings.
@@ -58,7 +60,8 @@ pub struct UpdatePersonRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Event {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Display title.
     pub title: String,
     /// Scope the event falls within (if any).
@@ -86,7 +89,8 @@ pub struct CreateEventRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Thread {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Display title.
     pub title: String,
     /// Path to the linked Obsidian note (if any).

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -13,10 +14,10 @@ fn day(d: u32) -> TimeScope {
 
 fn check() -> Task {
     Task {
-        id: NodeId::Stored(0),
+        id: NodeId::Stored(tid(0)),
         title: "Reply from Dana".into(),
         parent_type: "expectation".into(),
-        parent_id: NodeId::Stored(5),
+        parent_id: NodeId::Stored(tid(5)),
         status: crate::tasks::model::Status::Ordinary(crate::tasks::model::TaskStatus::Todo),
         delegate_to: None,
         agentic: None,
@@ -40,7 +41,7 @@ fn check() -> Task {
 fn a_full_editor_save_repeating_parent_and_day_passes() {
     let request = UpdateTaskRequest {
         parent_type: Some("expectation".into()),
-        parent_id: Some(NodeId::Stored(5)),
+        parent_id: Some(NodeId::Stored(tid(5))),
         time_scope: Some(Some(day(20))),
         agentic: Some(TaskAgentic::Yes),
         delegate_to: Some(None),
@@ -54,7 +55,7 @@ fn moving_redating_delegating_or_spawning_is_refused() {
     let refused = |request: UpdateTaskRequest| refuse_changes(&check(), &request).is_err();
     assert!(refused(UpdateTaskRequest {
         parent_type: Some("project".into()),
-        parent_id: Some(NodeId::Stored(1)),
+        parent_id: Some(NodeId::Stored(tid(1))),
         ..Default::default()
     }));
     assert!(refused(UpdateTaskRequest {
@@ -62,7 +63,7 @@ fn moving_redating_delegating_or_spawning_is_refused() {
         ..Default::default()
     }));
     assert!(refused(UpdateTaskRequest {
-        delegate_to: Some(Some(crate::tasks::model::Delegate::Person { id: 2 })),
+        delegate_to: Some(Some(crate::tasks::model::Delegate::Person { id: tid(2) })),
         ..Default::default()
     }));
     assert!(refused(UpdateTaskRequest {

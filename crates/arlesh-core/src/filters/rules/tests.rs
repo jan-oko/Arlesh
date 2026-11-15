@@ -1,5 +1,6 @@
 //! Each predicate on its own, at the boundaries the specification names.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::filters::model::{BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagMode};
 use crate::tasks::{lifecycle::Timing, model::Verdict};
@@ -699,7 +700,7 @@ fn tags_combine_as_any_and_all_and_not_exclude() {
     let with = |tags: Vec<(i64, TagMode)>| BoardFilter {
         tags: tags
             .into_iter()
-            .map(|(tag_id, mode)| crate::filters::model::TagFilter { tag_id, mode })
+            .map(|(tag_id, mode)| crate::filters::model::TagFilter { tag_id: tid(tag_id), mode })
             .collect(),
         ..BoardFilter::default()
     };
@@ -729,10 +730,10 @@ fn tags_combine_as_any_and_all_and_not_exclude() {
 #[test]
 fn self_matches_needs_both_the_status_and_the_tags() {
     let mut node = task("todo");
-    node.tag_ids = vec![7];
+    node.tag_ids = vec![tid(7)];
     let filter = BoardFilter {
         tags: vec![crate::filters::model::TagFilter {
-            tag_id: 8,
+            tag_id: tid(8),
             mode: TagMode::Any,
         }],
         ..BoardFilter::preset(Preset::Plan)

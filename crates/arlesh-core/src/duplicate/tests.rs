@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
 use crate::database::open::{open, OpenMode};
@@ -40,7 +41,7 @@ async fn project_under(db: &mut Db<Transactional>, title: &str, parent: i64) -> 
             title: title.to_string(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(parent),
+            parent_id: Some(tid(parent)),
             status: None,
             knowledge_base_directory: None,
         })
@@ -122,7 +123,7 @@ async fn fill(db: &mut Db<Transactional>, project: i64) {
             title: "Flow".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: tid(project),
             ..Default::default()
         })
         .await
@@ -154,10 +155,10 @@ async fn a_duplicated_project_with_content_is_deleted_like_any_other() {
 
     assert_nothing_left_under(&mut db, copy).await;
     // The original and its content are untouched.
-    assert!(db.domains().get(DomainId(original)).await.is_ok());
+    assert!(db.domains().get(DomainId(tid(original))).await.is_ok());
     assert!(!db
         .tasks()
-        .child_ids("project", original)
+        .child_ids("project", tid(original))
         .await
         .unwrap()
         .is_empty());
@@ -169,7 +170,7 @@ async fn a_project_with_content_is_deleted_without_having_been_duplicated() {
     let original = project(&mut db, "Original", 1).await;
     fill(&mut db, original).await;
 
-    crate::domains::delete_subtree(&mut db, DomainId(original))
+    crate::domains::delete_subtree(&mut db, DomainId(tid(original)))
         .await
         .unwrap();
 
@@ -179,42 +180,42 @@ async fn a_project_with_content_is_deleted_without_having_been_duplicated() {
 #[tokio::test]
 async fn an_aspect_is_refused_and_nothing_is_deleted() {
     let (_factory, mut db) = session().await;
-    assert!(crate::domains::delete_subtree(&mut db, DomainId(1))
+    assert!(crate::domains::delete_subtree(&mut db, DomainId(tid(1)))
         .await
         .is_err());
-    assert!(db.domains().get(DomainId(1)).await.is_ok());
+    assert!(db.domains().get(DomainId(tid(1))).await.is_ok());
 }
 
 /// The Project, its sub-Project and every kind of content that hung under it are gone.
 async fn assert_nothing_left_under(db: &mut Db<Transactional>, project: i64) {
-    assert!(db.domains().get(DomainId(project)).await.is_err());
+    assert!(db.domains().get(DomainId(tid(project))).await.is_err());
     assert!(db
         .domains()
-        .child_ids(DomainId(project))
+        .child_ids(DomainId(tid(project)))
         .await
         .unwrap()
         .is_empty());
     assert!(db
         .tasks()
-        .child_ids("project", project)
+        .child_ids("project", tid(project))
         .await
         .unwrap()
         .is_empty());
     assert!(db
         .goals()
-        .child_ids("project", project)
+        .child_ids("project", tid(project))
         .await
         .unwrap()
         .is_empty());
     assert!(db
         .infos()
-        .child_ids("project", project)
+        .child_ids("project", tid(project))
         .await
         .unwrap()
         .is_empty());
     assert!(db
         .flows()
-        .ids_under(NodeTable::Domain, project)
+        .ids_under(NodeTable::Domain, tid(project))
         .await
         .unwrap()
         .is_empty());

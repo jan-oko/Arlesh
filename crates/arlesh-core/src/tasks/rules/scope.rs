@@ -4,6 +4,7 @@
 //! Pure functions over resolved windows and rows. The reads that gather those windows live in
 //! `tasks::scope_rules`, which calls these; see ADR 0010.
 
+use crate::nodes::id::RowId;
 use std::collections::HashSet;
 
 use chrono::NaiveDateTime;
@@ -386,7 +387,7 @@ pub fn derive_item_lifecycles(
     // open check task is due, under the check task's row id. A wait is never Missed, so a passed
     // window with the wait pending is flagged Overdue.
     let windows = rows.wait_windows;
-    let checks: std::collections::HashMap<i64, (TimeScope, chrono::NaiveDateTime)> = windows
+    let checks: std::collections::HashMap<RowId, (TimeScope, chrono::NaiveDateTime)> = windows
         .expectation_checks
         .into_iter()
         .filter(|check| check.resolved_at.is_none())

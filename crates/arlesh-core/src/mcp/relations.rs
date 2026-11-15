@@ -12,6 +12,7 @@
 //! node outside the roots is. The writes then run inside the tool's one transaction, after the
 //! row's.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{
@@ -46,8 +47,8 @@ pub(super) struct Asked {
 pub(super) struct Relations {
     add_dependencies: Vec<Dependency>,
     remove_dependencies: Vec<Dependency>,
-    add_tags: Vec<i64>,
-    remove_tags: Vec<i64>,
+    add_tags: Vec<RowId>,
+    remove_tags: Vec<RowId>,
     block_reasons: Option<Vec<String>>,
 }
 
@@ -124,7 +125,7 @@ fn prerequisite(board: &Board, id: &NodeIdParam) -> Result<Dependency, Answer> {
 }
 
 /// The row of the visible Tag `id` names.
-fn tag(board: &Board, id: &NodeIdParam) -> Result<i64, Answer> {
+fn tag(board: &Board, id: &NodeIdParam) -> Result<RowId, Answer> {
     let node = board.resolve_among(id, &["tag"])?;
     match (node.kind.as_str(), &node.node_id) {
         ("tag", NodeId::Stored(row)) => Ok(*row),

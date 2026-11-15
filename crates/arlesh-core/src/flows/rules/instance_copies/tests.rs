@@ -1,20 +1,21 @@
 //! Which started-instance links a subtree copy carries over.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
 
 fn node(node_type: &str, node_id: i64) -> TargetRef {
     TargetRef {
         node_type: node_type.to_string(),
-        node_id,
+        node_id: tid(node_id),
     }
 }
 
 /// Run 1 of flow 7, rooted at goal 10 under project 3, holding goal 10 and task 11.
 fn run() -> Vec<InstanceNode> {
     let row = |materialised: TargetRef, source: TargetRef, parent: TargetRef| InstanceNode {
-        instance_id: 1,
-        flow_id: Some(7),
+        instance_id: tid(1),
+        flow_id: Some(tid(7)),
         root: node("goal", 10),
         started_at: 500,
         node: materialised,
@@ -35,7 +36,7 @@ fn a_copied_run_keeps_the_original_flow_and_start_and_points_at_the_copies() {
     assert_eq!(
         copied_instances(&run(), &copies),
         vec![InstanceCopy {
-            flow_id: Some(7),
+            flow_id: Some(tid(7)),
             root: node("goal", 20),
             started_at: 500,
             nodes: vec![

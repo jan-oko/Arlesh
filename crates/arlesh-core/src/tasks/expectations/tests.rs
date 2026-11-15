@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::scopes::key::test_key;
 
@@ -24,7 +25,7 @@ fn stored() -> Expectation {
         check_starting: Some(at("2026-07-01T09:00:00")),
         last_check_at: None,
         time_scope: None,
-        tag_ids: vec![2],
+        tag_ids: vec![tid(2)],
         position: 100,
         is_private: false,
         agentic: false,
@@ -122,10 +123,10 @@ fn a_move_needs_both_halves_of_the_parent_link() {
 #[test]
 fn an_unrecognised_stored_status_reads_as_pending() {
     let row = ExpectationRow {
-        id: 2,
+        id: tid(2),
         title: "x".to_string(),
         parent_type: "task".to_string(),
-        parent_id: 1,
+        parent_id: tid(1),
         status: "bogus".to_string(),
         archival: "bogus".to_string(),
         check_every_n: Some(2),

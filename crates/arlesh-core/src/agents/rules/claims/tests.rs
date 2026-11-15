@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
 
@@ -9,7 +10,7 @@ use crate::access::model::NodeTable;
 // └── Body (domain 3)
 
 fn key(kind: NodeTable, id: i64) -> NodeKey {
-    NodeKey::new(kind, id)
+    NodeKey::new(kind, tid(id))
 }
 
 fn node(key: NodeKey, parent: Option<NodeKey>) -> StoredNode {

@@ -80,7 +80,8 @@ fn a_spawned_wait_of_an_occurrence_follows_the_occurrences_new_id() {
     ];
     let pairs = rewrite_keys(&keys, &mut ids);
     let new_occurrence = rewrite_key(&occurrence, &ids).expect("known row");
-    let new_derived = uuid_v5(&NODE_NAMESPACE, &new_occurrence);
+    let new_derived = DerivedId::of_key(&new_occurrence);
+    let new_derived = new_derived.as_str();
     assert!(pairs.contains(&(
         format!("spawned_wait:{derived_old}"),
         format!("spawned_wait:{new_derived}")

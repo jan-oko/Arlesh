@@ -12,6 +12,7 @@
 //!
 //! [`WireErrorKind::NeedsConfirmation`]: crate::error::WireErrorKind::NeedsConfirmation
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{id::NodeId, write};
@@ -169,7 +170,7 @@ pub async fn set_item_cycles_confirmed(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     cycles: &[FlowCycleInput],
     reconcile: Option<Reconcile>,
     fork_at: Option<NaiveDateTime>,
@@ -230,7 +231,7 @@ pub async fn delete_wait(
 /// Deletes the Info `id`, and the attachment naming it when it is an added child of a Habit
 /// occurrence — two writes, so that the attachment never outlives the row it names.
 #[tracing::instrument(skip(db))]
-pub async fn delete_info(db: &mut Db<Transactional>, id: i64) -> Result<(), WireError> {
+pub async fn delete_info(db: &mut Db<Transactional>, id: RowId) -> Result<(), WireError> {
     db.flows()
         .detach_instance_child("info", id)
         .await

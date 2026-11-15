@@ -3,6 +3,7 @@
 //!
 //! A gather and nothing else; [`super::rules::derive_board`] derives the board from it (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use crate::{
@@ -49,7 +50,7 @@ pub struct BoardSources {
     /// Every node a started Flow materialised.
     pub flow_instance_nodes: Vec<TargetRef>,
     /// What each Habit's rows are drawn from, by Flow id — or why it could not be read.
-    pub habits: HashMap<i64, Result<HabitSource, FlowError>>,
+    pub habits: HashMap<RowId, Result<HabitSource, FlowError>>,
     /// Every dependency edge recorded against a derived node.
     pub derived_edges: Vec<DerivedEdge>,
 }

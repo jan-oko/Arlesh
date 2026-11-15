@@ -7,6 +7,7 @@
 //! the rows the copy needs: one instance per run that the copy reached, holding one node row per
 //! copied node. The plan is pure; `flows::copy_instance_links` gathers the rows and writes it.
 
+use crate::nodes::id::RowId;
 use super::targets::CopiedNodes;
 use crate::flows::model::TargetRef;
 
@@ -15,9 +16,9 @@ use crate::flows::model::TargetRef;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceNode {
     /// The run's `flow_instances` id.
-    pub instance_id: i64,
+    pub instance_id: RowId,
     /// The Flow the run was started from; `None` once that Flow is deleted.
-    pub flow_id: Option<i64>,
+    pub flow_id: Option<RowId>,
     /// The run's root node.
     pub root: TargetRef,
     /// When the run was started.
@@ -34,7 +35,7 @@ pub struct InstanceNode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceCopy {
     /// The **original** Flow, so the copies read "from flow X" exactly as the originals do.
-    pub flow_id: Option<i64>,
+    pub flow_id: Option<RowId>,
     /// The copy of the run's root, or — when the root itself was not copied — the copy of the
     /// first of the run's nodes that was.
     pub root: TargetRef,
@@ -59,7 +60,7 @@ pub struct InstanceNodeCopy {
 /// The instance links a copy needs: every run with at least one node the copy carried, holding a
 /// row for each such node. Runs come in the order their first copied node appears in `rows`.
 pub fn copied_instances(rows: &[InstanceNode], copies: &CopiedNodes) -> Vec<InstanceCopy> {
-    let mut runs: Vec<(i64, InstanceCopy)> = Vec::new();
+    let mut runs: Vec<(RowId, InstanceCopy)> = Vec::new();
     for row in rows {
         let Some(node) = copy_of(&row.node, copies) else {
             continue;

@@ -16,6 +16,7 @@
 //! Pure: [`derive_waits_in`] draws them over [`WaitBoardSources`], which
 //! [`crate::nodes::waits::derive_waits`] reads (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -135,7 +136,7 @@ pub fn derive_waits_in(
 ) -> Result<WaitRows, AppError> {
     let windows = waits::wait_windows(&sources.windows, now)?;
     let state = sources.checks;
-    let stored: HashMap<i64, &Expectation> = sources
+    let stored: HashMap<RowId, &Expectation> = sources
         .windows
         .expectations
         .iter()

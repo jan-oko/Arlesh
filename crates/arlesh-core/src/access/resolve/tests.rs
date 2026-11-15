@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
 
@@ -18,22 +19,22 @@ use crate::access::model::{NodeKey, NodeTable};
 //   └── Run (task 110)
 
 fn domain(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Domain, id)
+    NodeKey::new(NodeTable::Domain, tid(id))
 }
 fn goal(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Goal, id)
+    NodeKey::new(NodeTable::Goal, tid(id))
 }
 fn task(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Task, id)
+    NodeKey::new(NodeTable::Task, tid(id))
 }
 fn info(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Info, id)
+    NodeKey::new(NodeTable::Info, tid(id))
 }
 fn flow(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Flow, id)
+    NodeKey::new(NodeTable::Flow, tid(id))
 }
 fn flow_task(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::FlowTask, id)
+    NodeKey::new(NodeTable::FlowTask, tid(id))
 }
 
 fn node(key: NodeKey, parent: Option<NodeKey>) -> StoredNode {

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -8,10 +9,10 @@ fn a_remembered_key_is_recalled_by_its_id() {
     let key = DerivedKey::Occurrence(OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowTask,
-            item_id: 900_001,
+            item_id: tid(900_001),
         },
         iteration: crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2031, 1, 1).unwrap()),
-        cycle: 0,
+        cycle: tid(0),
     });
     let id = remember(&key);
     assert_eq!(id, key.id());

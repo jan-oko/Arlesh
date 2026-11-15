@@ -6,6 +6,7 @@
 //! [`crate::flows::rules::occurrences`]. Its names are re-exported here, so callers did not change
 //! when it moved (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDateTime;
@@ -163,7 +164,7 @@ impl HabitSource {
 /// A flow with no Recurrence derives nothing. So does a commitment flow holding goal items: a
 /// Commitment cannot parent a Goal, so such a template has no valid materialisation, and the load
 /// names the flow rather than drawing a subtree the model forbids.
-#[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
+#[tracing::instrument(skip(db, flow), fields(flow_id = %flow.id))]
 pub async fn derive_habit<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
@@ -180,7 +181,7 @@ pub async fn derive_habit<M: SessionMode>(
 /// The iterations of this Habit that carry an overlay, a relation or an attached child.
 async fn touched_iterations<M: SessionMode>(
     db: &mut Db<M>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<HashSet<ScopeKey>, FlowError> {
     let mut touched: HashSet<ScopeKey> = db
         .overlays()

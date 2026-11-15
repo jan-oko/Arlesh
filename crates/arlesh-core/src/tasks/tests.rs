@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::scopes::key::test_key;
 use crate::tasks::model::{Dependency, TaskAgentic};
@@ -23,7 +24,7 @@ fn stored_task() -> Task {
         parent_type: "project".to_string(),
         parent_id: 7.into(),
         status: Status::Ordinary(TaskStatus::Todo),
-        delegate_to: Some(Delegate::Person { id: 3 }),
+        delegate_to: Some(Delegate::Person { id: tid(3) }),
         agentic: None,
         asynchronous: false,
         compound: false,
@@ -218,12 +219,12 @@ fn delegating_to_another_person_replaces_the_delegate() {
     let write = TaskWrite::merge(
         stored_task(),
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Person { id: 9 })),
+            delegate_to: Some(Some(Delegate::Person { id: tid(9) })),
             ..Default::default()
         },
     )
     .unwrap();
-    assert_eq!(write.delegate_to, Some(Delegate::Person { id: 9 }));
+    assert_eq!(write.delegate_to, Some(Delegate::Person { id: tid(9) }));
 }
 
 /// The stored row, Asynchronous with a template of its own.
@@ -233,7 +234,7 @@ fn asynchronous_task() -> Task {
         compound: false,
         async_template: Some(AsyncTemplate {
             title: "Reviewer replies".to_string(),
-            tag_ids: vec![4],
+            tag_ids: vec![tid(4)],
             time_scope: None,
             check_every: Some(DurationSpec {
                 n: 2,
@@ -383,7 +384,7 @@ fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
     assert_eq!(write.parent_type, "project");
     assert_eq!(write.parent_id, 7);
     assert_eq!(write.title, "Stored");
-    assert_eq!(write.delegate_to, Some(Delegate::Person { id: 3 }));
+    assert_eq!(write.delegate_to, Some(Delegate::Person { id: tid(3) }));
     assert_eq!(write.agentic, None);
     assert!(!write.asynchronous && write.async_template.is_none());
     assert_eq!(write.position, 100);

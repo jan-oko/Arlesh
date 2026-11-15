@@ -9,6 +9,7 @@
 //! integer id for them to hold — and is read here as the occurrence's child, through its
 //! attachment, so every reader sees it where it belongs.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{
@@ -32,7 +33,7 @@ pub use super::rules::attach::{added_edges_in, attach_children, StoredRows};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HabitFailure {
     /// The Habit.
-    pub flow_id: i64,
+    pub flow_id: RowId,
     /// Why, for the user-facing notice.
     pub message: String,
 }
@@ -53,7 +54,7 @@ pub async fn derive_habits(
         match derive_habit(db, flow, now, horizon).await {
             Ok(derived) => rows.extend(derived),
             Err(error) => {
-                tracing::warn!(flow_id = flow.id, error = %error, "habit derivation failed");
+                tracing::warn!(flow_id = %flow.id, error = %error, "habit derivation failed");
                 failures.push(HabitFailure {
                     flow_id: flow.id,
                     message: error.to_string(),

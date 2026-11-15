@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `infos` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::WireError,
@@ -33,7 +34,7 @@ impl InfosPort for SqliteBackend {
         db.infos().list().await.map_err(WireError::from_error)
     }
 
-    async fn update_info(&self, id: i64, request: UpdateInfoRequest) -> Result<Info, WireError> {
+    async fn update_info(&self, id: RowId, request: UpdateInfoRequest) -> Result<Info, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let info = arlesh_core::nodes::write::update_info(
             &mut db,
@@ -47,7 +48,7 @@ impl InfosPort for SqliteBackend {
         Ok(info)
     }
 
-    async fn delete_info(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_info(&self, id: RowId) -> Result<(), WireError> {
         // Transactional because it is two writes now: a note may be an added child of a Habit
         // occurrence, and the attachment naming it must not outlive the row it names.
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -57,9 +58,9 @@ impl InfosPort for SqliteBackend {
 
     async fn duplicate_info(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Info>, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;

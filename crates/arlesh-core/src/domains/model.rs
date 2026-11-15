@@ -1,18 +1,19 @@
 //! Domain resource models.
 
+use crate::nodes::id::RowId;
 use serde::{Deserialize, Serialize};
 
 /// Identifies a domain row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct DomainId(pub i64);
+pub struct DomainId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for DomainId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for DomainId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
 
-impl From<DomainId> for i64 {
+impl From<DomainId> for RowId {
     fn from(id: DomainId) -> Self {
         id.0
     }
@@ -90,7 +91,8 @@ impl ProjectStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Domain {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Display title.
     pub title: String,
     /// Optional description.
@@ -98,7 +100,8 @@ pub struct Domain {
     /// Subtype discriminator.
     pub subtype: String,
     /// Parent domain id (nullable).
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// Color hex string (Aspects only).
     pub color: Option<String>,
     /// Project status (Projects only).
@@ -114,6 +117,15 @@ pub struct Domain {
 /// Request body for creating a new domain.
 #[derive(Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateDomainRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// Optional description.
@@ -121,7 +133,8 @@ pub struct CreateDomainRequest {
     /// Subtype of the domain being created. Must not be `Aspect`.
     pub subtype: DomainSubtype,
     /// Parent domain id. Required for Projects (must be Aspect or Project).
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// Initial project status (Projects only).
     pub status: Option<ProjectStatus>,
     /// Linked Obsidian directory (Projects only).
@@ -136,7 +149,8 @@ pub struct UpdateDomainRequest {
     /// New description (if provided).
     pub description: Option<String>,
     /// New parent id (if provided).
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// New subtype — used for domain↔project conversion. Must not be `Aspect`.
     pub subtype: Option<DomainSubtype>,
     /// New project status (if provided).

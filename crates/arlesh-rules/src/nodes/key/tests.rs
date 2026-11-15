@@ -1,3 +1,4 @@
+use crate::nodes::key::no_cycle;
 use chrono::NaiveDate;
 
 use super::*;
@@ -23,7 +24,7 @@ fn an_occurrence_key_spells_its_tuple() {
         "flow_task:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:3"
     );
     assert_eq!(
-        key(TemplateKind::FlowRoot, 4, day("2026-01-02"), NO_CYCLE).node_key(),
+        key(TemplateKind::FlowRoot, 4, day("2026-01-02"), no_cycle()).node_key(),
         "flow_root:4:{\"kind\":\"day\",\"date\":\"2026-01-02\"}:0"
     );
 }

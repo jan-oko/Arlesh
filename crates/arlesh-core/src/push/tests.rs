@@ -1,5 +1,6 @@
 //! Registering a device, planning for it, and what a restart keeps.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
 use crate::database::session::SessionFactory;
@@ -19,7 +20,7 @@ async fn factory() -> SessionFactory {
 /// Puts an agent holding the root Aspect at capacity (`true`) or back in room (`false`): the one
 /// fact a device is told about capacity.
 async fn set_capacity(db: &mut Db<Transactional>, locked: bool) {
-    let root = NodeKey::new(NodeTable::Domain, 1);
+    let root = NodeKey::new(NodeTable::Domain, tid(1));
     db.access().add_root(root).await.unwrap();
     let existing = db.agents().all().await.unwrap();
     let agent = match existing.first() {

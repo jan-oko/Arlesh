@@ -294,7 +294,11 @@ before image at its **original rowid**, and of an update a write of the before i
 every column — then moves the Gesture to the Redo Stack. **Redo** does the same in the other
 direction. Restoring by rowid is why the feature is row-level rather than command-level: a deleted
 goal that comes back at a new id comes back as an orphan, with its children, tags, dependencies and
-block reasons pointing at nothing.
+block reasons pointing at nothing. Since ids became UUIDs (ADR 0017) a row's id is a TEXT column and
+no longer its rowid, but the journal never read the id column: `row_id` is the SQLite rowid, the
+after and before images carry the TEXT id like any other column, and a restored row goes back at its
+original rowid under its original id. The triggers are unchanged for it (migration 0109 recreates them
+after the table rebuild drops them).
 
 It is **one transaction**, with journalling suppressed and foreign keys deferred to the commit. The
 deferral is what lets a subtree be rebuilt in whatever order it was taken apart — what has to hold

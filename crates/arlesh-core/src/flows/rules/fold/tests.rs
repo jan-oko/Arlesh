@@ -1,6 +1,7 @@
 //! The Habit fold, ported from `src/utils/habit-collapse.test.ts` as its specification. The whole
 //! fold is pinned by `conformance/habit-fold.json`; these name its parts.
 
+use crate::nodes::id::tid;
 use super::*;
 
 fn date(iso: &str) -> NaiveDate {
@@ -9,7 +10,7 @@ fn date(iso: &str) -> NaiveDate {
 
 fn day(iso: &str) -> Iteration {
     Iteration {
-        flow_id: 1,
+        flow_id: tid(1),
         scope_kind: Some(ScopeKind::Day),
         anchor_date: date(iso),
         passed: true,

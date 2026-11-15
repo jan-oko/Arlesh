@@ -1,5 +1,6 @@
 //! A template row's inheritable fields and the update that changes them.
 
+use crate::nodes::id::RowId;
 use serde::{Deserialize, Serialize};
 
 use crate::tasks::model::{AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival};
@@ -21,7 +22,8 @@ pub struct TemplateFields {
     pub archival: TaskArchival,
     /// Tags every occurrence carries.
     #[serde(default)]
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// Block reasons every occurrence carries until it has its own.
     #[serde(default)]
     pub block_reasons: Vec<String>,
@@ -59,7 +61,8 @@ pub struct TemplateUpdate {
     pub archival: Option<TaskArchival>,
     /// The whole tag list to set.
     #[serde(default)]
-    pub tag_ids: Option<Vec<i64>>,
+    #[schemars(with = "Option<Vec<String>>")]
+    pub tag_ids: Option<Vec<RowId>>,
     /// The whole block-reason list to set, in order.
     #[serde(default)]
     pub block_reasons: Option<Vec<String>>,

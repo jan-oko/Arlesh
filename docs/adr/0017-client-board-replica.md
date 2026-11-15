@@ -22,14 +22,16 @@ third step of the delivery below.
    Fetching a snapshot repairs anything.
 3. **A local refusal sends nothing.** The user sees it and retries once the board has synced. The
    server can still refuse what the Replica accepted.
-4. **A gap is detected, not hoped against.** Each change carries its revision and only the next one
-   is applied. A gap means catch-up, or a snapshot if the server no longer has those changes; a new
-   epoch always means a snapshot. A content hash of the board, compared periodically and when idle,
-   catches a change that was never announced.
-5. **A trigger-written Change Log feeds sync**, holding after-images per revision and including undo
-   and redo. Like the Undo Journal, it cannot be forgotten by a command that does not know it exists.
-   The journal itself cannot do this job: it is truncated at startup, capped, and written by neither
-   undo nor redo.
+4. **A gap is detected, not hoped against, and repaired with a whole board.** Each change carries its
+   revision and only the next one is applied. Any gap, a reconnect, a new epoch or a content-hash
+   mismatch fetches a snapshot: there is no catch-up by revision (the user, 2026-11-13: "Always a
+   full board."). The server keeps no history of changes. A content hash of the board, compared
+   periodically and when idle, catches a change that was never announced.
+5. **A trigger-written Change Log feeds sync**, naming the rows each revision changed and what they
+   became, and including undo and redo. The server attaches the changed rows to each live event and
+   keeps no history of them. Like the Undo Journal, it cannot be forgotten by a command that does
+   not know it exists. The journal itself cannot do this job: it is truncated at startup, capped, and
+   written by neither undo nor redo.
 6. **Hold until settled.** While writes are pending, incoming server changes are buffered. When the
    queue drains, the Replica rolls back its predictions and applies the buffered rows. A correct
    prediction changes nothing on screen, a wrong one loses to the server, and rows made by triggers
@@ -38,19 +40,26 @@ third step of the delivery below.
    is dropped, never sent, and told in one toast.
 8. **A lost connection rolls back.** Pending predictions go, the app goes read-only, and catch-up
    shows the truth, including a write that did land. There is no retry and no offline queue.
-9. **UUIDs are the stored identity**, as TEXT keys on every replicated table with a surrogate id.
-   Existing rows keep their `full_id`, so short ids and links survive. New ids are client-generated
-   UUIDv7, which is what lets the same request create the same node on both sides. The id stays
-   optional for agents and scripts. Rows a write creates indirectly derive their ids from the request
-   where that is practical; otherwise a press on one waits until settled.
+9. **UUIDs are the stored identity**, as TEXT keys on every table with a surrogate integer id (31 of
+   them) and on every column that names such a row. Existing rows keep their `full_id` as their id,
+   so short ids and links survive (migrations 0107 to 0109). New ids are UUIDv7, which is what lets
+   the same request create the same node on both sides. The id is optional on every create route
+   (HTTP and MCP), so an agent or script that sends none still works and the server mints one; a
+   client may send its own. Rows a write creates indirectly derive their ids from the request where
+   that is practical; otherwise a press on one waits until settled. A derived id (a Habit occurrence
+   and the like) is a UUID of version 8, the hash of its value key, and no stored id is ever version
+   8, so the two kinds are told apart by the UUID alone.
 10. **Undo is not predicted.** An unsent action is cancelled locally. Otherwise Ctrl+Z waits for the
     queue to settle and goes to the server, because after settling the Replica no longer holds a
     journal for confirmed writes.
 11. **One frontend path.** Rust emits changed derived nodes as sequenced events in both modes; in
     Standalone the same pipeline runs with no server and no prediction. The pending-writes lane and
     the whole-board reload on a write go.
-12. **The Replica is a file in app-private storage**, so the app opens at once and can show the last
-    board with no connection. Android therefore ships the core and SQLite, with no local-board mode.
+12. **The Replica is in-memory SQLite**, written to storage on the startup fetch and when the app
+    quits normally (the user, 2026-11-13: "Memory, written on startup fetch + when quitting normally.
+    Startup loads the cache first then fetches a full board."). Launch shows the cached board at once,
+    read-only, and then fetches a whole board; there is no catch-up by revision. Android therefore
+    ships the core and SQLite, with no local-board mode.
 13. **Client and server must share a schema version.** On a mismatch the app is read-only and says
     which side to update. A rule change without a schema change is tolerated: the server's answer
     corrects the prediction.
@@ -78,4 +87,8 @@ third step of the delivery below.
   means installing a new build.
 - Delivery is three pull requests in order, none stacked: UUID identity, then the server's sync
   surface (Change Log, device snapshot, content hash), then the Replica and the frontend switch.
+- UUID identity changes what a row number was: it is gone from the API and the MCP. The ids a caller
+  holds keep working (`id` now equals `full_id`), a short id that once needed a longer prefix to
+  avoid a row number may read shorter, and a Habit occurrence's id changes once, because it is the
+  hash of a key that spells the ids of the rows it is drawn from.
 - `/board` stays for agents and scripts, so its response time is still worth improving separately.

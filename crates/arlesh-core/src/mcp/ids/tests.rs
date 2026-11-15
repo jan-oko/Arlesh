@@ -1,13 +1,14 @@
+use crate::nodes::id::tid;
 use super::*;
 use crate::nodes::id::DerivedId;
 
 fn entry(table: NodeTable, id: i64, title: &str, parent: Option<(NodeTable, i64)>) -> Entry {
     Entry {
         table,
-        id: NodeId::Stored(id),
+        id: NodeId::Stored(tid(id)),
         kind: table.as_str().to_string(),
         title: title.into(),
-        parent: parent.map(|(table, id)| (table, NodeId::Stored(id))),
+        parent: parent.map(|(table, id)| (table, NodeId::Stored(tid(id)))),
     }
 }
 
@@ -24,17 +25,17 @@ fn board() -> NodeNames {
 
 #[test]
 fn a_stored_nodes_full_id_is_a_uuid_v5_of_its_kind_and_row() {
-    let id = full_id(NodeTable::Task, &NodeId::Stored(5));
+    let id = full_id(NodeTable::Task, &NodeId::Stored(tid(5)));
 
     assert_eq!(id, uuid_v5(&NODE_NAMESPACE, "task:5"));
     assert_eq!(
         id,
-        full_id(NodeTable::Task, &NodeId::Stored(5)),
+        full_id(NodeTable::Task, &NodeId::Stored(tid(5))),
         "deterministic"
     );
     assert_ne!(
         id,
-        full_id(NodeTable::Goal, &NodeId::Stored(5)),
+        full_id(NodeTable::Goal, &NodeId::Stored(tid(5))),
         "the kind is part of it"
     );
 }
@@ -79,7 +80,7 @@ fn a_short_id_grows_only_as_far_as_a_collision_needs() {
     ]);
     let short = |id: i64| {
         names
-            .short_id(NodeTable::Task, &NodeId::Stored(id))
+            .short_id(NodeTable::Task, &NodeId::Stored(tid(id)))
             .unwrap_or("")
     };
     assert_eq!(short(1), "abcde1");
@@ -91,7 +92,7 @@ fn named(hex: &str, table: NodeTable, id: i64) -> Named {
     Named {
         short_id: String::new(),
         id: hex.into(),
-        node_id: NodeId::Stored(id),
+        node_id: NodeId::Stored(tid(id)),
         kind: "task".into(),
         title: format!("task {id}"),
         path: String::new(),
@@ -121,7 +122,7 @@ fn a_short_id_a_longer_prefix_and_the_full_id_all_resolve() {
         search.id.to_uppercase(),
     ] {
         let resolved = names.resolve(&text).expect("it names the task");
-        assert_eq!(resolved.node_id, NodeId::Stored(5), "{text}");
+        assert_eq!(resolved.node_id, NodeId::Stored(tid(5)), "{text}");
     }
 }
 
@@ -210,12 +211,12 @@ fn a_digit_only_short_id_is_handed_out_and_resolves() {
     ]);
 
     assert_eq!(
-        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        names.short_id(NodeTable::Task, &NodeId::Stored(tid(1))),
         Some("269")
     );
     assert!(matches!(
         names.resolve("269").map(|node| node.node_id.clone()),
-        Ok(NodeId::Stored(1))
+        Ok(NodeId::Stored(tid(1)))
     ));
 }
 
@@ -239,7 +240,7 @@ fn a_string_that_is_both_a_row_id_and_a_prefix_is_ambiguous_listing_both() {
     }
     assert!(matches!(
         names.resolve("abc").map(|node| node.node_id.clone()),
-        Ok(NodeId::Stored(269))
+        Ok(NodeId::Stored(tid(269)))
     ));
 }
 
@@ -266,7 +267,7 @@ fn no_short_id_handed_out_equals_a_visible_row_id() {
         assert!(node.short_id.len() >= SHORTEST);
     }
     assert_eq!(
-        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        names.short_id(NodeTable::Task, &NodeId::Stored(tid(1))),
         Some("26959"),
         "past 269 (a row id) and 2695 (another)"
     );
@@ -283,7 +284,7 @@ fn a_node_of_another_kind_is_named_in_the_refusal() {
 
     assert!(matches!(
         names.resolve_as("abc", Some(NodeTable::Task)),
-        Err(IdRefusal::WrongKind(node)) if node.node_id == NodeId::Stored(4)
+        Err(IdRefusal::WrongKind(node)) if node.node_id == NodeId::Stored(tid(4))
     ));
     assert!(names.resolve_as("abc", Some(NodeTable::Goal)).is_ok());
     assert!(names.resolve_as("4", Some(NodeTable::Goal)).is_ok());

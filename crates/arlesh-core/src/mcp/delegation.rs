@@ -5,6 +5,7 @@
 //! serves — the snapshot's `expectations` and `arlesh_waits.get` alike. A wait given a title of
 //! its own is left as it is, as the app leaves it.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use crate::{
@@ -21,7 +22,7 @@ pub(super) fn finish_title(delegate: &str, task_title: &str) -> String {
 
 /// Labels every delegation wait in `load` whose title is still its Task's.
 pub(super) fn label_waits(load: &mut MindmapLoad, people: &[Person]) {
-    let names: HashMap<i64, &str> = people
+    let names: HashMap<RowId, &str> = people
         .iter()
         .map(|person| (person.id, person.name.as_str()))
         .collect();

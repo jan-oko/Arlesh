@@ -19,6 +19,7 @@
 //! It lives inside `tasks` because the dependency graph does: a Task's edges, its virtual block
 //! reasons and the subtree delete are all here, and each of them now has to know about this kind.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use crate::database::session::{Db, Transactional};
@@ -40,10 +41,10 @@ pub const EXPECTATION: &str = "expectation";
 /// The stored shape of an expectation row.
 #[derive(sqlx::FromRow)]
 struct ExpectationRow {
-    id: i64,
+    id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     status: String,
     archival: String,
     position: i64,
@@ -140,7 +141,7 @@ impl From<ExpectationRow> for Expectation {
 /// row. Private, like [`ExpectationOperator::update`] which consumes it.
 struct ExpectationWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
-    reparent: Option<(String, i64)>,
+    reparent: Option<(String, RowId)>,
     /// Final title.
     title: String,
     /// Final status.
@@ -156,7 +157,7 @@ struct ExpectationWrite {
     /// The parent the merged Time Scope is validated against — the new one when reparenting.
     parent_type: String,
     /// Id of that same parent.
-    parent_id: i64,
+    parent_id: RowId,
     /// Final sort position.
     position: i64,
     /// Final privacy flag.
@@ -320,13 +321,14 @@ impl<'session> ExpectationOperator<'session> {
             .check_every
             .as_ref()
             .map(|_| instant_column(request.check_starting.unwrap_or(now)));
-        let id = sqlx::query(
+        let id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO expectations
-                (title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
+                (id, title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
                  position, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, agentic, agentic_note, agentic_question, agentic_review)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
@@ -347,9 +349,8 @@ impl<'session> ExpectationOperator<'session> {
                 .review
                 .map(|details| review_document(&Review::raised(details))),
         )
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         self.get(ExpectationId(id)).await
     }
 
@@ -369,8 +370,8 @@ impl<'session> ExpectationOperator<'session> {
     }
 
     /// The tag domain ids attached to one expectation, in id order.
-    async fn tag_ids(&mut self, id: ExpectationId) -> Result<Vec<i64>, TaskError> {
-        Ok(sqlx::query_scalar::<_, i64>(
+    async fn tag_ids(&mut self, id: ExpectationId) -> Result<Vec<RowId>, TaskError> {
+        Ok(sqlx::query_scalar::<_, RowId>(
             "SELECT tag_id FROM tags_on_expectations WHERE expectation_id = ? ORDER BY tag_id",
         )
         .bind(id.0)
@@ -379,7 +380,7 @@ impl<'session> ExpectationOperator<'session> {
     }
 
     /// Attaches a tag to an expectation.
-    pub async fn add_tag(&mut self, id: ExpectationId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, id: ExpectationId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query(
             "INSERT OR IGNORE INTO tags_on_expectations (expectation_id, tag_id) VALUES (?, ?)",
         )
@@ -391,7 +392,7 @@ impl<'session> ExpectationOperator<'session> {
     }
 
     /// Removes a tag from an expectation.
-    pub async fn remove_tag(&mut self, id: ExpectationId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, id: ExpectationId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_expectations WHERE expectation_id = ? AND tag_id = ?")
             .bind(id.0)
             .bind(tag_id)
@@ -432,22 +433,24 @@ impl<'session> ExpectationOperator<'session> {
         &mut self,
         id: ExpectationId,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<i64, TaskError> {
+        parent_id: RowId,
+    ) -> Result<RowId, TaskError> {
+        let copy_id = crate::nodes::new_id::new_row_id();
         let copy = sqlx::query(
             "INSERT INTO expectations
-                (title, parent_type, parent_id, status, archival, position, is_private,
+                (id, title, parent_type, parent_id, status, archival, position, is_private,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
                  last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
                  released_at, agentic_review, agentic_verdict)
-             SELECT title, ?, ?, status, archival, position, is_private,
+             SELECT ?, title, ?, ?, status, archival, position, is_private,
                     time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                     time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
                     last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
                     released_at, agentic_review, agentic_verdict
              FROM expectations WHERE id = ?",
         )
+        .bind(copy_id)
         .bind(stored_reference(parent_type))
         .bind(parent_id)
         .bind(id.0)
@@ -456,7 +459,6 @@ impl<'session> ExpectationOperator<'session> {
         if copy.rows_affected() == 0 {
             return Err(TaskError::ExpectationNotFound(id.0));
         }
-        let copy_id = copy.last_insert_rowid();
         sqlx::query(
             "INSERT INTO tags_on_expectations (expectation_id, tag_id)
              SELECT ?, tag_id FROM tags_on_expectations WHERE expectation_id = ?",
@@ -484,8 +486,8 @@ impl<'session> ExpectationOperator<'session> {
     pub async fn child_ids(
         &mut self,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, TaskError> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, TaskError> {
         Ok(sqlx::query_scalar(
             "SELECT id FROM expectations WHERE parent_type = ? AND parent_id = ?",
         )

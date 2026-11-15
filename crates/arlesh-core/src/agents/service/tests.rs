@@ -13,6 +13,7 @@
 //! Elsewhere (domain 4, not opened)
 //! ```
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
 use crate::database::session::{Db, Transactional};
@@ -23,7 +24,7 @@ fn at(text: &str) -> NaiveDateTime {
 }
 
 fn node(kind: NodeTable, id: i64) -> NodeKey {
-    NodeKey::new(kind, id)
+    NodeKey::new(kind, tid(id))
 }
 
 struct Board {

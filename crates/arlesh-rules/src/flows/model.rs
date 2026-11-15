@@ -1,5 +1,6 @@
 //! Flow (template) resource models.
 
+use crate::nodes::id::RowId;
 use serde::{Deserialize, Serialize};
 
 use crate::scopes::key::ScopeKey;
@@ -7,14 +8,14 @@ use crate::tasks::model::{DurationSpec, TimeScope};
 
 /// Identifies a flow row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct FlowId(pub i64);
+pub struct FlowId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for FlowId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for FlowId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<FlowId> for i64 {
+impl From<FlowId> for RowId {
     fn from(id: FlowId) -> Self {
         id.0
     }
@@ -65,7 +66,8 @@ impl InstanceType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Flow {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Display title.
     pub title: String,
     /// What instances materialize as (`goal` or `task`).
@@ -73,13 +75,15 @@ pub struct Flow {
     /// Parent entity type (`aspect`/`project`/`domain`/`goal`).
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Explicit Target Node type for instances. `None` means "my parent" — the default is
     /// **derived** on read from `parent_type`/`parent_id`, never stored, so moving the flow moves
     /// its instances with it.
     pub target_type: Option<String>,
     /// Explicit Target Node id for instances; `None` alongside `target_type` means "my parent".
-    pub target_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub target_id: Option<RowId>,
     /// Flow-scope duration count (relative; anchored on start). For a Phase window this is 1.
     pub flow_duration_n: Option<i64>,
     /// Flow Window kind: a coarse **Span** (`day`/`week`/`month`/`season`) or a sub-day **Phase**
@@ -121,15 +125,18 @@ pub struct Flow {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowGoal {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type (`flow` or `flow_goal`).
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Sort position among siblings.
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
@@ -144,15 +151,18 @@ pub struct FlowGoal {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowTask {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type (`flow`, `flow_goal`, or `flow_task`).
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Sort position among siblings.
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
@@ -171,15 +181,18 @@ pub struct FlowTask {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowCommitment {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Sort position among siblings.
     pub position: i64,
     /// Whether this item is private (propagates to its instances).
@@ -211,15 +224,18 @@ pub struct FirstCheck {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowExpectation {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
     pub parent_type: String,
     /// In-flow parent id (the flow, or a flow item).
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Sort position among siblings.
     pub position: i64,
     /// Whether this item is private (propagates to its instances).
@@ -236,6 +252,15 @@ pub struct FlowExpectation {
 /// Request body for creating a flow.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// What instances materialize as.
@@ -243,13 +268,15 @@ pub struct CreateFlowRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
     /// Explicit Target Node type; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
     pub target_type: Option<String>,
     /// Explicit Target Node id; omit (or `None`) to leave the target derived from the parent.
     #[serde(default)]
-    pub target_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub target_id: Option<RowId>,
     /// Flow-scope duration count.
     #[serde(default)]
     pub flow_duration_n: Option<i64>,
@@ -306,7 +333,8 @@ pub struct UpdateFlowRequest {
         deserialize_with = "crate::wire::null_clears",
         skip_serializing_if = "Option::is_none"
     )]
-    pub target_id: Option<Option<i64>>,
+    #[schemars(with = "Option<Option<String>>")]
+    pub target_id: Option<Option<RowId>>,
     /// Flow-scope duration count (Some(None) clears).
     #[serde(
         default,
@@ -380,7 +408,8 @@ pub struct UpdateFlowRequest {
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New parent id (with parent_type).
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// New sort position.
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -393,14 +422,25 @@ pub struct UpdateFlowRequest {
 /// Request body for creating a flow item (goal or task).
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowItemRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Display title.
     pub title: String,
     /// In-flow parent type.
     pub parent_type: String,
     /// In-flow parent id.
-    pub parent_id: i64,
+    #[schemars(with = "String")]
+    pub parent_id: RowId,
 }
 
 /// Which flow-item table a row lives in.
@@ -470,7 +510,8 @@ pub struct UpdateFlowItemRequest {
     /// New in-flow parent type (with parent_id).
     pub parent_type: Option<String>,
     /// New in-flow parent id (with parent_type).
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// New sort position.
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -506,13 +547,16 @@ pub struct UpdateFlowItemRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowItemCycle {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Which flow-item table the owner lives in (`flow_goal` / `flow_task`).
     pub item_type: String,
     /// Owning flow-item id.
-    pub item_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
     /// Cycle-scope subkind (NULL = the whole flow scope).
     pub scope_kind: Option<String>,
     /// 1-based index of the cycle scope within the flow window.
@@ -555,7 +599,8 @@ pub struct StartFlowRequest {
     /// Target parent type the root is created under (`aspect`/`project`/`domain`/`goal`/`task`).
     pub target_type: String,
     /// Target parent id.
-    pub target_id: i64,
+    #[schemars(with = "String")]
+    pub target_id: RowId,
     /// A date within the anchor scope of the flow's kind (the window's first period).
     pub anchor_date: chrono::NaiveDate,
 }
@@ -566,7 +611,8 @@ pub struct MaterializedFlow {
     /// Root node kind (`goal` or `task`).
     pub root_type: String,
     /// Root node id.
-    pub root_id: i64,
+    #[schemars(with = "String")]
+    pub root_id: RowId,
 }
 
 /// A candidate target node for a flow, referenced by kind and id. Used by the target-picker
@@ -576,7 +622,8 @@ pub struct TargetRef {
     /// Node kind (`aspect`/`domain`/`project`/`goal`/`task`).
     pub node_type: String,
     /// Node id.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
 }
 
 /// A materialised node's originating flow: which real node it is and the flow it was started from.
@@ -585,7 +632,8 @@ pub struct FlowOrigin {
     /// The real node's kind (`goal` / `task`).
     pub node_type: String,
     /// The real node's id.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
     /// Title of the flow this node was materialised from.
     pub flow_title: String,
 }
@@ -594,17 +642,21 @@ pub struct FlowOrigin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowDependency {
     /// Primary key.
-    pub id: i64,
+    #[schemars(with = "String")]
+    pub id: RowId,
     /// Owning flow.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// The waiting item's type (`flow_goal` / `flow_task`).
     pub dependent_type: String,
     /// The waiting item's id.
-    pub dependent_id: i64,
+    #[schemars(with = "String")]
+    pub dependent_id: RowId,
     /// The blocking item's type.
     pub depends_on_type: String,
     /// The blocking item's id.
-    pub depends_on_id: i64,
+    #[schemars(with = "String")]
+    pub depends_on_id: RowId,
 }
 
 /// Which **clock** a Habit keeps: what decides when its next occurrence falls.
@@ -680,7 +732,8 @@ impl MissPolicy {
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// The scope the recurrence starts on (of the flow's Duration kind, or a Day for a sub-day or
     /// Unscoped flow).
     pub start_scope_id: ScopeKey,
@@ -757,7 +810,7 @@ pub enum IterationStatus {
     Expired,
 }
 
-pub use crate::nodes::key::NO_CYCLE;
+pub use crate::nodes::key::no_cycle;
 
 /// Where one occurrence sits relative to **its own** window at the reference instant.
 ///
@@ -787,7 +840,7 @@ pub enum InstanceTiming {
 /// this iteration.
 ///
 /// An item with N pairs contributes N of these, exactly as `start` materialises N real nodes from
-/// it. An item with no pairs contributes one, with `cycle_id` = [`NO_CYCLE`] and no window of its
+/// it. An item with no pairs contributes one, with `cycle_id` = [`no_cycle()`] and no window of its
 /// own — it is relevant for as long as the iteration is.
 ///
 /// The windows are resolved **here**, not in the frontend, because `start` resolves them here too
@@ -803,9 +856,11 @@ pub struct HabitInstance {
     /// Which flow-item table the instance draws (`flow_goal` / `flow_task`).
     pub item_type: String,
     /// The flow item's id.
-    pub item_id: i64,
-    /// The cycle pair that produced this occurrence, or [`NO_CYCLE`] when the item declares none.
-    pub cycle_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
+    /// The cycle pair that produced this occurrence, or [`no_cycle()`] when the item declares none.
+    #[schemars(with = "String")]
+    pub cycle_id: RowId,
     /// The occurrence's resolved Cycle Scope, or `None` when it has no pair (it then inherits the
     /// iteration's own window).
     pub time_scope: Option<TimeScope>,
@@ -859,12 +914,14 @@ pub struct HabitInstanceRef {
     /// `flow_goal`, `flow_task`, or the `flow_root` sentinel.
     pub item_type: String,
     /// The flow item's id, or the flow id for the root.
-    pub item_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
     /// The scope anchoring the iteration this instance belongs to.
     pub iteration_scope_id: ScopeKey,
-    /// The cycle pair that drew it, or [`NO_CYCLE`] when the item declares none.
+    /// The cycle pair that drew it, or [`no_cycle()`] when the item declares none.
     #[serde(default)]
-    pub cycle_id: i64,
+    #[schemars(with = "String")]
+    pub cycle_id: RowId,
 }
 
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
@@ -875,13 +932,15 @@ pub struct HabitItemStatus {
     /// Which instance the status is for (`flow_goal`, `flow_task`, or `flow_root`).
     pub item_type: String,
     /// The instance's id (a flow item id, or the flow id for `flow_root`).
-    pub item_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
     /// The iteration scope the status applies to.
     pub iteration_scope_id: ScopeKey,
-    /// Which of the item's cycle pairs the status belongs to, or [`NO_CYCLE`] for an item with
+    /// Which of the item's cycle pairs the status belongs to, or [`no_cycle()`] for an item with
     /// none (and for the root). Two pairs on one item are two things to complete on the same day,
     /// so the iteration scope alone no longer identifies one instance.
-    pub cycle_id: i64,
+    #[schemars(with = "String")]
+    pub cycle_id: RowId,
     /// The stored status (e.g. `in_progress`, `done`).
     pub status: String,
 }
@@ -902,7 +961,8 @@ pub const CHILD_KINDS: [&str; 5] = ["task", "goal", "commitment", "info", "expec
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct HabitInstanceChild {
     /// The Habit the occurrence belongs to.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// What the occurrence is: `task`, `goal` or `commitment`.
     pub parent_kind: String,
     /// The occurrence's canonical key.
@@ -910,7 +970,8 @@ pub struct HabitInstanceChild {
     /// Which table the child row lives in — one of [`CHILD_KINDS`].
     pub child_type: String,
     /// The child row's id.
-    pub child_id: i64,
+    #[schemars(with = "String")]
+    pub child_id: RowId,
 }
 
 /// The occurrence an added child hangs on, as everything above the child needs to read it.
@@ -921,7 +982,7 @@ pub struct HabitInstanceChild {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildAttachment {
     /// The Habit whose occurrence holds the child.
-    pub flow_id: i64,
+    pub flow_id: RowId,
     /// What the occurrence renders as (`goal`/`task`/`commitment`).
     pub instance_type: String,
     /// The occurrence's canonical key.
@@ -940,7 +1001,8 @@ pub struct UnfinishedChild {
     /// Which table the child row lives in — one of [`CHILD_KINDS`].
     pub child_type: String,
     /// The child row's id.
-    pub child_id: i64,
+    #[schemars(with = "String")]
+    pub child_id: RowId,
     /// The child's display title (an Info's body).
     pub title: String,
 }

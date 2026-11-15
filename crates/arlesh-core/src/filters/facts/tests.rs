@@ -1,5 +1,6 @@
 //! Assembling a fact forest from a load, and narrowing a load to what a filter keeps.
 
+use crate::nodes::id::tid;
 use super::*;
 use crate::{
     block_reasons::model::BlockReason,
@@ -14,7 +15,7 @@ use crate::{
 
 fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: subtype.to_string(),
@@ -87,7 +88,7 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
 
 fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
     Info {
-        id,
+        id: tid(id),
         body: format!("info {id}"),
         details: None,
         parent_type: parent_type.to_string(),
@@ -466,7 +467,7 @@ fn narrowing_keeps_an_expectation_the_filter_keeps_and_drops_one_it_does_not() {
     load.expectations.push(released);
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
     let kept: Vec<NodeId> = load.expectations.iter().map(|e| e.id.clone()).collect();
-    assert_eq!(kept, [NodeId::Stored(50)]);
+    assert_eq!(kept, [NodeId::Stored(tid(50))]);
 }
 
 #[test]
@@ -489,7 +490,7 @@ fn a_spawned_wait_takes_no_plan_from_its_planned_task() {
     use crate::nodes::{key::DerivedKey, origin::WaitOrigin};
 
     let mut load = board();
-    let task_id = NodeId::Stored(22);
+    let task_id = NodeId::Stored(tid(22));
     let wait_id = DerivedKey::SpawnedWait(task_id.clone()).node_id();
     // Task 22 is done and planned into a week that has not begun yet.
     let mut planned = lifecycle("task", 22, Timing::Lapsed, Archival::Live);

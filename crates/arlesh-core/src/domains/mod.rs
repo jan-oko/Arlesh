@@ -5,6 +5,7 @@ pub mod model;
 mod rows;
 pub mod rules;
 
+use crate::nodes::id::RowId;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, Transactional};
@@ -74,19 +75,19 @@ impl<'session> DomainOperator<'session> {
             None => None,
         };
 
-        let id = sqlx::query(
-            "INSERT INTO domains (title, description, subtype, parent_id, status, knowledge_base_directory)
-             VALUES (?, ?, ?, ?, ?, ?)",
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO domains (id, title, description, subtype, parent_id, status, knowledge_base_directory)
+             VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(&request.description)
         .bind(subtype_str)
         .bind(request.parent_id)
         .bind(status_str)
         .bind(&request.knowledge_base_directory)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
 
         let position = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -138,7 +139,7 @@ impl<'session> DomainOperator<'session> {
     /// The `domains` counterpart of [`GoalOperator::child_ids`](crate::tasks::GoalOperator::child_ids)
     /// and its siblings: a subtree walk collects its children a level at a time, and this is the
     /// one query that walk needs on this table.
-    pub async fn child_ids(&mut self, parent_id: DomainId) -> Result<Vec<i64>, DomainError> {
+    pub async fn child_ids(&mut self, parent_id: DomainId) -> Result<Vec<RowId>, DomainError> {
         Ok(
             sqlx::query_scalar("SELECT id FROM domains WHERE parent_id = ?")
                 .bind(parent_id.0)
@@ -220,7 +221,7 @@ impl<'session> DomainOperator<'session> {
     async fn validate_parent(
         &mut self,
         subtype: &DomainSubtype,
-        parent_id: Option<i64>,
+        parent_id: Option<RowId>,
     ) -> Result<(), DomainError> {
         let Some(parent_id) = parent_id else {
             return match subtype {

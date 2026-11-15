@@ -1,5 +1,6 @@
 //! Which nodes a Flow may target.
 
+use crate::nodes::id::tid;
 use super::*;
 
 #[test]
@@ -22,15 +23,15 @@ fn copies() -> CopiedNodes {
 
 #[test]
 fn a_target_the_copy_carried_is_remapped_to_its_copy() {
-    assert_eq!(copied_target_id(Some("goal"), Some(6), &copies()), Some(60));
-    assert_eq!(copied_target_id(Some("task"), Some(7), &copies()), Some(70));
+    assert_eq!(copied_target_id(Some("goal"), Some(tid(6)), &copies()), Some(60));
+    assert_eq!(copied_target_id(Some("task"), Some(tid(7)), &copies()), Some(70));
 }
 
 #[test]
 fn a_domains_row_is_found_whichever_subtype_spelling_names_it() {
     for spelling in ["aspect", "project", "domain", "tag"] {
         assert_eq!(
-            copied_target_id(Some(spelling), Some(5), &copies()),
+            copied_target_id(Some(spelling), Some(tid(5)), &copies()),
             Some(50),
             "{spelling}"
         );
@@ -39,22 +40,22 @@ fn a_domains_row_is_found_whichever_subtype_spelling_names_it() {
 
 #[test]
 fn a_target_outside_the_copy_is_kept() {
-    assert_eq!(copied_target_id(Some("goal"), Some(99), &copies()), None);
+    assert_eq!(copied_target_id(Some("goal"), Some(tid(99)), &copies()), None);
     // Same id, other table: goal 5 was not copied, only domain 5 was.
-    assert_eq!(copied_target_id(Some("goal"), Some(5), &copies()), None);
+    assert_eq!(copied_target_id(Some("goal"), Some(tid(5)), &copies()), None);
 }
 
 #[test]
 fn a_null_target_stays_null() {
     assert_eq!(copied_target_id(None, None, &copies()), None);
     assert_eq!(copied_target_id(Some("goal"), None, &copies()), None);
-    assert_eq!(copied_target_id(None, Some(6), &copies()), None);
+    assert_eq!(copied_target_id(None, Some(tid(6)), &copies()), None);
 }
 
 #[test]
 fn an_unknown_spelling_is_never_remapped() {
     assert_eq!(
-        copied_target_id(Some("flow_root"), Some(6), &copies()),
+        copied_target_id(Some("flow_root"), Some(tid(6)), &copies()),
         None
     );
 }
