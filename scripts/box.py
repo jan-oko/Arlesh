@@ -14,6 +14,7 @@
     box keystore init [--force]
     box keystore rotate-password
     box keystore migrate [-y]
+    box cargo -- <cargo arguments>
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>] [-y | --dry-run]
@@ -101,6 +102,20 @@ baked into the binary. The frontend is not shared (each
 worktree has its own node_modules, Vite server and dist), and the per-branch binary and APK are
 copied out of the target right after the build, so a "build is current" stamp never points at
 another branch's artifact.
+
+One build at a time: `owned_target` holds an exclusive lock on `<target>/.arlesh-box.lock` for the
+whole of key check, drop, cargo and record, so two box commands (or `box cargo`) building different
+branches queue; the second prints one line and waits. Cargo serialises on the target itself anyway,
+but box's drop of a crate's records happens outside cargo's lock and used to break the build that
+was running ("invoked.timestamp: No such file or directory"). The trade-off is that builds in the
+shared target never overlap; a queued build waits for the one before it.
+
+`box cargo -- <cargo arguments>` (`npm run cargo -- <cargo arguments>`) is a cargo run in this
+worktree through the same guard: it builds into the shared target (so the worktree grows no
+`src-tauri/target` of its own), runs under `owned_target`, takes the caller's environment as it is
+(CARGO_INCREMENTAL, RUSTFLAGS, `-j`) and exits with cargo's exit code. A plain `cargo` is unchanged
+and keeps the checkout's own target, which is the safe default: pointed at the shared target
+without the guard it could link another branch's workspace crates (see above).
 
 Notifications: after an install, before every launch, box grants a box app POST_NOTIFICATIONS
 (`pm grant`, box packages only, never the release app) so its first launch registers its push token.
