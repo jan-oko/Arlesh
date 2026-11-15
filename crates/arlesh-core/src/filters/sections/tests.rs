@@ -241,3 +241,13 @@ fn review_is_drawn_under_start_and_do_but_not_under_the_list_only_options() {
     };
     assert!(!shows_review(&unblock));
 }
+
+#[test]
+fn review_draws_no_review_section_but_keeps_the_overdue_rule() {
+    let review = BoardFilter {
+        review: true,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert!(!shows_review(&review));
+    assert!(shows_overdue(true, &review));
+}

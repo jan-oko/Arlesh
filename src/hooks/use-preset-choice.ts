@@ -6,7 +6,7 @@ import { LIST_PRESET_VALUES, isListOnlyPreset } from "@/utils/list-filter";
 import type { ListPreset } from "@/utils/list-filter";
 import { lockedStatusMode } from "@/utils/view-preset";
 
-/** The presets outside the List View: its Unblock and Expectations are its own. */
+/** The presets outside the List View: its Unblock, Expectations and Review are its own. */
 const SHARED_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((preset) => !isListOnlyPreset(preset));
 
 export interface PresetChoice {
@@ -26,7 +26,7 @@ export interface PresetChoice {
  * The preset control's rules, for the phone layout's preset chip and its sheet: which presets the
  * view offers, which one it reads under, and what choosing one writes. It reads exactly as the
  * desktop top bar's preset dropdown does — the Plan and Zen Views lock theirs (`lockedStatusMode`),
- * and the List View's own two options write the list's preset alone, leaving the shared one for
+ * and the List View's own options write the list's preset alone, leaving the shared one for
  * the Mindmap.
  */
 export function usePresetChoice(): PresetChoice {
@@ -44,7 +44,7 @@ export function usePresetChoice(): PresetChoice {
 
   function select(preset: ListPreset): void {
     if (locked !== null) return;
-    if (preset === "unblock" || preset === "expectations") {
+    if (preset === "unblock" || preset === "expectations" || preset === "review") {
       setListPreset(preset);
       return;
     }

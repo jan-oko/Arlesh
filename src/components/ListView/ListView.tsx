@@ -409,6 +409,7 @@ export default function ListView() {
     onDeselect: () => setSelectedRowId(null),
     onSetStatusMode: handleSetStatusPreset,
     onSetUnblockPreset: () => setListPreset("unblock"),
+    onSetReviewPreset: () => setListPreset("review"),
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,

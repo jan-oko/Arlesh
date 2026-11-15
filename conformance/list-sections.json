@@ -235,6 +235,17 @@
       "overdueSetting": true,
       "review": false,
       "overdue": false
+    },
+    {
+      "name": "the review option draws no Review section and keeps the Overdue rule",
+      "spec": "list-view.md — Under the Review option every row is one, so there is no Review section; the Overdue section is kept as under other presets.",
+      "filter": {
+        "preset": "start",
+        "review": true
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": true
     }
   ],
   "boards": {

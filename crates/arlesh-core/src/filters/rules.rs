@@ -125,6 +125,12 @@ pub fn is_archived(node: &NodeFacts) -> bool {
     node.status_str() == "archived" || node.archived
 }
 
+/// Whether a node is a Task that reads **Review**: an Agentic Task On Agent with a question or a
+/// review of the agent's open. The set the List View's Review option lists.
+pub fn reads_review(node: &NodeFacts) -> bool {
+    node.kind == NodeKind::Task && node.agentic && node.status_str() == "review"
+}
+
 /// A Task held by someone else — a Person.
 pub fn is_delegated(node: &NodeFacts) -> bool {
     node.kind == NodeKind::Task && node.delegated

@@ -64,6 +64,8 @@ struct CorpusFilter {
     unblock: bool,
     #[serde(default)]
     expectations: bool,
+    #[serde(default)]
+    review: bool,
     #[serde(default = "yes")]
     include_flows: bool,
     #[serde(default)]
@@ -151,6 +153,7 @@ impl From<&CorpusFilter> for BoardFilter {
             preset: filter.preset,
             unblock: filter.unblock,
             expectations: filter.expectations,
+            review: filter.review,
             include_flows: filter.include_flows,
             tags: filter
                 .tags
@@ -294,5 +297,9 @@ fn every_preset_is_covered() {
     assert!(
         corpus.cases.iter().any(|case| case.filter.expectations),
         "no case covers the Expectations option"
+    );
+    assert!(
+        corpus.cases.iter().any(|case| case.filter.review),
+        "no case covers the Review option"
     );
 }

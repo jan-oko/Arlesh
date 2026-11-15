@@ -34,6 +34,7 @@ interface CorpusFilter {
   preset: ListPreset;
   unblock?: boolean;
   expectations?: boolean;
+  review?: boolean;
   includeFlows?: boolean;
   tags?: TagFilter[];
   showInfo?: boolean;
@@ -138,6 +139,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     tags,
     ...flag(raw.unblock, "unblock", what),
     ...flag(raw.expectations, "expectations", what),
+    ...flag(raw.review, "review", what),
     ...flag(raw.includeFlows, "includeFlows", what),
     ...flag(raw.showInfo, "showInfo", what),
     ...flag(raw.showFlow, "showFlow", what),
@@ -218,7 +220,8 @@ const STATUS_MODES: readonly StatusMode[] = ["all", "plan", "start", "do", "back
 function toListFilter(filter: CorpusFilter): ListFilterState {
   const preset: ListPreset = filter.unblock === true ? "unblock"
     : filter.expectations === true ? "expectations"
-      : filter.preset;
+      : filter.review === true ? "review"
+        : filter.preset;
   return {
     preset,
     kinds: filter.kinds ?? [...LIST_ROW_KINDS],

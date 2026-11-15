@@ -1,5 +1,6 @@
 import type { FilterState } from "@/utils/filter-tree";
 import type { ListFilterState } from "@/utils/list-filter";
+import { isListOnlyPreset } from "@/utils/list-filter";
 import type { ListRowEntry, MixedListRow } from "@/utils/list-data";
 import { groupMixedRowsByPath } from "@/utils/list-data";
 import { isOverdue } from "@/utils/overdue";
@@ -154,19 +155,21 @@ export function withListSections(rows: readonly MixedListRow[], sections: ListSe
 
 /**
  * Whether the List View draws its **Review** section: whenever the list reads the **Start** or **Do**
- * preset — the two that show Review — and not under the Unblock and Expectations options, which
- * replace the preset's question. No setting switches it: a Review Task idles an agent.
+ * preset — the two that show Review — and not under the Unblock, Expectations and Review options,
+ * which replace the preset's question (under Review every row is one, so a section would be all of
+ * them). No setting switches it: a Review Task idles an agent.
  */
 export function showsReviewSection(shared: FilterState, listFilter: ListFilterState): boolean {
   if (shared.statusMode !== "start" && shared.statusMode !== "do") return false;
-  return listFilter.preset !== "unblock" && listFilter.preset !== "expectations";
+  return !isListOnlyPreset(listFilter.preset);
 }
 
 /**
  * Whether the List View draws its **Overdue** section: while the setting is on, and only while the
  * list is reading the **Start** preset — the preset that asks what to begin now, which late work
  * answers first. The Unblock and Expectations options replace the preset's question for the list, so
- * neither draws it.
+ * neither draws it. The Review option keeps it: a Review Task that is Overdue still
+ * leads the list under it.
  */
 export function showsOverdueSection(enabled: boolean, shared: FilterState, listFilter: ListFilterState): boolean {
   if (!enabled || shared.statusMode !== "start") return false;

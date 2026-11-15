@@ -4,7 +4,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { ListRowEntry } from "@/utils/list-data";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
-import { showsOverdueSection, withListSections } from "./list-sections";
+import { showsOverdueSection, showsReviewSection, withListSections } from "./list-sections";
 
 /** `o*` (and `oa*`) is Overdue; nothing else is. */
 function node(id: string): MindmapNode {
@@ -219,6 +219,10 @@ describe("showsOverdueSection", () => {
     }
   });
 
+  it("keeps drawing it under the Review option, which has no Review section but leaves Overdue alone", () => {
+    expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset: "review" })).toBe(true);
+  });
+
   it("does not draw it under the Unblock or Expectations option, which replace Start's question", () => {
     for (const preset of ["unblock", "expectations"] as const) {
       expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset })).toBe(false);
@@ -227,6 +231,13 @@ describe("showsOverdueSection", () => {
 });
 
 describe("the Review section", () => {
+  it("is not drawn under the List-View-only options, Review included", () => {
+    const start = { ...DEFAULT_FILTER, statusMode: "start" as const };
+    for (const preset of ["unblock", "expectations", "review"] as const) {
+      expect(showsReviewSection(start, { ...DEFAULT_LIST_FILTER, preset })).toBe(false);
+    }
+  });
+
   function withReview(rows: readonly TaskListRow[]): ListRowEntry[] {
     return withListSections(rows.map((row) => ({ type: "task" as const, row })), { review: true, overdue: true, asynchronous: false });
   }

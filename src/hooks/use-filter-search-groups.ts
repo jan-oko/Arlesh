@@ -25,7 +25,10 @@ function searchSwitches(view: View): SearchSwitch[] {
 /**
  * The `Ctrl+F` filter search's catalogue for a view: every dimension the view's Filter menu has, in
  * the menu's order, with the values not yet added; then the switches — in the List View the three
- * row kinds, then Archived, Backlog and Delegated — each one result wearing its current state.
+ * row kinds, then Archived, Backlog and Delegated — each one result wearing its current state; and
+ * last the two node searches, Under and Depends on, whose results are capped and many, so they sit
+ * after everything a short query would otherwise be buried under. Only the search reorders: the
+ * Filter menu keeps its own layout.
  */
 export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, entries: FilterEntries): SearchGroup[] {
   const { t } = useTranslation(["filter", "listView"]);
@@ -80,7 +83,8 @@ export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, e
   }));
 
   return [
-    ...dimensionGroups,
+    ...dimensionGroups.filter((group) => !group.searchOnly),
     { key: "switches", label: t("groups.switches"), aliases: [], searchOnly: false, results: [...rowKinds, ...switches] },
+    ...dimensionGroups.filter((group) => group.searchOnly),
   ];
 }
