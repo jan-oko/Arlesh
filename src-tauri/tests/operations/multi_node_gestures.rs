@@ -1,9 +1,9 @@
 //! Command-level tests for the gesture operations: a gesture over several nodes, as one command.
 //! The server runs the same operation for its `/gestures` routes, through the bindings.
 
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 
 use arlesh_lib::commands::{node_gestures, tasks as task_commands};
 use arlesh_lib::nodes::gestures::GestureNode;
@@ -227,7 +227,9 @@ async fn gesture(
 ) -> Result<Vec<serde_json::Value>, arlesh_lib::error::WireError> {
     if let Some(list) = steps.as_array() {
         for (index, step) in list.iter().enumerate() {
-            let read = serde_json::from_value::<arlesh_lib::nodes::gestures::steps::StepEntry>(step.clone());
+            let read = serde_json::from_value::<arlesh_lib::nodes::gestures::steps::StepEntry>(
+                step.clone(),
+            );
             assert!(read.is_ok(), "step {index} of {name}: {read:?}: {step}");
         }
     }

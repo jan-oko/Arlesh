@@ -5,10 +5,10 @@
 //! items drew: where they may sit, what each occurrence is, what holds an iteration open, when a
 //! wait is first checked, and what starting or copying a Flow makes of them.
 
-use arlesh_lib::nodes::key::no_cycle;
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{

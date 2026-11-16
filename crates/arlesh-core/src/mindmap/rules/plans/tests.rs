@@ -1,7 +1,7 @@
 //! The board's Plans: what each Task reads, what it breaks, and where Start finds its Plan.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
 use crate::{
     scopes::{key::ScopeKey, model::ScopeKind},

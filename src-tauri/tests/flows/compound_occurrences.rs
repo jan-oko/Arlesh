@@ -3,10 +3,10 @@
 //! a compound occurrence derives its status and block, how its iteration resolves through it, and
 //! what a plain Flow's `start` copies onto the Task it makes.
 
-use arlesh_lib::nodes::key::no_cycle;
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{

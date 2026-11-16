@@ -4,10 +4,9 @@
 //! Each test builds a Habit through the commands, drives it to a moment with a load, and asks
 //! what its occurrences read as there: their window, their due, and whether they are Overdue.
 
-use arlesh_lib::nodes::key::no_cycle;
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::{flows as flow_commands, tasks as task_commands};
 use arlesh_lib::flows::model::{

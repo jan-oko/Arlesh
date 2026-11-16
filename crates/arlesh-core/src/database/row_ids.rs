@@ -211,10 +211,12 @@ pub(super) async fn migration_applied(pool: &DatabasePool) -> Result<bool, sqlx:
     if !bookkeeping {
         return Ok(false);
     }
-    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = ? AND success = 1)")
-        .bind(MIGRATION)
-        .fetch_one(pool)
-        .await
+    sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = ? AND success = 1)",
+    )
+    .bind(MIGRATION)
+    .fetch_one(pool)
+    .await
 }
 
 /// Whether `pool` still holds the integer schema, so migration 0107 has yet to run.
@@ -281,7 +283,11 @@ pub(super) async fn prepare(pool: &DatabasePool) -> Result<(), sqlx::Error> {
     let mut renamed = rewrite_keys(&keys, &mut ids);
     // A derived node's old id (the hash of its old key) beside its new one: `push_sent` names a
     // derived task by it.
-    renamed.extend(ids.derived.iter().map(|(old, new)| (old.clone(), new.clone())));
+    renamed.extend(
+        ids.derived
+            .iter()
+            .map(|(old, new)| (old.clone(), new.clone())),
+    );
     for (old, new) in renamed {
         sqlx::query("INSERT OR IGNORE INTO key_map (old_key, new_key) VALUES (?, ?)")
             .bind(old)

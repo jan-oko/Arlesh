@@ -38,12 +38,14 @@ impl<'session> PersonOperator<'session> {
     ) -> Result<Person, KnowledgeBaseError> {
         let aliases = serde_json::to_string(&request.aliases.unwrap_or_default())
             .unwrap_or_else(|_| "[]".into());
-        let id = sqlx::query_scalar::<_, RowId>("INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?) RETURNING id")
-            .bind(&request.name)
-            .bind(&aliases)
-            .bind(&request.linked_note)
-            .fetch_one(&mut *self.connection)
-            .await?;
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO people (name, aliases, linked_note) VALUES (?, ?, ?) RETURNING id",
+        )
+        .bind(&request.name)
+        .bind(&aliases)
+        .bind(&request.linked_note)
+        .fetch_one(&mut *self.connection)
+        .await?;
         self.get(PersonId(id)).await
     }
 
@@ -191,11 +193,13 @@ impl<'session> ThreadOperator<'session> {
         &mut self,
         request: CreateThreadRequest,
     ) -> Result<Thread, KnowledgeBaseError> {
-        let id = sqlx::query_scalar::<_, RowId>("INSERT INTO threads (title, linked_note) VALUES (?, ?) RETURNING id")
-            .bind(&request.title)
-            .bind(&request.linked_note)
-            .fetch_one(&mut *self.connection)
-            .await?;
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO threads (title, linked_note) VALUES (?, ?) RETURNING id",
+        )
+        .bind(&request.title)
+        .bind(&request.linked_note)
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query_as::<_, ThreadRow>("SELECT * FROM threads WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)

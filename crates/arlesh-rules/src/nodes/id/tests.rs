@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 /// RFC 9562's DNS namespace, for the published test vector.
 const DNS_NAMESPACE: [u8; 16] = [

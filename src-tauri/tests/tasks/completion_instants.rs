@@ -2,8 +2,8 @@
 //! Commitment's verdict recorded — written on the way in, kept while it stays so, and cleared when
 //! it is taken back.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},

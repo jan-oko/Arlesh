@@ -276,7 +276,9 @@ impl Walk {
 
 /// Every stored row hung on a Habit occurrence, by `(child_type, child_id)` — the rows the walk
 /// must not clone as plain children of their host.
-async fn attached_children(db: &mut Db<Transactional>) -> Result<HashSet<(String, RowId)>, AppError> {
+async fn attached_children(
+    db: &mut Db<Transactional>,
+) -> Result<HashSet<(String, RowId)>, AppError> {
     Ok(db
         .flows()
         .child_attachments()

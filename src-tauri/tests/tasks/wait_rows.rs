@@ -2,9 +2,9 @@
 //! delegated Task's wait are Expectation rows. Each test drives the board through the virtual
 //! tables — a write naming a row id, then a load — and asks what the row is afterwards.
 
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},

@@ -2,10 +2,9 @@
 //! brief read by every occurrence, an occurrence overriding it field by field, the Spec rule on an
 //! agentic occurrence, and agentic waits hung on one.
 
-use arlesh_lib::nodes::key::no_cycle;
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{

@@ -1,7 +1,7 @@
-use crate::nodes::id::tid;
 use super::*;
 use crate::database::session::SessionFactory;
 use crate::database::DatabasePool;
+use crate::nodes::id::tid;
 use crate::scopes::key::test_key;
 use crate::tasks::model::{DurationSpec, OnScopeExit, TimeScope};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -418,7 +418,9 @@ async fn a_start_that_is_not_a_scoped_node_yields_an_empty_rooted_chain() {
         .await
         .expect("connect failed");
 
-    let chain = climb(&mut db, "domain", tid(99)).await.expect("climb failed");
+    let chain = climb(&mut db, "domain", tid(99))
+        .await
+        .expect("climb failed");
 
     assert!(chain.links.is_empty());
     assert_eq!(chain.end, ChainEnd::Root);

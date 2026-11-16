@@ -1,9 +1,9 @@
 //! The desktop follows change events and says what to show.
 
-use crate::nodes::id::tid;
 use super::*;
-use crate::nodes::id::tkey;
 use crate::mindmap::{model::MindmapLoad, rules::changes::diff};
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::push::rules::tests::{asking, check, lifecycle, todo};
 use crate::tasks::lifecycle::Archival;
 
@@ -205,7 +205,13 @@ fn a_board_loaded_after_a_gap_tells_what_is_new_on_it() {
         .unwrap();
 
     let keys: Vec<&str> = shown.iter().map(|event| event.key.as_str()).collect();
-    assert_eq!(keys, [format!("overdue:{}", tid(2)), format!("question:{}", tid(9))]);
+    assert_eq!(
+        keys,
+        [
+            format!("overdue:{}", tid(2)),
+            format!("question:{}", tid(9))
+        ]
+    );
 }
 
 #[test]

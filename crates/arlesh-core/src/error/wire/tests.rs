@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::{WireError, WireErrorKind};
+use crate::nodes::id::tid;
 use crate::{
     domains::error::DomainError, error::AppError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
@@ -13,7 +13,10 @@ fn kind_of(error: impl Into<AppError>) -> WireErrorKind {
 
 #[test]
 fn domain_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(DomainError::NotFound(tid(1))), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(DomainError::NotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -52,12 +55,18 @@ fn domain_database_maps_to_database() {
 
 #[test]
 fn task_task_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(TaskError::TaskNotFound(tid(1))), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(TaskError::TaskNotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
 fn task_goal_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(TaskError::GoalNotFound(tid(1))), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(TaskError::GoalNotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -177,7 +186,10 @@ fn knowledge_base_database_maps_to_database() {
 
 #[test]
 fn flow_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(FlowError::NotFound(tid(1))), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(FlowError::NotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -380,7 +392,10 @@ fn a_root_on_a_missing_node_is_not_found_and_unreadable_root_data_is_internal() 
     };
 
     assert_eq!(
-        kind_of(AccessError::NodeNotFound(NodeKey::new(NodeTable::Task, tid(7)))),
+        kind_of(AccessError::NodeNotFound(NodeKey::new(
+            NodeTable::Task,
+            tid(7)
+        ))),
         WireErrorKind::NotFound
     );
     assert_eq!(

@@ -1,9 +1,9 @@
 //! The view reads the same facts off a board however it came to hold it.
 
-use crate::nodes::id::tid;
 use super::*;
-use crate::nodes::id::tkey;
 use crate::mindmap::rules::changes::diff;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::push::rules::tests::{asking, check, lifecycle, todo};
 
 fn board(tasks: Vec<Task>, lifecycles: Vec<ItemLifecycle>) -> MindmapLoad {

@@ -43,7 +43,7 @@ use crate::{
     flows::template::TemplateFields,
     nodes::{
         id::NodeId,
-        key::{DerivedKey, OccurrenceKey, TemplateItem, TemplateKind, no_cycle},
+        key::{no_cycle, DerivedKey, OccurrenceKey, TemplateItem, TemplateKind},
         origin::{HabitOrigin, IterationScope, Origin},
         overlay::{CommitmentOverlay, GoalOverlay, HabitOverlays, TaskOverlay},
         registry,
@@ -122,7 +122,10 @@ pub(in crate::flows) struct HabitRelations {
 }
 
 /// The template's tags with one occurrence's differences applied.
-pub(crate) fn effective_tags(template: &[RowId], differences: Option<&Vec<(RowId, bool)>>) -> Vec<RowId> {
+pub(crate) fn effective_tags(
+    template: &[RowId],
+    differences: Option<&Vec<(RowId, bool)>>,
+) -> Vec<RowId> {
     let mut tags: Vec<RowId> = template.to_vec();
     for (tag, added) in differences.map(Vec::as_slice).unwrap_or_default() {
         tags.retain(|existing| existing != tag);

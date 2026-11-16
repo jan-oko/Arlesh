@@ -1,9 +1,9 @@
 //! What is observed on a board, and what a device is told of it.
 
-use crate::nodes::id::tid;
 use super::*;
-use crate::nodes::id::tkey;
 use crate::mindmap::model::NodeFacts;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::{
     nodes::origin::{CheckOrigin, Origin},
     tasks::{
@@ -110,7 +110,14 @@ fn a_question_an_overdue_task_and_a_generated_one_are_each_a_fact() {
 
     let observed = observe(&load, false);
 
-    assert_eq!(keys(&observed), [format!("generated:{}", tid(3)), format!("overdue:{}", tid(2)), format!("question:{}", tid(7))]);
+    assert_eq!(
+        keys(&observed),
+        [
+            format!("generated:{}", tid(3)),
+            format!("overdue:{}", tid(2)),
+            format!("question:{}", tid(7))
+        ]
+    );
     let question = &observed.facts[2];
     assert_eq!(question.channel, Channel::AgentQuestion);
     assert_eq!(question.task.as_deref(), Some(tkey("task", 1).as_str()));

@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn expectation_status_roundtrips_every_variant() {
@@ -43,7 +43,10 @@ fn expectation_id_roundtrip() {
 #[test]
 fn an_expectation_dependency_serialises_under_its_own_tag() {
     let json = serde_json::to_value(Dependency::Expectation { id: tid(4) }).expect("serialises");
-    assert_eq!(json, serde_json::json!({ "type": "expectation", "id": tid(4) }));
+    assert_eq!(
+        json,
+        serde_json::json!({ "type": "expectation", "id": tid(4) })
+    );
 }
 
 #[test]

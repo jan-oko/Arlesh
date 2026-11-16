@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn an_error_from_the_board_keeps_its_kind_where_a_flow_error_has_one() {

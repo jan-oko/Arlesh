@@ -2,8 +2,8 @@
 //! that window, so it can be rescheduled into now or later. Its Time Scope is left as it is, and
 //! every other bound still holds.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     database::session::SessionFactory,

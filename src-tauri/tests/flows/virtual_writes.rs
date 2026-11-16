@@ -5,10 +5,9 @@
 //! Occurrence writes go through `nodes::write` with an explicit instant, so the iteration they
 //! name is the one open then rather than whatever the wall clock says.
 
-use arlesh_lib::nodes::key::no_cycle;
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
@@ -325,9 +324,16 @@ async fn an_occurrence_takes_tags_block_reasons_and_dependencies_of_its_own() {
         .any(|edge| edge.task_id == stretch && edge.dependency_id == other.id));
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    write::set_tag(&mut db, "task", &stretch, helpers::seeded(1), false, at(NOW))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "task",
+        &stretch,
+        helpers::seeded(1),
+        false,
+        at(NOW),
+    )
+    .await
+    .unwrap();
     write::set_block_reasons(&mut db, "task", &stretch, &[], at(NOW))
         .await
         .unwrap();
@@ -383,9 +389,16 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
 
     // Taking the template's tag off this one occurrence is a difference, not a template edit.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    write::set_tag(&mut db, "task", &stretch, helpers::seeded(1), false, at(NOW))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "task",
+        &stretch,
+        helpers::seeded(1),
+        false,
+        at(NOW),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
     let load = board(&pool).await;
     assert!(load
@@ -397,9 +410,10 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
         .is_empty());
 
     // A copy of the Habit is a Habit with the same template fields.
-    let copy = flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), helpers::seeded(1), 9)
-        .await
-        .unwrap();
+    let copy =
+        flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), helpers::seeded(1), 9)
+            .await
+            .unwrap();
     let items = flow_commands::list_flow_tasks(app.state(), copy.id)
         .await
         .unwrap();
@@ -580,8 +594,10 @@ async fn a_copied_flow_item_keeps_its_template_fields_and_a_deleted_one_leaves_n
         .await
         .unwrap();
     assert_eq!(items.len(), 2);
-    assert!(items.iter().all(|item| item.template.tag_ids == vec![helpers::seeded(1)]
-        && item.template.block_reasons == vec!["waits on CI".to_string()]));
+    assert!(items
+        .iter()
+        .all(|item| item.template.tag_ids == vec![helpers::seeded(1)]
+            && item.template.block_reasons == vec!["waits on CI".to_string()]));
 
     for item in &items {
         flow_commands::delete_flow_item(app.state(), FlowItemType::FlowTask, item.id)
@@ -720,9 +736,16 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
     )
     .await
     .unwrap();
-    write::set_tag(&mut db, "expectation", &wait.id, helpers::seeded(1), false, at(later))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "expectation",
+        &wait.id,
+        helpers::seeded(1),
+        false,
+        at(later),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
     assert_eq!(retitled.title, "Coach finally replies");
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();

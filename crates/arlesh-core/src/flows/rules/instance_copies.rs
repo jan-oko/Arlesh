@@ -7,9 +7,9 @@
 //! the rows the copy needs: one instance per run that the copy reached, holding one node row per
 //! copied node. The plan is pure; `flows::copy_instance_links` gathers the rows and writes it.
 
-use crate::nodes::id::RowId;
 use super::targets::CopiedNodes;
 use crate::flows::model::TargetRef;
+use crate::nodes::id::RowId;
 
 /// One node a started Flow materialised, as its `flow_instance_nodes` and `flow_instances` rows
 /// describe it together.

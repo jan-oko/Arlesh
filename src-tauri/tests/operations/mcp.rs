@@ -8,10 +8,10 @@
 //! The pool has **one** connection (see [`helpers::test_pool`]), so every assertion reads it only
 //! after the tool's session has closed.
 
+use crate::helpers;
 use arlesh_lib::mcp::params::NodeIdParam;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 use helpers::IntoParam as _;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
@@ -949,7 +949,11 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
         assert!(pages < 100, "paging did not terminate");
 
         if let Some(tasks) = page.get("tasks").and_then(|t| t.as_array()) {
-            tasks_seen.extend(tasks.iter().filter_map(|t| crate::helpers::try_row_id(t.get("id")?)));
+            tasks_seen.extend(
+                tasks
+                    .iter()
+                    .filter_map(|t| crate::helpers::try_row_id(t.get("id")?)),
+            );
         }
 
         match page.get("next_cursor").and_then(|c| c.as_str()) {
@@ -1179,7 +1183,11 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "cursor",
             ],
         ),
-        ("arlesh_infos", &["create"], &["id", "task_id", "body", "details"]),
+        (
+            "arlesh_infos",
+            &["create"],
+            &["id", "task_id", "body", "details"],
+        ),
         (
             "arlesh_agents",
             &[

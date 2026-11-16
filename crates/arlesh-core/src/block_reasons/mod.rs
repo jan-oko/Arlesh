@@ -126,7 +126,11 @@ impl<'session> BlockReasonOperator<'session> {
     /// Removes every reason for an owner — the cleanup a deleted task or goal needs, since the
     /// owner link has no foreign key to cascade. Nothing calls it yet; see the module docs.
     #[tracing::instrument(skip(self))]
-    pub async fn delete_for(&mut self, owner_type: &str, owner_id: RowId) -> Result<(), sqlx::Error> {
+    pub async fn delete_for(
+        &mut self,
+        owner_type: &str,
+        owner_id: RowId,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
             .bind(owner_type)
             .bind(owner_id)

@@ -4,9 +4,9 @@
 //! occurrence *is* afterwards: which row it reads as, where it hangs, what a write to it did, and
 //! what it refuses. The overlay rows are looked at only where their absence is the behaviour.
 
-use arlesh_lib::nodes::key::no_cycle;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 use std::borrow::Cow;
 
 use crate::helpers;
@@ -638,7 +638,12 @@ async fn a_future_occurrence_with_an_edit_stays_on_the_board() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     arlesh_lib::flows::occurrence_edit::update_task(
         &mut db,
-        &key(TemplateKind::FlowTask, item_id, ymd(2026, 1, 20), no_cycle()),
+        &key(
+            TemplateKind::FlowTask,
+            item_id,
+            ymd(2026, 1, 20),
+            no_cycle(),
+        ),
         UpdateTaskRequest {
             title: Some("Stretch, far ahead".into()),
             ..Default::default()
@@ -969,10 +974,13 @@ fn old_key(text: &str) -> String {
         parts.next().unwrap_or_default(),
     );
     let row_kind = if kind == "flow_root" { "flow" } else { kind };
-    let rest = rest.strip_suffix(":0").map_or(rest.to_string(), |scope| {
-        format!("{scope}:{NO_CYCLE_ID}")
-    });
-    format!("{kind}:{}:{rest}", new_id(row_kind, number.parse().unwrap_or_default()))
+    let rest = rest
+        .strip_suffix(":0")
+        .map_or(rest.to_string(), |scope| format!("{scope}:{NO_CYCLE_ID}"));
+    format!(
+        "{kind}:{}:{rest}",
+        new_id(row_kind, number.parse().unwrap_or_default())
+    )
 }
 
 #[tokio::test]
@@ -1017,43 +1025,42 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     .await
     .unwrap();
     let mut expected_tasks = vec![
-            (
-                old_key("flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
-                Some("done".into()),
-                None,
-                None,
-                Some(100),
-                0
-            ),
-            (
-                old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
-                Some("in_progress".into()),
-                Some("Own title".into()),
-                None,
-                None,
-                1
-            ),
-            (
-                old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-06\"}:0"),
-                None,
-                None,
-                Some("archived".into()),
-                None,
-                0
-            ),
-            (
-                old_key("flow_task:11:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
-                Some("done".into()),
-                None,
-                Some("missed".into()),
-                Some(300),
-                0
-            ),
-        ];
+        (
+            old_key("flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("done".into()),
+            None,
+            None,
+            Some(100),
+            0,
+        ),
+        (
+            old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("in_progress".into()),
+            Some("Own title".into()),
+            None,
+            None,
+            1,
+        ),
+        (
+            old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-06\"}:0"),
+            None,
+            None,
+            Some("archived".into()),
+            None,
+            0,
+        ),
+        (
+            old_key("flow_task:11:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("done".into()),
+            None,
+            Some("missed".into()),
+            Some(300),
+            0,
+        ),
+    ];
     expected_tasks.sort();
     assert_eq!(
-        tasks,
-        expected_tasks,
+        tasks, expected_tasks,
         "a task's status carries as itself; a deleted tombstone becomes archived"
     );
 
@@ -1085,8 +1092,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
         ];
     expected_commitments.sort();
     assert_eq!(
-        commitments,
-        expected_commitments,
+        commitments, expected_commitments,
         "each verdict carries under its own iteration key; a stale done is no verdict, and an \
          overlay left saying nothing is not kept"
     );

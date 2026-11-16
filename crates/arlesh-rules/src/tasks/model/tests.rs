@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn task_status_as_str_covers_all_variants() {
@@ -248,7 +248,8 @@ fn goal_id_roundtrip() {
 fn a_delegate_is_a_kind_and_an_id_on_the_wire() {
     let person = serde_json::to_value(Delegate::Person { id: tid(3) }).expect("serialises");
     assert_eq!(person, serde_json::json!({"kind": "person", "id": tid(3)}));
-    let read: Delegate = serde_json::from_str(&format!(r#"{{"kind":"person","id":"{}"}}"#, tid(7))).expect("parses");
+    let read: Delegate =
+        serde_json::from_str(&format!(r#"{{"kind":"person","id":"{}"}}"#, tid(7))).expect("parses");
     assert_eq!(read, Delegate::Person { id: tid(7) });
 }
 

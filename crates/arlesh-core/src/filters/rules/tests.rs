@@ -1,8 +1,8 @@
 //! Each predicate on its own, at the boundaries the specification names.
 
-use crate::nodes::id::tid;
 use super::*;
 use crate::filters::model::{BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagMode};
+use crate::nodes::id::tid;
 use crate::tasks::{lifecycle::Timing, model::Verdict};
 
 fn task(status: &str) -> NodeFacts {
@@ -700,7 +700,10 @@ fn tags_combine_as_any_and_all_and_not_exclude() {
     let with = |tags: Vec<(i64, TagMode)>| BoardFilter {
         tags: tags
             .into_iter()
-            .map(|(tag_id, mode)| crate::filters::model::TagFilter { tag_id: tid(tag_id), mode })
+            .map(|(tag_id, mode)| crate::filters::model::TagFilter {
+                tag_id: tid(tag_id),
+                mode,
+            })
             .collect(),
         ..BoardFilter::default()
     };

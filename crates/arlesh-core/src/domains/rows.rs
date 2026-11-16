@@ -1,8 +1,8 @@
 //! The domains table's rows: what a query decodes, before it becomes a domain value (ADR 0010,
 //! decision 8).
 
-use crate::nodes::id::RowId;
 use super::model::Domain;
+use crate::nodes::id::RowId;
 
 /// A [`Domain`] as its table holds it.
 #[derive(sqlx::FromRow)]

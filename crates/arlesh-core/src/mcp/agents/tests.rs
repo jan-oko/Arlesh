@@ -76,7 +76,10 @@ async fn an_unattached_session_may_call_nothing_but_the_attach_tool() {
     let session = session(&mcp);
 
     for (tool, arguments) in [
-        ("arlesh_tasks", json!({ "operation": "get", "id": tid(100).to_string() })),
+        (
+            "arlesh_tasks",
+            json!({ "operation": "get", "id": tid(100).to_string() }),
+        ),
         ("arlesh_snapshot", json!({ "operation": "load" })),
         (
             "arlesh_scopes",
@@ -726,7 +729,8 @@ async fn a_childs_write_outside_its_sub_claim_is_refused_and_the_parents_is_not(
     let token = register(&session, "sub-1").await;
     child_claims(&session, &token, "task", &tid(100).to_string()).await;
     let update = |extra: Value| {
-        let mut base = json!({ "operation": "update", "id": tid(101).to_string(), "title": "Renamed" });
+        let mut base =
+            json!({ "operation": "update", "id": tid(101).to_string(), "title": "Renamed" });
         base.as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
@@ -1232,10 +1236,12 @@ async fn a_child_whose_task_is_still_on_an_agent_is_kept() {
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
     child_claims(&session, &token, "task", &tid(100).to_string()).await;
-    sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = '00000000-0000-7000-8000-000000000064'")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "UPDATE tasks SET status = 'on_agent' WHERE id = '00000000-0000-7000-8000-000000000064'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let answer = finish(&session, "sub-1").await;
 

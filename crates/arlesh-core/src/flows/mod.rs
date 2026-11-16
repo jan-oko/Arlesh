@@ -57,12 +57,12 @@ use crate::tasks::{
 use error::FlowError;
 use habits::{classify_iterations, expire_unanswered, SlotWindow};
 use model::{
-    ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment,
-    FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType,
-    FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
-    HabitIteration, InstanceType, MaterializedFlow, MissPolicy, SetRecurrenceRequest,
-    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
-    no_cycle,
+    no_cycle, ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow,
+    FlowCommitment, FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId,
+    FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild,
+    HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceType, MaterializedFlow, MissPolicy,
+    SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest,
+    UpdateFlowRequest,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
 use rows::{
@@ -959,7 +959,11 @@ impl<'session> FlowOperator<'session> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn delete_item(&mut self, item_type: FlowItemType, id: RowId) -> Result<(), FlowError> {
+    pub async fn delete_item(
+        &mut self,
+        item_type: FlowItemType,
+        id: RowId,
+    ) -> Result<(), FlowError> {
         let table = item_type.table();
         self.clear_item_links(item_type, id).await?;
         self.templates()

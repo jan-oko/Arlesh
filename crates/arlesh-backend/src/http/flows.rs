@@ -211,7 +211,10 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn get_flow_recurrence(&self, flow_id: RowId) -> Result<Option<FlowRecurrence>, WireError> {
+    async fn get_flow_recurrence(
+        &self,
+        flow_id: RowId,
+    ) -> Result<Option<FlowRecurrence>, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/flows/{}/recurrence", segment(&flow_id)),
@@ -341,7 +344,11 @@ impl FlowsPort for HttpBackend {
         .await
     }
 
-    async fn fork_flow(&self, flow_id: RowId, now: chrono::NaiveDateTime) -> Result<Flow, WireError> {
+    async fn fork_flow(
+        &self,
+        flow_id: RowId,
+        now: chrono::NaiveDateTime,
+    ) -> Result<Flow, WireError> {
         self.write(
             Call::new(Method::POST, format!("/flows/{}/fork", segment(&flow_id)))
                 .query("now", &now),

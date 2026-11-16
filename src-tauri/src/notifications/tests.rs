@@ -52,7 +52,8 @@ fn task_json(id: i64, title: &str) -> String {
 fn question_event(seq: u64, task: i64) -> BoardChange {
     let key = tkey("task", task);
     let wait = tid(99);
-    let changes = format!(r#"{{"facts":{{"set":[["{key}",{{"open_question":"{wait}"}}]],"del":[]}}}}"#);
+    let changes =
+        format!(r#"{{"facts":{{"set":[["{key}",{{"open_question":"{wait}"}}]],"del":[]}}}}"#);
     BoardChange::parse(&format!(
         r#"{{"epoch":"run","seq":{seq},"revision":{seq},"changes":{changes}}}"#
     ))
@@ -116,7 +117,11 @@ fn a_board_already_asking_at_startup_tells_nothing() {
 
     service.load(&board(
         &format!("[{}]", task_json(1, "Fix it")),
-        &format!(r#"{{"{}":{{"open_question":"{}"}}}}"#, tkey("task", 1), tid(5)),
+        &format!(
+            r#"{{"{}":{{"open_question":"{}"}}}}"#,
+            tkey("task", 1),
+            tid(5)
+        ),
     ));
 
     assert_eq!(recorder.calls.load(Ordering::Relaxed), 0);

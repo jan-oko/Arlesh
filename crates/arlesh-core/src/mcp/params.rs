@@ -535,10 +535,7 @@ pub enum TasksOperation {
     Create {
         /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
         /// otherwise the server mints a UUIDv7.
-        #[serde(
-            default,
-            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
-        )]
+        #[serde(default, deserialize_with = "crate::nodes::id::deserialize_chosen_id")]
         #[schemars(with = "Option<String>")]
         id: Option<RowId>,
         /// The parent's kind: `domain`, `project`, `goal`, `task` or `commitment`.
@@ -784,10 +781,7 @@ pub enum WaitsOperation {
     Ask {
         /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
         /// otherwise the server mints a UUIDv7.
-        #[serde(
-            default,
-            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
-        )]
+        #[serde(default, deserialize_with = "crate::nodes::id::deserialize_chosen_id")]
         #[schemars(with = "Option<String>")]
         id: Option<RowId>,
         /// The Agentic Task the agent is working, which the wait hangs under.
@@ -807,10 +801,7 @@ pub enum WaitsOperation {
     Raise {
         /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
         /// otherwise the server mints a UUIDv7.
-        #[serde(
-            default,
-            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
-        )]
+        #[serde(default, deserialize_with = "crate::nodes::id::deserialize_chosen_id")]
         #[schemars(with = "Option<String>")]
         id: Option<RowId>,
         /// The Agentic Task the agent is working, which the wait hangs under.
@@ -835,10 +826,7 @@ pub enum WaitsOperation {
     RaiseReview {
         /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
         /// otherwise the server mints a UUIDv7.
-        #[serde(
-            default,
-            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
-        )]
+        #[serde(default, deserialize_with = "crate::nodes::id::deserialize_chosen_id")]
         #[schemars(with = "Option<String>")]
         id: Option<RowId>,
         /// The Agentic Task the agent is working, which the review hangs under. It must be held by
@@ -938,10 +926,7 @@ pub enum InfosOperation {
     Create {
         /// The new row's id, when the caller has already chosen one (a UUID, version 4 or 7);
         /// otherwise the server mints a UUIDv7.
-        #[serde(
-            default,
-            deserialize_with = "crate::nodes::id::deserialize_chosen_id"
-        )]
+        #[serde(default, deserialize_with = "crate::nodes::id::deserialize_chosen_id")]
         #[schemars(with = "Option<String>")]
         id: Option<RowId>,
         /// The Agentic Task the Info hangs under.

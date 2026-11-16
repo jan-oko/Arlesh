@@ -1,5 +1,5 @@
-use crate::nodes::key::no_cycle;
 use crate::nodes::id::tid;
+use crate::nodes::key::no_cycle;
 use chrono::NaiveDate;
 
 use super::*;
@@ -154,7 +154,10 @@ fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() 
 fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
     let (keys, parents) = nested();
     let aside = set_aside(&keys, &HashSet::from([(item(5), tid(7))]), &parents);
-    assert_eq!(aside, HashSet::from([(item(5), tid(7)), (item(6), no_cycle())]));
+    assert_eq!(
+        aside,
+        HashSet::from([(item(5), tid(7)), (item(6), no_cycle())])
+    );
     // The evening occurrence and the root still have to be done.
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(item(5), 20, 7), archived());
@@ -520,13 +523,22 @@ fn children_nest_under_their_parents_first_occurrence() {
         "an unknown parent falls back to the root"
     );
     assert_eq!(template.parent_of(root(1)), None);
-    assert_eq!(template.first_cycle(TemplateKind::FlowTask, tid(1)), tid(11));
-    assert_eq!(template.first_cycle(TemplateKind::FlowTask, tid(2)), no_cycle());
+    assert_eq!(
+        template.first_cycle(TemplateKind::FlowTask, tid(1)),
+        tid(11)
+    );
+    assert_eq!(
+        template.first_cycle(TemplateKind::FlowTask, tid(2)),
+        no_cycle()
+    );
 }
 
 #[test]
 fn an_occurrences_tags_are_its_templates_with_its_own_differences() {
-    assert_eq!(effective_tags(&[tid(3), tid(1)], None), vec![tid(1), tid(3)]);
+    assert_eq!(
+        effective_tags(&[tid(3), tid(1)], None),
+        vec![tid(1), tid(3)]
+    );
     let differences = vec![(tid(3), false), (tid(7), true), (tid(1), true)];
     assert_eq!(
         effective_tags(&[tid(3), tid(1)], Some(&differences)),

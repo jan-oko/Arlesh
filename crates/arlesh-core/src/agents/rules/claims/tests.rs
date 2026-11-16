@@ -1,6 +1,6 @@
-use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
+use crate::nodes::id::tid;
 
 // Growth (domain 1)
 // ├── Arlesh (domain 2)

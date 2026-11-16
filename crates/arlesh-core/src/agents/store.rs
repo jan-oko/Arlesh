@@ -4,13 +4,13 @@
 //! when an account is at capacity, how a PIN lapses — are [`super::rules`]'s, and the composite
 //! operations that gather facts for them are [`super::service`]'s.
 
-use crate::nodes::id::RowId;
 use super::{
     error::AgentError,
     model::{Agent, AgentId, UsageWindow},
     rows::{AgentRow, UsageRow, AGENT_COLUMNS},
 };
 use crate::access::model::NodeKey;
+use crate::nodes::id::RowId;
 
 /// Reads and writes the agents' tables.
 ///
@@ -150,7 +150,10 @@ impl<'session> AgentOperator<'session> {
     /// What a stored Task holds for a child agent that claimed it: its stored status, and how many
     /// pending, live agentic waits hang directly under it. `None` when there is no such Task.
     #[tracing::instrument(skip(self))]
-    pub async fn task_holding(&mut self, task: RowId) -> Result<Option<(String, usize)>, AgentError> {
+    pub async fn task_holding(
+        &mut self,
+        task: RowId,
+    ) -> Result<Option<(String, usize)>, AgentError> {
         let status: Option<String> = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
             .bind(task)
             .fetch_optional(&mut *self.connection)

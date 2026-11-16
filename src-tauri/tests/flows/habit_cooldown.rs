@@ -3,10 +3,9 @@
 //! Each test builds a Habit through the commands, completes iterations at chosen instants, and
 //! loads the board at a moment to ask whether the next iteration carries the cooldown's block.
 
-use arlesh_lib::nodes::key::no_cycle;
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::block_reasons::model::DerivedBlock;
 use arlesh_lib::commands::flows as flow_commands;

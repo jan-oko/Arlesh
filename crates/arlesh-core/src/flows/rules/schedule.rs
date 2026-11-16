@@ -15,8 +15,8 @@ use crate::flows::{
     error::FlowError,
     habits::{self, instance_timing, Clock, SlotWindow},
     model::{
-        ClockKind, Flow, FlowItemCycle, FlowItemType, FlowRecurrence, HabitInstance,
-        IterationStatus, MissPolicy, SetRecurrenceRequest, no_cycle,
+        no_cycle, ClockKind, Flow, FlowItemCycle, FlowItemType, FlowRecurrence, HabitInstance,
+        IterationStatus, MissPolicy, SetRecurrenceRequest,
     },
     render::{ResolvedPair, ScopeTable},
 };

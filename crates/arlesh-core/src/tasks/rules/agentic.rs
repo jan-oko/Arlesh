@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use crate::flows::model::{
     ChildAttachment, Flow, FlowCommitment, FlowExpectation, FlowGoal, FlowTask,
 };
-use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, no_cycle};
+use crate::nodes::key::{no_cycle, OccurrenceKey, TemplateItem, TemplateKind};
 use crate::nodes::overlay::TaskOverlay;
 use crate::scopes::key::ScopeKey;
 use crate::tasks::error::TaskError;

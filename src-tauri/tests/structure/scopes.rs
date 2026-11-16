@@ -4,9 +4,9 @@
 //! `src/scopes/`. These tests hold the storage contract: no scope table, and every referencing
 //! column holding a key's one canonical text.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 use crate::helpers::StoredId;
+use arlesh_lib::nodes::id::RowId;
 
 use chrono::{NaiveDate, NaiveDateTime};
 

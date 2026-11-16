@@ -1,7 +1,7 @@
 //! The lock as a derived block: who it blocks, and how the reason is carried.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
 use crate::{
     domains::model::Domain,
@@ -214,7 +214,10 @@ fn the_filters_read_a_capacity_blocked_task_as_blocked() {
     assert!(blocked(&tkey("task", 31)));
     assert!(!blocked(&tkey("task", 23)), "explicitly Not agentic");
     assert!(!blocked(&tkey("task", 40)));
-    assert_eq!(find(&forest, &tkey("task", 20)).unwrap().facts.kind, NodeKind::Task);
+    assert_eq!(
+        find(&forest, &tkey("task", 20)).unwrap().facts.kind,
+        NodeKind::Task
+    );
 }
 
 #[test]

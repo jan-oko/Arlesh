@@ -1,7 +1,7 @@
-use crate::nodes::id::tid;
 use super::*;
-use crate::nodes::id::tkey;
 use crate::access::model::StoredNode;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 
 fn node(kind: NodeTable, id: i64, parent: Option<NodeKey>) -> StoredNode {
     StoredNode {
@@ -204,10 +204,16 @@ fn each_root_is_named_by_short_path_kind_and_id() {
     ]);
 
     assert!(
-        text.contains(&format!("- … › Arlesh › Features › Search (task {})", tid(5))),
+        text.contains(&format!(
+            "- … › Arlesh › Features › Search (task {})",
+            tid(5)
+        )),
         "{text}"
     );
-    assert!(text.contains(&format!("- Growth › Code (project {})", tid(2))), "{text}");
+    assert!(
+        text.contains(&format!("- Growth › Code (project {})", tid(2))),
+        "{text}"
+    );
     assert!(text.contains("Agentic tasks"), "{text}");
 }
 
@@ -215,7 +221,10 @@ fn each_root_is_named_by_short_path_kind_and_id() {
 fn a_root_at_the_top_of_the_board_is_its_own_title() {
     let text = instructions_for(&[NodeKey::new(NodeTable::Domain, tid(1))]);
 
-    assert!(text.contains(&format!("- Growth (aspect {})", tid(1))), "{text}");
+    assert!(
+        text.contains(&format!("- Growth (aspect {})", tid(1))),
+        "{text}"
+    );
 }
 
 #[test]

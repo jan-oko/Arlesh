@@ -283,7 +283,10 @@ impl FlowsPort for SqliteBackend {
         Ok(recurrence)
     }
 
-    async fn get_flow_recurrence(&self, flow_id: RowId) -> Result<Option<FlowRecurrence>, WireError> {
+    async fn get_flow_recurrence(
+        &self,
+        flow_id: RowId,
+    ) -> Result<Option<FlowRecurrence>, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -456,7 +459,11 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn fork_flow(&self, flow_id: RowId, now: chrono::NaiveDateTime) -> Result<Flow, WireError> {
+    async fn fork_flow(
+        &self,
+        flow_id: RowId,
+        now: chrono::NaiveDateTime,
+    ) -> Result<Flow, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let forked = flows::archive_and_fork(&mut db, FlowId(flow_id), now)
             .await

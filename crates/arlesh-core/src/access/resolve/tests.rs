@@ -1,6 +1,6 @@
-use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
+use crate::nodes::id::tid;
 
 // A small board:
 //
@@ -270,7 +270,10 @@ fn effective_names_the_nearest_root_each_node_is_seen_through() {
         .iter()
         .find(|entry| entry.node_kind == NodeTable::Flow)
         .expect("the flow is visible");
-    assert_eq!((launch.root_kind, launch.root_id), (NodeTable::Domain, tid(1)));
+    assert_eq!(
+        (launch.root_kind, launch.root_id),
+        (NodeTable::Domain, tid(1))
+    );
     assert!(
         !entries
             .iter()

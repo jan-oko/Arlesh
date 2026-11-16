@@ -1,6 +1,5 @@
 //! The publisher, over an in-memory database and a clock the test moves.
 
-use crate::nodes::id::tid;
 use std::sync::Arc;
 
 use chrono::NaiveDate;
@@ -131,7 +130,10 @@ async fn a_write_then_a_recorded_write_publishes_one_event_with_the_written_task
     assert_eq!(events[0]["seq"], 2);
     assert_eq!(events[0]["revision"], 1);
     assert_eq!(events[0]["epoch"], &*rig.publisher.epoch());
-    assert_eq!(events[0]["changes"]["tasks"]["set"][0][0], tkey("task", 100));
+    assert_eq!(
+        events[0]["changes"]["tasks"]["set"][0][0],
+        tkey("task", 100)
+    );
     assert_eq!(events[0]["changes"]["tasks"]["set"][0][1]["title"], "Docs");
     assert_eq!(lock(&rig.heard).len(), 1, "the sink heard it too");
 }

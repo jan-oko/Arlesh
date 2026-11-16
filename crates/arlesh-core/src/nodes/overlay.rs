@@ -432,7 +432,10 @@ impl<'session> OverlayOperator<'session> {
 
     /// The iterations of one Habit that carry an overlay — among the future iterations the virtual
     /// tables must still derive, so that an edit is never lost.
-    pub async fn touched_iterations(&mut self, flow_id: RowId) -> Result<Vec<ScopeKey>, sqlx::Error> {
+    pub async fn touched_iterations(
+        &mut self,
+        flow_id: RowId,
+    ) -> Result<Vec<ScopeKey>, sqlx::Error> {
         let keys: Vec<DbScopeKey> = sqlx::query_scalar(
             "SELECT iteration_scope FROM task_overlays WHERE flow_id = ?1 AND origin = 'habit'
              UNION SELECT iteration_scope FROM goal_overlays WHERE flow_id = ?1

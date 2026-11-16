@@ -16,8 +16,8 @@
 //! the two are [`Search::Unconstrained`] and [`Search::Undetermined`], and each caller applies
 //! its own policy to the second — see [`Search::or_unconstrained`] and [`Search::or_reject`].
 
-use crate::nodes::id::RowId;
 use crate::database::session::{Db, SessionMode};
+use crate::nodes::id::RowId;
 
 use super::error::TaskError;
 use super::model::{CommitmentId, GoalId, TaskId};

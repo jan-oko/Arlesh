@@ -49,7 +49,10 @@ async fn chain_through(last: i64) -> SqlitePool {
         .unwrap();
     if last > BASELINE_VERSION {
         crate::database::row_ids::prepare(&pool).await.unwrap();
-        migrator(|version| version <= last).run(&pool).await.unwrap();
+        migrator(|version| version <= last)
+            .run(&pool)
+            .await
+            .unwrap();
     }
     pool
 }
@@ -224,10 +227,12 @@ async fn a_migration_newer_than_the_baseline_runs_on_top_of_it() {
 #[tokio::test]
 async fn rows_written_before_the_uuid_migration_keep_the_full_ids_they_were_shown_under() {
     let pool = chain_through(BASELINE_VERSION).await;
-    sqlx::query("INSERT INTO tasks (id, title, parent_type, parent_id) VALUES (5, 'T', 'domain', 1)")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES (5, 'T', 'domain', 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     migrate(&pool).await.unwrap();
 

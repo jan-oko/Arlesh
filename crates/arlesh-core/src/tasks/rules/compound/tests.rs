@@ -1,7 +1,7 @@
 //! The progress rule, and deriving compound Tasks' statuses over a board.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::{
     nodes::origin::WaitOrigin,
     tasks::{
@@ -515,7 +515,10 @@ fn a_compound_tasks_done_time_is_its_latest_finish_while_it_is_done() {
         ],
         ..Board::default()
     };
-    let instants = HashMap::from([(NodeId::Stored(tid(2)), at(8)), (NodeId::Stored(tid(3)), at(10))]);
+    let instants = HashMap::from([
+        (NodeId::Stored(tid(2)), at(8)),
+        (NodeId::Stored(tid(3)), at(10)),
+    ]);
     let rows = |board: &Board, settled: &HashSet<NodeId>| {
         derive(
             &Rows {

@@ -21,11 +21,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{
-    access::model::NodeTable,
-    mindmap::model::MindmapLoad,
-    nodes::id::NodeId,
-};
+use crate::{access::model::NodeTable, mindmap::model::MindmapLoad, nodes::id::NodeId};
 
 /// The fewest hex characters a short id has.
 const SHORTEST: usize = 3;
@@ -382,11 +378,7 @@ impl NodeNames {
                 .as_deref()
                 .is_some_and(|wanted| node.hex.starts_with(wanted))
         };
-        let all: Vec<&Named> = self
-            .nodes
-            .iter()
-            .filter(by_prefix)
-            .collect();
+        let all: Vec<&Named> = self.nodes.iter().filter(by_prefix).collect();
         let fits = |node: &&&Named| table.is_none_or(|table| node.table == table);
         let matches: Vec<&Named> = all.iter().filter(fits).copied().collect();
         if let Some(exact) = matches

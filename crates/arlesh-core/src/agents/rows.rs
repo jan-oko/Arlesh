@@ -2,12 +2,12 @@
 //!
 //! Domain types carry no `sqlx`; a query decodes into a row here and converts with `From`.
 
-use crate::nodes::id::RowId;
 use super::{
     error::AgentError,
     model::{Agent, AgentId, Claim, ClaimStatus, UsageWindow},
 };
 use crate::access::model::NodeKey;
+use crate::nodes::id::RowId;
 
 /// A row of `agents`.
 #[derive(sqlx::FromRow)]

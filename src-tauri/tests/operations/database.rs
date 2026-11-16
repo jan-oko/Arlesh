@@ -1,7 +1,7 @@
 use crate::helpers;
 
-use arlesh_lib::database::row_ids;
 use arlesh_lib::database;
+use arlesh_lib::database::row_ids;
 
 #[tokio::test]
 async fn connect_enables_foreign_keys() {
@@ -623,7 +623,13 @@ async fn migration_0087_gives_every_habit_a_clock_and_keeps_every_overlay() {
     let mut expected = vec![
         (flow(1), "window".into(), Some("archive".into()), None, None),
         (flow(2), "window".into(), Some("owed".into()), None, None),
-        (flow(3), "window".into(), Some("overdue".into()), Some(3), end),
+        (
+            flow(3),
+            "window".into(),
+            Some("overdue".into()),
+            Some(3),
+            end,
+        ),
         (flow(4), "window".into(), Some("overdue".into()), None, None),
         (flow(5), "window".into(), Some("overdue".into()), None, None),
     ];
@@ -676,7 +682,7 @@ async fn migration_0087_gives_every_habit_a_clock_and_keeps_every_overlay() {
 /// the undo journal's images, written under the old spellings, are respelled to match.
 #[tokio::test]
 async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every_link() {
-    let (pool, everything) = pool_before(96).await;
+    let (pool, _) = pool_before(96).await;
     sqlx::query(
         "INSERT INTO domains (id, title, subtype, parent_id) VALUES
              (100, 'Project', 'project', 1), (101, 'Tag', 'tag', NULL);

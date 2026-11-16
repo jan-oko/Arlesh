@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 fn id(n: i64) -> NodeId {
     NodeId::Stored(tid(n))

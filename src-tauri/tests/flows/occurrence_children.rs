@@ -10,10 +10,9 @@
 //! refused, what does this occurrence carry — rather than which rows exist. The one exception is
 //! the template-untouched assertion, where row absence *is* the behaviour.
 
-use arlesh_lib::nodes::key::no_cycle;
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;

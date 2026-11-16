@@ -1,7 +1,7 @@
 //! A Compound Task blocked when every one of its open counted items is.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::tasks::{
     model::{ExpectationStatus, Status, Task, Verdict},
     rules::compound::tests::{commitment, compound, goal, task, wait, Board},

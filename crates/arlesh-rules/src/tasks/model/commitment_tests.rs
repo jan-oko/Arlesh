@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn verdict_as_str_covers_all_variants() {

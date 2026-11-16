@@ -125,7 +125,13 @@ fn every_goal_every_other_task_and_every_stored_wait_is_offered() {
     let (tasks, goals, waits) = board();
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &[])),
-        [tkey("task", 2), tkey("task", 3), tkey("task", 4), tkey("goal", 10), tkey("expectation", 20)]
+        [
+            tkey("task", 2),
+            tkey("task", 3),
+            tkey("task", 4),
+            tkey("goal", 10),
+            tkey("expectation", 20)
+        ]
     );
 }
 
@@ -156,6 +162,12 @@ fn a_task_sharing_a_goal_or_a_wait_is_still_offered() {
     let edges = [edge(2, "goal", 10), edge(2, "expectation", 20)];
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &edges)),
-        [tkey("task", 2), tkey("task", 3), tkey("task", 4), tkey("goal", 10), tkey("expectation", 20)]
+        [
+            tkey("task", 2),
+            tkey("task", 3),
+            tkey("task", 4),
+            tkey("goal", 10),
+            tkey("expectation", 20)
+        ]
     );
 }

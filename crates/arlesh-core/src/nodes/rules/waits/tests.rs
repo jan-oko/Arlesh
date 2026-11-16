@@ -65,7 +65,10 @@ fn check_key() -> CheckKey {
 fn state(overlay: TaskOverlay) -> CheckState {
     CheckState {
         overlays: HashMap::from([(check_key().node_key(), overlay)]),
-        tags: HashMap::from([(check_key().node_key(), vec![(tid(3), true), (tid(4), false)])]),
+        tags: HashMap::from([(
+            check_key().node_key(),
+            vec![(tid(3), true), (tid(4), false)],
+        )]),
         reasons: HashMap::from([(check_key().node_key(), vec!["phone is off".to_string()])]),
     }
 }

@@ -1,9 +1,8 @@
 //! Expectations against a real database: the row, the dependency edges aimed at it, the virtual
 //! block reason it gives a Task, its lifecycle entry and the subtree delete.
 
-use arlesh_lib::nodes::id::tid;
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},

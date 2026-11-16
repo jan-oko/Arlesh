@@ -1,6 +1,5 @@
 //! Registering a device, planning for it, and what a restart keeps.
 
-use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
 use crate::database::session::SessionFactory;

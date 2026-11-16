@@ -55,7 +55,10 @@ fn a_check_key_rewrites_the_wait_it_names() {
     let new = rewrite_key("check:stored:7@2026-09-20T09:00:00", &ids).expect("known row");
     assert_eq!(
         new,
-        format!("check:stored:{}@2026-09-20T09:00:00", new_id("expectation", 7))
+        format!(
+            "check:stored:{}@2026-09-20T09:00:00",
+            new_id("expectation", 7)
+        )
     );
     let spelled = rewrite_key("stored:7", &ids).expect("known row");
     assert_eq!(spelled, format!("stored:{}", new_id("expectation", 7)));
@@ -75,7 +78,7 @@ fn a_spawned_wait_of_an_occurrence_follows_the_occurrences_new_id() {
     let derived_old = uuid_v5(&NODE_NAMESPACE, &occurrence);
     let keys = vec![
         format!("spawned_wait:{derived_old}"),
-        format!("delegation_wait:5"),
+        "delegation_wait:5".to_string(),
         occurrence.clone(),
     ];
     let pairs = rewrite_keys(&keys, &mut ids);

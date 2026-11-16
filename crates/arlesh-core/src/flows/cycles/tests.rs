@@ -1,6 +1,6 @@
-use crate::nodes::key::no_cycle;
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::key::no_cycle;
 
 fn stored(id: i64, scope_index: i64, plan_start: Option<i64>) -> FlowItemCycle {
     FlowItemCycle {
@@ -103,5 +103,8 @@ fn giving_an_unpaired_item_its_first_pair_orphans_the_no_pair_occurrence() {
 fn taking_every_pair_away_orphans_each_of_them() {
     let existing = [stored(10, 1, None), stored(11, 3, None)];
     let diff = diff_cycles(&existing, &[]);
-    assert_eq!(orphaned_cycle_ids(&existing, &[], &diff), vec![tid(10), tid(11)]);
+    assert_eq!(
+        orphaned_cycle_ids(&existing, &[], &diff),
+        vec![tid(10), tid(11)]
+    );
 }

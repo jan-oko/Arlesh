@@ -554,12 +554,9 @@ fn resolve(target: &StepTarget, made: &[Value]) -> Result<NodeId, WireError> {
                 return Ok(NodeId::Stored(*id));
             }
             if forked == "flow" {
-                let flow = answer
-                    .get("flow_id")
-                    .and_then(row_id_of)
-                    .ok_or_else(|| {
-                        WireError::invalid_request(format!("step {step} forked no Habit"))
-                    })?;
+                let flow = answer.get("flow_id").and_then(row_id_of).ok_or_else(|| {
+                    WireError::invalid_request(format!("step {step} forked no Habit"))
+                })?;
                 return Ok(NodeId::Stored(flow));
             }
             let pairs = match forked.as_str() {

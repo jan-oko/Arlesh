@@ -1,7 +1,7 @@
 //! Assembling a fact forest from a load, and narrowing a load to what a filter keeps.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
 use crate::{
     block_reasons::model::BlockReason,
@@ -216,12 +216,10 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     // Only the unmet dependency is named; an explicit reason names none.
     assert!(find(&forest, &tkey("task", 21))
         .is_some_and(|node| node.facts.blocking_dependencies == [tkey("task", 20)]));
-    assert!(
-        find(&forest, &tkey("task", 20)).is_some_and(|node| node.facts.blocking_dependencies.is_empty())
-    );
-    assert!(
-        find(&forest, &tkey("goal", 10)).is_some_and(|node| node.facts.blocking_dependencies.is_empty())
-    );
+    assert!(find(&forest, &tkey("task", 20))
+        .is_some_and(|node| node.facts.blocking_dependencies.is_empty()));
+    assert!(find(&forest, &tkey("goal", 10))
+        .is_some_and(|node| node.facts.blocking_dependencies.is_empty()));
 }
 
 #[test]
@@ -351,8 +349,15 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
 
     let forest = forest(&load);
     assert!(find(&forest, &tkey("domain", 3)).is_some_and(|node| node.facts.kind == NodeKind::Tag));
-    assert!(find(&forest, &tkey("domain", 4)).is_some_and(|node| node.facts.kind == NodeKind::Domain));
-    for id in [&tkey("commitment", 31), &tkey("info", 41), &tkey("info", 42), &tkey("info", 43)] {
+    assert!(
+        find(&forest, &tkey("domain", 4)).is_some_and(|node| node.facts.kind == NodeKind::Domain)
+    );
+    for id in [
+        &tkey("commitment", 31),
+        &tkey("info", 41),
+        &tkey("info", 42),
+        &tkey("info", 43),
+    ] {
         assert!(find(&forest, id).is_some(), "{id} found its parent");
     }
 }

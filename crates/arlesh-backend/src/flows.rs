@@ -117,7 +117,10 @@ pub trait FlowsPort: Send + Sync {
     ) -> Result<FlowRecurrence, WireError>;
 
     /// Fetches a flow's Recurrence, or `null` if it is a plain (non-habit) flow.
-    async fn get_flow_recurrence(&self, flow_id: RowId) -> Result<Option<FlowRecurrence>, WireError>;
+    async fn get_flow_recurrence(
+        &self,
+        flow_id: RowId,
+    ) -> Result<Option<FlowRecurrence>, WireError>;
 
     /// Deletes a flow's Recurrence, demoting the Habit back to a plain flow.
     async fn delete_flow_recurrence(&self, flow_id: RowId) -> Result<(), WireError>;
@@ -174,7 +177,11 @@ pub trait FlowsPort: Send + Sync {
     async fn clear_habit_modifications(&self, flow_id: RowId) -> Result<(), WireError>;
 
     /// The archive-and-new reconciliation arm: deep-clones a flow's template into a new flow and
-    async fn fork_flow(&self, flow_id: RowId, now: chrono::NaiveDateTime) -> Result<Flow, WireError>;
+    async fn fork_flow(
+        &self,
+        flow_id: RowId,
+        now: chrono::NaiveDateTime,
+    ) -> Result<Flow, WireError>;
 
     /// Copies a Flow — template, Recurrence and all — under a new parent (the Mindmap's Copy+Paste).
     async fn duplicate_flow(

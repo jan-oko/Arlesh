@@ -1,8 +1,8 @@
 //! Which started-instance links a subtree copy carries over.
 
-use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
+use crate::nodes::id::tid;
 
 fn node(node_type: &str, node_id: i64) -> TargetRef {
     TargetRef {

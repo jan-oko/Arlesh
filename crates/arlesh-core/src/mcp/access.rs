@@ -50,7 +50,12 @@ pub(super) fn refuse(
 
 /// Whether `map` lets the MCP hold `needed` on the node a board reference names. A reference to
 /// something that is not a stored row is never permitted.
-pub(super) fn permits(map: &AccessMap, node_type: &str, node_id: RowId, needed: AccessLevel) -> bool {
+pub(super) fn permits(
+    map: &AccessMap,
+    node_type: &str,
+    node_id: RowId,
+    needed: AccessLevel,
+) -> bool {
     NodeKey::from_reference(node_type, node_id).is_some_and(|node| map.level(node).permits(needed))
 }
 

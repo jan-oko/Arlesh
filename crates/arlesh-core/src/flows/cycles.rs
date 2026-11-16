@@ -16,7 +16,7 @@ use chrono::NaiveDateTime;
 
 use super::{
     error::FlowError,
-    model::{FlowCycleInput, FlowId, FlowItemCycle, FlowItemType, UpdateFlowRequest, no_cycle},
+    model::{no_cycle, FlowCycleInput, FlowId, FlowItemCycle, FlowItemType, UpdateFlowRequest},
     stop_recurring,
 };
 use crate::database::session::{Db, Transactional};

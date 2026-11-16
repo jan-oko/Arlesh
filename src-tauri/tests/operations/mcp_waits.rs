@@ -1,7 +1,7 @@
 //! Listing waits cheaply, and how the snapshot's `expectations` section reads under a filter.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 use helpers::IntoParam as _;
 use helpers::StoredId;
 

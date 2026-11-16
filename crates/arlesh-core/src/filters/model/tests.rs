@@ -1,7 +1,7 @@
 //! The wire form: what an MCP caller writes, and what it means when they leave a field out.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn naming_only_a_preset_leaves_every_other_axis_at_the_apps_own_default() {

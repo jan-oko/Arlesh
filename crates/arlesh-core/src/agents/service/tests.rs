@@ -13,10 +13,10 @@
 //! Elsewhere (domain 4, not opened)
 //! ```
 
-use crate::nodes::id::tid;
 use super::*;
 use crate::access::model::NodeTable;
 use crate::database::session::{Db, Transactional};
+use crate::nodes::id::tid;
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
 fn at(text: &str) -> NaiveDateTime {
@@ -870,11 +870,13 @@ async fn setting_the_claimed_task_done_removes_that_child_and_not_a_sibling() {
             .await
             .unwrap();
 
-        sqlx::query("UPDATE tasks SET status = ? WHERE id = '00000000-0000-7000-8000-000000000064'")
-            .bind(done)
-            .execute(&board.pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "UPDATE tasks SET status = ? WHERE id = '00000000-0000-7000-8000-000000000064'",
+        )
+        .bind(done)
+        .execute(&board.pool)
+        .await
+        .unwrap();
 
         let mut db = board.db().await;
         assert!(view(&mut db, child).await.unwrap().is_none(), "{done}");

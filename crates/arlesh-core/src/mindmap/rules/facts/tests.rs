@@ -1,8 +1,8 @@
 //! The board's facts: what each node inherits, which dependencies block it, its open question,
 //! and what the agents are doing.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
 use crate::{
     domains::model::Domain,
@@ -143,7 +143,10 @@ fn a_node_inherits_the_nearest_agentic_flag_and_time_scope_above_it() {
     let (facts, _) = derive(&board(), None);
     let inherits = |key: &str| facts.get(key).cloned().unwrap_or_default();
     assert!(inherits(&tkey("task", 11)).inherited_agentic);
-    assert!(inherits(&tkey("task", 21)).inherited_agentic, "through the goal");
+    assert!(
+        inherits(&tkey("task", 21)).inherited_agentic,
+        "through the goal"
+    );
     assert!(
         inherits(&tkey("task", 12)).inherited_agentic,
         "its own flag is not what it inherits"
@@ -152,7 +155,10 @@ fn a_node_inherits_the_nearest_agentic_flag_and_time_scope_above_it() {
         !inherits(&tkey("task", 10)).inherited_agentic,
         "nothing above it is flagged"
     );
-    assert_eq!(inherits(&tkey("task", 21)).inherited_time_scope, Some(scoped(1)));
+    assert_eq!(
+        inherits(&tkey("task", 21)).inherited_time_scope,
+        Some(scoped(1))
+    );
     assert_eq!(
         inherits(&tkey("task", 10)).inherited_time_scope,
         None,
@@ -194,8 +200,7 @@ fn a_dependency_blocks_until_its_target_is_finished() {
         edge(11, "goal", 30),
         edge(11, "task", 99),
     ];
-    load.short_ids
-        .insert(tkey("task", 12), "abc".to_string());
+    load.short_ids.insert(tkey("task", 12), "abc".to_string());
     let (facts, _) = derive(&load, None);
     let blocks = &facts[&tkey("task", 11)].dependency_blocks;
     assert_eq!(
@@ -273,7 +278,9 @@ fn a_commitment_expires_unresolved_and_archived() {
     load.lifecycles = vec![archived(40), archived(41)];
     let (facts, _) = derive(&load, None);
     assert!(facts[&tkey("commitment", 40)].expired);
-    assert!(!facts.get(&tkey("commitment", 41)).is_some_and(|fact| fact.expired));
+    assert!(!facts
+        .get(&tkey("commitment", 41))
+        .is_some_and(|fact| fact.expired));
 }
 
 #[test]
@@ -300,7 +307,11 @@ fn a_node_is_seen_through_its_root_and_a_derived_one_through_its_nearest_stored_
         Some("domain 2"),
         "through task 10"
     );
-    assert_eq!(via(&tkey("task", 11)), None, "a stored node the roots do not reach");
+    assert_eq!(
+        via(&tkey("task", 11)),
+        None,
+        "a stored node the roots do not reach"
+    );
 }
 
 #[test]
@@ -315,10 +326,14 @@ fn a_derived_wait_says_what_it_may_not_be_done_to_and_a_row_made_by_hand_says_no
     });
     load.tasks.push(check);
     let (facts, _) = derive(&load, None);
-    let capabilities = facts.get(&tkey("task", 30)).and_then(|node| node.capabilities);
+    let capabilities = facts
+        .get(&tkey("task", 30))
+        .and_then(|node| node.capabilities);
     assert!(capabilities.is_some_and(|can| !can.delete && !can.drag && !can.compound));
     assert_eq!(
-        facts.get(&tkey("task", 12)).and_then(|node| node.capabilities),
+        facts
+            .get(&tkey("task", 12))
+            .and_then(|node| node.capabilities),
         None,
         "a row made by hand carries no limits"
     );

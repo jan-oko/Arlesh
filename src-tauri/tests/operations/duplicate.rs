@@ -9,8 +9,8 @@
 //! one exception noted in place: a command that forgot its `commit()` still compiles and still
 //! returns `Ok`, and only a read taken after the command returned can tell the difference.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     commands::{

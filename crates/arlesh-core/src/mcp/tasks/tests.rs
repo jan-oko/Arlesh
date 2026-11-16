@@ -46,7 +46,10 @@ async fn shown(mcp: &ArleshMcp) -> String {
     )
     .await;
     let tasks = structured(&answer)["tasks"].as_array().unwrap().clone();
-    let task = tasks.iter().find(|task| task["id"] == tid(100).to_string()).unwrap();
+    let task = tasks
+        .iter()
+        .find(|task| task["id"] == tid(100).to_string())
+        .unwrap();
     task["status"]["status"]
         .as_str()
         .unwrap_or_else(|| panic!("{task}"))

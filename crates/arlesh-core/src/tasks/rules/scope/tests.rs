@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 /// A window spanning `[from, to)` in July 2026, by day-of-month. Pure test data: nothing

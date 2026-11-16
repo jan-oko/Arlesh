@@ -1,8 +1,8 @@
 //! The board's entries, its diff and its digests (ADR 0020): the cases the frontend replays from
 //! `conformance/board-changes.json`.
 
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
 use serde_json::{json, Value};
 
@@ -208,7 +208,10 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
                 b["infos"] = json!([]);
                 b["lifecycles"].as_array_mut().unwrap().remove(0);
                 b["block_reasons"].as_array_mut().unwrap().remove(2);
-                b["short_ids"].as_object_mut().unwrap().remove(&tkey("task", 10));
+                b["short_ids"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(&tkey("task", 10));
             }),
         ),
         (
@@ -222,10 +225,9 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
             "a dependency added",
             before.clone(),
             edited(&|b| {
-                b["task_dependencies"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push(json!({"task_id": tid(10), "dependency_type": "goal", "dependency_id": tid(3)}));
+                b["task_dependencies"].as_array_mut().unwrap().push(
+                    json!({"task_id": tid(10), "dependency_type": "goal", "dependency_id": tid(3)}),
+                );
             }),
         ),
         (
@@ -290,7 +292,10 @@ fn a_move_gives_the_moved_row_and_the_sibling_whose_position_changed() {
     let changes = changes_between(&before, &after);
 
     assert_eq!(touched(&changes), ["tasks"]);
-    assert_eq!(keys(&changes, Collection::Tasks).0, [tkey("task", 10), tkey("task", 11)]);
+    assert_eq!(
+        keys(&changes, Collection::Tasks).0,
+        [tkey("task", 10), tkey("task", 11)]
+    );
 }
 
 #[test]
@@ -306,7 +311,10 @@ fn a_delete_gives_a_key_for_every_entry_of_the_subtree() {
     );
     assert_eq!(keys(&changes, Collection::Infos).1, [tid(6).to_string()]);
     assert_eq!(keys(&changes, Collection::Lifecycles).1, [tkey("task", 10)]);
-    assert_eq!(keys(&changes, Collection::BlockReasons).1, [tkey("task", 10)]);
+    assert_eq!(
+        keys(&changes, Collection::BlockReasons).1,
+        [tkey("task", 10)]
+    );
     assert_eq!(keys(&changes, Collection::ShortIds).1, [tkey("task", 10)]);
 }
 
@@ -330,7 +338,10 @@ fn an_added_dependency_replaces_its_tasks_group() {
 
     let changes = changes_between(&before, &after);
 
-    assert_eq!(keys(&changes, Collection::TaskDependencies).0, [tkey("task", 10)]);
+    assert_eq!(
+        keys(&changes, Collection::TaskDependencies).0,
+        [tkey("task", 10)]
+    );
 }
 
 #[test]

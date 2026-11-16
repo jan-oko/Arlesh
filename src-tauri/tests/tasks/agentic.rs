@@ -1,8 +1,8 @@
 //! Agentic as an object: the brief a Task carries, the Spec a Task that reads as Agentic needs
 //! before it starts, and the agentic waits that may hang only under one.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 use helpers::StoredId;
 
 use arlesh_lib::{

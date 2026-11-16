@@ -1,5 +1,5 @@
-use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::key::no_cycle;
 use crate::scopes::key::ScopeKey;
 

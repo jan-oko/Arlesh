@@ -4,9 +4,9 @@
 //! Writes to a Habit occurrence are in `tests/flows/agentic_occurrences.rs`, beside the fixtures
 //! that derive one.
 
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 use helpers::{IntoParam as _, StoredId};
 
 use arlesh_lib::access::model::NodeTable;
@@ -137,7 +137,11 @@ fn refused(result: &CallToolResult) -> &str {
     body(result)["kind"].as_str().unwrap_or("")
 }
 
-fn create(parent_type: &str, parent_id: impl crate::helpers::IntoParam, title: &str) -> TasksOperation {
+fn create(
+    parent_type: &str,
+    parent_id: impl crate::helpers::IntoParam,
+    title: &str,
+) -> TasksOperation {
     operation(serde_json::json!({
         "operation": "create",
         "parent_type": parent_type,
@@ -743,7 +747,8 @@ async fn an_agents_write_never_lands_in_the_users_open_gesture() {
         .await
         .expect("open gesture");
     let users = task(&app, "project", board.inside, "The user's").await;
-    let agents = succeeded(&run(&mcp, create("project", board.inside, "The agent's")).await)["id"].clone();
+    let agents =
+        succeeded(&run(&mcp, create("project", board.inside, "The agent's")).await)["id"].clone();
     let agents = crate::helpers::row_id(&agents);
     undo_commands::close_gesture(app.state())
         .await
@@ -787,7 +792,11 @@ async fn a_short_id_a_longer_prefix_and_the_full_id_name_the_same_task() {
             }))
             .await
             .expect("the tasks tool returned no result");
-        assert_eq!(succeeded(&got)["task"]["id"], board.inside_task.to_string(), "{id}");
+        assert_eq!(
+            succeeded(&got)["task"]["id"],
+            board.inside_task.to_string(),
+            "{id}"
+        );
         let renamed = run(
             &mcp,
             retitle(NodeIdParam::new(id), &format!("Renamed {index}")),
@@ -835,7 +844,9 @@ async fn a_short_id_naming_nothing_visible_or_the_wrong_kind_is_refused() {
 /// a row's id starts with the time it was made. Returns both and the digits they share.
 async fn colliding_tasks(app: &App<MockRuntime>, board: &Board) -> (RowId, RowId, String) {
     let hex = |id: RowId| id.to_string().replace('-', "");
-    let shared = |a: &str, b: &str| -> usize { a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count() };
+    let shared = |a: &str, b: &str| -> usize {
+        a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
+    };
     let others = [hex(board.inside), hex(board.inside_task)];
     let mut made: Vec<RowId> = Vec::new();
     for index in 0..40 {
@@ -997,7 +1008,12 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
 
     let urgent = agentic_snapshot(&mcp, Some(AgenticPriority::A)).await;
     let tasks = rows(&urgent, "tasks");
-    let by_id = |id: RowId| tasks.iter().find(|task| task["id"] == id.to_string()).cloned();
+    let by_id = |id: RowId| {
+        tasks
+            .iter()
+            .find(|task| task["id"] == id.to_string())
+            .cloned()
+    };
     assert_eq!(
         by_id(inheriting).map(|task| task["reads_agentic"].clone()),
         Some(serde_json::json!(true))
@@ -1924,7 +1940,8 @@ mod agent_notes {
             .await
             .expect("open gesture");
         let users = task(&app, "project", board.inside, "The user's").await;
-        let agents = succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"].clone();
+        let agents =
+            succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"].clone();
         let agents = crate::helpers::row_id(&agents);
         undo_commands::close_gesture(app.state())
             .await
@@ -1962,7 +1979,10 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
         },
     )
     .await;
-    assert_eq!(succeeded(&as_number)["task"]["id"], board.inside_task.to_string());
+    assert_eq!(
+        succeeded(&as_number)["task"]["id"],
+        board.inside_task.to_string()
+    );
 
     let got = run(
         &mcp,
@@ -2477,7 +2497,9 @@ mod delegation {
         snapshot(mcp, "expectations")
             .await
             .into_iter()
-            .filter(|wait| wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task.to_string())
+            .filter(|wait| {
+                wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task.to_string()
+            })
             .filter_map(|wait| wait["title"].as_str().map(str::to_string))
             .collect()
     }

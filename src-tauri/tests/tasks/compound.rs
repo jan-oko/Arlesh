@@ -1,8 +1,8 @@
 //! Compound: a Task that consists of its sub-items, driven through the board as the app drives
 //! it — a write naming a row, then a load — and asked what the Task reads as afterwards.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 use helpers::StoredId;
 
 use arlesh_lib::{

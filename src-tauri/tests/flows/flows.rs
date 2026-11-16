@@ -1,7 +1,7 @@
-use arlesh_lib::nodes::key::no_cycle;
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::flows::{
     archive_and_fork, convert_to_flow, delete_flow, duplicate_flow, duplicate_flow_item,
@@ -3231,12 +3231,11 @@ fn an_explicit_null_target_in_an_update_payload_clears_it() {
     );
     assert_eq!(nulled.target_id, Some(None));
 
-    let set: UpdateFlowRequest =
-        serde_json::from_str(&format!(
-            r#"{{"target_type":"goal","target_id":"{}"}}"#,
-            tid(5)
-        ))
-        .unwrap();
+    let set: UpdateFlowRequest = serde_json::from_str(&format!(
+        r#"{{"target_type":"goal","target_id":"{}"}}"#,
+        tid(5)
+    ))
+    .unwrap();
     assert_eq!(set.target_type, Some(Some("goal".to_string())));
     assert_eq!(set.target_id, Some(Some(tid(5))));
 }
@@ -4399,7 +4398,9 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert_ne!(copy.id, flow.id);
     assert_eq!(
@@ -4494,7 +4495,9 @@ async fn a_copied_flow_keeps_a_derived_target_and_so_follows_the_paste() {
         "created with no explicit target"
     );
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3))
+        .await
+        .unwrap();
 
     assert!(
         copy.target_type.is_none() && copy.target_id.is_none(),
@@ -4530,7 +4533,9 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
         .await
         .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3))
+        .await
+        .unwrap();
 
     assert_eq!(copy.target_type.as_deref(), Some("goal"));
     assert_eq!(
@@ -4620,7 +4625,9 @@ async fn a_copied_habit_carries_no_completion_history() {
         1
     );
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(1)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(1))
+        .await
+        .unwrap();
 
     assert_eq!(
         helpers::session_factory(&pool)
@@ -4743,7 +4750,9 @@ async fn a_copy_of_a_private_flow_is_private() {
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert!(
         copy.is_private,
@@ -4807,7 +4816,9 @@ async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() 
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2)).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert_eq!(copy.instance_type, "commitment");
     assert!(copy.is_habit);
@@ -5213,7 +5224,10 @@ async fn copying_an_item_that_does_not_exist_is_a_not_found() {
         .await
         .unwrap_err();
 
-    assert!(matches!(refused, FlowError::NotFound(id) if id == tid(9_999)), "{refused}");
+    assert!(
+        matches!(refused, FlowError::NotFound(id) if id == tid(9_999)),
+        "{refused}"
+    );
 }
 
 #[tokio::test]

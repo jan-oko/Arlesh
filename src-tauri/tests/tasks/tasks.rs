@@ -1,6 +1,6 @@
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 
 // Aliased rather than imported by name: several command functions share a name with a test below
 // (`delete_task`, `delete_goal`), and the alias keeps the call sites saying which one they mean.
@@ -4499,15 +4499,16 @@ fn an_explicit_null_delegate_in_a_task_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the delegate"
     );
-    let set: UpdateTaskRequest =
-        serde_json::from_str(&format!(
-            r#"{{"delegate_to":{{"kind":"person","id":"{}"}}}}"#,
-            tid(7)
-        ))
-        .unwrap();
+    let set: UpdateTaskRequest = serde_json::from_str(&format!(
+        r#"{{"delegate_to":{{"kind":"person","id":"{}"}}}}"#,
+        tid(7)
+    ))
+    .unwrap();
     assert_eq!(
         set.delegate_to,
-        Some(Some(arlesh_lib::tasks::model::Delegate::Person { id: tid(7) }))
+        Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+            id: tid(7)
+        }))
     );
 }
 

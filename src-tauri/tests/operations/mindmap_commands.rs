@@ -15,8 +15,8 @@
 //! The pool has **one** connection (see [`helpers::test_pool`]), so every assertion here reads it
 //! only after the command's session has closed.
 
-use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::commands::{
     block_reasons as block_reason_commands, domains as domain_commands, flows as flow_commands,

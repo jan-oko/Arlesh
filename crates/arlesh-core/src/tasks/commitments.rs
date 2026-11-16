@@ -16,8 +16,8 @@
 //! inherits its window from a Commitment ancestor, and the containment rules are the ones in
 //! `scope_rules`. Splitting it out would mean either duplicating that chain or making it public.
 
-use crate::nodes::id::RowId;
 use crate::database::session::{Db, Transactional};
+use crate::nodes::id::RowId;
 use crate::nodes::origin::Origin;
 use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;

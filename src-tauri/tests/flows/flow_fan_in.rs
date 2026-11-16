@@ -10,9 +10,9 @@
 //! verifiable. They are deliberately in their own binary, leaving `tests/flows.rs` byte-identical
 //! as the refactor's frozen behavioural contract.
 
+use crate::helpers;
 use arlesh_lib::nodes::id::tid;
 use arlesh_lib::nodes::id::RowId;
-use crate::helpers;
 
 use arlesh_lib::flows::{
     model::{
