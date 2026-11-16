@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
@@ -278,7 +279,7 @@ describe("moving a task across", () => {
       fireEvent.click(screen.getByLabelText("planInto"));
     });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     // The board reloads on the lane's answer (ADR 0012, decision 15), not from this view.
     expect(usePendingWritesStore.getState().writes[0]?.answer).not.toBeNull();
   });
@@ -291,7 +292,7 @@ describe("moving a task across", () => {
       fireEvent.click(screen.getByLabelText("unplan"));
     });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
   });
 
   it("refuses a move that escapes the task's own Time Scope, and says which bound stopped it", async () => {
@@ -350,7 +351,7 @@ describe("taking work back out of the scope", () => {
     fireEvent.keyDown(window, { code: "ArrowRight" });
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, toMonth);
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), toMonth);
   });
 
   it("plans it to the parent scope when dropped on the candidates pane while the pane is not split", async () => {
@@ -359,7 +360,7 @@ describe("taking work back out of the scope", () => {
 
     await act(async () => { dropOnCandidates(["task-2"], "planned"); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, toMonth);
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), toMonth);
   });
 
   it("plans it to the scope being filled itself with Enter while the pane is split", async () => {
@@ -370,7 +371,7 @@ describe("taking work back out of the scope", () => {
     fireEvent.keyDown(window, { code: "ArrowRight" });
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, toWeek);
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), toWeek);
   });
 
   it("plans it to the scope being filled itself when dropped on the candidates pane while split", async () => {
@@ -380,7 +381,7 @@ describe("taking work back out of the scope", () => {
 
     await act(async () => { dropOnCandidates(["task-2"], "planned"); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, toWeek);
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), toWeek);
   });
 
   it("clears the Plan on an unsplit Season, which has no rung above it", async () => {
@@ -391,7 +392,7 @@ describe("taking work back out of the scope", () => {
     fireEvent.keyDown(window, { code: "ArrowRight" });
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), { plan: null });
   });
 
   it("refuses a take-out the task's own Time Scope cannot hold, and says so", async () => {
@@ -463,7 +464,7 @@ describe("the keyboard", () => {
     });
     await settle();
 
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     const cards = document.querySelectorAll('[data-plan-pane="candidates"] [data-plan-card-id]');
     expect([...cards].some((card) => card.className.includes("cardSelected"))).toBe(true);
   });
@@ -509,7 +510,7 @@ describe("the keyboard", () => {
       fireEvent.keyDown(window, { code: "Enter" });
     });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
   });
 });
 
@@ -857,7 +858,7 @@ describe("a Habit occurrence", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
     expect(updateTask).toHaveBeenCalledTimes(2);
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 });
@@ -880,8 +881,8 @@ describe("selecting more than one row", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
     expect(updateTask).toHaveBeenCalledTimes(2);
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 
   it("adds and removes one row at a time with Ctrl", async () => {
@@ -897,7 +898,7 @@ describe("selecting more than one row", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
     expect(updateTask).toHaveBeenCalledTimes(2);
-    expect(updateTask).toHaveBeenCalledWith(3, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(3), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 });
 
@@ -975,8 +976,8 @@ describe("on a phone", () => {
     await afterFlight();
     await nextTick();
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
-    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(storedRowId(1), expect.anything());
   });
 
   it("slides the card with the finger, flies it out past the threshold and fires after", async () => {
@@ -996,7 +997,7 @@ describe("on a phone", () => {
     expect(updateTask).not.toHaveBeenCalled();
     await afterFlight();
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
   });
 
   it("springs the card back, and does nothing, when the swipe stops short of the threshold", async () => {
@@ -1032,7 +1033,7 @@ describe("on a phone", () => {
     await nextTick();
     await settle();
     expect(card.style.opacity).toBe("");
-    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
   });
 
   it("plans a candidate into the scope with a swipe left too, not setting Started", async () => {
@@ -1050,8 +1051,8 @@ describe("on a phone", () => {
     await afterFlight();
     await nextTick();
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
-    expect(updateTask).not.toHaveBeenCalledWith(1, expect.objectContaining({ status: expect.anything() }));
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).not.toHaveBeenCalledWith(storedRowId(1), expect.objectContaining({ status: expect.anything() }));
   });
 
   it("takes a planned card out with a swipe right too, not advancing its status", async () => {
@@ -1061,9 +1062,9 @@ describe("on a phone", () => {
     await afterFlight();
     await nextTick();
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
-    expect(updateTask).not.toHaveBeenCalledWith(2, expect.objectContaining({ status: expect.anything() }));
-    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(storedRowId(2), expect.objectContaining({ status: expect.anything() }));
+    expect(updateTask).not.toHaveBeenCalledWith(storedRowId(1), expect.anything());
   });
 
   it("plans a candidate into the scope with a swipe right on it", async () => {
@@ -1073,7 +1074,7 @@ describe("on a phone", () => {
     await afterFlight();
     await nextTick();
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 
   describe("the subscope split and the finger's drag", () => {
@@ -1137,7 +1138,7 @@ describe("on a phone", () => {
       if (planned === null) throw new Error("no planned pane");
       await holdAndDrag(cardElement("task-1"), planned);
       await settle();
-      expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     });
 
     it("drags a planned card onto the to-plan pane: it is taken out", async () => {
@@ -1147,8 +1148,8 @@ describe("on a phone", () => {
       if (candidates === null) throw new Error("no candidates pane");
       await holdAndDrag(cardElement("task-2"), candidates);
       await settle();
-      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
-      expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
+      expect(updateTask).not.toHaveBeenCalledWith(storedRowId(1), expect.anything());
     });
 
     it("drops nothing when the finger lifts over no target", async () => {
@@ -1327,7 +1328,7 @@ describe("the phone's split planned pane", () => {
       fireEvent.touchEnd(cardElement("task-5"), { touches: [], changedTouches: [at(cardElement("task-5"), 100, 150)] });
       await settle();
       expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
-      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.anything());
       expect(document.querySelector("[data-plan-overlay]")).toBeNull();
     });
 
@@ -1359,7 +1360,7 @@ describe("the phone's split planned pane", () => {
       fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
       await holdAndDrag(cardElement("task-2"), () => document.querySelector('[data-plan-pane="candidates"]'));
       await settle();
-      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
     });
 
     it("carries the whole selection onto the tile", async () => {
@@ -1372,8 +1373,8 @@ describe("the phone's split planned pane", () => {
       fireEvent.click(cardElement("task-6"), { ctrlKey: true });
       await holdAndDrag(cardElement("task-5"), () => tiles()[3] ?? null);
       await settle();
-      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
-      expect(updateTask).toHaveBeenCalledWith(6, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(6), expect.anything());
     });
 
     it("draws no overlay while the split is off", async () => {
@@ -1399,7 +1400,7 @@ describe("the phone's split planned pane", () => {
       await act(async () => { fireEvent.click(tiles()[1] ?? document.body); });
       await settle();
       expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
-      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.anything());
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
@@ -1435,7 +1436,7 @@ describe("the phone's split planned pane", () => {
       await renderPlanView();
       fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
       await swipe("task-2");
-      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(2), expect.anything());
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
@@ -1445,7 +1446,7 @@ describe("the phone's split planned pane", () => {
       await renderPlanView();
       await swipe("task-5");
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(updateTask).toHaveBeenCalledWith(5, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+      expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
     });
   });
 });

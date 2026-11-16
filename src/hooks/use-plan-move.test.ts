@@ -132,7 +132,7 @@ describe("planning through the lane", () => {
     expect(runGesture).toHaveBeenCalledTimes(1);
     await act(async () => { first.resolve([{ id: storedRowId(1) }]); await first.promise; });
     await settleLane();
-    expect(runGesture.mock.calls.map(([, steps]) => steps[0]?.id)).toEqual([1, 2]);
+    expect(runGesture.mock.calls.map(([, steps]) => steps[0]?.id)).toEqual([storedRowId(1), storedRowId(2)]);
   });
 
   it("rolls back, asks the clamp prompt, and writes again acknowledged when Tasks below would be left outside", async () => {

@@ -186,9 +186,9 @@ describe("creating through the lane", () => {
     await waitFor(() => expect(store().writes).toHaveLength(0));
 
     expect(calls.filter(([command]) => command.endsWith("_task"))).toEqual([
-      ["create_task", { request: { title: "", parent_type: "goal", parent_id: 1 } }],
-      ["update_task", { id: 11, request: { title: "Buy milk" } }],
-      ["create_task", { request: { title: "", parent_type: "task", parent_id: 11 } }],
+      ["create_task", { request: { title: "", parent_type: "goal", parent_id: storedRowId(1) } }],
+      ["update_task", { id: storedRowId(11), request: { title: "Buy milk" } }],
+      ["create_task", { request: { title: "", parent_type: "task", parent_id: storedRowId(11) } }],
     ]);
     const board = result.current.tree;
     expect(find(board, `task-${storedRowId(11)}`)?.children.map((c) => c.id)).toEqual([`task-${storedRowId(12)}`]);
@@ -273,7 +273,7 @@ describe("creating through the lane", () => {
     await published();
     await waitFor(() => expect(store().writes).toHaveLength(0));
     expect(calls.filter(([command]) => command === "step_task_status")).toEqual([
-      ["step_task_status", { id: 11, step: "advance", confirmed: undefined }],
+      ["step_task_status", { id: storedRowId(11), step: "advance", confirmed: undefined }],
     ]);
     expect(find(result.current.tree, `task-${storedRowId(11)}`)?.taskStatus).toEqual({ kind: "ordinary", status: "in_progress" });
   });

@@ -770,7 +770,7 @@ describe("ListView", () => {
     mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [storedRowId(7)] }) })] }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByTitle("filterByTag"));
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 7, mode: "any" }]);
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(7), mode: "any" }]);
   });
 
   describe("keyboard navigation and actions", () => {
@@ -1384,7 +1384,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
   });
 
   it("draws a Commitment as a row among the tasks, with the same control, when bands are off", () => {
@@ -1398,7 +1398,7 @@ describe("ListView — the commitments section", () => {
 
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
     useDisplayStore.setState({ listBands: true });
   });
 
@@ -1413,13 +1413,13 @@ describe("ListView — the commitments section", () => {
 
   it.each(["unresolved", "kept", "broken"] as const)("sends a cycle press for the selected commitment on Enter, from %s", (current) => {
     pressOnCommitment(current, { key: "Enter", code: "Enter" });
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
   });
 
   it.each(["unresolved", "kept"] as const)("sends the Broken press on X from %s", (current) => {
     // Enter walks past Broken, so X is what keeps Broken reachable in one press from anywhere.
     pressOnCommitment(current, { key: "x", code: "KeyX" });
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "broken");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "broken");
   });
 
   it("gives a commitment Habit's iteration the same verdict control as any other commitment", () => {

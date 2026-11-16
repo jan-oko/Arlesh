@@ -6,7 +6,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 
 vi.mock("@/api/tasks", () => ({
-  updateTask: vi.fn().mockResolvedValue({ id: storedRowId(1), status: "in_progress" }),
+  updateTask: vi.fn().mockResolvedValue({ id: "00000000-0000-7000-8000-000000000001", status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
   TASK_ARCHIVAL: { LIVE: "live", BACKLOG: "backlog" },
   // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
@@ -20,7 +20,7 @@ vi.mock("@/api/node-gestures", () => ({
 }));
 
 vi.mock("@/api/goals", () => ({
-  updateGoal: vi.fn().mockResolvedValue({ id: storedRowId(2), status: "achieved" }),
+  updateGoal: vi.fn().mockResolvedValue({ id: "00000000-0000-7000-8000-000000000002", status: "achieved" }),
 }));
 
 vi.mock("@/api/flows", () => ({

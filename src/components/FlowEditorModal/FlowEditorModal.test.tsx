@@ -21,7 +21,7 @@ vi.mock("@/api/flows", () => ({
 }));
 vi.mock("@/api/scopes", () => ({
   getScope: vi.fn().mockResolvedValue({
-    id: storedRowId(1), kind: "week", label: "", start_date: "2026-01-04", end_date: "2026-01-10",
+    id: 1, kind: "week", label: "", start_date: "2026-01-04", end_date: "2026-01-10",
     week_id: null, month_id: null, season_id: null, day_id: null,
     part: null, start_datetime: null, end_datetime: null,
   }),

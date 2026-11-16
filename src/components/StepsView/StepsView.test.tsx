@@ -86,7 +86,7 @@ const settleBoard = vi.fn(() => Promise.resolve());
 const createChild = vi.fn((_parentId: string, _parentKind: NodeKind, _title: string) =>
   Promise.resolve(n(`task-${storedRowId(99)}`, "task")));
 const createNode = vi.fn((_parentId: string, _parentKind: NodeKind, childKind: NodeKind, _title: string) =>
-  Promise.resolve(n(`${childKind}-98`, childKind)));
+  Promise.resolve(n(`${childKind}-${storedRowId(98)}`, childKind)));
 const removeNode = vi.fn((_nodes: Array<{ id: string; kind: NodeKind }>) => Promise.resolve());
 
 function mockTree(children: MindmapNode[]): void {
