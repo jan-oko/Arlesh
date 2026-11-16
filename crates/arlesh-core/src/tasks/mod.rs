@@ -1430,10 +1430,11 @@ pub async fn create_goal(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let existing = arlesh_core::nodes::id::nil_row_id();
 /// let mut db = factory.begin().await?;
 /// update_goal(
 ///     &mut db,
-///     GoalId(1),
+///     GoalId(existing),
 ///     UpdateGoalRequest { title: Some("Renamed".into()), ..Default::default() },
 /// )
 /// .await?;
@@ -1586,10 +1587,11 @@ pub(crate) async fn create_task_as(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let existing = arlesh_core::nodes::id::nil_row_id();
 /// let mut db = factory.begin().await?;
 /// update_task(
 ///     &mut db,
-///     TaskId(1),
+///     TaskId(existing),
 ///     UpdateTaskRequest { title: Some("Renamed".into()), ..Default::default() },
 /// )
 /// .await?;
@@ -1693,8 +1695,9 @@ pub async fn update_task_at(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
 /// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let (task, blocker) = (arlesh_core::nodes::id::nil_row_id(), arlesh_core::nodes::id::nil_row_id());
 /// let mut db = factory.begin().await?;
-/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2.into() }).await?;
+/// add_task_dependency(&mut db, TaskId(task), Dependency::Task { id: blocker.into() }).await?;
 /// db.commit().await?;
 /// # Ok(())
 /// # }

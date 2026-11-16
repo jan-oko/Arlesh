@@ -43,6 +43,7 @@ impl<'session> DomainOperator<'session> {
     /// # async fn create(factory: &SessionFactory) -> Result<(), arlesh_core::domains::error::DomainError> {
     /// let mut db = factory.begin().await?;
     /// db.domains().create(CreateDomainRequest {
+    ///     id: None,
     ///     title: "Learn Rust".into(),
     ///     description: None,
     ///     subtype: DomainSubtype::Domain,

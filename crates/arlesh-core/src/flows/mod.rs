@@ -954,7 +954,7 @@ impl<'session> FlowOperator<'session> {
     /// # use arlesh_core::flows::{error::FlowError, model::FlowItemType};
     /// # async fn remove(factory: &SessionFactory) -> Result<(), FlowError> {
     /// let mut db = factory.begin().await?;
-    /// db.flows().delete_item(FlowItemType::FlowTask, 1).await?;
+    /// db.flows().delete_item(FlowItemType::FlowTask, arlesh_core::nodes::id::nil_row_id()).await?;
     /// db.commit().await?;
     /// # Ok(())
     /// # }

@@ -126,8 +126,9 @@ impl<'session> InfoOperator<'session> {
     /// # use arlesh_core::database::session::SessionFactory;
     /// # use arlesh_core::infos::model::{InfoId, UpdateInfoRequest};
     /// # async fn update(factory: &SessionFactory) -> Result<(), sqlx::Error> {
+    /// # let existing = arlesh_core::nodes::id::nil_row_id();
     /// let mut db = factory.begin().await?;
-    /// db.infos().update(InfoId(1), UpdateInfoRequest {
+    /// db.infos().update(InfoId(existing), UpdateInfoRequest {
     ///     body: Some("Updated".to_string()),
     ///     ..Default::default()
     /// }).await?;

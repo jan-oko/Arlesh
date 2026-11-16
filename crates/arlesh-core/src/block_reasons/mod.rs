@@ -86,8 +86,9 @@ impl<'session> BlockReasonOperator<'session> {
     /// ```no_run
     /// # use arlesh_core::database::session::SessionFactory;
     /// # async fn replace(factory: &SessionFactory) -> Result<(), sqlx::Error> {
+    /// # let task = arlesh_core::nodes::id::nil_row_id();
     /// let mut db = factory.begin().await?;
-    /// db.block_reasons().set("task", 1, &["stuck".to_string()]).await?;
+    /// db.block_reasons().set("task", task, &["stuck".to_string()]).await?;
     /// db.commit().await?;
     /// # Ok(())
     /// # }
