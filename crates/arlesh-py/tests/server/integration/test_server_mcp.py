@@ -1,4 +1,5 @@
 """``/mcp``: Arlesh's MCP endpoint through the server, behind the connect token: Streamable HTTP
+
 with sessions and plain JSON answers. A session is unattached until its agent attaches with a
 PIN."""
 
@@ -10,6 +11,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
 
 INITIALIZE = {
     "jsonrpc": "2.0",
@@ -181,11 +185,13 @@ def test_a_batch_is_answered_in_one_array_without_the_notifications(
 def test_an_agent_attaches_with_a_pin_and_sees_only_its_claim(
     server: TestClient,
     server_db: Path,
-    domain: int,
+    domain: str,
     create: Any,
     connect_token: str,
 ) -> None:
-    other = create("/domains", {"title": "Elsewhere", "subtype": "domain", "parent_id": 1})["id"]
+    other = create(
+        "/domains", {"title": "Elsewhere", "subtype": "domain", "parent_id": ROOT_ASPECT}
+    )["id"]
     mine = domain
     with sqlite3.connect(server_db) as connection:
         for root in (mine, other):
@@ -243,7 +249,7 @@ def test_an_agent_attaches_with_a_pin_and_sees_only_its_claim(
 
 
 def test_a_second_session_cannot_claim_what_the_first_holds(
-    server: TestClient, server_db: Path, domain: int, connect_token: str
+    server: TestClient, server_db: Path, domain: str, connect_token: str
 ) -> None:
     with sqlite3.connect(server_db) as connection:
         connection.execute(

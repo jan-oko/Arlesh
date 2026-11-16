@@ -7,13 +7,13 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 OneDay = Callable[[str], dict[str, Any]]
 DONE = {"status": {"kind": "ordinary", "status": "done"}}
 
 
 def test_a_created_task_reads_back_with_what_blocks_it(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     response = server.get(f"/tasks/{new_task(domain)}")
 
@@ -23,7 +23,7 @@ def test_a_created_task_reads_back_with_what_blocks_it(
 
 
 def test_an_update_changes_only_what_it_names_and_null_clears(
-    server: TestClient, domain: int, new_task: NewTask, one_day: OneDay
+    server: TestClient, domain: str, new_task: NewTask, one_day: OneDay
 ) -> None:
     identifier = new_task(domain, time_scope=one_day("2026-06-10"))
 
@@ -37,7 +37,7 @@ def test_an_update_changes_only_what_it_names_and_null_clears(
 
 
 def test_an_update_naming_a_parent_moves_the_task(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     parent, child = new_task(domain, "Parent"), new_task(domain, "Child")
 
@@ -48,7 +48,7 @@ def test_an_update_naming_a_parent_moves_the_task(
     assert (response.json()["parent_type"], response.json()["parent_id"]) == ("task", parent)
 
 
-def test_a_deleted_task_is_gone(server: TestClient, domain: int, new_task: NewTask) -> None:
+def test_a_deleted_task_is_gone(server: TestClient, domain: str, new_task: NewTask) -> None:
     identifier = new_task(domain)
 
     assert server.delete(f"/tasks/{identifier}").status_code == 204
@@ -56,7 +56,7 @@ def test_a_deleted_task_is_gone(server: TestClient, domain: int, new_task: NewTa
 
 
 def test_a_status_step_advances_the_cycle(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     response = server.post(f"/tasks/{new_task(domain)}/status", params={"step": "advance"})
 
@@ -66,7 +66,7 @@ def test_a_status_step_advances_the_cycle(
 
 
 def test_toggling_agentic_flips_the_task(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     response = server.post(f"/tasks/{new_task(domain)}/agentic/toggle")
 
@@ -75,7 +75,7 @@ def test_toggling_agentic_flips_the_task(
 
 
 def test_a_dependency_is_added_read_and_removed(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     dependency = {"type": "task", "id": first}
@@ -91,7 +91,7 @@ def test_a_dependency_is_added_read_and_removed(
 
 
 def test_when_a_task_was_done_reads_and_corrects(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     identifier = new_task(domain, status=DONE["status"])
 
@@ -101,12 +101,12 @@ def test_when_a_task_was_done_reads_and_corrects(
     assert server.get(f"/tasks/{identifier}/done-at").json() == "2026-06-10T09:30:00"
 
 
-def test_an_undone_task_has_no_done_at(server: TestClient, domain: int, new_task: NewTask) -> None:
+def test_an_undone_task_has_no_done_at(server: TestClient, domain: str, new_task: NewTask) -> None:
     assert server.get(f"/tasks/{new_task(domain)}/done-at").json() is None
 
 
 def test_a_duplicate_is_a_new_task_under_the_target(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     identifier = new_task(domain, "Original")
 
@@ -121,7 +121,7 @@ def test_a_duplicate_is_a_new_task_under_the_target(
     assert response.json()["left_behind"] == []
 
 
-def test_a_task_converts_to_a_flow(server: TestClient, domain: int, new_task: NewTask) -> None:
+def test_a_task_converts_to_a_flow(server: TestClient, domain: str, new_task: NewTask) -> None:
     response = server.post(
         f"/tasks/{new_task(domain, 'Routine')}/convert-to-flow",
         params={"keep_dependencies": False, "map_scopes": False},
@@ -132,7 +132,7 @@ def test_a_task_converts_to_a_flow(server: TestClient, domain: int, new_task: Ne
 
 
 def test_an_asynchronous_tasks_spawned_wait_is_released_and_its_checks_reach_the_core(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     identifier = new_task(
         domain,
@@ -157,7 +157,7 @@ def test_an_asynchronous_tasks_spawned_wait_is_released_and_its_checks_reach_the
 
 
 def test_a_task_is_archived_by_hand_and_put_back(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     identifier = new_task(domain)
 
@@ -170,7 +170,7 @@ def test_a_task_is_archived_by_hand_and_put_back(
 
 
 def test_a_plan_that_strands_a_childs_plan_is_named_then_clamped(
-    server: TestClient, domain: int, new_task: NewTask, one_day: OneDay
+    server: TestClient, domain: str, new_task: NewTask, one_day: OneDay
 ) -> None:
     parent = new_task(domain, "Parent")
     child = server.post(

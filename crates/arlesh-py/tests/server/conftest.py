@@ -30,11 +30,11 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     from fastapi.testclient import TestClient
 
-ROOT_ASPECT = 1
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 """The fixed Aspect a fresh database is seeded with first."""
 
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 Start = Callable[..., ArleshServer]
 
 
@@ -125,9 +125,9 @@ def create(server: TestClient) -> Create:
 
 
 @pytest.fixture
-def domain(create: Create) -> int:
+def domain(create: Create) -> str:
     """A Domain under the root Aspect, to hang nodes on."""
-    identifier: int = create(
+    identifier: str = create(
         "/domains", {"title": "Home", "subtype": "domain", "parent_id": ROOT_ASPECT}
     )["id"]
     return identifier
@@ -137,9 +137,9 @@ def domain(create: Create) -> int:
 def new_task(create: Create) -> NewTask:
     """Creates a Task under a Domain and answers its id."""
 
-    def make(parent: int, title: str = "Write it", **fields: Any) -> int:
+    def make(parent: str, title: str = "Write it", **fields: Any) -> str:
         body = {"title": title, "parent_type": "domain", "parent_id": parent, **fields}
-        identifier: int = create("/tasks", body)["id"]
+        identifier: str = create("/tasks", body)["id"]
         return identifier
 
     return make

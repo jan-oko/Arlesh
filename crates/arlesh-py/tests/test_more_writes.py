@@ -33,14 +33,17 @@ from arlesh.models import (
     UpdateTaskRequest,
 )
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
 
-def stored(node_id: int | str) -> int:
-    """The row id of a node the test created, which is always a stored one."""
-    assert isinstance(node_id, int)
+
+def stored(node_id: str) -> str:
+    """The id of a node the test created, which is always a stored one: its ``full_id``."""
+    assert isinstance(node_id, str)
     return node_id
 
 
-async def test_copies_land_under_their_new_parent(db: arlesh.Database, domain_id: int) -> None:
+async def test_copies_land_under_their_new_parent(db: arlesh.Database, domain_id: str) -> None:
     goal = await db.create_goal(
         CreateGoalRequest(title="Target", parent_type="domain", parent_id=domain_id)
     )
@@ -54,7 +57,7 @@ async def test_copies_land_under_their_new_parent(db: arlesh.Database, domain_id
     goal_copy = await db.duplicate_goal(stored(goal.id), "domain", domain_id, 0)
     info_copy = await db.duplicate_info(info.id, "goal", stored(goal.id), 0)
     domain_copy = await db.duplicate_domain(
-        domain_id, (await db.get_domain(domain_id)).parent_id or 1, 0
+        domain_id, (await db.get_domain(domain_id)).parent_id or ROOT_ASPECT, 0
     )
     assert (task_copy.copy_.title, task_copy.copy_.parent_id) == ("Copy me", goal.id)
     assert goal_copy.copy_.title == "Target"
@@ -64,7 +67,7 @@ async def test_copies_land_under_their_new_parent(db: arlesh.Database, domain_id
 
 
 async def test_tags_block_reasons_and_dependencies_are_written(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     aspects = await db.list_domains(DomainSubtype.aspect)
     tag = await db.create_domain(
@@ -97,7 +100,7 @@ async def test_tags_block_reasons_and_dependencies_are_written(
 
 
 async def test_a_checked_wait_is_completed_and_reopened(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Holder", parent_type="domain", parent_id=domain_id)
@@ -117,7 +120,7 @@ async def test_a_checked_wait_is_completed_and_reopened(
 
 
 async def test_a_flow_with_items_becomes_a_habit_and_back(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     flow = await db.create_flow(
         CreateFlowRequest(title="Weekly", parent_type="domain", parent_id=domain_id)
@@ -160,7 +163,7 @@ async def test_a_flow_with_items_becomes_a_habit_and_back(
     assert copy.title == forked.title
 
 
-async def test_a_subtree_becomes_a_flow(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_subtree_becomes_a_flow(db: arlesh.Database, domain_id: str) -> None:
     goal = await db.create_goal(
         CreateGoalRequest(title="Template me", parent_type="domain", parent_id=domain_id)
     )
@@ -177,7 +180,7 @@ async def test_a_derived_wait_cannot_be_deleted(db: arlesh.Database) -> None:
 
 
 async def test_a_task_and_a_commitment_are_archived_by_hand_and_put_back(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Put away", parent_type="domain", parent_id=domain_id)
@@ -203,7 +206,7 @@ async def test_a_task_and_a_commitment_are_archived_by_hand_and_put_back(
 
 
 async def test_a_narrowed_plan_asks_about_the_plans_below_then_clamps_them(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     def days(first: str, last: str) -> TimeScope:
         return TimeScope(
@@ -239,7 +242,7 @@ async def test_a_narrowed_plan_asks_about_the_plans_below_then_clamps_them(
     assert (await db.get_task(stored(child.id))).task.plan is None
 
 
-async def test_a_flow_holds_commitment_and_wait_items(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_flow_holds_commitment_and_wait_items(db: arlesh.Database, domain_id: str) -> None:
     flow = await db.create_flow(
         CreateFlowRequest(title="Rules and waits", parent_type="domain", parent_id=domain_id)
     )

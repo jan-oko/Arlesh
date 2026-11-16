@@ -20,7 +20,7 @@ class GoalsRouter(BoardRouter):
         self.post("/{id}/duplicate", status_code=201)(self._duplicate)
         self.post("/{id}/convert-to-flow", status_code=201)(self._convert_to_flow)
 
-    async def _get(self, id: int) -> Goal:
+    async def _get(self, id: str) -> Goal:
         """One stored Goal."""
         return await self._reader.get_goal(id)
 
@@ -38,12 +38,12 @@ class GoalsRouter(BoardRouter):
         await (await self._writer()).delete_goal(node_id(id))
 
     async def _duplicate(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedGoal:
         """Copies a Goal and its subtree under a new parent."""
         return await (await self._writer()).duplicate_goal(id, target_type, target_id, position)
 
-    async def _convert_to_flow(self, id: int, keep_dependencies: bool, map_scopes: bool) -> Flow:
+    async def _convert_to_flow(self, id: str, keep_dependencies: bool, map_scopes: bool) -> Flow:
         """Turns a Goal's subtree into a Flow."""
         return await (await self._writer()).convert_to_flow(
             "goal", id, keep_dependencies=keep_dependencies, map_scopes=map_scopes

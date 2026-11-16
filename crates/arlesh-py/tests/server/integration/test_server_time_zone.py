@@ -15,6 +15,9 @@ from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 from tests.server.integration.live_stream import follow
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Start = Callable[..., ArleshServer]
 
 
@@ -46,7 +49,7 @@ def test_the_board_is_derived_at_the_zones_wall_clock(
     stream.heads.get(timeout=20)
     written = httpx.post(
         f"{live}/tasks",
-        json={"title": "Nudge a publication", "parent_type": "domain", "parent_id": 1},
+        json={"title": "Nudge a publication", "parent_type": "domain", "parent_id": ROOT_ASPECT},
         headers=auth,
     )
     assert written.status_code == 201, written.text

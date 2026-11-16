@@ -12,21 +12,21 @@ Create = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
 @pytest.fixture
-def goal(create: Create, domain: int) -> int:
+def goal(create: Create, domain: str) -> str:
     body = {"title": "Ship it", "parent_type": "domain", "parent_id": domain}
-    identifier: int = create("/goals", body)["id"]
+    identifier: str = create("/goals", body)["id"]
     return identifier
 
 
 @pytest.fixture
-def commitment(create: Create, domain: int, one_day: Callable[[str], dict[str, Any]]) -> int:
+def commitment(create: Create, domain: str, one_day: Callable[[str], dict[str, Any]]) -> str:
     body = {
         "title": "Run daily",
         "parent_type": "domain",
         "parent_id": domain,
         "time_scope": one_day("2026-06-10"),
     }
-    identifier: int = create("/commitments", body)["id"]
+    identifier: str = create("/commitments", body)["id"]
     return identifier
 
 
@@ -46,7 +46,7 @@ def test_a_deleted_goal_is_gone(server: TestClient, goal: int) -> None:
     assert server.get(f"/goals/{goal}").status_code == 404
 
 
-def test_a_duplicate_goal_is_a_new_goal(server: TestClient, goal: int, domain: int) -> None:
+def test_a_duplicate_goal_is_a_new_goal(server: TestClient, goal: int, domain: str) -> None:
     response = server.post(
         f"/goals/{goal}/duplicate",
         params={"target_type": "domain", "target_id": domain, "position": 0},

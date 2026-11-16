@@ -12,6 +12,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 DONE = {"status": {"kind": "ordinary", "status": "done"}}
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
 
@@ -23,7 +26,7 @@ def _occurrence_with_unfinished_child(server: TestClient, create: Create) -> str
             "title": "Groceries",
             "instance_type": "task",
             "parent_type": "aspect",
-            "parent_id": 1,
+            "parent_id": ROOT_ASPECT,
             "flow_duration_n": 1,
             "flow_duration_kind": "day",
         },

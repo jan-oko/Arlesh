@@ -7,30 +7,33 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
-def _flow(create: Create, title: str = "Morning", **fields: Any) -> int:
+def _flow(create: Create, title: str = "Morning", **fields: Any) -> str:
     body = {
         "title": title,
         "instance_type": "task",
         "parent_type": "aspect",
-        "parent_id": 1,
+        "parent_id": ROOT_ASPECT,
         "flow_duration_n": 1,
         "flow_duration_kind": "day",
         **fields,
     }
-    identifier: int = create("/flows", body)["id"]
+    identifier: str = create("/flows", body)["id"]
     return identifier
 
 
-def _item(create: Create, flow: int, kind: str, title: str) -> int:
+def _item(create: Create, flow: str, kind: str, title: str) -> str:
     body = {"flow_id": flow, "parent_type": "flow", "parent_id": flow, "title": title}
-    identifier: int = create(f"/flow-items/{kind}", body)["id"]
+    identifier: str = create(f"/flow-items/{kind}", body)["id"]
     return identifier
 
 
-def _habit(server: TestClient, flow: int) -> dict[str, Any]:
+def _habit(server: TestClient, flow: str) -> dict[str, Any]:
     response = server.put(
         f"/flows/{flow}/recurrence",
         json={"start_scope_id": {"kind": "day", "date": "2026-01-05"}, "clock": "interval"},
@@ -103,7 +106,7 @@ def test_an_items_cycles_are_set(server: TestClient, create: Create) -> None:
 
 
 def test_starting_a_flow_materialises_it_under_a_target(
-    server: TestClient, create: Create, domain: int
+    server: TestClient, create: Create, domain: str
 ) -> None:
     flow = _flow(create)
     _item(create, flow, "flow_task", "Stretch")
@@ -144,7 +147,7 @@ def test_a_habit_forks_and_a_flow_duplicates(server: TestClient, create: Create)
     forked = server.post(f"/flows/{flow}/fork", params={"now": "2026-01-10T09:00:00"})
     copy = server.post(
         f"/flows/{flow}/duplicate",
-        params={"parent_type": "aspect", "parent_id": 1, "position": 0},
+        params={"parent_type": "aspect", "parent_id": ROOT_ASPECT, "position": 0},
     )
 
     assert forked.status_code == 201, forked.text

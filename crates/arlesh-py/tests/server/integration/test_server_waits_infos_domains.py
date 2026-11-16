@@ -7,17 +7,20 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 
 
-def _wait(create: Create, parent: int, **fields: Any) -> dict[str, Any]:
+def _wait(create: Create, parent: str, **fields: Any) -> dict[str, Any]:
     body = {"title": "Reply from Ana", "parent_type": "task", "parent_id": parent, **fields}
     return create("/waits", body)
 
 
 def test_a_wait_is_created_and_released(
-    server: TestClient, create: Create, domain: int, new_task: NewTask
+    server: TestClient, create: Create, domain: str, new_task: NewTask
 ) -> None:
     wait = _wait(create, new_task(domain))
 
@@ -28,7 +31,7 @@ def test_a_wait_is_created_and_released(
 
 
 def test_a_due_check_is_completed_and_reopened(
-    server: TestClient, create: Create, domain: int, new_task: NewTask
+    server: TestClient, create: Create, domain: str, new_task: NewTask
 ) -> None:
     wait = _wait(
         create,
@@ -48,7 +51,7 @@ def test_a_due_check_is_completed_and_reopened(
 
 
 def test_a_deleted_wait_is_off_the_board(
-    server: TestClient, create: Create, domain: int, new_task: NewTask
+    server: TestClient, create: Create, domain: str, new_task: NewTask
 ) -> None:
     wait = _wait(create, new_task(domain))
 
@@ -57,7 +60,7 @@ def test_a_deleted_wait_is_off_the_board(
 
 
 def test_an_info_is_created_read_updated_duplicated_and_deleted(
-    server: TestClient, create: Create, domain: int
+    server: TestClient, create: Create, domain: str
 ) -> None:
     body = {"body": "Door code 1234", "parent_type": "domain", "parent_id": domain, "position": 0}
     identifier = create("/infos", body)["id"]
@@ -77,16 +80,18 @@ def test_an_info_is_created_read_updated_duplicated_and_deleted(
     assert server.get(f"/infos/{identifier}").status_code == 404
 
 
-def test_domains_list_by_subtype_and_read_one(server: TestClient, domain: int) -> None:
+def test_domains_list_by_subtype_and_read_one(server: TestClient, domain: str) -> None:
     aspects = server.get("/domains", params={"subtype": "aspect"}).json()
 
     assert {entry["subtype"] for entry in aspects} == {"aspect"}
     assert server.get(f"/domains/{domain}").json()["title"] == "Home"
 
 
-def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: int) -> None:
+def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: str) -> None:
     updated = server.patch(f"/domains/{domain}", json={"title": "House"})
-    copy = server.post(f"/domains/{domain}/duplicate", params={"target_id": 1, "position": 0})
+    copy = server.post(
+        f"/domains/{domain}/duplicate", params={"target_id": ROOT_ASPECT, "position": 0}
+    )
     deleted = server.delete(f"/domains/{copy.json()['copy']['id']}")
 
     assert updated.json()["title"] == "House"
@@ -95,11 +100,13 @@ def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: 
 
 
 def test_a_duplicated_domain_with_a_sub_domain_and_a_task_is_deleted_with_its_content(
-    server: TestClient, create: Create, domain: int, new_task: NewTask
+    server: TestClient, create: Create, domain: str, new_task: NewTask
 ) -> None:
     create("/domains", {"title": "Inner", "subtype": "domain", "parent_id": domain})
     new_task(domain)
-    copy = server.post(f"/domains/{domain}/duplicate", params={"target_id": 1, "position": 0})
+    copy = server.post(
+        f"/domains/{domain}/duplicate", params={"target_id": ROOT_ASPECT, "position": 0}
+    )
     copy_id = copy.json()["copy"]["id"]
 
     deleted = server.delete(f"/domains/{copy_id}")
@@ -110,9 +117,9 @@ def test_a_duplicated_domain_with_a_sub_domain_and_a_task_is_deleted_with_its_co
 
 
 def test_a_tag_is_put_on_and_taken_off_a_task(
-    server: TestClient, create: Create, domain: int, new_task: NewTask
+    server: TestClient, create: Create, domain: str, new_task: NewTask
 ) -> None:
-    tag = create("/domains", {"title": "urgent", "subtype": "tag", "parent_id": 1})["id"]
+    tag = create("/domains", {"title": "urgent", "subtype": "tag", "parent_id": ROOT_ASPECT})["id"]
     identifier = new_task(domain)
 
     put = server.put(f"/nodes/task/{identifier}/tags/{tag}")
@@ -126,7 +133,7 @@ def test_a_tag_is_put_on_and_taken_off_a_task(
 
 
 def test_a_tasks_block_reasons_are_replaced(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     identifier = new_task(domain)
 

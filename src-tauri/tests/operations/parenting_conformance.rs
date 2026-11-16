@@ -5,7 +5,6 @@
 //! `src/utils/parenting-conformance.test.ts` asks the frontend's `isValidDropTarget`. Neither side
 //! generates the file.
 
-use arlesh_lib::nodes::id::tid;
 use crate::helpers;
 use std::collections::BTreeMap;
 
