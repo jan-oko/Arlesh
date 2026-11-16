@@ -77,6 +77,12 @@ pub fn tid(number: i64) -> RowId {
     test_row_id(u128::from(number.unsigned_abs()))
 }
 
+/// The key a test writes `"task-5"` for: `{kind}-{id}` over the id `tid(number)`.
+#[cfg(any(test, feature = "test-support"))]
+pub fn tkey(kind: &str, number: i64) -> String {
+    format!("{kind}-{}", tid(number))
+}
+
 /// A test writes `5.into()` for the stored node it once numbered 5.
 #[cfg(any(test, feature = "test-support"))]
 impl From<i64> for NodeId {

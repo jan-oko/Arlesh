@@ -2,6 +2,7 @@
 
 use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tkey;
 use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
@@ -139,18 +140,18 @@ fn ids(forest: &[FactNode]) -> Vec<String> {
 fn the_forest_follows_the_rows_own_parent_links() {
     let forest = forest(&board());
     assert_eq!(forest.len(), 1);
-    assert_eq!(forest[0].facts.id, "domain-1");
+    assert_eq!(forest[0].facts.id, tkey("domain", 1));
     assert_eq!(
         ids(&forest),
         [
-            "commitment-30",
-            "domain-1",
-            "domain-2",
-            "goal-10",
-            "info-40",
-            "task-20",
-            "task-21",
-            "task-22",
+            tkey("commitment", 30),
+            tkey("domain", 1),
+            tkey("domain", 2),
+            tkey("goal", 10),
+            tkey("info", 40),
+            tkey("task", 20),
+            tkey("task", 21),
+            tkey("task", 22),
         ]
     );
 }
@@ -158,9 +159,9 @@ fn the_forest_follows_the_rows_own_parent_links() {
 #[test]
 fn an_in_progress_task_with_a_todo_child_says_so() {
     let forest = forest(&board());
-    let task_20 = find(&forest, "task-20").expect("the task is on the board");
+    let task_20 = find(&forest, &tkey("task", 20)).expect("the task is on the board");
     assert!(task_20.facts.has_todo_child);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert!(!task_22.facts.has_todo_child);
 }
 
@@ -181,7 +182,7 @@ fn an_orphan_row_is_dropped_rather_than_promoted_to_a_root() {
     let mut load = board();
     load.tasks.push(task_row(99, "goal", 404, "todo"));
     let forest = forest(&load);
-    assert!(find(&forest, "task-99").is_none());
+    assert!(find(&forest, &tkey("task", 99)).is_none());
     assert_eq!(forest.len(), 1);
 }
 
@@ -209,17 +210,17 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     });
 
     let forest = forest(&load);
-    assert!(find(&forest, "goal-10").is_some_and(|node| node.facts.is_blocked));
-    assert!(find(&forest, "task-21").is_some_and(|node| node.facts.is_blocked));
-    assert!(find(&forest, "task-20").is_some_and(|node| !node.facts.is_blocked));
+    assert!(find(&forest, &tkey("goal", 10)).is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 21)).is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 20)).is_some_and(|node| !node.facts.is_blocked));
     // Only the unmet dependency is named; an explicit reason names none.
-    assert!(find(&forest, "task-21")
-        .is_some_and(|node| node.facts.blocking_dependencies == ["task-20"]));
+    assert!(find(&forest, &tkey("task", 21))
+        .is_some_and(|node| node.facts.blocking_dependencies == [tkey("task", 20)]));
     assert!(
-        find(&forest, "task-20").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
+        find(&forest, &tkey("task", 20)).is_some_and(|node| node.facts.blocking_dependencies.is_empty())
     );
     assert!(
-        find(&forest, "goal-10").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
+        find(&forest, &tkey("goal", 10)).is_some_and(|node| node.facts.blocking_dependencies.is_empty())
     );
 }
 
@@ -229,11 +230,11 @@ fn a_lifecycle_supplies_the_two_derived_facts_a_filter_reads() {
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Lapsed, Archival::Archived));
     let forest = forest(&load);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert_eq!(task_22.facts.timing, Some(Timing::Lapsed));
     assert!(task_22.facts.archived);
     // An item the derivation skipped keeps its neutral values.
-    let task_21 = find(&forest, "task-21").expect("the task is on the board");
+    let task_21 = find(&forest, &tkey("task", 21)).expect("the task is on the board");
     assert_eq!(task_21.facts.timing, None);
     assert!(!task_21.facts.archived);
 }
@@ -247,9 +248,9 @@ fn a_lifecycle_supplies_the_task_plan_position_too() {
     load.lifecycles
         .push(lifecycle("task", 21, Timing::Active, Archival::Live));
     let forest = forest(&load);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert_eq!(task_22.facts.plan_timing, Some(Timing::Pending));
-    let task_21 = find(&forest, "task-21").expect("the task is on the board");
+    let task_21 = find(&forest, &tkey("task", 21)).expect("the task is on the board");
     assert_eq!(task_21.facts.plan_timing, None);
 }
 
@@ -349,9 +350,9 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
     load.infos.push(info_row(43, "domain", 2));
 
     let forest = forest(&load);
-    assert!(find(&forest, "domain-3").is_some_and(|node| node.facts.kind == NodeKind::Tag));
-    assert!(find(&forest, "domain-4").is_some_and(|node| node.facts.kind == NodeKind::Domain));
-    for id in ["commitment-31", "info-41", "info-42", "info-43"] {
+    assert!(find(&forest, &tkey("domain", 3)).is_some_and(|node| node.facts.kind == NodeKind::Tag));
+    assert!(find(&forest, &tkey("domain", 4)).is_some_and(|node| node.facts.kind == NodeKind::Domain));
+    for id in [&tkey("commitment", 31), &tkey("info", 41), &tkey("info", 42), &tkey("info", 43)] {
         assert!(find(&forest, id).is_some(), "{id} found its parent");
     }
 }
@@ -410,7 +411,7 @@ fn a_check_task_row_hangs_under_its_wait_timed_by_its_own_lifecycle() {
         .push(lifecycle("expectation", 50, Timing::Lapsed, Archival::Live));
 
     let forest = forest(&load);
-    let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
+    let wait = find(&forest, &tkey("expectation", 50)).expect("the expectation is on the board");
     assert!(wait.facts.has_check);
     assert_eq!(wait.facts.timing, Some(Timing::Lapsed));
     let check = find(&forest, &check_fact).expect("the check task is a row");
@@ -436,8 +437,8 @@ fn a_released_expectation_stops_blocking() {
         dependency_id: 51.into(),
     });
     let forest = forest(&load);
-    assert!(find(&forest, "task-21").is_some_and(|node| !node.facts.is_blocked));
-    assert!(find(&forest, "task-22").is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 21)).is_some_and(|node| !node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 22)).is_some_and(|node| node.facts.is_blocked));
 }
 
 #[test]
@@ -569,12 +570,12 @@ fn a_task_carries_its_dependencies_met_or_not_and_its_own_flags() {
         task.asynchronous = true;
     }
     let forest = forest(&load);
-    let task = find(&forest, "task-21").map(|node| node.facts.clone());
+    let task = find(&forest, &tkey("task", 21)).map(|node| node.facts.clone());
     let task = task.unwrap_or_else(|| NodeFacts::new("missing", NodeKind::Task));
-    assert_eq!(task.dependencies, ["task-22", "goal-10"]);
+    assert_eq!(task.dependencies, [tkey("task", 22), tkey("goal", 10)]);
     assert_eq!(
         task.blocking_dependencies,
-        ["goal-10"],
+        [tkey("goal", 10)],
         "the done task is met"
     );
     assert!(task.asynchronous);

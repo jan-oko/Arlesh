@@ -1,5 +1,6 @@
 //! A To Do Task with an open agent question reads Review, over the handler an endpoint serves.
 
+use crate::nodes::id::tid;
 use serde_json::{json, Value};
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
@@ -45,7 +46,7 @@ async fn shown(mcp: &ArleshMcp) -> String {
     )
     .await;
     let tasks = structured(&answer)["tasks"].as_array().unwrap().clone();
-    let task = tasks.iter().find(|task| task["id"] == 100).unwrap();
+    let task = tasks.iter().find(|task| task["id"] == tid(100).to_string()).unwrap();
     task["status"]["status"]
         .as_str()
         .unwrap_or_else(|| panic!("{task}"))
@@ -63,18 +64,18 @@ async fn ask(mcp: &ArleshMcp, question: bool) -> String {
     let answer = call(
         mcp,
         "arlesh_waits",
-        json!({ "operation": "raise", "task_id": "100", "title": "Which?", "question": question }),
+        json!({ "operation": "raise", "task_id": tid(100).to_string(), "title": "Which?", "question": question }),
     )
     .await;
     assert!(!is_error(&answer), "{answer}");
-    structured(&answer)["id"].as_i64().unwrap().to_string()
+    structured(&answer)["id"].as_str().unwrap().to_string()
 }
 
 async fn give_spec(mcp: &ArleshMcp) {
     let answer = call(
         mcp,
         "arlesh_tasks",
-        json!({ "operation": "update", "id": "100", "brief": { "spec": "Do it" } }),
+        json!({ "operation": "update", "id": tid(100).to_string(), "brief": { "spec": "Do it" } }),
     )
     .await;
     assert!(!is_error(&answer), "{answer}");
@@ -84,7 +85,7 @@ async fn set_status(mcp: &ArleshMcp, expected: &str, status: &str) -> Value {
     call(
         mcp,
         "arlesh_tasks",
-        json!({ "operation": "set_status", "id": "100", "expected": expected, "status": status }),
+        json!({ "operation": "set_status", "id": tid(100).to_string(), "expected": expected, "status": status }),
     )
     .await
 }
@@ -158,7 +159,7 @@ async fn a_review_is_refused_under_a_to_do_task_even_while_a_question_is_open() 
     let review = call(
         &mcp,
         "arlesh_waits",
-        json!({ "operation": "raise_review", "task_id": "100", "title": "Done", "summary": "It is" }),
+        json!({ "operation": "raise_review", "task_id": tid(100).to_string(), "title": "Done", "summary": "It is" }),
     )
     .await;
 

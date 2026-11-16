@@ -2,6 +2,7 @@
 
 use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tkey;
 use crate::{
     domains::model::Domain,
     filters::{facts, model::NodeKind, tree::FactNode},
@@ -178,10 +179,10 @@ fn an_agentic_wait_is_not_blocked() {
 
 fn expectation_under(task: i64) -> Expectation {
     serde_json::from_value(serde_json::json!({
-        "id": 50,
+        "id": tid(50),
         "title": "wait",
         "parent_type": "task",
-        "parent_id": task,
+        "parent_id": tid(task),
         "status": "pending",
         "archival": "live",
         "time_scope": null,
@@ -209,11 +210,11 @@ fn the_filters_read_a_capacity_blocked_task_as_blocked() {
     let forest = facts::forest(&load);
 
     let blocked = |id: &str| find(&forest, id).unwrap().facts.is_blocked;
-    assert!(blocked("task-20"));
-    assert!(blocked("task-31"));
-    assert!(!blocked("task-23"), "explicitly Not agentic");
-    assert!(!blocked("task-40"));
-    assert_eq!(find(&forest, "task-20").unwrap().facts.kind, NodeKind::Task);
+    assert!(blocked(&tkey("task", 20)));
+    assert!(blocked(&tkey("task", 31)));
+    assert!(!blocked(&tkey("task", 23)), "explicitly Not agentic");
+    assert!(!blocked(&tkey("task", 40)));
+    assert_eq!(find(&forest, &tkey("task", 20)).unwrap().facts.kind, NodeKind::Task);
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! The attach gate, end to end through the handler an endpoint serves: what an unattached session
 //! may call, what an attached one sees, and how two agents share a board.
 
+use crate::nodes::id::tid;
 use serde_json::{json, Value};
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
@@ -63,7 +64,7 @@ async fn attach(mcp: &ArleshMcp, name: &str, goal: i64) -> Value {
             "session_id": format!("session-{name}"),
             "name": name,
             "account": "work",
-            "subtree": { "node_type": "goal", "node_id": goal.to_string() },
+            "subtree": { "node_type": "goal", "node_id": tid(goal).to_string() },
         }),
     )
     .await
@@ -75,7 +76,7 @@ async fn an_unattached_session_may_call_nothing_but_the_attach_tool() {
     let session = session(&mcp);
 
     for (tool, arguments) in [
-        ("arlesh_tasks", json!({ "operation": "get", "id": "100" })),
+        ("arlesh_tasks", json!({ "operation": "get", "id": tid(100).to_string() })),
         ("arlesh_snapshot", json!({ "operation": "load" })),
         (
             "arlesh_scopes",
@@ -99,7 +100,7 @@ async fn the_in_process_handler_needs_no_attach() {
     let answer = call(
         &in_process,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
 
@@ -122,7 +123,7 @@ async fn a_wrong_pin_attaches_nothing() {
     let still = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     assert!(is_error(&still));
@@ -141,14 +142,14 @@ async fn attaching_binds_the_session_and_its_view_is_the_claim() {
     let inside = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     assert!(!is_error(&inside), "{inside}");
     let outside = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "101" }),
+        json!({ "operation": "get", "id": tid(101).to_string() }),
     )
     .await;
     assert!(is_error(&outside), "{outside}");
@@ -186,13 +187,13 @@ async fn an_agent_writes_inside_its_claim_and_not_outside_it() {
     let inside = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "create", "parent_type": "goal", "parent_id": "10", "title": "New" }),
+        json!({ "operation": "create", "parent_type": "goal", "parent_id": tid(10).to_string(), "title": "New" }),
     )
     .await;
     let outside = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "create", "parent_type": "goal", "parent_id": "11", "title": "Nope" }),
+        json!({ "operation": "create", "parent_type": "goal", "parent_id": tid(11).to_string(), "title": "Nope" }),
     )
     .await;
 
@@ -234,7 +235,7 @@ async fn a_second_agent_claiming_an_overlapping_subtree_is_refused_naming_the_fi
     let seen = call(
         &second,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     assert!(is_error(&seen), "it holds nothing, so it sees nothing");
@@ -252,7 +253,7 @@ async fn pausing_lets_another_agent_claim_and_resuming_is_refused_until_it_lets_
     let taken = call(
         &second,
         "arlesh_agents",
-        json!({ "operation": "claim", "subtree": { "node_type": "goal", "node_id": "10" } }),
+        json!({ "operation": "claim", "subtree": { "node_type": "goal", "node_id": tid(10).to_string() } }),
     )
     .await;
     let resumed = call(&first, "arlesh_agents", json!({ "operation": "resume" })).await;
@@ -274,13 +275,13 @@ async fn a_paused_agent_reads_and_writes_nothing() {
     let read = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     let write = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "update", "id": "100", "title": "Renamed" }),
+        json!({ "operation": "update", "id": tid(100).to_string(), "title": "Renamed" }),
     )
     .await;
 
@@ -299,7 +300,7 @@ async fn a_new_session_re_attaches_with_the_token_after_the_old_one_is_lost() {
     let denied = call(
         &after_restart,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     let back = call(
@@ -320,7 +321,7 @@ async fn a_new_session_re_attaches_with_the_token_after_the_old_one_is_lost() {
     let seen = call(
         &after_restart,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     assert!(!is_error(&seen), "{seen}");
@@ -340,7 +341,7 @@ async fn an_agent_removed_by_hand_is_turned_away_at_its_next_call() {
     let answer = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     assert!(is_error(&answer), "{answer}");
@@ -359,7 +360,7 @@ async fn the_agent_that_hits_its_limit_has_its_claimed_tasks_blocked_and_others_
         json!({
             "operation": "attach", "pin": pin, "session_id": "idle", "name": "other",
             "account": "home",
-            "subtree": { "node_type": "goal", "node_id": "11" },
+            "subtree": { "node_type": "goal", "node_id": tid(11).to_string() },
         }),
     )
     .await;
@@ -378,13 +379,13 @@ async fn the_agent_that_hits_its_limit_has_its_claimed_tasks_blocked_and_others_
     let blocked = call(
         &working,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     let free = call(
         &idle,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "101" }),
+        json!({ "operation": "get", "id": tid(101).to_string() }),
     )
     .await;
     let reasons = |answer: &Value| structured(answer)["block_reasons"].to_string();
@@ -482,7 +483,7 @@ async fn the_wait_stream_tells_an_agent_only_of_waits_inside_its_claim() {
     let asked = call(
         &writer,
         "arlesh_waits",
-        json!({ "operation": "ask", "task_id": "100", "title": "Which colour?" }),
+        json!({ "operation": "ask", "task_id": tid(100).to_string(), "title": "Which colour?" }),
     )
     .await;
     assert!(!is_error(&asked), "{asked}");
@@ -535,7 +536,7 @@ async fn an_agent_with_no_claim_is_told_of_no_waits() {
     call(
         &writer,
         "arlesh_waits",
-        json!({ "operation": "ask", "task_id": "100", "title": "Q" }),
+        json!({ "operation": "ask", "task_id": tid(100).to_string(), "title": "Q" }),
     )
     .await;
     streams.feed.bump();
@@ -554,13 +555,13 @@ async fn claiming_an_id_that_does_not_name_a_visible_node_is_refused_one_way() {
     let missing = call(
         &session,
         "arlesh_agents",
-        json!({ "operation": "claim", "subtree": { "node_type": "goal", "node_id": "999" } }),
+        json!({ "operation": "claim", "subtree": { "node_type": "goal", "node_id": tid(999).to_string() } }),
     )
     .await;
     let wrong_kind = call(
         &session,
         "arlesh_agents",
-        json!({ "operation": "claim", "subtree": { "node_type": "task", "node_id": "10" } }),
+        json!({ "operation": "claim", "subtree": { "node_type": "task", "node_id": tid(10).to_string() } }),
     )
     .await;
 
@@ -580,14 +581,14 @@ async fn an_agent_locks_itself_and_its_claimed_tasks_read_blocked_until_it_unloc
     let held = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
     call(&session, "arlesh_agents", json!({ "operation": "unlock" })).await;
     let freed = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
 
@@ -618,7 +619,7 @@ async fn attach_on_project(mcp: &ArleshMcp, name: &str) -> Value {
             "session_id": format!("session-{name}"),
             "name": name,
             "account": "work",
-            "subtree": { "node_type": "domain", "node_id": "902" },
+            "subtree": { "node_type": "domain", "node_id": tid(902).to_string() },
         }),
     )
     .await
@@ -688,7 +689,7 @@ async fn a_child_sees_only_its_sub_claim_and_the_parent_all_of_its_claim() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    let claimed = child_claims(&session, &token, "task", "100").await;
+    let claimed = child_claims(&session, &token, "task", &tid(100).to_string()).await;
     assert!(!is_error(&claimed), "{claimed}");
     assert_eq!(
         structured(&claimed)["claim_name"]
@@ -723,9 +724,9 @@ async fn a_childs_write_outside_its_sub_claim_is_refused_and_the_parents_is_not(
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
     let update = |extra: Value| {
-        let mut base = json!({ "operation": "update", "id": "101", "title": "Renamed" });
+        let mut base = json!({ "operation": "update", "id": tid(101).to_string(), "title": "Renamed" });
         base.as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
@@ -752,8 +753,8 @@ async fn a_child_cannot_claim_outside_its_parents_claim() {
     attach(&session, "orchestrator", 10).await;
     let token = register(&session, "sub-1").await;
 
-    let outside = child_claims(&session, &token, "goal", "11").await;
-    let inside = child_claims(&session, &token, "task", "100").await;
+    let outside = child_claims(&session, &token, "goal", &tid(11).to_string()).await;
+    let inside = child_claims(&session, &token, "task", &tid(100).to_string()).await;
 
     assert_eq!(structured(&outside)["kind"], "not_permitted", "{outside}");
     assert!(!is_error(&inside), "{inside}");
@@ -768,7 +769,7 @@ async fn a_sub_token_of_another_sessions_child_is_refused() {
     attach(&second, "two", 11).await;
     let token = register(&first, "sub-1").await;
 
-    let answer = child_claims(&second, &token, "task", "101").await;
+    let answer = child_claims(&second, &token, "task", &tid(101).to_string()).await;
 
     assert_eq!(structured(&answer)["kind"], "not_permitted", "{answer}");
 }
@@ -810,7 +811,7 @@ async fn a_child_pauses_and_resumes_its_own_claim_with_its_sub_token() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
     let act = |operation: &str| json!({ "operation": operation, "sub_token": token });
 
     let paused = call(&session, "arlesh_agents", act("pause")).await;
@@ -919,18 +920,18 @@ async fn a_child_removed_because_an_agent_set_its_task_done_is_registered_afresh
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let old = register(&session, "sub-1").await;
-    child_claims(&session, &old, "task", "100").await;
+    child_claims(&session, &old, "task", &tid(100).to_string()).await;
 
-    let done = set_status(&session, "100", "todo", "done").await;
+    let done = set_status(&session, &tid(100).to_string(), "todo", "done").await;
     let gone = call(
         &session,
         "arlesh_agents",
         json!({ "operation": "status", "sub_token": old }),
     )
     .await;
-    let reopened = set_status(&session, "100", "done", "todo").await;
+    let reopened = set_status(&session, &tid(100).to_string(), "done", "todo").await;
     let fresh = register(&session, "sub-1").await;
-    let claimed = child_claims(&session, &fresh, "task", "100").await;
+    let claimed = child_claims(&session, &fresh, "task", &tid(100).to_string()).await;
     let read = call(
         &session,
         "arlesh_snapshot",
@@ -963,7 +964,7 @@ async fn a_paused_childs_write_is_refused_saying_it_is_paused() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
     call(
         &session,
         "arlesh_agents",
@@ -974,7 +975,7 @@ async fn a_paused_childs_write_is_refused_saying_it_is_paused() {
     let refused = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "update", "id": "100", "title": "Renamed", "sub_token": token }),
+        json!({ "operation": "update", "id": tid(100).to_string(), "title": "Renamed", "sub_token": token }),
     )
     .await;
 
@@ -993,18 +994,18 @@ async fn a_node_outside_the_sub_claim_but_inside_the_parents_is_refused_saying_s
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
 
     let read = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "101", "sub_token": token }),
+        json!({ "operation": "get", "id": tid(101).to_string(), "sub_token": token }),
     )
     .await;
     let write = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "update", "id": "101", "title": "Renamed", "sub_token": token }),
+        json!({ "operation": "update", "id": tid(101).to_string(), "title": "Renamed", "sub_token": token }),
     )
     .await;
 
@@ -1022,18 +1023,18 @@ async fn a_node_outside_the_parents_claim_keeps_the_generic_refusal() {
     let session = session(&mcp);
     attach(&session, "orchestrator", 10).await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
 
     let read = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "101", "sub_token": token }),
+        json!({ "operation": "get", "id": tid(101).to_string(), "sub_token": token }),
     )
     .await;
     let parents = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "101" }),
+        json!({ "operation": "get", "id": tid(101).to_string() }),
     )
     .await;
 
@@ -1072,7 +1073,7 @@ async fn a_child_registered_with_a_task_holds_it_at_once() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
 
-    let answer = register_holding(&session, "sub-1", "task", "100").await;
+    let answer = register_holding(&session, "sub-1", "task", &tid(100).to_string()).await;
 
     assert!(!is_error(&answer), "{answer}");
     let identity = structured(&answer);
@@ -1105,7 +1106,7 @@ async fn a_task_outside_the_parents_claim_leaves_the_child_registered_and_unclai
     let session = session(&mcp);
     attach(&session, "orchestrator", 10).await;
 
-    let answer = register_holding(&session, "sub-1", "task", "101").await;
+    let answer = register_holding(&session, "sub-1", "task", &tid(101).to_string()).await;
 
     assert!(!is_error(&answer), "the child is registered: {answer}");
     let identity = structured(&answer);
@@ -1126,9 +1127,9 @@ async fn a_task_a_sibling_holds_is_refused_naming_the_sibling_and_the_child_is_s
     let (mcp, _pool) = board().await;
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
-    register_holding(&session, "sub-1", "task", "100").await;
+    register_holding(&session, "sub-1", "task", &tid(100).to_string()).await;
 
-    let answer = register_holding(&session, "sub-2", "task", "100").await;
+    let answer = register_holding(&session, "sub-2", "task", &tid(100).to_string()).await;
 
     assert!(!is_error(&answer), "{answer}");
     let why = structured(&answer)["claim_refused"]
@@ -1159,7 +1160,7 @@ async fn registering_again_with_a_task_rotates_the_token_and_claims_it() {
     attach_on_project(&session, "orchestrator").await;
     let first = register(&session, "sub-1").await;
 
-    let again = register_holding(&session, "sub-1", "task", "100").await;
+    let again = register_holding(&session, "sub-1", "task", &tid(100).to_string()).await;
 
     let rotated = structured(&again)["sub_token"]
         .as_str()
@@ -1177,7 +1178,7 @@ async fn a_tasks_get_answers_its_short_id_and_title_for_the_mod_to_label_a_subag
     let answer = call(
         &session,
         "arlesh_tasks",
-        json!({ "operation": "get", "id": "100" }),
+        json!({ "operation": "get", "id": tid(100).to_string() }),
     )
     .await;
 
@@ -1230,7 +1231,7 @@ async fn a_child_whose_task_is_still_on_an_agent_is_kept() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
     sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = '00000000-0000-7000-8000-000000000064'")
         .execute(&pool)
         .await
@@ -1249,7 +1250,7 @@ async fn a_child_whose_task_was_given_back_is_removed_unless_a_wait_is_open_unde
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "task", "100").await;
+    child_claims(&session, &token, "task", &tid(100).to_string()).await;
     sqlx::query("INSERT INTO expectations (id, title, parent_type, parent_id, status, archival, agentic) VALUES ('00000000-0000-7000-8000-000000000384', 'CI', 'task', '00000000-0000-7000-8000-000000000064', 'pending', 'live', 1)")
         .execute(&pool)
         .await
@@ -1274,7 +1275,7 @@ async fn a_claim_on_something_that_is_not_a_task_is_kept() {
     let session = session(&mcp);
     attach_on_project(&session, "orchestrator").await;
     let token = register(&session, "sub-1").await;
-    child_claims(&session, &token, "goal", "10").await;
+    child_claims(&session, &token, "goal", &tid(10).to_string()).await;
 
     let answer = finish(&session, "sub-1").await;
 

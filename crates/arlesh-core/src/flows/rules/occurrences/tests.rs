@@ -47,7 +47,7 @@ fn key_on(template: TemplateItem, day: u32, cycle: i64) -> String {
     OccurrenceKey {
         item: template,
         iteration: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, day).unwrap()),
-        cycle: tid(cycle),
+        cycle: if cycle == 0 { no_cycle() } else { tid(cycle) },
     }
     .node_key()
 }

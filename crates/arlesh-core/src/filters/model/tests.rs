@@ -28,7 +28,7 @@ fn every_axis_is_spelled_the_way_the_wire_spells_it() {
             "preset": "backlog",
             "unblock": true,
             "include_flows": false,
-            "tags": [{"tag_id": 7, "mode": "exclude"}],
+            "tags": [{"tag_id": "00000000-0000-7000-8000-000000000007", "mode": "exclude"}],
             "show_info": false,
             "show_flow": false,
             "private_mode": true,

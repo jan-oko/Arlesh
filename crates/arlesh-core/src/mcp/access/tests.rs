@@ -1,5 +1,6 @@
 use crate::nodes::id::tid;
 use super::*;
+use crate::nodes::id::tkey;
 use crate::access::model::StoredNode;
 
 fn node(kind: NodeTable, id: i64, parent: Option<NodeKey>) -> StoredNode {
@@ -32,9 +33,9 @@ fn map() -> AccessMap {
 fn a_reason_naming_an_unreadable_dependency_is_dropped_and_the_rest_are_kept() {
     let mut reasons = vec![
         "Waiting on the vendor".to_string(),
-        "Blocked by task 11 (Readable)".to_string(),
-        "Blocked by task 20 (Secret)".to_string(),
-        "Blocked by goal 404 (Missing)".to_string(),
+        format!("Blocked by task {} (Readable)", tid(11)),
+        format!("Blocked by task {} (Secret)", tid(20)),
+        format!("Blocked by goal {} (Missing)", tid(404)),
     ];
 
     restrict_block_reasons(
@@ -52,7 +53,7 @@ fn a_reason_naming_an_unreadable_dependency_is_dropped_and_the_rest_are_kept() {
         reasons,
         vec![
             "Waiting on the vendor".to_string(),
-            "Blocked by task 11 (Readable)".to_string(),
+            format!("Blocked by task {} (Readable)", tid(11)),
         ]
     );
 }
@@ -60,7 +61,7 @@ fn a_reason_naming_an_unreadable_dependency_is_dropped_and_the_rest_are_kept() {
 #[test]
 fn a_hidden_dependency_does_not_take_a_reason_whose_id_merely_starts_the_same() {
     // Task 1 is unreadable; the reason for task 11 must not be mistaken for it.
-    let mut reasons = vec!["Blocked by task 11 (Readable)".to_string()];
+    let mut reasons = vec![format!("Blocked by task {} (Readable)", tid(11))];
 
     restrict_block_reasons(
         &mut reasons,
@@ -79,8 +80,8 @@ fn a_reason_names_its_dependency_by_short_id_and_is_matched_that_way() {
         "Blocked by task a1c (Readable)".to_string(),
     ];
     let names = std::collections::HashMap::from([
-        ("task-20".to_string(), "6f3".to_string()),
-        ("task-11".to_string(), "a1c".to_string()),
+        (tkey("task", 20), "6f3".to_string()),
+        (tkey("task", 11), "a1c".to_string()),
     ]);
 
     restrict_block_reasons(
@@ -203,10 +204,10 @@ fn each_root_is_named_by_short_path_kind_and_id() {
     ]);
 
     assert!(
-        text.contains("- … › Arlesh › Features › Search (task 5)"),
+        text.contains(&format!("- … › Arlesh › Features › Search (task {})", tid(5))),
         "{text}"
     );
-    assert!(text.contains("- Growth › Code (project 2)"), "{text}");
+    assert!(text.contains(&format!("- Growth › Code (project {})", tid(2))), "{text}");
     assert!(text.contains("Agentic tasks"), "{text}");
 }
 
@@ -214,7 +215,7 @@ fn each_root_is_named_by_short_path_kind_and_id() {
 fn a_root_at_the_top_of_the_board_is_its_own_title() {
     let text = instructions_for(&[NodeKey::new(NodeTable::Domain, tid(1))]);
 
-    assert!(text.contains("- Growth (aspect 1)"), "{text}");
+    assert!(text.contains(&format!("- Growth (aspect {})", tid(1))), "{text}");
 }
 
 #[test]

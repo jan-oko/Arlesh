@@ -128,7 +128,12 @@ fn a_run_folds_at_the_threshold_and_owed_work_is_drawn_after_it() {
         Child::Other("note"),
     ];
     let folded = fold(children, 3);
-    assert_eq!(ids(&folded), ["habitrun-1-virtual", "owed", "open", "note"]);
+    assert_eq!(ids(&folded), [
+            format!("habitrun-{}-virtual", tid(1)).as_str(),
+            "owed",
+            "open",
+            "note"
+        ]);
     let Some(Folded::Group(run)) = folded.first() else {
         panic!("the run folded");
     };

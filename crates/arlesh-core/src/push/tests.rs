@@ -20,7 +20,11 @@ async fn factory() -> SessionFactory {
 /// Puts an agent holding the root Aspect at capacity (`true`) or back in room (`false`): the one
 /// fact a device is told about capacity.
 async fn set_capacity(db: &mut Db<Transactional>, locked: bool) {
-    let root = NodeKey::new(NodeTable::Domain, tid(1));
+    let root = NodeKey::new(
+        NodeTable::Domain,
+        crate::nodes::id::parse_row_id(&crate::database::row_ids::new_id("domain", 1))
+            .expect("a seeded aspect's id is a UUID"),
+    );
     db.access().add_root(root).await.unwrap();
     let existing = db.agents().all().await.unwrap();
     let agent = match existing.first() {

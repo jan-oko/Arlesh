@@ -1,5 +1,6 @@
 //! The publisher, over an in-memory database and a clock the test moves.
 
+use crate::nodes::id::tid;
 use std::sync::Arc;
 
 use chrono::NaiveDate;
@@ -8,6 +9,7 @@ use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use tokio::sync::Notify;
 
 use super::*;
+use crate::nodes::id::tkey;
 
 struct TestClock {
     now: Mutex<NaiveDateTime>,
@@ -129,7 +131,7 @@ async fn a_write_then_a_recorded_write_publishes_one_event_with_the_written_task
     assert_eq!(events[0]["seq"], 2);
     assert_eq!(events[0]["revision"], 1);
     assert_eq!(events[0]["epoch"], &*rig.publisher.epoch());
-    assert_eq!(events[0]["changes"]["tasks"]["set"][0][0], "task-100");
+    assert_eq!(events[0]["changes"]["tasks"]["set"][0][0], tkey("task", 100));
     assert_eq!(events[0]["changes"]["tasks"]["set"][0][1]["title"], "Docs");
     assert_eq!(lock(&rig.heard).len(), 1, "the sink heard it too");
 }
@@ -186,7 +188,7 @@ async fn a_tick_past_a_due_date_publishes_the_overdue_lifecycle_with_the_hash_of
 
     assert_eq!(events.len(), 1);
     let lifecycle = &events[0]["changes"]["lifecycles"]["set"][0];
-    assert_eq!(lifecycle[0], "task-100");
+    assert_eq!(lifecycle[0], tkey("task", 100));
     assert_eq!(lifecycle[1]["overdue"], true);
     let mut db = rig.factory.begin().await.unwrap();
     let fresh = crate::mindmap::current(&mut db, moment(14, 3))

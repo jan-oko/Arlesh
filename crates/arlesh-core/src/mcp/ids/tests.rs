@@ -113,7 +113,7 @@ fn a_short_id_a_longer_prefix_and_the_full_id_all_resolve() {
 
     for text in [
         search.short_id.clone(),
-        search.hex[..search.short_id.len() + 1].to_string(),
+        search.hex[..(search.short_id.len() + 1).min(search.hex.len())].to_string(),
         search.id.clone(),
         search.id.to_uppercase(),
     ] {
@@ -153,7 +153,7 @@ fn nothing_shorter_than_three_digits_or_that_is_not_hex_resolves() {
     assert!(matches!(names.resolve("ab"), Err(IdRefusal::Unknown)));
     assert!(matches!(names.resolve("xyz1"), Err(IdRefusal::Unknown)));
     assert!(matches!(
-        names.resolve("000000000"),
+        names.resolve("fffffffff"),
         Err(IdRefusal::Unknown)
     ));
 }

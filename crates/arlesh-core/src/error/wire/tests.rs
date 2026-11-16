@@ -281,7 +281,7 @@ fn kind_serialises_to_expected_snake_case_spellings() {
 #[test]
 fn wire_error_preserves_the_source_error_message() {
     let wire = WireError::from_error(DomainError::NotFound(tid(42)));
-    assert_eq!(wire.message, "domain 42 not found");
+    assert_eq!(wire.message, format!("domain {} not found", tid(42)));
 }
 
 #[test]
@@ -300,7 +300,7 @@ fn wire_error_serialises_without_a_details_field_when_none() {
     assert_eq!(object.get("kind"), Some(&serde_json::json!("not_found")));
     assert_eq!(
         object.get("message"),
-        Some(&serde_json::json!("domain 42 not found"))
+        Some(&serde_json::json!(format!("domain {} not found", tid(42))))
     );
     assert!(!object.contains_key("details"));
 }

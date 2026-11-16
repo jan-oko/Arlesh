@@ -381,7 +381,7 @@ pub async fn duplicate_flow_item(
     parent_type: String,
     parent_id: RowId,
     position: i64,
-) -> Result<i64, WireError> {
+) -> Result<RowId, WireError> {
     backend
         .duplicate_flow_item(item_type, item_id, parent_type, parent_id, position)
         .await

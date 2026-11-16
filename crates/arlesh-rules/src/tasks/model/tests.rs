@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use super::*;
 
 #[test]
@@ -233,22 +234,22 @@ fn goal_status_from_db_rejects_unrecognized_values() {
 
 #[test]
 fn task_id_roundtrip() {
-    let id = TaskId::from(7_i64);
-    assert_eq!(i64::from(id), 7);
+    let id = TaskId::from(tid(7));
+    assert_eq!(id.0, tid(7));
 }
 
 #[test]
 fn goal_id_roundtrip() {
-    let id = GoalId::from(13_i64);
-    assert_eq!(i64::from(id), 13);
+    let id = GoalId::from(tid(13));
+    assert_eq!(id.0, tid(13));
 }
 
 #[test]
 fn a_delegate_is_a_kind_and_an_id_on_the_wire() {
-    let person = serde_json::to_value(Delegate::Person { id: 3 }).expect("serialises");
-    assert_eq!(person, serde_json::json!({"kind": "person", "id": 3}));
-    let read: Delegate = serde_json::from_str(r#"{"kind":"person","id":7}"#).expect("parses");
-    assert_eq!(read, Delegate::Person { id: 7 });
+    let person = serde_json::to_value(Delegate::Person { id: tid(3) }).expect("serialises");
+    assert_eq!(person, serde_json::json!({"kind": "person", "id": tid(3)}));
+    let read: Delegate = serde_json::from_str(&format!(r#"{{"kind":"person","id":"{}"}}"#, tid(7))).expect("parses");
+    assert_eq!(read, Delegate::Person { id: tid(7) });
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn a_person_delegate_without_an_id_is_refused_on_the_wire() {
 
 #[test]
 fn every_delegate_round_trips_through_its_columns() {
-    for delegate in [None, Some(Delegate::Person { id: 4 })] {
+    for delegate in [None, Some(Delegate::Person { id: tid(4) })] {
         let (kind, id) = Delegate::columns(delegate);
         assert_eq!(Delegate::from_columns(kind, id), delegate);
     }
@@ -270,8 +271,8 @@ fn every_delegate_round_trips_through_its_columns() {
 #[test]
 fn a_person_stores_their_id() {
     assert_eq!(
-        Delegate::columns(Some(Delegate::Person { id: 9 })),
-        (Some("person"), Some(9))
+        Delegate::columns(Some(Delegate::Person { id: tid(9) })),
+        (Some("person"), Some(tid(9)))
     );
     assert_eq!(Delegate::columns(None), (None, None));
 }
@@ -279,12 +280,15 @@ fn a_person_stores_their_id() {
 #[test]
 fn a_column_pair_the_schema_would_refuse_reads_as_no_delegate() {
     assert_eq!(Delegate::from_columns(Some("person"), None), None);
-    assert_eq!(Delegate::from_columns(Some("robot"), Some(1)), None);
-    assert_eq!(Delegate::from_columns(None, Some(1)), None);
+    assert_eq!(Delegate::from_columns(Some("robot"), Some(tid(1))), None);
+    assert_eq!(Delegate::from_columns(None, Some(tid(1))), None);
     assert_eq!(Delegate::from_columns(Some("agent"), None), None);
 }
 
 #[test]
 fn a_delegate_describes_itself_for_a_prompt() {
-    assert_eq!(Delegate::Person { id: 12 }.describe(), "person 12");
+    assert_eq!(
+        Delegate::Person { id: tid(12) }.describe(),
+        format!("person {}", tid(12))
+    );
 }

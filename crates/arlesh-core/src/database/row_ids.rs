@@ -198,6 +198,25 @@ pub fn rewrite_keys(keys: &[String], ids: &mut IdMap) -> Vec<(String, String)> {
     pairs
 }
 
+/// The migration that moves the ids, which [`prepare`] makes ready for.
+pub(super) const MIGRATION: i64 = 107;
+
+/// Whether migration [`MIGRATION`] is recorded as applied.
+pub(super) async fn migration_applied(pool: &DatabasePool) -> Result<bool, sqlx::Error> {
+    let bookkeeping: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations')",
+    )
+    .fetch_one(pool)
+    .await?;
+    if !bookkeeping {
+        return Ok(false);
+    }
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = ? AND success = 1)")
+        .bind(MIGRATION)
+        .fetch_one(pool)
+        .await
+}
+
 /// Whether `pool` still holds the integer schema, so migration 0107 has yet to run.
 async fn holds_integer_ids(pool: &DatabasePool) -> Result<bool, sqlx::Error> {
     let declared: Option<String> =

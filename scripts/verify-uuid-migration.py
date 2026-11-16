@@ -133,6 +133,13 @@ rebuilt = [t for t in (r[0] for r in after.execute("SELECT name FROM sqlite_mast
 for table in sorted(rebuilt):
     if table.startswith("_sqlx") or table.startswith("sqlite_"):
         continue
+    if table == "undo_journal":
+        # emptied on purpose: its rowids point at renumbered rows (migration 0107)
+        n_after = after.execute("SELECT COUNT(*) FROM undo_journal").fetchone()[0]
+        if n_after != 0:
+            problems.append("undo_journal not emptied")
+        print(f"{table:38} emptied on purpose, {n_after} rows after")
+        continue
     old_cols = column_names(before, table)
     new_cols = column_names(after, table)
     if old_cols != new_cols:
