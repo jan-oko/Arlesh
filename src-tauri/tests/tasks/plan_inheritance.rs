@@ -3,6 +3,7 @@
 //! it inherits; a write that leaves a Task outside or with nothing is refused, naming it; and a new
 //! Plan above settles the Tasks below as the clamp-or-cancel prompt answered, in the same write.
 
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -41,8 +42,8 @@ fn day(month: u32, day: u32) -> TimeScope {
     single(ScopeKind::Day, month, day)
 }
 
-async fn project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -53,6 +54,7 @@ async fn project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,

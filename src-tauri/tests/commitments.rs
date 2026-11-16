@@ -8,6 +8,9 @@
 
 mod helpers;
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     scopes::model::ScopeKind,
@@ -26,8 +29,8 @@ use chrono::{NaiveDate, NaiveDateTime};
 use helpers::StoredId;
 
 /// A project under the fixed Growth aspect, to hang fixtures off.
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -38,6 +41,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -84,7 +88,7 @@ async fn create(
 /// Runs `update_commitment` on its own transaction, committing only on success.
 async fn update(
     pool: &sqlx::SqlitePool,
-    id: i64,
+    id: RowId,
     request: UpdateCommitmentRequest,
 ) -> Result<arlesh_lib::tasks::model::Commitment, TaskError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -623,7 +627,7 @@ async fn a_commitment_carries_tags() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tonight = window(&pool, ScopeKind::Day, july(1)).await;
-    let aspect_id: i64 =
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(&pool)
             .await
@@ -634,6 +638,7 @@ async fn a_commitment_carries_tags() {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "sleep".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -672,9 +677,9 @@ async fn a_commitment_carries_tags() {
 async fn reading_a_commitment_that_does_not_exist_names_the_id() {
     let pool = helpers::test_pool().await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let missing = db.commitments().get(CommitmentId(77)).await;
+    let missing = db.commitments().get(CommitmentId(tid(77))).await;
     assert!(
-        matches!(missing, Err(TaskError::CommitmentNotFound(77))),
+        matches!(missing, Err(TaskError::CommitmentNotFound(id)) if id == tid(77)),
         "got {missing:?}"
     );
 }
@@ -1015,6 +1020,7 @@ async fn an_info_can_hang_under_a_commitment() {
         .unwrap()
         .infos()
         .create(arlesh_lib::infos::model::CreateInfoRequest {
+            id: None,
             body: "Phone stays in the kitchen".into(),
             details: None,
             parent_type: "commitment".into(),

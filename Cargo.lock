@@ -71,6 +71,7 @@ dependencies = [
  "anyhow",
  "arlesh-backend",
  "arlesh-core",
+ "arlesh-rules",
  "axum",
  "chrono",
  "gtk",

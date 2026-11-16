@@ -3,6 +3,9 @@
 //! Each test builds a Habit through the commands, completes iterations at chosen instants, and
 //! loads the board at a moment to ask whether the next iteration carries the cooldown's block.
 
+use arlesh_lib::nodes::key::no_cycle;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::block_reasons::model::DerivedBlock;
@@ -59,14 +62,14 @@ fn recurrence(
 }
 
 /// A task flow with no items under the root aspect, of one `kind` period. Returns its id.
-async fn flow(app: &App, kind: &str) -> i64 {
+async fn flow(app: &App, kind: &str) -> RowId {
     flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Long run".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some(kind.to_string()),
             ..Default::default()
@@ -78,7 +81,7 @@ async fn flow(app: &App, kind: &str) -> i64 {
 }
 
 /// A weekly Window + Archive Habit from the week of 2026-09-20 with a one-day cooldown.
-async fn weekly_with_a_day_of_cooldown(app: &App) -> i64 {
+async fn weekly_with_a_day_of_cooldown(app: &App) -> RowId {
     let flow_id = flow(app, "week").await;
     flow_commands::set_flow_recurrence(
         app.state(),
@@ -95,14 +98,14 @@ async fn weekly_with_a_day_of_cooldown(app: &App) -> i64 {
     flow_id
 }
 
-fn root_key(flow_id: i64, iteration: ScopeKey) -> OccurrenceKey {
+fn root_key(flow_id: RowId, iteration: ScopeKey) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowRoot,
             item_id: flow_id,
         },
         iteration,
-        cycle: 0,
+        cycle: no_cycle(),
     }
 }
 
@@ -130,7 +133,7 @@ fn drawn(board: &MindmapLoad, key: &OccurrenceKey) -> bool {
 }
 
 /// Marks a whole iteration done as if at `instant`.
-async fn complete_at(pool: &sqlx::SqlitePool, flow_id: i64, iteration: ScopeKey, instant: &str) {
+async fn complete_at(pool: &sqlx::SqlitePool, flow_id: RowId, iteration: ScopeKey, instant: &str) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     arlesh_lib::flows::set_iteration_done(
         &mut db,
@@ -612,14 +615,14 @@ async fn a_cooldown_is_refused_off_a_window_clock_and_past_the_window() {
 
 /// A commitment flow under the root aspect, of one `kind` period, with a one-day Verdict Window
 /// when `verdict_window` says so.
-async fn commitment_flow(app: &App, kind: &str, verdict_window: bool) -> i64 {
+async fn commitment_flow(app: &App, kind: &str, verdict_window: bool) -> RowId {
     flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Asleep by 23:00".into(),
             instance_type: Some(InstanceType::Commitment),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some(kind.to_string()),
             verdict_window_n: verdict_window.then_some(1),
@@ -807,6 +810,7 @@ async fn an_agentic_habit_done_in_its_own_model_starts_the_cooldown() {
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id,
             title: "Write the report".into(),
             parent_type: "flow".into(),
@@ -824,7 +828,7 @@ async fn an_agentic_habit_done_in_its_own_model_starts_the_cooldown() {
             item_id: item,
         },
         iteration,
-        cycle: 0,
+        cycle: no_cycle(),
     };
     load(&app, "2026-09-26T18:00:00").await;
     for key in [&step, &root] {

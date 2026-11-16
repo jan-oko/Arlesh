@@ -1,6 +1,8 @@
 //! Expectations against a real database: the row, the dependency edges aimed at it, the virtual
 //! block reason it gives a Task, its lifecycle entry and the subtree delete.
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -25,8 +27,8 @@ use arlesh_lib::{
 use chrono::{NaiveDate, NaiveDateTime};
 use helpers::StoredId;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -37,6 +39,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Waits".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -58,7 +61,7 @@ async fn day(_pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
     }
 }
 
-async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64 {
+async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: RowId) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
@@ -78,7 +81,7 @@ async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64
 async fn expectation(
     pool: &sqlx::SqlitePool,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     check_every: Option<DurationSpec>,
 ) -> Expectation {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -100,7 +103,7 @@ async fn expectation(
     expectation
 }
 
-async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateExpectationRequest) {
+async fn update(pool: &sqlx::SqlitePool, id: RowId, request: UpdateExpectationRequest) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     update_expectation(&mut db, ExpectationId(id), request)
         .await
@@ -108,7 +111,7 @@ async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateExpectationRequ
     db.commit().await.unwrap();
 }
 
-async fn depend(pool: &sqlx::SqlitePool, task_id: i64, expectation_id: i64) {
+async fn depend(pool: &sqlx::SqlitePool, task_id: RowId, expectation_id: RowId) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     add_task_dependency(
         &mut db,
@@ -120,7 +123,7 @@ async fn depend(pool: &sqlx::SqlitePool, task_id: i64, expectation_id: i64) {
     db.commit().await.unwrap();
 }
 
-async fn block_reasons(pool: &sqlx::SqlitePool, task_id: i64) -> Vec<String> {
+async fn block_reasons(pool: &sqlx::SqlitePool, task_id: RowId) -> Vec<String> {
     let mut db = helpers::session_factory(pool).connect().await.unwrap();
     get_task_with_blockers(&mut db, TaskId(task_id))
         .await
@@ -128,7 +131,7 @@ async fn block_reasons(pool: &sqlx::SqlitePool, task_id: i64) -> Vec<String> {
         .block_reasons
 }
 
-async fn inbound_edges(pool: &sqlx::SqlitePool, expectation_id: i64) -> i64 {
+async fn inbound_edges(pool: &sqlx::SqlitePool, expectation_id: RowId) -> i64 {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM task_dependencies WHERE dependency_type = 'expectation' AND dependency_id = ?",
     )
@@ -350,6 +353,7 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "asked on Monday".into(),
             details: None,
             parent_type: "expectation".into(),
@@ -434,12 +438,13 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
 async fn a_wait_carries_tags_and_a_time_scope_of_its_own() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let tag: i64 = helpers::session_factory(&pool)
+    let tag: RowId = helpers::session_factory(&pool)
         .connect()
         .await
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "waiting".into(),
             description: None,
             subtype: DomainSubtype::Tag,

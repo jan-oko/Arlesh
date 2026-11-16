@@ -10,6 +10,8 @@
 //! over the test pool so `app.state()` can hand a command its `State`. The pool has **one**
 //! connection, so every assertion here reads it only after the command's session has closed.
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
@@ -34,7 +36,7 @@ use tauri::Manager;
 ///
 /// One placeholder, one bind: a helper that took a whole predicate would let a caller write more
 /// `?`s than it binds, and sqlx fills the remainder with NULL instead of erroring.
-async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: i64) -> i64 {
+async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: RowId) -> i64 {
     sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
         .bind(value)
         .fetch_one(pool)
@@ -43,7 +45,7 @@ async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: 
 }
 
 /// Reads one text column of a single row identified by its primary key.
-async fn text_at(pool: &sqlx::SqlitePool, table: &str, column: &str, id: i64) -> Option<String> {
+async fn text_at(pool: &sqlx::SqlitePool, table: &str, column: &str, id: RowId) -> Option<String> {
     sqlx::query_scalar(&format!("SELECT {column} FROM {table} WHERE id = ?"))
         .bind(id)
         .fetch_optional(pool)
@@ -55,7 +57,7 @@ async fn text_at(pool: &sqlx::SqlitePool, table: &str, column: &str, id: i64) ->
 ///
 /// `owner_id` alone is not a key — a goal and a task can share an id — so both halves of the link
 /// are bound, which [`count_where`] cannot express with its single placeholder.
-async fn count_block_reasons(pool: &sqlx::SqlitePool, owner_type: &str, owner_id: i64) -> i64 {
+async fn count_block_reasons(pool: &sqlx::SqlitePool, owner_type: &str, owner_id: RowId) -> i64 {
     sqlx::query_scalar("SELECT COUNT(*) FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
         .bind(owner_type)
         .bind(owner_id)
@@ -82,7 +84,7 @@ fn create_req(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Task),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(2),
         flow_duration_kind: Some("week".into()),
         ..Default::default()
@@ -140,6 +142,7 @@ async fn the_update_flow_goal_command_commits_the_merged_row() {
     let goal = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Shipped".into(),
             parent_type: "flow".into(),
@@ -178,6 +181,7 @@ async fn the_update_flow_task_command_commits_the_merged_row() {
     let task = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Draft".into(),
             parent_type: "flow".into(),
@@ -216,6 +220,7 @@ async fn the_set_flow_item_cycles_command_commits_every_pair() {
     let task = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Exercise".into(),
             parent_type: "flow".into(),
@@ -265,6 +270,7 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
     let specify = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Specify".into(),
             parent_type: "flow".into(),
@@ -276,6 +282,7 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
     let build = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Build".into(),
             parent_type: "flow".into(),
@@ -374,7 +381,7 @@ async fn the_scope_valid_flow_targets_command_writes_nothing() {
         Some(ymd(2026, 1, 5)),
         vec![TargetRef {
             node_type: "aspect".into(),
-            node_id: 1,
+            node_id: tid(1),
         }],
     )
     .await
@@ -394,6 +401,7 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
     let parent = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Warm up".into(),
             parent_type: "flow".into(),
@@ -405,6 +413,7 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
     let child = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow_goal".into(),
@@ -469,6 +478,7 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -512,7 +522,7 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
     .await
     .unwrap();
 
-    let copy = flow_commands::duplicate_flow(app.state(), flow.id, "aspect".into(), 2, 4)
+    let copy = flow_commands::duplicate_flow(app.state(), flow.id, "aspect".into(), tid(2), 4)
         .await
         .unwrap();
 
@@ -549,6 +559,7 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -609,7 +620,7 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             time_scope: Some(TimeScope {
                 start_id: scope.id,
                 end_id: scope.id,
@@ -667,16 +678,16 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
 /// checking the root alone.
 struct ConvertSubtree {
     /// The goal the conversion is rooted at, scoped to a week so the flow gets a Span window.
-    root_id: i64,
+    root_id: RowId,
     /// A task child of the root, scoped to a day inside that week so a cycle pair is mapped.
-    child_id: i64,
+    child_id: RowId,
     /// A task child of `child_id` — a second level, so the cascade has to recurse.
-    grandchild_id: i64,
+    grandchild_id: RowId,
     /// An info attached to the root.
-    outer_info_id: i64,
+    outer_info_id: RowId,
     /// An info attached to `outer_info_id`, not to the root — the nesting the old raw delete loop
     /// never reached.
-    nested_info_id: i64,
+    nested_info_id: RowId,
 }
 
 /// Seeds the subtree both cascade tests convert, and commits it.
@@ -696,7 +707,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             time_scope: Some(TimeScope {
                 start_id: week.id,
                 end_id: week.id,
@@ -759,6 +770,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     let outer = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "outer note".into(),
             details: None,
             parent_type: "goal".into(),
@@ -770,6 +782,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     let nested = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "nested note".into(),
             details: None,
             parent_type: "info".into(),
@@ -851,7 +864,7 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         CreateTaskRequest {
             title: "Parent".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -976,6 +989,7 @@ async fn the_start_flow_command_commits_the_materialised_subtree() {
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Draft".into(),
             parent_type: "flow".into(),
@@ -991,7 +1005,7 @@ async fn the_start_flow_command_commits_the_materialised_subtree() {
         StartFlowRequest {
             title: "Ship the feature".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: tid(1),
             anchor_date: ymd(2026, 1, 5),
         },
     )
@@ -1049,6 +1063,7 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
     flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Milestone".into(),
             parent_type: "flow".into(),
@@ -1069,7 +1084,7 @@ async fn starting_a_commitment_flow_holding_a_goal_item_is_refused_outright() {
         StartFlowRequest {
             title: "Tonight".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: tid(1),
             anchor_date: ymd(2026, 1, 5),
         },
     )

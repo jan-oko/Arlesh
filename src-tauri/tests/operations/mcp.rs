@@ -8,7 +8,11 @@
 //! The pool has **one** connection (see [`helpers::test_pool`]), so every assertion reads it only
 //! after the tool's session has closed.
 
+use arlesh_lib::mcp::params::NodeIdParam;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
+use helpers::IntoParam as _;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
 use arlesh_lib::scopes::key::ScopeKey;
@@ -211,7 +215,7 @@ async fn kb_lists_match_their_commands() {
 }
 
 /// Delegates a Task to a Person, straight to the columns.
-async fn delegate(pool: &sqlx::SqlitePool, task_id: i64, person_id: i64) {
+async fn delegate(pool: &sqlx::SqlitePool, task_id: RowId, person_id: RowId) {
     sqlx::query("UPDATE tasks SET delegate_kind = 'person', delegate_id = ? WHERE id = ?")
         .bind(person_id)
         .bind(task_id)
@@ -221,7 +225,7 @@ async fn delegate(pool: &sqlx::SqlitePool, task_id: i64, person_id: i64) {
 }
 
 /// Seeds a project, a goal and a task, returning the task id.
-async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
+async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> RowId {
     use arlesh_lib::commands::{domains as domain_commands, tasks as task_commands};
     use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
     use arlesh_lib::tasks::model::{CreateGoalRequest, CreateTaskRequest};
@@ -229,10 +233,11 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
     domain_commands::create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: "Ops".into(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(1),
+            parent_id: Some(helpers::seeded(1)),
             status: None,
             knowledge_base_directory: None,
         },
@@ -245,7 +250,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -418,13 +423,13 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
 }
 
 /// The ids in a snapshot payload's `tasks` section.
-fn task_ids(result: &CallToolResult) -> Vec<i64> {
+fn task_ids(result: &CallToolResult) -> Vec<RowId> {
     payload(result)
         .get("tasks")
         .and_then(|section| section.as_array())
         .expect("the payload carries a tasks section")
         .iter()
-        .filter_map(|task| task.get("id").and_then(serde_json::Value::as_i64))
+        .filter_map(|task| task.get("id").and_then(crate::helpers::try_row_id))
         .collect()
 }
 
@@ -468,7 +473,7 @@ async fn tasks_get_returns_what_the_command_returns() {
 
     let result = mcp
         .tasks(Parameters(params::TasksOperation::Get {
-            id: task_id.into(),
+            id: task_id.param(),
         }))
         .await
         .unwrap();
@@ -485,13 +490,7 @@ async fn tasks_get_returns_what_the_command_returns() {
     assert!(got["task"]
         .as_object()
         .is_some_and(|task| task.contains_key("effective_plan")));
-    assert_eq!(
-        got["task"]["full_id"],
-        arlesh_lib::nodes::id::uuid_v5(
-            &arlesh_lib::nodes::id::NODE_NAMESPACE,
-            &format!("task:{task_id}")
-        )
-    );
+    assert_eq!(got["task"]["full_id"], task_id.to_string());
     // The Infos under the Task come back with it; the command knows nothing of them.
     assert_eq!(got["infos"], serde_json::json!([]));
     let mut got = got.clone();
@@ -510,7 +509,7 @@ async fn tasks_get_on_a_missing_id_is_not_permitted() {
 
     let result = mcp
         .tasks(Parameters(params::TasksOperation::Get {
-            id: 99_999_i64.into(),
+            id: NodeIdParam::new(tid(99_999).to_string()),
         }))
         .await
         .unwrap();
@@ -590,7 +589,7 @@ async fn kb_get_person_and_remaining_lists_match_their_commands() {
 
     let got = mcp
         .kb(Parameters(params::KbOperation::GetPerson {
-            id: person.id.into(),
+            id: person.id.param(),
         }))
         .await
         .unwrap();
@@ -645,7 +644,7 @@ async fn flows_reads_match_their_commands() {
             title: "Routine".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         },
     )
@@ -654,7 +653,7 @@ async fn flows_reads_match_their_commands() {
 
     let got = mcp
         .flows(Parameters(params::FlowsOperation::Get {
-            id: flow.id.into(),
+            id: flow.id.param(),
         }))
         .await
         .unwrap();
@@ -766,7 +765,7 @@ async fn the_snapshot_carries_no_beads_id() {
         .expect("snapshot carried no tasks");
     let seeded = tasks
         .iter()
-        .find(|t| t.get("id").and_then(|i| i.as_i64()) == Some(task_id))
+        .find(|t| t.get("id").and_then(crate::helpers::try_row_id) == Some(task_id))
         .expect("seeded task missing from snapshot");
     assert!(seeded.get("beads_id").is_none(), "{seeded}");
 }
@@ -902,7 +901,18 @@ async fn seed_many_tasks(app: &tauri::App<tauri::test::MockRuntime>, count: usiz
     use arlesh_lib::commands::tasks as task_commands;
     use arlesh_lib::tasks::model::CreateTaskRequest;
 
-    let goal_id = 1;
+    let goal_id = task_commands::create_goal(
+        app.state(),
+        arlesh_lib::tasks::model::CreateGoalRequest {
+            title: "Padding".into(),
+            parent_type: "domain".into(),
+            parent_id: crate::helpers::seeded(1).into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id;
     for n in 0..count {
         task_commands::create_task(
             app.state(),
@@ -910,7 +920,7 @@ async fn seed_many_tasks(app: &tauri::App<tauri::test::MockRuntime>, count: usiz
                 // Padded so the budget is reached without needing thousands of rows.
                 title: format!("Task {n} {}", "x".repeat(300)),
                 parent_type: "goal".into(),
-                parent_id: goal_id.into(),
+                parent_id: goal_id.clone(),
                 ..Default::default()
             },
         )
@@ -930,7 +940,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
     // This is the bug the whole change exists for: one call used to return the entire board, and
     // on a real one that overran the client's tool-result limit.
     let mut cursor = None;
-    let mut tasks_seen: Vec<i64> = Vec::new();
+    let mut tasks_seen: Vec<RowId> = Vec::new();
     let mut pages = 0;
 
     loop {
@@ -939,7 +949,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
         assert!(pages < 100, "paging did not terminate");
 
         if let Some(tasks) = page.get("tasks").and_then(|t| t.as_array()) {
-            tasks_seen.extend(tasks.iter().filter_map(|t| t.get("id")?.as_i64()));
+            tasks_seen.extend(tasks.iter().filter_map(|t| crate::helpers::try_row_id(t.get("id")?)));
         }
 
         match page.get("next_cursor").and_then(|c| c.as_str()) {
@@ -951,7 +961,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
     assert!(pages > 1, "200 padded tasks should not fit in one page");
 
     let expected = helpers::load_board_at(&app, now()).await.unwrap();
-    let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id.sid()).collect();
+    let expected_ids: Vec<RowId> = expected.tasks.iter().map(|task| task.id.sid()).collect();
     assert_eq!(
         tasks_seen, expected_ids,
         "paging must yield every task exactly once, in order"
@@ -1169,7 +1179,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "cursor",
             ],
         ),
-        ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
+        ("arlesh_infos", &["create"], &["id", "task_id", "body", "details"]),
         (
             "arlesh_agents",
             &[

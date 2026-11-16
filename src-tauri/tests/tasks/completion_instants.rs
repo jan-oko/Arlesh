@@ -2,6 +2,7 @@
 //! Commitment's verdict recorded — written on the way in, kept while it stays so, and cleared when
 //! it is taken back.
 
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -19,8 +20,8 @@ use arlesh_lib::{
 };
 use helpers::StoredId;
 
-async fn project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -31,6 +32,7 @@ async fn project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Instants".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -44,7 +46,7 @@ async fn project(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 /// The instant column `column` of row `id` in `table`.
-async fn instant(pool: &sqlx::SqlitePool, table: &str, column: &str, id: i64) -> Option<String> {
+async fn instant(pool: &sqlx::SqlitePool, table: &str, column: &str, id: RowId) -> Option<String> {
     sqlx::query_scalar(&format!("SELECT {column} FROM {table} WHERE id = ?"))
         .bind(id)
         .fetch_one(pool)

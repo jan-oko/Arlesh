@@ -2,6 +2,7 @@
 //! on the board load, writing nothing below it, and unarchiving brings the subtree back; a wait
 //! archives itself once released with no window.
 
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -26,8 +27,8 @@ fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -38,6 +39,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Shelf".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -66,7 +68,7 @@ async fn board(pool: &sqlx::SqlitePool, now: &str) -> MindmapLoad {
     load
 }
 
-fn archival_of(load: &MindmapLoad, node_type: &str, id: i64) -> Archival {
+fn archival_of(load: &MindmapLoad, node_type: &str, id: RowId) -> Archival {
     load.lifecycles
         .iter()
         .find(|entry| entry.node_type == node_type && entry.node_id == NodeId::Stored(id))
@@ -74,13 +76,13 @@ fn archival_of(load: &MindmapLoad, node_type: &str, id: i64) -> Archival {
         .unwrap_or(Archival::Live)
 }
 
-fn overdue(load: &MindmapLoad, id: i64) -> bool {
+fn overdue(load: &MindmapLoad, id: RowId) -> bool {
     load.lifecycles.iter().any(|entry| {
         entry.node_type == "task" && entry.node_id == NodeId::Stored(id) && entry.overdue
     })
 }
 
-async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64, title: &str) -> i64 {
+async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: RowId, title: &str) -> RowId {
     task_with(
         pool,
         CreateTaskRequest {
@@ -93,14 +95,14 @@ async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64, title:
     .await
 }
 
-async fn task_with(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> i64 {
+async fn task_with(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let created = create_task(&mut db, request).await.unwrap();
     db.commit().await.unwrap();
     created.id.require_stored().unwrap()
 }
 
-async fn wait(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64 {
+async fn wait(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: RowId) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let created = create_expectation(
         &mut db,
@@ -117,7 +119,7 @@ async fn wait(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64
     created.id.require_stored().unwrap()
 }
 
-async fn set_task_archival(pool: &sqlx::SqlitePool, id: i64, archival: TaskArchival) {
+async fn set_task_archival(pool: &sqlx::SqlitePool, id: RowId, archival: TaskArchival) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     update_task(
         &mut db,

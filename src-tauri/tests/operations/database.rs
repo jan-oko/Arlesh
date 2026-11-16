@@ -1,5 +1,6 @@
 use crate::helpers;
 
+use arlesh_lib::database::row_ids;
 use arlesh_lib::database;
 
 #[tokio::test]
@@ -238,17 +239,24 @@ async fn migration_0037_keeps_every_delegate_as_a_person_and_every_link() {
     .await
     .unwrap();
 
-    everything.run(&pool).await.unwrap();
+    arlesh_lib::database::migrate(&pool).await.unwrap();
 
-    let delegates: Vec<(i64, Option<String>, Option<i64>)> =
-        sqlx::query_as("SELECT id, delegate_kind, delegate_id FROM tasks ORDER BY id")
+    let mut delegates: Vec<(String, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT id, delegate_kind, delegate_id FROM tasks")
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(
-        delegates,
-        vec![(1, Some("person".to_string()), Some(1)), (2, None, None)]
-    );
+    delegates.sort();
+    let mut expected = vec![
+        (
+            row_ids::new_id("task", 1),
+            Some("person".to_string()),
+            Some(row_ids::new_id("person", 1)),
+        ),
+        (row_ids::new_id("task", 2), None, None),
+    ];
+    expected.sort();
+    assert_eq!(delegates, expected);
 
     for table in [
         "task_dependencies",
@@ -502,18 +510,19 @@ async fn migrations_0060_to_0062_keep_every_cycle_plan() {
     .await
     .unwrap();
 
-    everything.run(&pool).await.unwrap();
+    arlesh_lib::database::migrate(&pool).await.unwrap();
 
-    let root: (Option<String>, Option<i64>, Option<i64>) = sqlx::query_as(
-        "SELECT root_plan_kind, root_plan_start, root_plan_end FROM flows WHERE id = 5",
-    )
+    let root: (Option<String>, Option<i64>, Option<i64>) = sqlx::query_as(&format!(
+        "SELECT root_plan_kind, root_plan_start, root_plan_end FROM flows WHERE id = '{}'",
+        row_ids::new_id("flow", 5)
+    ))
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(root, (Some("day".to_string()), Some(1), Some(1)));
 
     type Pair = (
-        i64,
+        String,
         Option<String>,
         Option<i64>,
         Option<String>,
@@ -530,7 +539,7 @@ async fn migrations_0060_to_0062_keep_every_cycle_plan() {
     assert_eq!(
         pairs,
         vec![(
-            3,
+            row_ids::new_id("flow_item_cycle", 3),
             Some("day".to_string()),
             Some(3),
             Some("part_of_day".to_string()),
@@ -598,32 +607,33 @@ async fn migration_0087_gives_every_habit_a_clock_and_keeps_every_overlay() {
     .await
     .unwrap();
 
-    everything.run(&pool).await.unwrap();
+    arlesh_lib::database::migrate(&pool).await.unwrap();
 
-    type Clock = (i64, String, Option<String>, Option<i64>, Option<String>);
-    let clocks: Vec<Clock> = sqlx::query_as(
+    type Clock = (String, String, Option<String>, Option<i64>, Option<String>);
+    let mut clocks: Vec<Clock> = sqlx::query_as(
         "SELECT flow_id, clock, miss_policy, gap_n, end_scope_id
          FROM flow_recurrences ORDER BY flow_id",
     )
     .fetch_all(&pool)
     .await
     .unwrap();
+    clocks.sort();
     let end = Some(r#"{"kind":"week","date":"2026-12-27"}"#.to_string());
-    assert_eq!(
-        clocks,
-        vec![
-            (1, "window".into(), Some("archive".into()), None, None),
-            (2, "window".into(), Some("owed".into()), None, None),
-            (3, "window".into(), Some("overdue".into()), Some(3), end),
-            (4, "window".into(), Some("overdue".into()), None, None),
-            (5, "window".into(), Some("overdue".into()), None, None),
-        ]
-    );
+    let flow = |number| row_ids::new_id("flow", number);
+    let mut expected = vec![
+        (flow(1), "window".into(), Some("archive".into()), None, None),
+        (flow(2), "window".into(), Some("owed".into()), None, None),
+        (flow(3), "window".into(), Some("overdue".into()), Some(3), end),
+        (flow(4), "window".into(), Some("overdue".into()), None, None),
+        (flow(5), "window".into(), Some("overdue".into()), None, None),
+    ];
+    expected.sort();
+    assert_eq!(clocks, expected);
 
     type Overlay = (String, Option<String>, Option<String>, Option<String>);
     let overlays: Vec<Overlay> = sqlx::query_as(
         "SELECT iteration_scope, status, due_scope_start_id, due_scope_end_id
-         FROM task_overlays ORDER BY id",
+         FROM task_overlays ORDER BY iteration_scope",
     )
     .fetch_all(&pool)
     .await
@@ -716,7 +726,7 @@ async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every
         "the seeding is journalled under the old spellings"
     );
 
-    everything.run(&pool).await.unwrap();
+    arlesh_lib::database::migrate(&pool).await.unwrap();
 
     for (table, expected) in [
         ("tasks", vec!["domain", "domain", "goal", "domain"]),
@@ -726,18 +736,21 @@ async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every
         ("infos", vec!["domain", "domain", "task"]),
         ("flows", vec!["domain"]),
     ] {
-        let spellings: Vec<String> =
-            sqlx::query_scalar(&format!("SELECT parent_type FROM {table} ORDER BY id"))
+        let mut spellings: Vec<String> =
+            sqlx::query_scalar(&format!("SELECT parent_type FROM {table}"))
                 .fetch_all(&pool)
                 .await
                 .unwrap();
+        spellings.sort();
+        let mut expected = expected;
+        expected.sort();
         assert_eq!(spellings, expected, "{table}");
     }
-    let target: (String, i64) = sqlx::query_as("SELECT target_type, target_id FROM flows")
+    let target: (String, String) = sqlx::query_as("SELECT target_type, target_id FROM flows")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(target, ("domain".to_string(), 1));
+    assert_eq!(target, ("domain".to_string(), row_ids::new_id("domain", 1)));
     let original: String =
         sqlx::query_scalar("SELECT original_parent_type FROM flow_instance_nodes")
             .fetch_one(&pool)
@@ -763,11 +776,15 @@ async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every
             .unwrap();
         assert_eq!(count, 1, "{table} lost its row in the rebuild");
     }
-    let run_flow: Option<i64> = sqlx::query_scalar("SELECT flow_id FROM flow_instances")
+    let run_flow: Option<String> = sqlx::query_scalar("SELECT flow_id FROM flow_instances")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(run_flow, Some(1), "a started run keeps its Flow");
+    assert_eq!(
+        run_flow,
+        Some(row_ids::new_id("flow", 1)),
+        "a started run keeps its Flow"
+    );
 
     let old_spellings: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM undo_journal

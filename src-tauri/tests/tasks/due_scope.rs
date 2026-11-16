@@ -2,6 +2,7 @@
 //! task's effective Time Scope, an Unscoped task may carry one of its own, and the flag — no longer
 //! a Resolution — is read against the due, whether explicit or derived.
 
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -49,8 +50,8 @@ fn weeks(from: (u32, u32), to: (u32, u32)) -> TimeScope {
     }
 }
 
-async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -61,6 +62,7 @@ async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -118,7 +120,7 @@ fn refused_for_containment(result: Result<Task, TaskError>) -> String {
 
 /// A task under `parent`, scoped and due as given.
 fn request(
-    parent: (&str, i64),
+    parent: (&str, RowId),
     time_scope: Option<TimeScope>,
     on_exit: Option<OnScopeExit>,
     due_scope: Option<TimeScope>,

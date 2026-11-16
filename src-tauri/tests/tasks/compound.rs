@@ -1,6 +1,7 @@
 //! Compound: a Task that consists of its sub-items, driven through the board as the app drives
 //! it — a write naming a row, then a load — and asked what the Task reads as afterwards.
 
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 use helpers::StoredId;
 
@@ -27,8 +28,8 @@ fn at(iso: &str) -> NaiveDateTime {
 
 const NOW: &str = "2026-09-30T12:00:00";
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -39,6 +40,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Compound".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -51,14 +53,14 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn new_task(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> i64 {
+async fn new_task(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let task = create_task(&mut db, request).await.unwrap();
     db.commit().await.unwrap();
     task.id.sid()
 }
 
-async fn child(pool: &sqlx::SqlitePool, parent: i64, status: TaskStatus) -> i64 {
+async fn child(pool: &sqlx::SqlitePool, parent: RowId, status: TaskStatus) -> RowId {
     new_task(
         pool,
         CreateTaskRequest {
@@ -73,7 +75,7 @@ async fn child(pool: &sqlx::SqlitePool, parent: i64, status: TaskStatus) -> i64 
 }
 
 /// A compound Task under the project, its stored status To Do.
-async fn compound(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+async fn compound(pool: &sqlx::SqlitePool, project: RowId) -> RowId {
     new_task(
         pool,
         CreateTaskRequest {
@@ -94,7 +96,7 @@ async fn board(pool: &sqlx::SqlitePool) -> MindmapLoad {
     load
 }
 
-fn row(load: &MindmapLoad, id: i64) -> &Task {
+fn row(load: &MindmapLoad, id: RowId) -> &Task {
     load.tasks
         .iter()
         .find(|task| task.id == NodeId::Stored(id))
@@ -103,7 +105,7 @@ fn row(load: &MindmapLoad, id: i64) -> &Task {
 
 async fn write_task(
     pool: &sqlx::SqlitePool,
-    id: i64,
+    id: RowId,
     request: UpdateTaskRequest,
 ) -> Result<Task, AppError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -114,7 +116,7 @@ async fn write_task(
     written
 }
 
-async fn stored_status(pool: &sqlx::SqlitePool, id: i64) -> String {
+async fn stored_status(pool: &sqlx::SqlitePool, id: RowId) -> String {
     sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
         .bind(id)
         .fetch_one(pool)
@@ -438,7 +440,7 @@ async fn a_duplicate_carries_the_flag() {
     assert!(row(&load, copy).compound);
 }
 
-async fn block(pool: &sqlx::SqlitePool, id: i64) {
+async fn block(pool: &sqlx::SqlitePool, id: RowId) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     write::set_block_reasons(
         &mut db,
@@ -452,7 +454,7 @@ async fn block(pool: &sqlx::SqlitePool, id: i64) {
     db.commit().await.unwrap();
 }
 
-fn derived_block_of(load: &MindmapLoad, id: i64) -> bool {
+fn derived_block_of(load: &MindmapLoad, id: RowId) -> bool {
     load.block_reasons.iter().any(|reason| {
         reason.owner_type == "task"
             && reason.owner_id == NodeId::Stored(id)
@@ -507,7 +509,7 @@ async fn the_board_serves_a_compound_block_with_its_derived_reason() {
 // A parent that is not Compound reads what its sub-items say (Task b10).
 
 /// An ordinary Task under the project, its stored status To Do.
-async fn parent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+async fn parent(pool: &sqlx::SqlitePool, project: RowId) -> RowId {
     new_task(
         pool,
         CreateTaskRequest {

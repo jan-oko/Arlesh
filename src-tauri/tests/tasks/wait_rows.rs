@@ -2,6 +2,8 @@
 //! delegated Task's wait are Expectation rows. Each test drives the board through the virtual
 //! tables — a write naming a row id, then a load — and asks what the row is afterwards.
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -24,8 +26,8 @@ fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -36,6 +38,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Waits".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -49,7 +52,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 /// A wait checked on every three days from 3 July, 09:00.
-async fn checked_wait(pool: &sqlx::SqlitePool, project: i64) -> Expectation {
+async fn checked_wait(pool: &sqlx::SqlitePool, project: RowId) -> Expectation {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let wait = create_expectation(
         &mut db,
@@ -234,7 +237,7 @@ async fn a_check_task_cannot_leave_its_wait_or_be_delegated_or_deleted() {
         &pool,
         &check.id,
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Person { id: 1 })),
+            delegate_to: Some(Some(Delegate::Person { id: tid(1) })),
             ..Default::default()
         },
         now,
@@ -247,7 +250,7 @@ async fn a_check_task_cannot_leave_its_wait_or_be_delegated_or_deleted() {
         .is_err());
 }
 
-async fn task(pool: &sqlx::SqlitePool, project: i64, request: UpdateTaskRequest) -> i64 {
+async fn task(pool: &sqlx::SqlitePool, project: RowId, request: UpdateTaskRequest) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let created = create_task(
         &mut db,
@@ -320,7 +323,7 @@ async fn a_done_asynchronous_tasks_wait_is_an_expectation_row_released_like_any_
 }
 
 /// An Asynchronous Task, done, whose template draws "Reviewer replies" checked every week.
-async fn sent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+async fn sent(pool: &sqlx::SqlitePool, project: RowId) -> RowId {
     task(
         pool,
         project,
@@ -344,7 +347,7 @@ async fn sent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
     .await
 }
 
-fn spawned_by(load: &MindmapLoad, task: i64) -> Expectation {
+fn spawned_by(load: &MindmapLoad, task: RowId) -> Expectation {
     load.expectations
         .iter()
         .find(|expectation| {
@@ -369,7 +372,7 @@ async fn write_wait(
     written
 }
 
-async fn tag_wait(pool: &sqlx::SqlitePool, id: &NodeId, tag: i64, present: bool, now: &str) {
+async fn tag_wait(pool: &sqlx::SqlitePool, id: &NodeId, tag: RowId, present: bool, now: &str) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     write::set_tag(&mut db, "expectation", id, tag, present, at(now))
         .await

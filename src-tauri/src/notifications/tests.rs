@@ -1,4 +1,5 @@
 use super::*;
+use arlesh_core::nodes::id::{tid, tkey};
 
 use std::sync::atomic::AtomicUsize;
 
@@ -40,7 +41,7 @@ fn board(tasks: &str, facts: &str) -> CurrentBoard {
 
 fn task_json(id: i64, title: &str) -> String {
     serde_json::json!({
-        "id": id, "title": title, "parent_type": "project", "parent_id": 1,
+        "id": tid(id), "title": title, "parent_type": "project", "parent_id": tid(1),
         "status": { "kind": "agentic", "status": "on_agent" },
         "asynchronous": false, "compound": false, "archival": "live",
         "tag_ids": [], "position": id, "is_private": false
@@ -49,8 +50,9 @@ fn task_json(id: i64, title: &str) -> String {
 }
 
 fn question_event(seq: u64, task: i64) -> BoardChange {
-    let key = format!("task-{task}");
-    let changes = format!(r#"{{"facts":{{"set":[["{key}",{{"open_question":99}}]],"del":[]}}}}"#);
+    let key = tkey("task", task);
+    let wait = tid(99);
+    let changes = format!(r#"{{"facts":{{"set":[["{key}",{{"open_question":"{wait}"}}]],"del":[]}}}}"#);
     BoardChange::parse(&format!(
         r#"{{"epoch":"run","seq":{seq},"revision":{seq},"changes":{changes}}}"#
     ))
@@ -73,7 +75,7 @@ fn an_agents_question_shows_one_notification_with_the_phones_words() {
     let shown = lock(&recorder.shown);
     assert_eq!(shown.len(), 1);
     assert_eq!(shown[0].text, "An agent is waiting for your answer: Fix it");
-    assert_eq!(shown[0].task.as_deref(), Some("task-1"));
+    assert_eq!(shown[0].task.as_deref(), Some(tkey("task", 1).as_str()));
 }
 
 #[test]
@@ -114,7 +116,7 @@ fn a_board_already_asking_at_startup_tells_nothing() {
 
     service.load(&board(
         &format!("[{}]", task_json(1, "Fix it")),
-        r#"{"task-1":{"open_question":5}}"#,
+        &format!(r#"{{"{}":{{"open_question":"{}"}}}}"#, tkey("task", 1), tid(5)),
     ));
 
     assert_eq!(recorder.calls.load(Ordering::Relaxed), 0);

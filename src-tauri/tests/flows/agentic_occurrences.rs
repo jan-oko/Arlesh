@@ -2,6 +2,9 @@
 //! brief read by every occurrence, an occurrence overriding it field by field, the Spec rule on an
 //! agentic occurrence, and agentic waits hung on one.
 
+use arlesh_lib::nodes::key::no_cycle;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
@@ -38,14 +41,14 @@ fn day() -> chrono::NaiveDate {
 
 /// A daily task Habit under the root aspect from 2026-01-05, with one item "Tidy the inbox" whose
 /// template says `template`.
-async fn habit(app: &App, template: TemplateUpdate) -> i64 {
+async fn habit(app: &App, template: TemplateUpdate) -> RowId {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Mornings".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("day".into()),
             ..Default::default()
@@ -56,6 +59,7 @@ async fn habit(app: &App, template: TemplateUpdate) -> i64 {
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Tidy the inbox".into(),
             parent_type: "flow".into(),
@@ -94,7 +98,7 @@ async fn habit(app: &App, template: TemplateUpdate) -> i64 {
     item
 }
 
-fn occurrence(item_id: i64) -> NodeId {
+fn occurrence(item_id: RowId) -> NodeId {
     NodeId::Derived(
         OccurrenceKey {
             item: TemplateItem {
@@ -102,7 +106,7 @@ fn occurrence(item_id: i64) -> NodeId {
                 item_id,
             },
             iteration: ScopeKey::day(day()),
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     )
@@ -313,7 +317,7 @@ async fn an_agentic_wait_on_an_occurrence_that_is_not_agentic_is_refused() {
 
 /// The app's case: the flow root is marked Agentic and the item says nothing of its own, so the
 /// item's occurrence reads as Agentic through its template tree — for every rule alike.
-async fn agentic_root_unflagged_item(pool: &sqlx::SqlitePool, app: &App) -> i64 {
+async fn agentic_root_unflagged_item(pool: &sqlx::SqlitePool, app: &App) -> RowId {
     let item = habit(app, TemplateUpdate::default()).await;
     let flow_id = {
         let mut db = helpers::session_factory(pool).connect().await.unwrap();
@@ -407,6 +411,7 @@ async fn a_task_hung_on_an_item_under_an_agentic_root_is_writable_over_the_mcp()
 
     let noted = mcp
         .infos(Parameters(params::InfosOperation::Create {
+            id: None,
             task_id: step.into(),
             body: "Found the unsubscribe link".into(),
             details: None,
@@ -440,7 +445,7 @@ mod over_the_mcp {
 
     /// The id an agent names an occurrence by: its UUID, as the snapshot sends it.
     fn named(id: &NodeId) -> params::NodeIdParam {
-        params::NodeIdParam::Short(id.to_string())
+        params::NodeIdParam::new(id.to_string())
     }
 
     fn body(result: &CallToolResult) -> &serde_json::Value {
@@ -560,7 +565,7 @@ mod over_the_mcp {
                 verbose: Some(true),
                 id: named(&tidy),
                 parent_type: "aspect".into(),
-                parent_id: 2_i64.into(),
+                parent_id: params::NodeIdParam::new(helpers::seeded(2).to_string()),
             },
         )
         .await;
@@ -655,7 +660,7 @@ mod over_the_mcp {
                 arlesh_lib::tasks::model::CreateTaskRequest {
                     title: "Empty the spam folder".into(),
                     parent_type: "domain".into(),
-                    parent_id: 1.into(),
+                    parent_id: crate::helpers::seeded(1).into(),
                     ..Default::default()
                 },
                 at(NOW),

@@ -10,6 +10,9 @@
 //! refused, what does this occurrence carry — rather than which rows exist. The one exception is
 //! the template-untouched assertion, where row absence *is* the behaviour.
 
+use arlesh_lib::nodes::key::no_cycle;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
@@ -35,7 +38,7 @@ fn daily_habit(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Task),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(1),
         flow_duration_kind: Some("day".into()),
         ..Default::default()
@@ -50,14 +53,14 @@ async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::Naive
 }
 
 /// The flow root's occurrence in the Habit's first iteration, 2026-01-05.
-fn root_of(flow_id: i64) -> OccurrenceKey {
+fn root_of(flow_id: RowId) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowRoot,
             item_id: flow_id,
         },
         iteration: ScopeKey::day(ymd(2026, 1, 5)),
-        cycle: 0,
+        cycle: no_cycle(),
     }
 }
 
@@ -79,7 +82,7 @@ async fn add_child(
 /// Completes the Habit's first iteration root through the ordinary Task update.
 async fn complete_root(
     app: &tauri::App<tauri::test::MockRuntime>,
-    flow_id: i64,
+    flow_id: RowId,
     confirmed: Option<bool>,
 ) -> Result<Task, arlesh_lib::error::WireError> {
     task_commands::update_task(
@@ -97,7 +100,7 @@ async fn complete_root(
 }
 
 /// The iteration root's status as the board reads it.
-async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -> String {
+async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: RowId) -> String {
     let load = helpers::load_board_at(app, at("2026-01-05T09:00:00"))
         .await
         .unwrap()
@@ -113,7 +116,7 @@ async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -
 }
 
 /// Every node hung on this Habit's occurrences.
-async fn children(pool: &sqlx::SqlitePool, flow_id: i64) -> Vec<HabitInstanceChild> {
+async fn children(pool: &sqlx::SqlitePool, flow_id: RowId) -> Vec<HabitInstanceChild> {
     helpers::session_factory(pool)
         .connect()
         .await
@@ -132,7 +135,7 @@ fn at(instant: &str) -> chrono::NaiveDateTime {
 async fn habit_with_one_day(
     pool: &sqlx::SqlitePool,
     app: &tauri::App<tauri::test::MockRuntime>,
-) -> (i64, ScopeKey) {
+) -> (RowId, ScopeKey) {
     let flow = flow_commands::create_flow(app.state(), daily_habit("Groceries"))
         .await
         .unwrap();
@@ -423,7 +426,7 @@ async fn delete_and_regenerate_takes_the_added_children_with_it() {
         children(&pool, flow_id).await.is_empty(),
         "the instances they hung off are gone, so nothing is left dangling"
     );
-    let task: Option<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE id = ?")
+    let task: Option<RowId> = sqlx::query_scalar("SELECT id FROM tasks WHERE id = ?")
         .bind(child.node_id)
         .fetch_optional(&pool)
         .await
@@ -442,6 +445,7 @@ async fn deleting_an_added_child_never_reaches_the_template() {
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id,
             title: "Walk there".into(),
             parent_type: "flow".into(),
@@ -533,6 +537,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
     let nested = arlesh_lib::tasks::create_task(
         &mut db,
         arlesh_lib::tasks::model::CreateTaskRequest {
+            id: None,
             title: "check the fridge first".into(),
             parent_type: "task".into(),
             parent_id: child.node_id.into(),

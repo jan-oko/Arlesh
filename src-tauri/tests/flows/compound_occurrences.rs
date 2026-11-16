@@ -3,6 +3,9 @@
 //! a compound occurrence derives its status and block, how its iteration resolves through it, and
 //! what a plain Flow's `start` copies onto the Task it makes.
 
+use arlesh_lib::nodes::key::no_cycle;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
@@ -50,7 +53,7 @@ fn daily(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Task),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(1),
         flow_duration_kind: Some("day".into()),
         ..Default::default()
@@ -58,10 +61,11 @@ fn daily(title: &str) -> CreateFlowRequest {
 }
 
 /// A flow Task item under `parent` (the flow, or another item).
-async fn item(app: &App, flow_id: i64, title: &str, parent: (&str, i64)) -> i64 {
+async fn item(app: &App, flow_id: RowId, title: &str, parent: (&str, RowId)) -> RowId {
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id,
             title: title.into(),
             parent_type: parent.0.into(),
@@ -73,7 +77,7 @@ async fn item(app: &App, flow_id: i64, title: &str, parent: (&str, i64)) -> i64 
     .id
 }
 
-async fn set_template(app: &App, item: i64, template: TemplateUpdate) {
+async fn set_template(app: &App, item: RowId, template: TemplateUpdate) {
     flow_commands::update_flow_task(
         app.state(),
         item,
@@ -89,7 +93,7 @@ async fn set_template(app: &App, item: i64, template: TemplateUpdate) {
 /// The board's Habit: a daily task Habit "Mornings" from 2026-01-05, with one item "Review" whose
 /// template says `template`, and one step "File the receipts" beneath it. Returns the flow, the
 /// item and the step.
-async fn habit(app: &App, template: TemplateUpdate) -> (i64, i64, i64) {
+async fn habit(app: &App, template: TemplateUpdate) -> (RowId, RowId, RowId) {
     let flow = flow_commands::create_flow(app.state(), daily("Mornings"))
         .await
         .unwrap();
@@ -115,18 +119,18 @@ async fn habit(app: &App, template: TemplateUpdate) -> (i64, i64, i64) {
     (flow.id, review, step)
 }
 
-fn occurrence(item_type: TemplateKind, item_id: i64) -> NodeId {
+fn occurrence(item_type: TemplateKind, item_id: RowId) -> NodeId {
     NodeId::Derived(
         OccurrenceKey {
             item: TemplateItem { item_type, item_id },
             iteration: ScopeKey::day(day()),
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     )
 }
 
-fn of_item(item_id: i64) -> NodeId {
+fn of_item(item_id: RowId) -> NodeId {
     occurrence(TemplateKind::FlowTask, item_id)
 }
 
@@ -430,6 +434,7 @@ async fn only_a_flow_task_item_takes_compound_or_a_wait_template() {
     let goal = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Fit".into(),
             parent_type: "flow".into(),
@@ -470,7 +475,7 @@ async fn starting_a_flow_copies_an_items_compound_flag_and_wait_template() {
         StartFlowRequest {
             title: "Release 1".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: tid(1),
             anchor_date: day(),
         },
     )
@@ -508,12 +513,12 @@ fn iteration_of(load: &MindmapLoad, id: &NodeId) -> IterationStatus {
         .expect("a Habit occurrence")
 }
 
-fn root(flow: i64) -> NodeId {
+fn root(flow: RowId) -> NodeId {
     occurrence(TemplateKind::FlowRoot, flow)
 }
 
 /// Sets the flow root's template fields.
-async fn set_root_template(app: &App, flow: i64, template: TemplateUpdate) {
+async fn set_root_template(app: &App, flow: RowId, template: TemplateUpdate) {
     flow_commands::update_flow(
         app.state(),
         flow,
@@ -781,7 +786,7 @@ async fn starting_a_flow_copies_its_roots_compound_flag_and_wait_template() {
         StartFlowRequest {
             title: "Move to Leeds".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: tid(1),
             anchor_date: day(),
         },
     )

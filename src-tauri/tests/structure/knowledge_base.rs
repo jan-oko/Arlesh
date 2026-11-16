@@ -1,3 +1,5 @@
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 use crate::helpers;
 
 use arlesh_lib::{
@@ -12,9 +14,9 @@ use arlesh_lib::{
 };
 use helpers::StoredId;
 
-async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
+async fn make_project_id(pool: &sqlx::SqlitePool) -> RowId {
     use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
-    let aspect_id: i64 =
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -25,6 +27,7 @@ async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Knowledge Base Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -225,10 +228,10 @@ async fn person_not_found() {
     let pool = helpers::test_pool().await;
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();
-    let err = db.people().get(999.into()).await.unwrap_err();
+    let err = db.people().get(tid(999).into()).await.unwrap_err();
     assert!(
-        matches!(err, KnowledgeBaseError::PersonNotFound(999)),
-        "expected PersonNotFound(999), got {:?}",
+        matches!(err, KnowledgeBaseError::PersonNotFound(id) if id == tid(999)),
+        "expected PersonNotFound(id) if id == tid(999), got {:?}",
         err
     );
 }
@@ -296,10 +299,10 @@ async fn delete_event_not_found() {
     let pool = helpers::test_pool().await;
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();
-    let err = db.events().delete(999).await.unwrap_err();
+    let err = db.events().delete(tid(999)).await.unwrap_err();
     assert!(
-        matches!(err, KnowledgeBaseError::EventNotFound(999)),
-        "expected EventNotFound(999), got {:?}",
+        matches!(err, KnowledgeBaseError::EventNotFound(id) if id == tid(999)),
+        "expected EventNotFound(id) if id == tid(999), got {:?}",
         err
     );
 }
@@ -360,10 +363,10 @@ async fn delete_thread_not_found() {
     let pool = helpers::test_pool().await;
     let factory = SessionFactory::new(pool.clone());
     let mut db = factory.connect().await.unwrap();
-    let err = db.threads().delete(999).await.unwrap_err();
+    let err = db.threads().delete(tid(999)).await.unwrap_err();
     assert!(
-        matches!(err, KnowledgeBaseError::ThreadNotFound(999)),
-        "expected ThreadNotFound(999), got {:?}",
+        matches!(err, KnowledgeBaseError::ThreadNotFound(id) if id == tid(999)),
+        "expected ThreadNotFound(id) if id == tid(999), got {:?}",
         err
     );
 }
