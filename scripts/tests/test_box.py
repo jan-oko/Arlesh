@@ -1148,6 +1148,61 @@ class CargoCommand(IsolatedEnv):
         self.assertEqual(self.calls, [])
 
 
+class CompilerCache(IsolatedEnv):
+    """sccache under every `owned_target` build, and nothing changed when it is not installed."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        for var in ("RUSTC_WRAPPER", "SCCACHE_DIR", "SCCACHE_CACHE_SIZE", "SCCACHE_SERVER_PORT", "CARGO_INCREMENTAL"):
+            os.environ.pop(var, None)
+        self.notes = mock.patch.object(box, "note").start()
+        self.addCleanup(mock.patch.stopall)
+        self.which = mock.patch.object(box.shutil, "which", return_value="/bin/sccache").start()
+
+    def test_it_wraps_rustc_with_its_own_server_and_a_capped_cache_outside_the_repo(self) -> None:
+        env = box.cache_environment()
+        self.assertEqual(env["RUSTC_WRAPPER"], "/bin/sccache")
+        self.assertEqual(env["SCCACHE_DIR"], str(box.home() / ".cache" / "arlesh" / "sccache"))
+        self.assertEqual(env["SCCACHE_CACHE_SIZE"], "10G")
+        self.assertEqual(env["SCCACHE_SERVER_PORT"], box.CACHE_SERVER_PORT)
+        self.notes.assert_not_called()
+
+    def test_incremental_is_off_while_the_cache_is_in_use(self) -> None:
+        self.assertEqual(box.cache_environment()["CARGO_INCREMENTAL"], "0")
+
+    def test_the_one_constant_leaves_incremental_alone(self) -> None:
+        with mock.patch.object(box, "CACHE_TURNS_INCREMENTAL_OFF", False):
+            self.assertNotIn("CARGO_INCREMENTAL", box.cache_environment())
+
+    def test_without_sccache_nothing_changes_and_one_line_says_so(self) -> None:
+        self.which.return_value = None
+        self.assertEqual(box.cache_environment(), {})
+        self.assertEqual(self.notes.call_count, 1)
+
+    def test_a_wrapper_the_caller_chose_is_left_alone(self) -> None:
+        os.environ["RUSTC_WRAPPER"] = "my-wrapper"
+        self.assertEqual(box.cache_environment(), {})
+        self.notes.assert_not_called()
+
+    def test_what_the_caller_set_wins(self) -> None:
+        os.environ.update({"SCCACHE_DIR": "/elsewhere", "CARGO_INCREMENTAL": "1"})
+        env = box.cache_environment()
+        self.assertNotIn("SCCACHE_DIR", env)
+        self.assertNotIn("CARGO_INCREMENTAL", env)
+
+    def test_the_variables_are_in_place_for_the_build_and_gone_after(self) -> None:
+        with box.compiler_cache():
+            self.assertEqual(os.environ["RUSTC_WRAPPER"], "/bin/sccache")
+        self.assertNotIn("RUSTC_WRAPPER", os.environ)
+        self.assertNotIn("CARGO_INCREMENTAL", os.environ)
+
+    def test_an_owned_target_build_runs_under_the_cache(self) -> None:
+        seen: list[str | None] = []
+        with mock.patch.object(box, "own_records", lambda *a: contextlib.nullcontext()), box.owned_target(self.tmp, self.tmp / "t"):
+            seen.append(os.environ.get("RUSTC_WRAPPER"))
+        self.assertEqual(seen, ["/bin/sccache"])
+
+
 class ContentKeys(unittest.TestCase):
     """The content key of a crate, on a real git repository."""
 

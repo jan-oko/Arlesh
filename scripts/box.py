@@ -1235,6 +1235,11 @@ CACHE_TURNS_INCREMENTAL_OFF = True
 
 CACHE_SIZE = "10G"
 
+# sccache runs one background server per port, and the server keeps the cache directory it was
+# started with: a server another tool (or the user) already runs would silently ignore the
+# directory box asks for. Box's builds therefore talk to their own server, on their own port.
+CACHE_SERVER_PORT = "4229"
+
 
 def cache_dir() -> Path:
     return home() / ".cache" / "arlesh" / "sccache"
@@ -1256,6 +1261,7 @@ def cache_environment() -> dict[str, str]:
         "RUSTC_WRAPPER": binary,
         "SCCACHE_DIR": str(cache_dir()),
         "SCCACHE_CACHE_SIZE": CACHE_SIZE,
+        "SCCACHE_SERVER_PORT": CACHE_SERVER_PORT,
     }
     if CACHE_TURNS_INCREMENTAL_OFF:
         wanted["CARGO_INCREMENTAL"] = "0"
