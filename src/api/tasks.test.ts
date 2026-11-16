@@ -127,7 +127,7 @@ describe("reparentScopeConflicts", () => {
       nodeType: "task",
       nodeId: storedRowId(8),
       newParentType: "goal",
-      newParentId: 4,
+      newParentId: storedRowId(4),
     });
     expect(out).toEqual(result);
   });

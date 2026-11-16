@@ -38,7 +38,7 @@ describe("useValidFlowTargets", () => {
       useValidFlowTargets(CANDIDATES, 2, "week", "2026-07-01"),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
-    expect(scopeValidFlowTargets).toHaveBeenCalledWith(storedRowId(2), "week", "2026-07-01", [
+    expect(scopeValidFlowTargets).toHaveBeenCalledWith(2, "week", "2026-07-01", [
       { node_type: "goal", node_id: storedRowId(7) },
       { node_type: "aspect", node_id: storedRowId(1) },
     ]);

@@ -85,11 +85,11 @@ const OVERRIDE_MODES: readonly string[] = ["inactive", "include", "exclude"];
 
 function parseTagFilter(value: unknown, what: string): TagFilter {
   const raw = record(value, what);
-  if (typeof raw.tagId !== "number") fail(`${what}.tagId is not a number`);
+  if (typeof raw.tagId !== "number" && typeof raw.tagId !== "string") fail(`${what}.tagId is not an id`);
   const mode = str(raw.mode, `${what}.mode`);
   if (!TAG_MODES.includes(mode)) fail(`${what}.mode is not a tag mode: ${mode}`);
   const narrowed = TAG_MODES.find((candidate): candidate is TagFilterMode => candidate === mode) ?? fail(what);
-  return { tagId: storedRowId(raw.tagId), mode: narrowed };
+  return { tagId: typeof raw.tagId === "number" ? storedRowId(raw.tagId) : raw.tagId, mode: narrowed };
 }
 
 function parseOverride(value: unknown, what: string): ArchivedMode {

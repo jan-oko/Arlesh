@@ -20,13 +20,13 @@ const tree = node("root", { kind: "domain" }, [root, item, check, spawned, node(
 
 describe("legacyNodeId", () => {
   it("spells an occurrence's pre-row key from its origin", () => {
-    expect(legacyNodeId(root)).toBe("habit-3-2-virtual");
-    expect(legacyNodeId(item)).toBe("habititem-flow_task-7-9-2-virtual");
+    expect(legacyNodeId(root)).toBe(`habit-${storedRowId(3)}-2-virtual`);
+    expect(legacyNodeId(item)).toBe(`habititem-flow_task-${storedRowId(7)}-${storedRowId(9)}-2-virtual`);
   });
 
   it("re-mints a wait's derived node's old UUID", () => {
-    expect(legacyNodeId(check)).toBe(uuidV5("expectation-check/4/2026-07-10T02:00:00", ARLESH_NODE_NAMESPACE));
-    expect(legacyNodeId(spawned)).toBe(uuidV5("spawned-wait/5", ARLESH_NODE_NAMESPACE));
+    expect(legacyNodeId(check)).toBe(uuidV5(`expectation-check/${storedRowId(4)}/2026-07-10T02:00:00`, ARLESH_NODE_NAMESPACE));
+    expect(legacyNodeId(spawned)).toBe(uuidV5(`spawned-wait/${storedRowId(5)}`, ARLESH_NODE_NAMESPACE));
   });
 
   it("has nothing to say about a stored row, whose key never changed", () => {
@@ -36,8 +36,8 @@ describe("legacyNodeId", () => {
 
 describe("migratedNodeId", () => {
   it("finds the node a saved old key names now", () => {
-    expect(migratedNodeId(tree, "habititem-flow_task-7-9-2-virtual")).toBe("task-i");
-    expect(migratedNodeId(tree, uuidV5("spawned-wait/5", ARLESH_NODE_NAMESPACE))).toBe("sw");
+    expect(migratedNodeId(tree, `habititem-flow_task-${storedRowId(7)}-${storedRowId(9)}-2-virtual`)).toBe("task-i");
+    expect(migratedNodeId(tree, uuidV5(`spawned-wait/${storedRowId(5)}`, ARLESH_NODE_NAMESPACE))).toBe("sw");
   });
 
   it("finds nothing for a key whose node is gone", () => {

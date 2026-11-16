@@ -47,7 +47,7 @@ describe("useFilterDisplay", () => {
   it("falls back to #<id> for an unknown tag", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.tagName(storedRowId(999))).toBe("#999");
+    expect(result.current.tagName(storedRowId(999))).toBe(`#${storedRowId(999)}`);
   });
 
   it("resolves any tree node's label and color by ref, for parent/dependency chips", () => {

@@ -44,7 +44,7 @@ describe("TagPicker", () => {
     render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[storedRowId(2)]} onChange={onChange} />);
     fireEvent.focus(screen.getByPlaceholderText("placeholderTagSearch"));
     fireEvent.mouseDown(screen.getByText("backend"));
-    expect(onChange).toHaveBeenCalledWith([2, 1]);
+    expect(onChange).toHaveBeenCalledWith([storedRowId(2), storedRowId(1)]);
   });
 
   it("removes a selected tag via its pill", () => {
@@ -52,6 +52,6 @@ describe("TagPicker", () => {
     render(<TagPicker allTags={TAGS} domainNames={DOMAIN_NAMES} selectedIds={[storedRowId(1), storedRowId(2)]} onChange={onChange} />);
     const removeButtons = screen.getAllByRole("button", { name: "removeTag" });
     fireEvent.click(removeButtons[0]!);
-    expect(onChange).toHaveBeenCalledWith([2]);
+    expect(onChange).toHaveBeenCalledWith([storedRowId(2)]);
   });
 });

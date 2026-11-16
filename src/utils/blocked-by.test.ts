@@ -8,6 +8,6 @@ describe("blockedByText", () => {
   });
 
   it("falls back to the row id while the target has no short id", () => {
-    expect(blockedByText("goal", undefined, storedRowId(9), "Milestone")).toBe("Blocked by goal 9 (Milestone)");
+    expect(blockedByText("goal", undefined, storedRowId(9), "Milestone")).toBe(`Blocked by goal ${storedRowId(9)} (Milestone)`);
   });
 });

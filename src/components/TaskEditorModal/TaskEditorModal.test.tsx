@@ -121,7 +121,7 @@ describe("TaskEditorModal — initial state", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+        expect.objectContaining({ tagIds: expect.arrayContaining([storedRowId(1), storedRowId(2)]) }),
       ),
     );
   });

@@ -79,8 +79,8 @@ describe("useNodeEditor — waits", () => {
       title: "Chase the reviewer", status: "released", check_every: { n: 2, kind: "day" },
       archival: "archived", is_private: true,
     }));
-    expect(addTagToExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", 6);
-    expect(removeTagFromExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", 4);
+    expect(addTagToExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", storedRowId(6));
+    expect(removeTagFromExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", storedRowId(4));
   });
 
   it("sends a cleared Check every as an explicit null, so the backend clears it", async () => {

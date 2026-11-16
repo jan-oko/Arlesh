@@ -6,7 +6,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 
 vi.mock("@/api/tasks", () => ({
-  updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
+  updateTask: vi.fn().mockResolvedValue({ id: storedRowId(1), status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
   TASK_ARCHIVAL: { LIVE: "live", BACKLOG: "backlog" },
   // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
@@ -20,7 +20,7 @@ vi.mock("@/api/node-gestures", () => ({
 }));
 
 vi.mock("@/api/goals", () => ({
-  updateGoal: vi.fn().mockResolvedValue({ id: 2, status: "achieved" }),
+  updateGoal: vi.fn().mockResolvedValue({ id: storedRowId(2), status: "achieved" }),
 }));
 
 vi.mock("@/api/flows", () => ({
@@ -149,14 +149,14 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(5, "advance"));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(5), "advance"));
   });
 
   it("sends a done task's step for its own row", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
-    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(6, "advance"));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(6), "advance"));
   });
 
   it("names the backlog the write cleared when a set-aside task is started", async () => {
@@ -167,7 +167,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts({ tree: mkNode("root", "domain", [mkNode("domain-3", "project", [backlogged])]) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-13"); });
-    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(13, "advance"));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(13), "advance"));
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-13", message: "warnings:backlogClearedByStart",
     }));
@@ -177,7 +177,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(5, "advance"));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(storedRowId(5), "advance"));
     expect(opts.showToast).not.toHaveBeenCalled();
   });
 
@@ -192,7 +192,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-2"); });
-    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(2, { status: "achieved" }));
+    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(storedRowId(2), { status: "achieved" }));
     expect(stepTaskStatus).not.toHaveBeenCalled();
   });
 
@@ -200,7 +200,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-8"); });
-    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(8, { status: "active" }));
+    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(storedRowId(8), { status: "active" }));
   });
 
   it("sends an iteration root's step for its own row", async () => {
@@ -911,8 +911,8 @@ describe("useNodeActions — onPaste", () => {
     const destination = mkNode("goal-2", "goal");
     const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [carrier, destination])]);
     const reported = [
-      { child_type: "task" as const, child_id: 11, title: "buy milk" },
-      { child_type: "info" as const, child_id: 12, title: "oat, not soy" },
+      { child_type: "task" as const, child_id: storedRowId(11), title: "buy milk" },
+      { child_type: "info" as const, child_id: storedRowId(12), title: "oat, not soy" },
     ];
 
     /** What the stubbed `t` makes of the sentence: the frame, the count, then the names. */

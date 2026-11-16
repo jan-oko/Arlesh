@@ -46,7 +46,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, rowId: storedRowId(id), kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${storedRowId(id)}`, rowId: storedRowId(id), kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];

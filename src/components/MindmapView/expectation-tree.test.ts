@@ -92,7 +92,7 @@ describe("buildTree — expectations", () => {
     expect(pending?.expectationDependencyIds).toEqual([storedRowId(3)]);
     const released = findNode(build([task()], [wait({ status: "released" })], [edge]), `task-${storedRowId(5)}`);
     expect(released?.virtualBlockers).toEqual([]);
-    expect(released?.expectationDependencyIds).toEqual([3]);
+    expect(released?.expectationDependencyIds).toEqual([storedRowId(3)]);
   });
 
   it("draws a delegated task's wait row beneath it, titled as what it waits on", () => {

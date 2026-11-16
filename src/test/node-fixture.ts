@@ -10,6 +10,8 @@ import { storedRowId } from "@/test/stored-id";
  * reads `rowIdOf(node)`.
  */
 export function fixtureRowId(id: string): { rowId?: string } {
+  const spelled = /^[a-z_]+-([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(id);
+  if (spelled?.[1] !== undefined) return { rowId: spelled[1] };
   const match = /^[a-z_]+-(\d+)$/.exec(id);
   const digits = match?.[1];
   return digits === undefined ? {} : { rowId: storedRowId(Number(digits)) };

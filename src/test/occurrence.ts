@@ -1,7 +1,9 @@
 import type { HabitOrigin } from "@/api/node-id";
 import type { NodeCapabilities } from "@/api/mindmap";
-import { NO_CYCLE } from "@/api/flows";
 import { storedRowId } from "@/test/stored-id";
+
+/** The "no cycle" pair, spelled out so a test that mocks `@/api/flows` still gets it. */
+const NO_CYCLE = "00000000-0000-0000-0000-000000000000";
 
 /** What a test says about the occurrence it draws; everything else takes a plain default. */
 interface OccurrenceFixture {

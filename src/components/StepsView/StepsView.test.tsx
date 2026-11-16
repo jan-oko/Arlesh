@@ -343,17 +343,17 @@ describe("a card's glyph and kind line", () => {
     mockTree([n(`domain-${storedRowId(1)}`, "aspect", { color: "#e74c3c" }), n(`domain-${storedRowId(2)}`, "domain")]);
     render(<StepsView />);
 
-    const aspect = document.querySelector('[data-step-card=`domain-${storedRowId(1)}`]');
+    const aspect = document.querySelector(`[data-step-card="domain-${storedRowId(1)}"]`);
     expect(aspect?.querySelector("svg")).toBeNull();
     expect(aspect?.textContent).not.toContain("nodeKinds:aspect");
-    expect(document.querySelector('[data-step-card=`domain-${storedRowId(2)}`] svg')).not.toBeNull();
+    expect(document.querySelector(`[data-step-card="domain-${storedRowId(2)}"] svg`)).not.toBeNull();
   });
 
   it("writes out the kind only where the glyph is borrowed — a Flow's template Task", () => {
     mockTree([n(`task-${storedRowId(1)}`, "task"), n("flow_task-2", "flow_task")]);
     render(<StepsView />);
 
-    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')?.textContent).not.toContain("nodeKinds:task");
+    expect(document.querySelector(`[data-step-card="task-${storedRowId(1)}"]`)?.textContent).not.toContain("nodeKinds:task");
     expect(document.querySelector('[data-step-card="flow_task-2"]')?.textContent).toContain("nodeKinds:flow_task");
   });
 });
@@ -364,8 +364,8 @@ describe("a card's Private badge", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
     render(<StepsView />);
 
-    expect(document.querySelector('[data-step-card=`goal-${storedRowId(1)}`] [title="private"]')).not.toBeNull();
-    expect(document.querySelector('[data-step-card=`goal-${storedRowId(3)}`] [title="private"]')).toBeNull();
+    expect(document.querySelector(`[data-step-card="goal-${storedRowId(1)}"] [title="private"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-step-card="goal-${storedRowId(3)}"] [title="private"]`)).toBeNull();
   });
 });
 
@@ -950,11 +950,11 @@ describe("the pending-write cue", () => {
   it("marks a card whose node has an unanswered write, and clears it on the answer", () => {
     mockTree([n(`task-${storedRowId(1)}`, "task", { pending: true }), n(`task-${storedRowId(2)}`, "task")]);
     const { rerender } = render(<StepsView />);
-    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')).toHaveAttribute("data-pending");
-    expect(document.querySelector('[data-step-card=`task-${storedRowId(2)}`]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector(`[data-step-card="task-${storedRowId(1)}"]`)).toHaveAttribute("data-pending");
+    expect(document.querySelector(`[data-step-card="task-${storedRowId(2)}"]`)).not.toHaveAttribute("data-pending");
 
     mockTree([n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(2)}`, "task")]);
     rerender(<StepsView />);
-    expect(document.querySelector('[data-step-card=`task-${storedRowId(1)}`]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector(`[data-step-card="task-${storedRowId(1)}"]`)).not.toHaveAttribute("data-pending");
   });
 });

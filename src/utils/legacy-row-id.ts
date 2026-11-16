@@ -25,7 +25,7 @@ const PREFIX_KIND: Readonly<Record<string, string>> = {
 };
 
 const INTEGER_KEY = /^([a-z]+)-(\d+)$/;
-const HABIT_RUN_KEY = /^habitrun-(\d+)-(.*)$/;
+const HABIT_RUN_KEY = /^habitrun-(\d+)-((?:virtual|(?:day|week|month|season|year|part)-.*))$/;
 
 /**
  * A node's display key as a saved tab spelled it before the move (`task-12`, `habitrun-5-…-virtual`),

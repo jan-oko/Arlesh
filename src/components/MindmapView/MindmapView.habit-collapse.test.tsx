@@ -200,7 +200,7 @@ describe("arrow navigation inside an opened run", () => {
   function openRun(container: HTMLElement): string {
     select(RUN);
     press("/", { ctrlKey: true });
-    const level = container.querySelector("[data-node-id^='habitrun-7-week-']");
+    const level = container.querySelector(`[data-node-id^='habitrun-${FLOW}-week-']`);
     const id = level?.getAttribute("data-node-id");
     if (id === null || id === undefined) throw new Error("the opened run drew no scope level");
     return id;
@@ -234,7 +234,7 @@ describe("arrow navigation inside an opened run", () => {
     select(week);
     press("/", { ctrlKey: true });
 
-    select("habit-7-0-virtual");
+    select(`habit-${FLOW}-0-virtual`);
     press("ArrowLeft");
 
     expect(selected()).toBe(week);
@@ -250,21 +250,21 @@ describe("opening a folded run", () => {
     const { container } = render(<MindmapView />);
     openWithCtrlSlash();
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).toBeNull();
   });
 
   it("opens one level onto its own iterations, leaving its neighbour shut", () => {
     const { container } = render(<MindmapView />);
     openWithCtrlSlash();
-    const levels = [...container.querySelectorAll("[data-node-id^='habitrun-7-week-']")];
+    const levels = [...container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)];
     const first = levels[0]?.getAttribute("data-node-id") ?? "";
 
     select(first);
     press("/", { ctrlKey: true });
 
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='habit-7-2-virtual']")).toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-2-virtual']`)).toBeNull();
   });
 
   function openWithCtrlSlash(): void {
@@ -287,9 +287,9 @@ describe("expanding a folded Habit run and everything under it", () => {
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
     for (const index of [0, 1, 2, 3]) {
-      expect(container.querySelector(`[data-node-id='habit-7-${index}-virtual']`)).not.toBeNull();
+      expect(container.querySelector(`[data-node-id='habit-${FLOW}-${index}-virtual']`)).not.toBeNull();
     }
   });
 
@@ -300,8 +300,8 @@ describe("expanding a folded Habit run and everything under it", () => {
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelector("[data-node-id='task-9']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='habit-7-3-virtual']")).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='task-${storedRowId(9)}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-3-virtual']`)).not.toBeNull();
   });
 
   it("leaves a run outside the pressed subtree folded", () => {
@@ -311,7 +311,7 @@ describe("expanding a folded Habit run and everything under it", () => {
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelector("[data-node-id^='habitrun-7-week-']")).toBeNull();
+    expect(container.querySelector(`[data-node-id^='habitrun-${FLOW}-week-']`)).toBeNull();
   });
 });
 
@@ -349,7 +349,7 @@ describe("collapsing a subtree with the same chord", () => {
     pressChord();
 
     expect(opened).not.toEqual(before);
-    expect(opened).toContain("habit-7-3-virtual");
+    expect(opened).toContain(`habit-${FLOW}-3-virtual`);
     expect(drawnIds(container)).toEqual(before);
   });
 
@@ -372,8 +372,8 @@ describe("collapsing a subtree with the same chord", () => {
     pressChord();
     press("/", { ctrlKey: true });
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).toBeNull();
   });
 
   it("shuts a cell that was already open, rather than opening it again", () => {
@@ -382,8 +382,8 @@ describe("collapsing a subtree with the same chord", () => {
 
     pressChord();
 
-    expect(container.querySelector("[data-node-id='goal-5']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='task-9']")).toBeNull();
+    expect(container.querySelector(`[data-node-id='goal-${storedRowId(5)}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='task-${storedRowId(9)}']`)).toBeNull();
     expect(container.querySelector(`[data-node-id='${RUN}']`)).toBeNull();
   });
 });

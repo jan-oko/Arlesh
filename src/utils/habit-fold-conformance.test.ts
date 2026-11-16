@@ -60,6 +60,12 @@ function drawn(node: MindmapNode): unknown {
   };
 }
 
+/** The corpus names a Habit by an integer (`habitrun-1-virtual`); a run's key now carries the Habit's UUID. */
+function withStoredFlowIds(folded: unknown): unknown {
+  const text = JSON.stringify(folded).replace(/habitrun-(\d+)-/g, (_, n: string) => `habitrun-${storedRowId(Number(n))}-`);
+  return JSON.parse(text);
+}
+
 const top = record(corpusJson, "the corpus");
 const cases: unknown[] = Array.isArray(top.cases) ? top.cases : fail("`cases` is not an array");
 
@@ -72,7 +78,7 @@ describe("habit fold conformance corpus", () => {
       if (!Array.isArray(raw.children)) fail(`${name}.children is not an array`);
       const children = raw.children.map((entry, index) => child(entry, index, `${name}.children[${index}]`));
       const root: MindmapNode = { id: "host", kind: "task", title: "host", position: 0, tagIds: [], children };
-      expect(foldHabitRuns(root, raw.threshold, LABELS).children.map(drawn)).toEqual(raw.folded);
+      expect(foldHabitRuns(root, raw.threshold, LABELS).children.map(drawn)).toEqual(withStoredFlowIds(raw.folded));
     });
   }
 });

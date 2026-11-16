@@ -16,7 +16,7 @@ vi.mock("react-i18next", () => ({
 // emit unhandled rejections.
 vi.mock("@/api/scopes", () => ({
   getScope: vi.fn().mockResolvedValue({
-    id: storedRowId(1), kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
+    id: 1, kind: "day", start_date: "2026-01-05", end_date: "2026-01-05",
     start_datetime: null, end_datetime: null, part: null,
   }),
   getOrCreateScope: vi.fn(),

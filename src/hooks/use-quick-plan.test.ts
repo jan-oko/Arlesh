@@ -215,7 +215,7 @@ describe("useQuickPlan — a multi-selection", () => {
   });
 
   it("keeps the Tasks the backend accepted when it refuses one, and counts the refusal", async () => {
-    const backend = installBackend((args) => (JSON.stringify(args).includes('"id":2') ? "outside its parent's plan" : null));
+    const backend = installBackend((args) => (JSON.stringify(args).includes(`"id":"${storedRowId(2)}"`) ? "outside its parent's plan" : null));
     const { result, showToast } = setup([node(`task-${storedRowId(1)}`, "task"), node(`task-${storedRowId(2)}`, "task", { title: "Two" })]);
     act(() => { result.current.open([`task-${storedRowId(1)}`, `task-${storedRowId(2)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
