@@ -138,7 +138,10 @@ branch. A phone is found among already-connected adb transports, then by `adb md
 in the current worktree into the box's shared target, so the worktree needs no `src-tauri/target` of its
 own (2.5 to 6 GB each). It uses the same per-branch guard as `box run`, so a build never reuses another
 branch's workspace crates, and builds into that target take turns (a second one prints that it is waiting).
-A plain `cargo` still builds into the checkout's own target.
+A plain `cargo` still builds into the checkout's own target. With [sccache](https://github.com/mozilla/sccache) installed
+(`cargo install sccache --locked`) these builds, and every `box run` build, also use a compiler cache under
+`~/.cache/arlesh/sccache` (10 GB cap): going back to a branch built before takes seconds, and incremental
+compilation is off while it is in use.
 
 `npm run box -- list` shows every open PR's branch with its worktree, builds, installs and server (needs
 an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune` prints which worktrees

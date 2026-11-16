@@ -1153,11 +1153,12 @@ class CompilerCache(IsolatedEnv):
 
     def setUp(self) -> None:
         super().setUp()
-        for var in ("RUSTC_WRAPPER", "SCCACHE_DIR", "SCCACHE_CACHE_SIZE", "SCCACHE_SERVER_PORT", "CARGO_INCREMENTAL"):
+        for var in ("RUSTC_WRAPPER", "SCCACHE_DIR", "SCCACHE_CACHE_SIZE", "SCCACHE_SERVER_PORT", "SCCACHE_BASEDIRS", "CARGO_INCREMENTAL"):
             os.environ.pop(var, None)
         self.notes = mock.patch.object(box, "note").start()
         self.addCleanup(mock.patch.stopall)
         self.which = mock.patch.object(box.shutil, "which", return_value="/bin/sccache").start()
+        mock.patch.object(box, "main_checkout", return_value=Path("/repo")).start()
 
     def test_it_wraps_rustc_with_its_own_server_and_a_capped_cache_outside_the_repo(self) -> None:
         env = box.cache_environment()
@@ -1165,6 +1166,7 @@ class CompilerCache(IsolatedEnv):
         self.assertEqual(env["SCCACHE_DIR"], str(box.home() / ".cache" / "arlesh" / "sccache"))
         self.assertEqual(env["SCCACHE_CACHE_SIZE"], "10G")
         self.assertEqual(env["SCCACHE_SERVER_PORT"], box.CACHE_SERVER_PORT)
+        self.assertEqual(env["SCCACHE_BASEDIRS"], "/repo")  # worktrees under it share workspace-crate hits
         self.notes.assert_not_called()
 
     def test_incremental_is_off_while_the_cache_is_in_use(self) -> None:

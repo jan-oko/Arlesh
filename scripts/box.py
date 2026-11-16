@@ -110,6 +110,16 @@ but box's drop of a crate's records happens outside cargo's lock and used to bre
 was running ("invoked.timestamp: No such file or directory"). The trade-off is that builds in the
 shared target never overlap; a queued build waits for the one before it.
 
+Compiler cache: when `sccache` is on PATH, every build through `owned_target` runs under it
+(RUSTC_WRAPPER), so going back to a branch built before, a wiped target and a new worktree of known
+content come back from the cache instead of recompiling. The cache is `~/.cache/arlesh/sccache`,
+capped at 10G, outside the repo and every target; box uses its own sccache server port, so a server
+another tool runs cannot make it ignore that directory; SCCACHE_BASEDIRS is the main checkout, so the
+workspace crates also hit across worktrees. sccache cannot cache incremental compilations, so while
+it is in use CARGO_INCREMENTAL=0 (the constant CACHE_TURNS_INCREMENTAL_OFF; the cost is a slower
+rebuild after a one-line edit, the gain a branch switch that is a cache hit). Anything the caller set
+(RUSTC_WRAPPER, SCCACHE_*, CARGO_INCREMENTAL) wins. Without sccache box notes it once and builds as before.
+
 `box cargo -- <cargo arguments>` (`npm run cargo -- <cargo arguments>`) is a cargo run in this
 worktree through the same guard: it builds into the shared target (so the worktree grows no
 `src-tauri/target` of its own), runs under `owned_target`, takes the caller's environment as it is
@@ -1262,6 +1272,10 @@ def cache_environment() -> dict[str, str]:
         "SCCACHE_DIR": str(cache_dir()),
         "SCCACHE_CACHE_SIZE": CACHE_SIZE,
         "SCCACHE_SERVER_PORT": CACHE_SERVER_PORT,
+        # Worktrees sit under the main checkout at different paths; without this the workspace
+        # crates miss in a worktree other than the one that filled the cache (measured: the three
+        # crates recompiled, 98 s against 24 s), and dependencies are unaffected either way.
+        "SCCACHE_BASEDIRS": str(main_checkout()),
     }
     if CACHE_TURNS_INCREMENTAL_OFF:
         wanted["CARGO_INCREMENTAL"] = "0"
