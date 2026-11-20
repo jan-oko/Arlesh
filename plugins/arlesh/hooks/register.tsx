@@ -58,6 +58,12 @@ const NOTES =
 const BACKOFF_FIRST_MS = 1_000
 const BACKOFF_MAX_MS = 30_000
 const NO_SERVER_RETRY_MS = 30_000
+/**
+ * The least time one round of the poll loop takes. A held poll takes its whole wait, so it never
+ * meets this; a server that answers at once (a restarted one at revision 0 reads `after=0` as no
+ * cursor, and says `reset` every time) is asked no more than once in this long.
+ */
+const MIN_ROUND_MS = 5_000
 /** Failures in a row before the transcript is told once that Arlesh cannot be reached. */
 const SURFACE_AFTER = 3
 
@@ -358,6 +364,27 @@ async function reachable($: Engine, connection: ServerEntry): Promise<boolean> {
 }
 
 /**
+ * Sleeps `ms`. False when the sleep itself failed, as every call of the engine does once the
+ * session's environment is unloaded: the loop must then end, not go round again with nothing
+ * to pace it (each call rejecting at once made it spin without ever yielding).
+ */
+async function paused($: Engine, ms: number): Promise<boolean> {
+  try {
+    await $.clock.sleep(ms)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** An answer that came sooner than the floor: not a failure, only a pause owed. */
+class TooFast extends Error {
+  constructor(readonly pauseMs: number) {
+    super('the server answered too soon')
+  }
+}
+
+/**
  * Polls the server for the session's life, one request at a time: each is held open by the
  * server until a wait changes or `wait` seconds pass, and the next one resumes from the cursor
  * it answered. With no cursor, or after the server restarted, it reads the watched waits
@@ -405,8 +432,18 @@ async function follow($: Engine): Promise<void> {
       backoff = BACKOFF_FIRST_MS
       failures = 0
       cursor = { revision: answer.revision, epoch: answer.epoch }
+      // The floor: an answer that came sooner than MIN_ROUND_MS (a held poll takes its whole wait,
+      // and never does) is followed by a pause, whatever made it quick.
+      const took = (await $.clock.now()) - started
+      if (took < MIN_ROUND_MS) throw new TooFast(MIN_ROUND_MS - took)
     } catch (error) {
+      if (error instanceof TooFast) {
+        if (await paused($, error.pauseMs)) continue
+        following = false
+        return
+      }
       failures += 1
+      server = undefined // read the configuration again: the URL or token may have changed
       try {
         wait = nextWait(wait, error, started === 0 ? Infinity : (await $.clock.now()) - started)
         $.ui.log(`the poll failed: ${String(error)}`, { to: 'debug' })
@@ -415,10 +452,12 @@ async function follow($: Engine): Promise<void> {
             'cannot reach Arlesh; notifications are paused and it keeps trying.',
           )
         }
-        server = undefined // read the configuration again: the URL or token may have changed
-        await $.clock.sleep(backoff)
       } catch {
-        // Even the bookkeeping failed: the loop still goes on.
+        // Even the bookkeeping failed: the loop still goes on, and still backs off.
+      }
+      if (!(await paused($, backoff))) {
+        following = false
+        return
       }
       backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
     }

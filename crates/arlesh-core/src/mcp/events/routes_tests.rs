@@ -246,13 +246,37 @@ async fn a_long_poll_with_no_cursor_is_told_to_read_afresh() {
 }
 
 #[tokio::test]
+async fn a_cursor_at_revision_zero_is_held_like_any_other() {
+    // A server just started has revision 0. `after=0` with its epoch is a real cursor: answering
+    // it with `reset` at once made a client that took revision 0 poll in a tight loop.
+    let (factory, directory) = scratch().await;
+    let streams = EventStreams::default();
+    let epoch = streams.feed.epoch().to_owned();
+    let address = serve(factory, streams).await;
+
+    let started = std::time::Instant::now();
+    let held = body(
+        &answer(
+            address,
+            &format!("/events/expectations?after=0&epoch={epoch}&wait=1"),
+        )
+        .await,
+    );
+
+    assert!(started.elapsed() >= Duration::from_millis(900), "{held}");
+    assert!(held.get("reset").is_none(), "{held}");
+    assert_eq!(held["revision"], 0);
+    assert_eq!(held["changes"], serde_json::json!([]));
+    let _ = std::fs::remove_dir_all(directory);
+}
+
+#[tokio::test]
 async fn a_long_poll_with_nothing_new_answers_empty_when_its_wait_is_up() {
     let (factory, directory) = scratch().await;
     let streams = EventStreams {
         poll: Some(Duration::from_millis(50)),
         ..EventStreams::default()
     };
-    // A cursor of 0 is no cursor, so the board has moved once before the poll begins.
     streams.feed.bump();
     let epoch = streams.feed.epoch().to_owned();
     let address = serve(factory, streams).await;

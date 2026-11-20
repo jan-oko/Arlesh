@@ -1,1 +1,3 @@
 - **A wait's notification is no longer lost when the session cannot take it at once.** A wait released while a turn was running, especially one you then interrupted, could go unannounced for good. The `arlesh` plugin now keeps every change it owes the session until the notification has actually entered, and tries again on later polls, when a turn completes and at session start. If it finally gives up after 20 tries, it says so in the transcript.
+
+  The plugin also no longer polls the server in a tight loop. After a server restart, a poll the server answered at once could repeat about a hundred times a minute; the server now holds a poll that resumes from revision 0 like any other, and the plugin waits at least five seconds between polls however fast the server answers.
