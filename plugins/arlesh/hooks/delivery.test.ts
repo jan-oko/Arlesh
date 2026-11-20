@@ -1,0 +1,202 @@
+import { expect, mock, test } from 'claude-code/testing'
+
+import { MAX_ATTEMPTS, revive } from './book'
+
+type Hooks = Parameters<typeof mock.clock>[0]
+
+const watched = (id: string, over: Record<string, unknown> = {}) => ({
+  waitId: `${id}-full`,
+  shortId: id,
+  taskShortId: '9a1',
+  status: 'pending',
+  archived: false,
+  seenAt: 0,
+  ...over,
+})
+
+const releasedAnswer = (ids: string[]) => ({
+  value: {
+    structuredContent: {
+      waits: ids.map((id) => ({ wait_id: `${id}-full`, short_id: id, task_short_id: '9a1', status: 'released' })),
+    },
+  },
+})
+
+/**
+ * A session attached to a server that, on its first poll, says the given waits were released, and
+ * holds every poll after it. `submits` answers each `prompt.submit` in turn; the last answer stays.
+ */
+function session(
+  on: Hooks,
+  released: string[],
+  waits: Record<string, unknown>,
+  submits: Array<'enter' | 'drop' | 'reject'>,
+  agents: unknown[] = [],
+) {
+  const clock = mock.clock(on)
+  const stored: Record<string, unknown> = { 'watch:s1': waits, 'agent:s1': { token: 't' } }
+  const prompts: string[] = []
+  const transcript: string[] = []
+  const debug: string[] = []
+  let attempts = 0
+  let polled = false
+  on('session.start', () => ({ cwd: '/r' }))
+  on('session.root', () => ({ value: '/r' }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('fs.read', (_, e) => {
+    if (e.path === '/r/.mcp.json') {
+      return { value: JSON.stringify({ mcpServers: { arlesh: { url: 'http://127.0.0.1:4747/mcp' } } }) }
+    }
+    throw new Error('no such file')
+  })
+  on('store.get', (_, e) => ({ value: stored[e.key] }))
+  on('store.set', (_, e) => {
+    stored[e.key] = e.value
+    return { value: undefined }
+  })
+  on('session.id', () => ({ value: 's1' }))
+  on('agent.list', () => ({ value: agents }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('mcp.call', () => releasedAnswer(released))
+  on('http.fetch', async () => {
+    const first = !polled
+    polled = true
+    if (!first) await clock.sleep(25_000)
+    return {
+      value: {
+        status: 200,
+        ok: true,
+        headers: {},
+        text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: first }),
+      },
+    }
+  })
+  on('prompt.submit', (_, e) => {
+    const how = submits[Math.min(attempts, submits.length - 1)]
+    attempts += 1
+    if (how === 'reject') throw new Error('not now')
+    if (how === 'drop') return { drop: 'a Stop stands' }
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  on('ui.log', (_, e) => {
+    ;(e.to === 'debug' ? debug : transcript).push(e.text)
+    return { value: undefined }
+  })
+  return { clock, stored, prompts, transcript, debug, attempts: () => attempts }
+}
+
+async function start($: Parameters<Parameters<typeof test>[1]>[0], clock: ReturnType<typeof mock.clock>) {
+  await $.session.start({ cwd: '/r', surface: null, isInteractive: false })
+  await clock.advance(1)
+  await clock.settle()
+}
+
+async function pollRounds(clock: ReturnType<typeof mock.clock>, rounds: number) {
+  for (let round = 0; round < rounds; round += 1) {
+    await clock.advance(26_000)
+    await clock.settle()
+  }
+}
+
+const bookOf = (stored: Record<string, unknown>) => revive(stored['watch:s1'])
+
+test('a prompt the host drops is not a delivery: the change stays owed and goes in on a later poll', async ($, on) => {
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['drop', 'enter'])
+
+  await start($, s.clock)
+  expect(s.prompts).toEqual([])
+  expect(bookOf(s.stored)['w1-full']?.owed).toEqual(['released'])
+  expect(s.debug.join('\n')).toContain('not delivered, dropped: a Stop stands')
+
+  await pollRounds(s.clock, 1)
+  expect(s.prompts).toEqual([
+    'Arlesh notification: wait w1 on Task 9a1 changed (released); read it with `arlesh_waits.get`.',
+  ])
+  expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
+})
+
+test('a prompt that is rejected is retried the same way', async ($, on) => {
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['reject', 'enter'])
+
+  await start($, s.clock)
+  await pollRounds(s.clock, 1)
+
+  expect(s.prompts).toHaveLength(1)
+})
+
+test('two waits released in one busy turn are both told once the session takes a prompt, each once', async ($, on) => {
+  const s = session(on, ['w1', 'w2'], { 'w1-full': watched('w1'), 'w2-full': watched('w2') }, ['drop', 'enter'])
+
+  await start($, s.clock)
+  await pollRounds(s.clock, 3)
+
+  expect(s.prompts).toHaveLength(2)
+  expect(s.prompts.join('\n')).toContain('wait w1')
+  expect(s.prompts.join('\n')).toContain('wait w2')
+})
+
+test('a delivered change is never sent again', async ($, on) => {
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['enter'])
+
+  await start($, s.clock)
+  await pollRounds(s.clock, 3)
+  await $.turn.complete({ reason: 'answer', answer: 'x', durationMs: 1, isAborted: false, turnId: 't' })
+  await s.clock.settle()
+
+  expect(s.prompts).toHaveLength(1)
+})
+
+test('the session going idle delivers what is owed without waiting for a poll', async ($, on) => {
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['drop', 'enter'])
+
+  await start($, s.clock)
+  expect(s.prompts).toEqual([])
+  await $.turn.complete({ reason: 'answer', answer: 'x', durationMs: 1, isAborted: true, turnId: 't' })
+  await s.clock.settle()
+
+  expect(s.prompts).toHaveLength(1)
+})
+
+test('a change owed from an earlier run is delivered when the session starts', async ($, on) => {
+  const s = session(on, [], { 'w1-full': watched('w1', { status: 'released', owed: ['released'] }) }, ['enter'])
+
+  await start($, s.clock)
+
+  expect(s.prompts).toHaveLength(1)
+  expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
+})
+
+test('a notification given up on is said in the transcript, and then no more is tried', async ($, on) => {
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['drop'])
+
+  await start($, s.clock)
+  await pollRounds(s.clock, MAX_ATTEMPTS + 3)
+
+  expect(s.attempts()).toBe(MAX_ATTEMPTS)
+  expect(s.transcript.join('\n')).toContain('gave up telling this session that wait w1')
+  expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
+})
+
+test('a delivery to a sub-agent that is not taken goes to the session, naming the sub-agent', async ($, on) => {
+  const s = session(
+    on,
+    ['w1'],
+    { 'w1-full': watched('w1', { via: { agentId: 'a1', description: 'Fix CI' } }) },
+    ['enter'],
+    [{ id: 'a1', description: 'Fix CI', type: 'general-purpose', status: 'running' }],
+  )
+  on('session.send', () => ({ isDelivered: false, reason: 'the recipient is gone' }))
+
+  await start($, s.clock)
+
+  expect(s.prompts).toHaveLength(1)
+  expect(s.prompts[0]).toContain('The sub-agent "Fix CI" raised it.')
+})
+
+test('a book stored before changes could be owed still reads, owing nothing', () => {
+  const old = { 'w1-full': { waitId: 'w1-full', shortId: 'w1', taskShortId: '9a1', status: 'pending', archived: false, seenAt: 1 } }
+
+  expect(revive(old)['w1-full']).toEqual(old['w1-full'])
+  expect(revive({ 'w1-full': { ...old['w1-full'], owed: ['nonsense'], attempts: 'x' } })['w1-full']).toEqual(old['w1-full'])
+})

@@ -87,11 +87,19 @@ Checked against the API, and built as decided except where noted:
   (`wait=0`) to the server succeeded. The stream is started in `session.start`.
 - **A hook's `next(e)` for an MCP tool gives the result as a string** (the JSON the model reads),
   not an object: the mod reads that, and skips a result with `isError`.
-- **Delivery is `$.prompt.submit`** (a turn of its own once the session is idle; retried while it is
-  busy) or `$.session.send` to a running sub-agent. Tried by hand on 2.1.318: an idle main session is
+- **Delivery is `$.prompt.submit`** (a turn of its own once the session is idle) or `$.session.send` to a running sub-agent. Tried by hand on 2.1.318: an idle main session is
   woken; the parent is woken for a finished sub-agent; a running sub-agent gets `session.send`
   mid-run; a submit while the session is busy was accepted at once and ran as a turn of its own.
   Whether it interrupts or queues behind the running turn is not determined.
+- **A change is owed until its prompt entered** (Task 1a0). Both calls can fail without throwing:
+  `$.prompt.submit` resolves `{ drop }` when the engine refuses a prompt (a Stop stands, a limit is
+  reached), and `$.session.send` resolves `{ isDelivered: false }`. The mod records a change as owed
+  in the book, in the same write that stores the wait's new state, and removes it only once the
+  prompt entered or the message was queued. An owed change is tried again on every poll round, when
+  the main session's turn completes, and at session start; one flush runs at a time, so a change in
+  flight is not sent twice. A message a sub-agent did not take goes to the session instead, naming
+  the sub-agent. After 20 failed attempts it is given up on and the transcript says so; every
+  attempt, its outcome and the drop reason go to the debug log.
 - **A sub-agent is notified of a release it made itself** (it raised the wait, so it is its
   notification), and a message that goes to anyone else than the raiser names the sub-agent.
 

@@ -7,6 +7,12 @@ export interface Seen {
 /** What happened to a wait that is worth waking an agent for. */
 export type Change = 'released' | 'reopened' | 'archived' | 'deleted'
 
+/** Every [Change], to check a stored one against. */
+export const CHANGES: readonly Change[] = ['released', 'reopened', 'archived', 'deleted']
+
+/** What came of one try to put a notification in front of its recipient. */
+export type Delivery = { delivered: true } | { delivered: false; reason: string }
+
 /**
  * What changed between the state last seen and the one now, or `null` when nothing worth a
  * wake-up did. `current` is `null` for a wait that is gone. An edit to a pending wait's title or

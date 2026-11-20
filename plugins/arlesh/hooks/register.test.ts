@@ -117,7 +117,11 @@ test('a failing catch-up backs off and warns once, instead of polling every seco
       value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: true }) },
     }
   })
-  on('store.get', () => ({ value: finished ? {} : { 'w-full': watched } }))
+  // Attached (the wait stream needs the agent token), watching one wait until the test ends. Without
+  // the token the mod never polls, and this test then hangs instead of failing.
+  on('store.get', (_, e) => ({
+    value: e.key === 'agent:s1' ? { token: 'placeholder' } : finished ? {} : { 'w-full': watched },
+  }))
   on('session.id', () => ({ value: 's1' }))
   // No handler for `mcp.call`: the catch-up call fails, as it does when the session's MCP
   // connection has dropped.

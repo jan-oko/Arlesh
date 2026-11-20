@@ -126,6 +126,13 @@ environment variables:
   (`arlesh_waits.get_many`) to catch up on what changed while it was away. If requests time out
   early the wait is halved, down to 5 seconds. After three failures in a row it says once in the
   transcript that Arlesh cannot be reached, and keeps trying with a backoff.
+- Keeps a change **owed** until its notification has entered the session. The host can refuse a
+  prompt without an error (`$.prompt.submit` resolves `{ drop }`, for instance after an interrupted
+  turn), and a message to a sub-agent can be undelivered; either leaves the change owed in the
+  stored book, and it is tried again on every poll round, when the session's turn completes and at
+  session start, never twice once it went in. A message a sub-agent does not take goes to the
+  session. After 20 failed attempts the transcript says the notification was given up on. The debug
+  log (`claude --debug`) has one line per attempt with its outcome and the drop reason.
 - Wakes the session with the pointer message. A sub-agent that raised the wait gets it while it is
   running; once it has finished, the agent that spawned it does, else the session, with the
   sub-agent named either way. A sub-agent is also notified of a release it made itself.
