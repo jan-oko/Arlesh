@@ -687,7 +687,7 @@ unless a Task depends on it.
 
 An agent that raised a wait is **told** when it changes, instead of polling `get`. The decision and
 its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md); this is the
-server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
+server's side. The notifier itself is the `arlesh` Claude Code mod (`plugins/arlesh/`),
 which an agent's session may or may not have.
 
 **Two event routes**, on the MCP endpoint's own origin (beside `/mcp` in Standalone) or behind the

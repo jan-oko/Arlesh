@@ -353,7 +353,7 @@ impl ArleshMcp {
     /// hold something are listed. A removal because an agent set the Task Done cannot be undone with Ctrl+Z; if the Task is
     /// reopened and the subagent starts again, `register_child` makes a fresh child with a new
     /// `sub_token`. A child the user brings back with Ctrl+Z returns paused. A client with the
-    /// arlesh-notify mod does all of this for its subagents: write `[arlesh:<task id>]` once in an
+    /// arlesh mod does all of this for its subagents: write `[arlesh:<task id>]` once in an
     /// Agent call's `description` or `prompt` and the subagent starts holding that Task, with its
     /// label showing the Task; without the marker it is told to claim the Task its brief names.
     ///

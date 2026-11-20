@@ -258,7 +258,7 @@ export function changesSession(tool: string, input: Record<string, unknown>): st
 /** The refusal for a subagent with no child of its own that calls an operation of the session's. */
 export function noChildMessage(operation: string, effect: string): string {
   return (
-    `arlesh-notify: this subagent has no child agent of its own, so \`${operation}\` here would run as the ` +
+    `arlesh: this subagent has no child agent of its own, so \`${operation}\` here would run as the ` +
     `session and change ${effect}, not yours. Ask the orchestrator to register you ` +
     '(arlesh_agents.register_child, or name your Task with [arlesh:<task id>] in the Agent call).'
   )
@@ -267,7 +267,7 @@ export function noChildMessage(operation: string, effect: string): string {
 /** The message for a subagent whose Arlesh call did not carry its `sub_token`. */
 export function passTokenMessage(name: string, subToken: string): string {
   return (
-    `arlesh-notify: you are subagent \`${name}\`, a child agent of this session's agent. Pass ` +
+    `arlesh: you are subagent \`${name}\`, a child agent of this session's agent. Pass ` +
     `\`sub_token: "${subToken}"\` on every Arlesh tool call (it is also in your starting context) ` +
     'and call again: without it the call would run as the session.'
   )

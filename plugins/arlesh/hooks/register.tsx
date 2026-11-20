@@ -85,7 +85,7 @@ const pendingByLabel = new Map<string, Pending>()
 const pendingByAgent = new Map<string, Pending>()
 
 /** The line under each subagent's row, by the Agent call's tool use id. */
-const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
+const rows = atom({ plugin: 'arlesh', key: 'rows' } as const, {} as RowLines)
 
 /**
  * The terminal column (counted from the row's left edge) where the text of a tool row's result
@@ -162,7 +162,7 @@ export const register: Register = (on) => {
       if (block === undefined) return started
       return { ...started, additionalContext: [...(started.additionalContext ?? []), block] }
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not register a subagent: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not register a subagent: ${String(error)}`, { to: 'debug' })
       return started
     }
   }).catch(($, e, next) => next(e))
@@ -236,7 +236,7 @@ export const register: Register = (on) => {
     try {
       await adopt($, input, ran.result ?? ran.text)
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not adopt the attach: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not adopt the attach: ${String(error)}`, { to: 'debug' })
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -517,7 +517,7 @@ function attach($: Engine, connection: ServerEntry | undefined): Promise<Standin
           ? { kind: 'unattached', reason: 'the Arlesh server is not configured' }
           : await attachTo($, connection)
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not attach: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not attach: ${String(error)}`, { to: 'debug' })
       standing = { kind: 'unattached', reason: 'attaching failed' }
     }
     return standing
@@ -595,7 +595,7 @@ async function reportUsage($: Engine, given: readonly Limit[] | undefined): Prom
       windows: usageWindows(limits),
     })
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not report usage: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not report usage: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -665,7 +665,7 @@ async function noteAnswer($: Engine, found: kids.Governing, tool: string, result
       ...(identity.standing === undefined ? {} : { standing: identity.standing }),
     }))
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not note a subagent's answer: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not note a subagent's answer: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -751,19 +751,19 @@ async function spawnRequest(
     if (e.resume !== undefined || e.isTeammate !== undefined || e.workflow !== undefined) return { request: e }
     const marker = kids.parseMarker(e.description, e.prompt)
     if (marker.kind === 'invalid') {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
       return { request: e }
     }
     if (marker.kind === 'none') return { request: e }
     const stripped = { ...e, description: kids.stripMarker(e.description), prompt: kids.stripMarker(e.prompt) }
     const connected = await ensureAttached($)
     if (!connected || server === undefined) {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: marker ${marker.ref}, session not attached: no label`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: marker ${marker.ref}, session not attached: no label`, { to: 'debug' })
       return { request: stripped }
     }
     const task = kids.taskFrom(await $.mcp.call(server.name, 'arlesh_tasks', { operation: 'get', id: marker.ref }))
     if (task === undefined) {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the Task ${marker.ref}: no label`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: could not read the Task ${marker.ref}: no label`, { to: 'debug' })
       const pending: Pending = { kind: 'unreadable', label: stripped.description, original: stripped.description, ref: marker.ref }
       pendingByLabel.set(pending.label, pending)
       return { request: stripped, pending }
@@ -771,10 +771,10 @@ async function spawnRequest(
     const label = kids.label(stripped.description, task.shortId, task.title)
     const pending: Pending = { kind: 'task', label, original: stripped.description, shortId: task.shortId }
     pendingByLabel.set(label, pending)
-    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: labelled for Task ${task.shortId}`, { to: 'debug' })
+    $.ui.log(`arlesh: spawn ${e.tool_use_id}: labelled for Task ${task.shortId}`, { to: 'debug' })
     return { request: { ...stripped, description: label }, pending }
   } catch (error) {
-    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the marker: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: spawn ${e.tool_use_id}: could not read the marker: ${String(error)}`, { to: 'debug' })
     return { request: e }
   }
 }
@@ -812,7 +812,7 @@ async function childStopped($: Engine, id: string): Promise<void> {
     await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, paused)
     await finishChild($, connection, id, (await loadChildren($))[id] ?? known)
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not stop a subagent's child: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not stop a subagent's child: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -842,7 +842,7 @@ async function sweepChildren($: Engine): Promise<void> {
       else await finishChild($, connection, id, child)
     }
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not sweep the children: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not sweep the children: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -859,7 +859,7 @@ async function pauseOwnClaim($: Engine): Promise<void> {
     if (server === undefined || (standing?.kind !== 'attached' && !(await hasStoredToken($)))) return
     await $.mcp.call(server.name, 'arlesh_agents', { operation: 'pause' })
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not pause the session's claim: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not pause the session's claim: ${String(error)}`, { to: 'debug' })
   }
 }
 

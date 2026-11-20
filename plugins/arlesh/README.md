@@ -1,4 +1,4 @@
-# arlesh-notify
+# arlesh
 
 A Claude Code mod that makes a session an Arlesh **agent** and wakes it when an Arlesh wait it
 raised or watches changes: released (answered), reopened, archived or deleted. The message is a pointer only ("Arlesh notification:
@@ -8,13 +8,13 @@ wait itself.
 ## Install
 
 ```
-/plugin install arlesh-notify --marketplace jan-oko/Arlesh
+/plugin install arlesh --marketplace jan-oko/Arlesh
 ```
 
 or, from a checkout, for one session:
 
 ```
-claude --plugin-dir plugins/arlesh-notify
+claude --plugin-dir plugins/arlesh
 ```
 
 It needs an `Arlesh` HTTP server in the session's MCP configuration (`.mcp.json`, or your user or
@@ -146,6 +146,6 @@ Cloud sessions cannot reach a local Arlesh and are out of scope.
 ## Develop
 
 ```
-claude plugin validate plugins/arlesh-notify
-claude plugin test plugins/arlesh-notify
+claude plugin validate plugins/arlesh
+claude plugin test plugins/arlesh
 ```

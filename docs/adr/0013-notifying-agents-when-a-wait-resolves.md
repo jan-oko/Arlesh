@@ -3,6 +3,8 @@
 Status: accepted 2026-11-04, built. Decided with the user in a design session; this replaces the
 2026-11-02 draft, which compared long-polls, MCP tasks and channels and chose none of them.
 
+The plugin this ADR calls `arlesh` was named `arlesh-notify` until Task `109` renamed it.
+
 ## Context
 
 An agent that raises a wait (`arlesh_waits.ask`) hands a question to the user and has nothing to do
@@ -43,7 +45,7 @@ running; once it has finished, the agent that spawned it does, with the sub-agen
 
 **Configuration.** The mod reuses the session's `Arlesh` MCP server entry (URL and headers) and
 opens the streams on the same origin with the same authentication. It has no settings. It ships as
-`plugins/arlesh-notify/`, with `.claude-plugin/marketplace.json` at the repository root.
+`plugins/arlesh/`, with `.claude-plugin/marketplace.json` at the repository root.
 
 **How agents learn of it: four layers**, so that only the mod's own note says notifications are
 really on, and no agent is promised a wake-up it will not get.
