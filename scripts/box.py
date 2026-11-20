@@ -14,6 +14,7 @@
     box keystore init [--force]
     box keystore rotate-password
     box keystore migrate [-y]
+    box cargo -- <cargo arguments>
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>] [-y | --dry-run]
@@ -102,6 +103,30 @@ worktree has its own node_modules, Vite server and dist), and the per-branch bin
 copied out of the target right after the build, so a "build is current" stamp never points at
 another branch's artifact.
 
+One build at a time: `owned_target` holds an exclusive lock on `<target>/.arlesh-box.lock` for the
+whole of key check, drop, cargo and record, so two box commands (or `box cargo`) building different
+branches queue; the second prints one line and waits. Cargo serialises on the target itself anyway,
+but box's drop of a crate's records happens outside cargo's lock and used to break the build that
+was running ("invoked.timestamp: No such file or directory"). The trade-off is that builds in the
+shared target never overlap; a queued build waits for the one before it.
+
+Compiler cache: when `sccache` is on PATH, every build through `owned_target` runs under it
+(RUSTC_WRAPPER), so going back to a branch built before, a wiped target and a new worktree of known
+content come back from the cache instead of recompiling. The cache is `~/.cache/arlesh/sccache`,
+capped at 10G, outside the repo and every target; box uses its own sccache server port, so a server
+another tool runs cannot make it ignore that directory; SCCACHE_BASEDIRS is the main checkout, so the
+workspace crates also hit across worktrees. sccache cannot cache incremental compilations, so while
+it is in use CARGO_INCREMENTAL=0 (the constant CACHE_TURNS_INCREMENTAL_OFF; the cost is a slower
+rebuild after a one-line edit, the gain a branch switch that is a cache hit). Anything the caller set
+(RUSTC_WRAPPER, SCCACHE_*, CARGO_INCREMENTAL) wins. Without sccache box notes it once and builds as before.
+
+`box cargo -- <cargo arguments>` (`npm run cargo -- <cargo arguments>`) is a cargo run in this
+worktree through the same guard: it builds into the shared target (so the worktree grows no
+`src-tauri/target` of its own), runs under `owned_target`, takes the caller's environment as it is
+(CARGO_INCREMENTAL, RUSTFLAGS, `-j`) and exits with cargo's exit code. A plain `cargo` is unchanged
+and keeps the checkout's own target, which is the safe default: pointed at the shared target
+without the guard it could link another branch's workspace crates (see above).
+
 Notifications: after an install, before every launch, box grants a box app POST_NOTIFICATIONS
 (`pm grant`, box packages only, never the release app) so its first launch registers its push token.
 A device or package without that permission gets a note and the run goes on.
@@ -185,6 +210,7 @@ import argparse
 import atexit
 import base64
 import contextlib
+import fcntl
 import getpass
 import hashlib
 import ipaddress
@@ -1204,8 +1230,102 @@ def shared_inputs_key(wt: Path) -> str:
     return digest.hexdigest()
 
 
+# ---- The compiler cache: sccache under every build through `owned_target` --------------------
+#
+# The shared target holds one version of each workspace crate, so going back to a branch built
+# before recompiles whatever differs. sccache keys rustc's output on its inputs, so that becomes a
+# hit. It never touches the target's own records: cargo still decides what to compile, `owned_target`
+# still drops what is not the branch's, and sccache only answers a compile it has seen.
+
+# sccache does not cache incremental compilations, and cargo compiles workspace crates
+# incrementally by default (dependencies from the registry never are). With the cache in use,
+# True turns incremental off (CARGO_INCREMENTAL=0) so the workspace crates can hit; False leaves
+# it as the caller has it, so the cache serves dependencies only. The user ruled on 2026-11-15: True.
+CACHE_TURNS_INCREMENTAL_OFF = True
+
+CACHE_SIZE = "10G"
+
+# sccache runs one background server per port, and the server keeps the cache directory it was
+# started with: a server another tool (or the user) already runs would silently ignore the
+# directory box asks for. Box's builds therefore talk to their own server, on their own port.
+CACHE_SERVER_PORT = "4229"
+
+
+def cache_dir() -> Path:
+    return home() / ".cache" / "arlesh" / "sccache"
+
+
+def cache_environment() -> dict[str, str]:
+    """The variables that put sccache under cargo, or {} (with one note) when it is not installed.
+
+    What the caller set wins: an own RUSTC_WRAPPER, SCCACHE_DIR, SCCACHE_CACHE_SIZE or
+    CARGO_INCREMENTAL is left alone.
+    """
+    if os.environ.get("RUSTC_WRAPPER"):
+        return {}
+    binary = shutil.which("sccache")
+    if binary is None:
+        note("compiler cache: sccache is not installed, so builds are not cached (cargo install sccache --locked)")
+        return {}
+    wanted = {
+        "RUSTC_WRAPPER": binary,
+        "SCCACHE_DIR": str(cache_dir()),
+        "SCCACHE_CACHE_SIZE": CACHE_SIZE,
+        "SCCACHE_SERVER_PORT": CACHE_SERVER_PORT,
+        # Worktrees sit under the main checkout at different paths; without this the workspace
+        # crates miss in a worktree other than the one that filled the cache (measured: the three
+        # crates recompiled, 98 s against 24 s), and dependencies are unaffected either way.
+        "SCCACHE_BASEDIRS": str(main_checkout()),
+    }
+    if CACHE_TURNS_INCREMENTAL_OFF:
+        wanted["CARGO_INCREMENTAL"] = "0"
+    return {k: v for k, v in wanted.items() if k not in os.environ}
+
+
+@contextlib.contextmanager
+def compiler_cache() -> Iterator[None]:
+    """Cache variables in this process's environment for the length of a build (children inherit)."""
+    added = cache_environment()
+    os.environ.update(added)
+    try:
+        yield
+    finally:
+        for key in added:
+            os.environ.pop(key, None)
+
+
+LOCK_FILE = ".arlesh-box.lock"
+
+
+@contextlib.contextmanager
+def target_lock(target: Path) -> Iterator[None]:
+    """Exclusive lock on the shared `target` for one whole box build (keys, drop, cargo, record).
+
+    Cargo locks its target directory itself, but only while it runs: box's drop of a crate's
+    `.fingerprint/` and `build/` records happens outside that lock, so a second box command
+    dropping them mid-build made the first fail ("invoked.timestamp: No such file or directory").
+    Holding this lock around the drop, the build and the record serialises builds instead: the
+    second waits, says so once, and then finds the first one's records and keys.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    with open(target / LOCK_FILE, "a") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            note("shared target: another build holds it; waiting for it to finish...")
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield  # closing the file releases the lock, also when the build raised or was signalled
+
+
 @contextlib.contextmanager
 def owned_target(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
+    """`own_records` under `target_lock`: the whole build of one worktree holds the target alone."""
+    with target_lock(target), own_records(wt, target, unkeyed), compiler_cache():
+        yield
+
+
+@contextlib.contextmanager
+def own_records(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
     """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
 
     Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
@@ -4035,6 +4155,34 @@ LIST_HEADER = (
 )
 
 
+def cmd_cargo(args: argparse.Namespace) -> int:
+    """`cargo <args>` in this worktree, into the shared target, under the target lock.
+
+    The same `owned_target` every box build uses, so a branch never links another branch's
+    workspace-crate output, and two builds queue instead of breaking each other. The caller's
+    environment (CARGO_INCREMENTAL, RUSTFLAGS, ...) reaches cargo as it is, and cargo's exit
+    code is this command's. Runs from the worktree root, whatever directory it was started in.
+    """
+    if not args.cargo_args:
+        raise UsageError(f"Usage: {CMD} cargo -- <cargo arguments>  (for example: test -p arlesh-core -j 3)")
+    if args.cargo_args[0] == "clean":
+        raise UsageError(
+            f"`{CMD} cargo clean` is refused: it would empty the target every worktree shares. "
+            "Run `cargo clean -p <crate>` with CARGO_TARGET_DIR set by hand, or remove this "
+            "worktree's own target, if you really mean it."
+        )
+    wt = repo_root()
+    target = shared_target()
+    with owned_target(wt, target):
+        result = subprocess.run(
+            ["cargo", *args.cargo_args],
+            cwd=wt,
+            env=project_env({"CARGO_TARGET_DIR": str(target)}),
+            check=False,
+        )
+    return result.returncode
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     blocker = gh_unavailable()
     prs: list[dict[str, Any]] | None = None
@@ -4569,6 +4717,13 @@ def build_parser() -> argparse.ArgumentParser:
     seedsub.add_parser("show", help="what is configured (never prints the token)")
     seed.set_defaults(fn=cmd_seed)
 
+    cargo = sub.add_parser(
+        "cargo",
+        help="cargo in this worktree, built into the shared target (builds queue; one at a time)",
+    )
+    cargo.add_argument("cargo_args", nargs="*")
+    cargo.set_defaults(fn=cmd_cargo)
+
     reseed = sub.add_parser(
         "reseed", help="replace a branch's databases with a fresh server snapshot"
     )
@@ -4579,7 +4734,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    args = build_parser().parse_args(list(argv))
+    argv = list(argv)
+    if argv[:1] == ["cargo"]:
+        # Everything after `cargo` (an optional `--` first) is cargo's, flags included.
+        rest = argv[1:]
+        rest = rest[1:] if rest[:1] == ["--"] else rest
+        return argparse.Namespace(cmd="cargo", fn=cmd_cargo, cargo_args=rest)
+    args = build_parser().parse_args(argv)
     if not getattr(args, "fn", None):
         args.fn = cmd_list
     return args
@@ -4590,7 +4751,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         load_env_file()
         args = parse_args(sys.argv[1:] if argv is None else argv)
         SEED.local = bool(getattr(args, "local_seed", False))
-        args.fn(args)
+        code = args.fn(args)
+        return code if isinstance(code, int) else 0
     except UsageError as exc:
         note(str(exc))
         return 2
