@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
-import { useAgentAccountsStore } from "@/stores/use-agent-accounts-store";
 import AgentsSection from "./AgentsSection";
 import {
   applyAgentAction, fetchAgents, issueAgentPin, setAgentAccountLocked,
 } from "@/api/agents";
-import type { AgentSummary, AgentsOverview } from "@/api/agents";
+import type { Account, AgentSummary, AgentsOverview } from "@/api/agents";
 import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
@@ -42,11 +41,11 @@ vi.mock("@/api/mcp-access", () => ({
   mcpNodeKeyString: (key: { node_kind: string; node_id: number }) => `${key.node_kind}:${key.node_id}`,
 }));
 
-function summary(over: Partial<AgentSummary> & { id?: number; parent_id?: number; name?: string; status?: "active" | "paused" } = {}): AgentSummary {
+function summary(over: Partial<AgentSummary> & { id?: number; parent_id?: number; name?: string; account?: string; status?: "active" | "paused" } = {}): AgentSummary {
   const status = over.status ?? "active";
   return {
     agent: {
-      id: over.id ?? 1, name: over.name ?? "writer", account: "work", session_uuid: "s",
+      id: over.id ?? 1, name: over.name ?? "writer", account: over.account ?? "work", session_uuid: "s",
       claim: { root: { node_kind: "goal", node_id: storedRowId(10) }, status, claimed_at: "2026-11-07T09:00:00" },
       locked: false, created_at: "2026-11-07T09:00:00", last_seen_at: null, parent_id: over.parent_id ?? null,
     },
@@ -55,13 +54,22 @@ function summary(over: Partial<AgentSummary> & { id?: number; parent_id?: number
   };
 }
 
-function overview(agents: AgentSummary[]): AgentsOverview {
-  return { agents, accounts: [{ label: "work", locked: false, windows: [] }] };
+const WORK: Account = { label: "work", locked: false, windows: [] };
+
+function overview(agents: AgentSummary[], accounts: Account[] = [WORK]): AgentsOverview {
+  return { agents, accounts };
+}
+
+/** A moment from now, as the local ISO time the API reports. */
+function inHours(hours: number): string {
+  const at = new Date(Date.now() + hours * 3600_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+    + `T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAgentAccountsStore.setState({ open: false });
   vi.mocked(fetchAgents).mockResolvedValue(overview([summary()]));
 });
 
@@ -179,10 +187,89 @@ describe("AgentsSection", () => {
   });
 
   it("locks an account from its switch", async () => {
-    useAgentAccountsStore.setState({ open: true });
     render(<AgentsSection />);
     fireEvent.click(await screen.findByRole("checkbox", { name: /mcp\.agents\.accountLock/ }));
     expect(setAgentAccountLocked).toHaveBeenCalledWith("work", true);
+  });
+
+  describe("accounts", () => {
+    const personal: Account = { label: "personal", locked: true, windows: [] };
+
+    it("has no Accounts section", async () => {
+      render(<AgentsSection />);
+      await screen.findByText("writer");
+      expect(screen.queryByText("mcp.agents.accountsHeading")).toBeNull();
+      expect(screen.queryByRole("button", { name: /mcp\.agents\.accountsHeading/ })).toBeNull();
+    });
+
+    it("puts a single account's switch and limits inline with the title, with no group header", async () => {
+      vi.mocked(fetchAgents).mockResolvedValue(overview([summary()], [
+        { ...WORK, windows: [{ kind: "five_hour", percent_used: 8, resets_at: inHours(4) }] },
+      ]));
+      render(<AgentsSection />);
+      const lock = await screen.findByRole("checkbox", { name: /mcp\.agents\.accountLock/ });
+      const title = screen.getByRole("heading", { name: "mcp.agents.heading" });
+      expect(title.parentElement).toContainElement(lock);
+      expect(title.parentElement).toHaveTextContent(/mcp\.agents\.limit/);
+      expect(screen.queryByRole("group")).toBeNull();
+    });
+
+    it("gives each account its own header with its switch and limits, and agents under their own", async () => {
+      vi.mocked(fetchAgents).mockResolvedValue(overview([
+        summary({ id: 1, name: "writer", account: "work" }),
+        summary({ id: 2, name: "reader", account: "personal" }),
+        summary({ id: 3, name: "helper", account: "work", parent_id: 1 }),
+      ], [
+        { ...WORK, windows: [{ kind: "seven_day", percent_used: 20, resets_at: inHours(48) }] },
+        personal,
+      ]));
+      render(<AgentsSection />);
+
+      const workGroup = await screen.findByRole("group", { name: /Work/ });
+      const personalGroup = screen.getByRole("group", { name: /Personal/ });
+      expect(within(workGroup).getByText("writer")).toBeInTheDocument();
+      expect(within(workGroup).queryByText("reader")).toBeNull();
+      expect(within(personalGroup).getByText("reader")).toBeInTheDocument();
+      expect(within(workGroup).getByRole("checkbox", { name: /"label":"work"/ })).not.toBeChecked();
+      expect(within(personalGroup).getByRole("checkbox", { name: /"label":"personal"/ })).toBeChecked();
+      expect(within(workGroup).getByText(/mcp\.agents\.limit/)).toBeInTheDocument();
+      expect(within(personalGroup).queryByText(/mcp\.agents\.limit/)).toBeNull();
+    });
+
+    it("locks the account whose header switch is used", async () => {
+      vi.mocked(fetchAgents).mockResolvedValue(overview([
+        summary({ id: 1, account: "work" }),
+        summary({ id: 2, name: "reader", account: "personal" }),
+      ], [WORK, personal]));
+      render(<AgentsSection />);
+      const group = await screen.findByRole("group", { name: /Personal/ });
+      fireEvent.click(within(group).getByRole("checkbox", { name: /accountLock/ }));
+      expect(setAgentAccountLocked).toHaveBeenCalledWith("personal", false);
+    });
+
+    it("writes each limit as name, percent used and time left", async () => {
+      vi.mocked(fetchAgents).mockResolvedValue(overview([summary()], [
+        { ...WORK, windows: [
+          { kind: "five_hour", percent_used: 7.6, resets_at: inHours(4.01) },
+          { kind: "seven_day", percent_used: 20, resets_at: inHours(48.01) },
+        ] },
+      ]));
+      render(<AgentsSection />);
+      await screen.findByText("writer");
+      const text = screen.getByRole("heading", { name: "mcp.agents.heading" }).parentElement?.textContent ?? "";
+      expect(text).toContain('mcp.agents.windowName.five_hour');
+      expect(text).toContain('"percent":8,"left":"4h"');
+      expect(text).toContain('"percent":20,"left":"2d"');
+    });
+
+    it("keeps usage lines off the agent rows", async () => {
+      vi.mocked(fetchAgents).mockResolvedValue(overview([summary()], [
+        { ...WORK, windows: [{ kind: "five_hour", percent_used: 8, resets_at: inHours(4) }] },
+      ]));
+      render(<AgentsSection />);
+      const list = await screen.findByRole("list", { name: "mcp.agents.list" });
+      expect(within(list).queryByText(/mcp\.agents\.limit|mcp\.agents\.window/)).toBeNull();
+    });
   });
 
   it("shows a PIN when one is asked for", async () => {
@@ -205,27 +292,6 @@ describe("AgentsSection", () => {
     render(<AgentsSection />);
     fireEvent.click(await screen.findByRole("button", { name: "mcp.agents.getPin" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("too many PINs");
-  });
-
-  it("keeps the accounts closed until opened, and remembers the last state", async () => {
-    const { unmount } = render(<AgentsSection />);
-    const toggle = await screen.findByRole("button", { name: /mcp\.agents\.accountsHeading/ });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeNull();
-
-    fireEvent.click(toggle);
-
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("checkbox", { name: /mcp\.agents\.accountLock/ })).toBeInTheDocument();
-
-    unmount();
-    render(<AgentsSection />);
-    const again = await screen.findByRole("button", { name: /mcp\.agents\.accountsHeading/ });
-    expect(again).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.click(again);
-
-    expect(again).toHaveAttribute("aria-expanded", "false");
   });
 
   it("turns the top bar's agent status off from its switch", async () => {

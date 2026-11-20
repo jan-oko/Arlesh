@@ -90,11 +90,13 @@
       "removeConfirm": "Remove",
       "removeCancel": "Cancel",
       "forAgent": "{{action}} {{name}}",
-      "accountsHeading": "Accounts",
-      "accountsNone": "No accounts yet.",
       "accountLock": "Lock account {{label}}",
       "noUsage": "No usage reported",
-      "window": "{{window}}: {{percent}}% used, resets {{time}}",
+      "windowName": {
+        "five_hour": "Five Hours",
+        "seven_day": "Week"
+      },
+      "limit": "{{window}}: {{percent}}% ({{left}} left)",
       "showStatus": "Show agent status in the top bar"
     }
   }
