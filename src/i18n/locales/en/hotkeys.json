@@ -87,6 +87,7 @@
   "toggleFullscreen": "Show the board alone (hide the tabs and top bar)",
   "statusBacklog": "Status preset: Backlog",
   "statusUnblock": "Status preset: Unblock (blocked tasks only, List View)",
+  "statusReview": "Status preset: Review (Tasks reading Review only, List View)",
   "statusExpectations": "Status preset: Expectations (pending waits only, List View)",
   "toggleBacklog": "Toggle Backlog",
   "toggleStarted": "Set a task Started, or pause / resume one in progress; on an agentic task, hand one you are Doing back to its agent",

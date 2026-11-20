@@ -206,6 +206,15 @@ pub struct BoardFilter {
     /// and `unblock` are never both set by the UI; were they, Unblock answers, since both empty
     /// what the other shows. Ignored by the Mindmap.
     pub expectations: bool,
+    /// The List View's **Review** option: the live Agentic Tasks that read Review (On Agent with a
+    /// question or review open) and nothing else, in place of `preset`'s rules exactly as `unblock`
+    /// is, so a blocked, backlogged or Plan-ahead one shows too. Archived ones stay hidden unless
+    /// the Archived pill includes them. A sub-item is a row only if it reads Review itself. The
+    /// three options are one dropdown value in the UI, so they are never set together there; were
+    /// they, the precedence is `unblock`, then `expectations`, then `review`, as each empties
+    /// what the others show. Ignored by the Mindmap; over MCP it applies only when the read goes
+    /// through the List View's rules (a pill, or a narrower row-kind choice).
+    pub review: bool,
     /// Plan/Start's per-preset "include flows" subtoggle, separate from `show_flow`.
     pub include_flows: bool,
     /// Tag filters, combined as `(∪Any) ∧ (∩All) ∧ ¬(∪Exclude)`.
@@ -269,6 +278,12 @@ impl BoardFilter {
     pub fn reads_rows(&self) -> bool {
         !self.pills.is_empty() || RowKind::ALL.iter().any(|kind| !self.kinds.contains(kind))
     }
+
+    /// Whether the list reads under the **Review** option: set, and not outranked by `unblock` or
+    /// `expectations` (see [`Self::review`]).
+    pub fn reads_review_option(&self) -> bool {
+        self.review && !self.unblock && !self.expectations
+    }
 }
 
 impl Default for BoardFilter {
@@ -278,6 +293,7 @@ impl Default for BoardFilter {
             preset: Preset::All,
             unblock: false,
             expectations: false,
+            review: false,
             include_flows: true,
             tags: Vec::new(),
             show_info: true,

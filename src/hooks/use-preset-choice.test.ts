@@ -34,6 +34,15 @@ describe("usePresetChoice", () => {
     expect(useFilterStore.getState().filter.statusMode).toBe("all");
   });
 
+  it("offers Review last in the List View and writes it to the list alone", () => {
+    useViewStore.setState({ view: "list" });
+    const { result } = renderHook(() => usePresetChoice());
+    expect(result.current.options[result.current.options.length - 1]).toBe("review");
+    act(() => result.current.select("review"));
+    expect(result.current.active).toBe("review");
+    expect(useFilterStore.getState().filter.statusMode).toBe("all");
+  });
+
   it("changes nothing in the Zen View, which always reads under Do", () => {
     useViewStore.setState({ view: "zen" });
     const { result } = renderHook(() => usePresetChoice());

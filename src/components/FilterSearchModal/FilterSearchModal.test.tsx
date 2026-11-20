@@ -110,6 +110,14 @@ describe("FilterSearchModal", () => {
     expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "aspect-1", mode: "all" }]);
   });
 
+  it("lists Under and Depends on after every other group, the switches included", () => {
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    fireEvent.change(box(), { target: { value: "e" } });
+    const order = headings();
+    expect(order.slice(-3)).toEqual(["groups.switches", "groups.antecedent", "groups.dependency"]);
+    expect(order[0]).toBe("groups.tag");
+  });
+
   it("adds Depends on from a node result", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     fireEvent.change(box(), { target: { value: "connections" } });

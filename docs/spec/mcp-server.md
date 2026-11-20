@@ -355,7 +355,9 @@ yet (see [*Mindmap*](mindmap-view.md)). `all`, `plan`, `start`, `do` and
 `backlog` are the presets; `unblock` rides beside them as a flag rather than replacing one, exactly
 as the List View stores it — beside them in shape, but not in effect: while the flag is set the
 list's rows are the blocked ones and the preset does not answer for them (see
-[*List View*](list-view.md)). The Archived, Backlog and Delegated pills (`archived`, `backlog`,
+[*List View*](list-view.md)). `expectations` and `review` are the List View's other two options, flags
+of the same kind: `review` lists the Tasks that read Review (see [*The Review option*](list-view.md#review-option)).
+The three never combine; if more than one is set, `unblock` answers, then `expectations`, then `review`. The Archived, Backlog and Delegated pills (`archived`, `backlog`,
 `delegated`: `inactive`, `include` or `exclude` — a delegated Task is not archived; see
 [*Filtering Logic*](filtering-logic.md#delegated-pill)), the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, and so is the Plan preset's **scope narrowing** —
@@ -399,10 +401,10 @@ them is an Any across them). A node id here is spelled as the board keys it — 
 only Under, Scope and Private: a dimension that does not apply to a kind passes it rather than
 failing it. A filter that sets either asks a question only a list of rows can answer, so the read is
 narrowed as the List View narrows it: to the Task, Commitment and Expectation rows that pass —
-preset, Unblock or the Expectations option, tags, toggles and pills, each by the List View's rule
+preset, Unblock, the Expectations option or the Review option, tags, toggles and pills, each by the List View's rule
 (see [*List View*](list-view.md)) — together with every ancestor of one, the chain the row hangs
 from. Notes and Flows are not rows, and drop. Without a pill and with every kind, the read is
-narrowed as the Mindmap narrows it, as above. That includes the **Expectations option**: it is the List View's, so it narrows the read only together with a pill or a narrower kind choice; alone it is ignored, as the Mindmap ignores it, and `{"expectations": true, "preset": "all"}` still returns every wait, released ones too. With a pill it keeps the non-agentic pending waits that pass, never an agentic one, which no view draws and which travels with the Task it hangs under (a Task is not a row under the option, so an `Under` pill finds no agent's wait). Agents find waits with `arlesh_waits.list`. The rules are `crate::filters::pills`, held to the
+narrowed as the Mindmap narrows it, as above. That includes the **Expectations and Review options**: they are the List View's, so it narrows the read only together with a pill or a narrower kind choice; alone it is ignored, as the Mindmap ignores it, and `{"expectations": true, "preset": "all"}` still returns every wait, released ones too. With a pill it keeps the non-agentic pending waits that pass, never an agentic one, which no view draws and which travels with the Task it hangs under (a Task is not a row under the option, so an `Under` pill finds no agent's wait). Agents find waits with `arlesh_waits.list`. The rules are `crate::filters::pills`, held to the
 frontend's by the same conformance corpus.
 
 ## Paging the snapshot

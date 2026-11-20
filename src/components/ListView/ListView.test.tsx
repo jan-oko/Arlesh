@@ -1798,12 +1798,31 @@ describe("ListView — expectations", () => {
     expect(onCycleStatus).toHaveBeenCalledWith("check-1");
   });
 
-  it("selects the Expectations option on Alt+E without touching the shared preset", () => {
+  it("selects the Expectations option on Alt+W without touching the shared preset", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+    render(<ListViewInApp />);
+    fireEvent.keyDown(window, { key: "w", code: "KeyW", altKey: true });
+    expect(useListFilterStore.getState().filter.preset).toBe("expectations");
+    expect(useFilterStore.getState().filter.statusMode).toBe("start");
+  });
+
+  it("selects the Review option on Alt+E, and clears it back to the shared preset on a second press", () => {
     useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "e", code: "KeyE", altKey: true });
-    expect(useListFilterStore.getState().filter.preset).toBe("expectations");
+    expect(useListFilterStore.getState().filter.preset).toBe("review");
     expect(useFilterStore.getState().filter.statusMode).toBe("start");
+    fireEvent.keyDown(window, { key: "e", code: "KeyE", altKey: true });
+    expect(useListFilterStore.getState().filter.preset).toBe("start");
+    expect(useFilterStore.getState().filter.statusMode).toBe("start");
+  });
+
+  it("clears the Expectations option the same way on a second Alt+W", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+    render(<ListViewInApp />);
+    fireEvent.keyDown(window, { key: "w", code: "KeyW", altKey: true });
+    fireEvent.keyDown(window, { key: "w", code: "KeyW", altKey: true });
+    expect(useListFilterStore.getState().filter.preset).toBe("plan");
   });
 });
 

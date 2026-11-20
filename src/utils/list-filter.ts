@@ -7,7 +7,7 @@ import {
   isLiveExpectation, isAgenticWait, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
-import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
+import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS, isReview } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 import { canonicalYesNoPills, isYesNoDimension } from "@/utils/filter-modes";
@@ -52,12 +52,12 @@ export const PILL_DIMENSIONS: PillDimension[] = [
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
- * Unblock and Expectations are List-View-only and do not touch it (see SPEC List View section). */
-export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock", "expectations"] as const;
+ * Unblock, Expectations and Review are List-View-only and do not touch it (see SPEC List View section). */
+export const LIST_PRESET_VALUES = ["all", "plan", "start", "do", "backlog", "unblock", "expectations", "review"] as const;
 
 /** The List-View-only options: each replaces the shared preset's rules for the list, leaving the
  * shared preset where it was for the Mindmap. */
-export const LIST_ONLY_PRESETS: readonly ListPreset[] = ["unblock", "expectations"];
+export const LIST_ONLY_PRESETS: readonly ListPreset[] = ["unblock", "expectations", "review"];
 
 /** Whether `preset` is one of the List-View-only options. */
 export function isListOnlyPreset(preset: ListPreset): boolean {
@@ -453,17 +453,34 @@ function unblockSharedFilter(shared: FilterState): FilterState {
   return { ...shared, statusMode: "all" };
 }
 
+/**
+ * Whether one row passes the **Review** option: it reads Review itself — whatever its parent reads,
+ * so a sub-item that is not in Review is no row — and is live, an archived one showing only under
+ * the Archived pill's Include. `neutral` is the shared filter under {@link unblockSharedFilter}, so
+ * Start's and Plan's own hides (blocked, a Plan or Time Scope still ahead, backlogged) do not
+ * answer; an excluded archived or backlogged ancestor still takes its subtree with it. Mirrors
+ * `passes_review_option` in `crates/arlesh-core/src/filters/list.rs`.
+ */
+function passesReviewOption(row: TaskListRow, neutral: FilterState): boolean {
+  return isReview(row.node.taskStatus)
+    && !hasGatingAncestor(row.ancestors, neutral)
+    && withArchivedOverride(row.node, neutral, !isArchived(row.node));
+}
+
 /** Whether one row survives the shared filter (status preset, tags, Info/Flow/Private) and the
  * List-View-exclusive filters. Unblock overrides the status preset to "blocked tasks only". */
 function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
   // The Expectations option shows waits and nothing else.
   if (listFilter.preset === "expectations") return false;
   if (!listFilter.kinds.includes("task")) return false;
-  const effectiveShared = listFilter.preset === "unblock" ? unblockSharedFilter(shared) : shared;
+  const replacesPreset = listFilter.preset === "unblock" || listFilter.preset === "review";
+  const effectiveShared = replacesPreset ? unblockSharedFilter(shared) : shared;
   if (typeHardHidden(row.node, effectiveShared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
   if (listFilter.preset === "unblock") {
     if (!row.isBlocked) return false;
+  } else if (listFilter.preset === "review") {
+    if (!passesReviewOption(row, effectiveShared)) return false;
   } else if (!passesListPreset(row, shared)) {
     return false;
   }
@@ -517,7 +534,10 @@ export function filterCommitmentList(
 
 /** One Commitment row against the filters — the predicate {@link filterCommitmentList} applies. */
 function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, listFilter: ListFilterState): boolean {
-  if (listFilter.preset === "unblock" || listFilter.preset === "backlog" || listFilter.preset === "expectations") {
+  if (
+    listFilter.preset === "unblock" || listFilter.preset === "backlog"
+    || listFilter.preset === "expectations" || listFilter.preset === "review"
+  ) {
     return false;
   }
   if (!listFilter.kinds.includes("commitment")) return false;
@@ -554,7 +574,8 @@ export function filterExpectationList(
 
 /** One Expectation row against the filters — the predicate {@link filterExpectationList} applies. */
 function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, listFilter: ListFilterState): boolean {
-  if (listFilter.preset === "unblock" || isAgenticWait(row.node)) return false;
+  // Neither Unblock nor Review lists a wait: the first shows blocked Tasks, the second Review Tasks.
+  if (listFilter.preset === "unblock" || listFilter.preset === "review" || isAgenticWait(row.node)) return false;
   const onlyWaits = listFilter.preset === "expectations";
   // The Expectations option is itself the kind choice, so the selector does not answer under it.
   if (!onlyWaits && !listFilter.kinds.includes("expectation")) return false;

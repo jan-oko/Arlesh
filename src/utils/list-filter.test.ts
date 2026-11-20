@@ -194,6 +194,50 @@ describe("filterTaskList", () => {
     expect(filterTaskList(rows, sf({ statusMode: "start", privateMode: false }), lf({ preset: "unblock" }))).toEqual([]);
   });
 
+  describe("the Review option", () => {
+    const review = { kind: "agentic", status: "review" } as const;
+    const onAgent = { kind: "agentic", status: "on_agent" } as const;
+    const reviewRow = (id: string, extra: Partial<MindmapNode> = {}, over: Partial<TaskListRow> = {}) =>
+      row({ node: n(id, "task", { status: "review", taskStatus: review, ...extra }), isAgentic: true, ...over });
+    const ids = (rows: TaskListRow[], shared = sf({ statusMode: "start" })) =>
+      filterTaskList(rows, shared, lf({ preset: "review" })).map((r) => r.node.id);
+
+    it("keeps the Review tasks Start would hide, and nothing that does not read Review", () => {
+      const rows = [
+        reviewRow("task-blocked", {}, { isBlocked: true }),
+        reviewRow("task-aside", { backlogged: true }),
+        reviewRow("task-plain"),
+        row({ node: n("task-onagent", "task", { status: "on_agent", taskStatus: onAgent }), isAgentic: true }),
+        row({ node: n("task-todo", "task", { status: "todo" }) }),
+      ];
+      expect(ids(rows)).toEqual(["task-blocked", "task-aside", "task-plain"]);
+    });
+
+    it("lists a sub-item only when it reads Review itself", () => {
+      const parent = n("task-parent", "task", { status: "review", taskStatus: review });
+      const rows = [
+        reviewRow("task-parent"),
+        row({ node: n("task-child", "task", { status: "todo" }), ancestors: [parent] }),
+        reviewRow("task-nested", {}, { ancestors: [n("task-plain-parent", "task", { status: "todo" })] }),
+      ];
+      expect(ids(rows)).toEqual(["task-parent", "task-nested"]);
+    });
+
+    it("hides an archived Review task unless the Archived pill includes it", () => {
+      const rows = [reviewRow("task-archived", { archived: true })];
+      expect(ids(rows)).toEqual([]);
+      expect(ids(rows, sf({ archivedMode: "include" }))).toEqual(["task-archived"]);
+    });
+
+    it("leaves the Commitments and Expectations out", () => {
+      const commitments = [{
+        node: n("commitment-1", "commitment", { verdict: "unresolved" }), ancestors: [], hasPrivateAncestor: false,
+        scopeTokens: ["unscoped", "unplanned"],
+      }] satisfies CommitmentListRow[];
+      expect(filterCommitmentList(commitments, sf(), lf({ preset: "review" }))).toEqual([]);
+    });
+  });
+
   it("hard-hides a private task while Private Mode is off", () => {
     const rows = [row({ node: n("task-private", "task", { status: "todo", isPrivate: true }) })];
     expect(filterTaskList(rows, sf({ privateMode: false }), lf())).toHaveLength(0);

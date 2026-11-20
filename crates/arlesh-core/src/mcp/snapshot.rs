@@ -43,10 +43,12 @@ impl ArleshMcp {
     /// details as Infos, so read them (`arlesh_tasks.get` returns them) before you work a Task.
     /// The `expectations` section holds every wait, released ones included (pending first), each
     /// with its whole note and answer. To find the open questions of one project use
-    /// `arlesh_waits.list` instead. A filter's `expectations` option is the List View's, and the
-    /// snapshot applies it only when a pill (or a narrower row-kind choice) sends the read through
+    /// `arlesh_waits.list` instead. A filter's `unblock`, `expectations` and `review` options are
+    /// the List View's (`review` lists the Tasks that read Review, whatever Start or Plan would
+    /// hide; `unblock` answers before `expectations`, then `review`, if several are set), and the
+    /// snapshot applies them only when a pill (or a narrower row-kind choice) sends the read through
     /// the List View's rules; otherwise the read is narrowed as the Mindmap narrows it, which
-    /// ignores the option, so `{"expectations": true, "preset": "all"}` still returns released
+    /// ignores them, so `{"expectations": true, "preset": "all"}` still returns released
     /// waits. Under a pill the List View draws no agentic wait, and Tasks are not rows under the
     /// option, so an agent's waits do not come back at all: an agentic wait travels with the Task
     /// it hangs under (a filter that keeps the Task keeps the wait).

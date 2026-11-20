@@ -222,9 +222,9 @@ describe("the tab's own switches", () => {
     expect(taskCards()).toEqual(["task-1"]);
   });
 
-  it("does not toggle a strip on Alt+E, which is the List View's Expectations option: it says Zen reads under Do", () => {
+  it("does not toggle a strip on Alt+W, which is the List View's Expectations option: it says Zen reads under Do", () => {
     render(<ZenViewInApp />);
-    press("KeyE", { altKey: true });
+    press("KeyW", { altKey: true });
     expect(screen.getByRole("region", { name: "zenView:expectationsStrip" })).toBeInTheDocument();
     expect(useMindmapStore.getState().pendingToast?.message).toBe("zenView:presetLocked");
   });

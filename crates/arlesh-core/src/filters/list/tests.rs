@@ -230,6 +230,72 @@ fn unblock_over_start_still_shows_every_blocked_row() {
     assert_eq!(rows_of(&root, &filter), ["task-1"]);
 }
 
+fn agentic_task(id: &str, status: &str) -> NodeFacts {
+    let mut facts = task(id, status);
+    facts.agentic = true;
+    facts
+}
+
+#[test]
+fn review_keeps_the_review_tasks_whatever_start_would_hide_and_no_child_that_is_not_in_review() {
+    let mut blocked = agentic_task("task-blocked", "review");
+    blocked.is_blocked = true;
+    let mut set_aside = agentic_task("task-aside", "review");
+    set_aside.backlogged = true;
+    let mut archived = agentic_task("task-archived", "review");
+    archived.archived = true;
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![
+            FactNode::leaf(blocked),
+            FactNode::leaf(set_aside),
+            FactNode::leaf(archived),
+            FactNode::leaf(agentic_task("task-onagent", "on_agent")),
+            FactNode::with_children(
+                task("task-plain-parent", "todo"),
+                vec![FactNode::leaf(agentic_task("task-nested", "review"))],
+            ),
+            FactNode::with_children(
+                agentic_task("task-parent", "review"),
+                vec![FactNode::leaf(task("task-child", "todo"))],
+            ),
+        ],
+    );
+    let filter = BoardFilter {
+        review: true,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert_eq!(
+        rows_of(&root, &filter),
+        ["task-blocked", "task-aside", "task-nested", "task-parent"]
+    );
+    let including = BoardFilter {
+        archived: OverrideMode::Include,
+        ..filter
+    };
+    assert!(rows_of(&root, &including).contains(&"task-archived".to_string()));
+}
+
+#[test]
+fn review_empties_the_commitments_and_the_expectations() {
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::leaf(commitment(
+            "commitment-1",
+            Verdict::Unresolved,
+            Timing::Active,
+        ))],
+    );
+    let filter = BoardFilter {
+        review: true,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert!(commitment_rows(&root, &filter).is_empty());
+    let plain = BoardFilter::preset(Preset::All);
+    assert!(!expectation_rows(&waits(), &plain).is_empty());
+    assert!(expectation_rows(&waits(), &filter).is_empty());
+}
+
 fn commitment(id: &str, verdict: Verdict, timing: Timing) -> NodeFacts {
     let mut facts = NodeFacts::new(id, NodeKind::Commitment);
     facts.verdict = Some(verdict);

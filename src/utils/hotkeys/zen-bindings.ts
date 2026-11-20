@@ -45,8 +45,8 @@ export interface ZenContext extends
 
 /**
  * The List View's Expectation bindings the Zen View does **not** take: `Shift+E` creates a wait, and
- * `Alt+E` chooses the list's Expectations option — the Zen View creates nothing, and always reads
- * under Do, so `Alt+E` is refused with the presets (`zen/status-presets.ts`).
+ * `Alt+W` chooses the list's Expectations option — the Zen View creates nothing, and always reads
+ * under Do, so `Alt+W` is refused with the presets (`zen/status-presets.ts`).
  */
 const NOT_IN_ZEN: ReadonlySet<string> = new Set(["listView.createExpectation", "listView.preset.expectations"]);
 
