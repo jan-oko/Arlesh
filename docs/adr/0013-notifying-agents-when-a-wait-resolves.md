@@ -5,6 +5,10 @@ Status: accepted 2026-11-04, built. Decided with the user in a design session; t
 
 The plugin this ADR calls `arlesh` was named `arlesh-notify` until Task `109` renamed it.
 
+[ADR 0021](0021-staged-answers-sent-as-a-batch.md) (Task `de16`, proposed) changes *Delivery*: a
+flush sends one message per recipient, naming every wait it owes that recipient, so a batch of
+staged answers wakes each agent once.
+
 ## Context
 
 An agent that raises a wait (`arlesh_waits.ask`) hands a question to the user and has nothing to do
