@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useHandArchive } from "./use-hand-archive";
@@ -38,52 +39,52 @@ beforeEach(() => vi.clearAllMocks());
 describe("useHandArchive", () => {
   it("archives a live stored Task by hand, then reloads", async () => {
     vi.mocked(updateTask).mockResolvedValue(Object.create(null));
-    const { result, settle } = setup([node("task-5")]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleArchive("task-5"); });
+    act(() => { result.current.toggleArchive(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "archived" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { archival: "archived" }));
     await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("unarchives the Task archived by hand back to live", async () => {
     vi.mocked(updateTask).mockResolvedValue(Object.create(null));
-    const { result } = setup([node("task-5", { archivedByHand: true })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { archivedByHand: true })]);
 
-    act(() => { result.current.toggleArchive("task-5"); });
+    act(() => { result.current.toggleArchive(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { archival: "live" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { archival: "live" }));
   });
 
   it("archives a stored Commitment through its own update", async () => {
     vi.mocked(updateCommitment).mockResolvedValue(Object.create(null));
-    const { result } = setup([node("commitment-7", { kind: "commitment" })]);
+    const { result } = setup([node(`commitment-${storedRowId(7)}`, { kind: "commitment" })]);
 
-    act(() => { result.current.toggleArchive("commitment-7"); });
+    act(() => { result.current.toggleArchive(`commitment-${storedRowId(7)}`); });
 
-    await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(7, { archival: "archived" }));
+    await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(storedRowId(7), { archival: "archived" }));
   });
 
   it("archives a Domain through its status, and unarchives an archived one back to Active", async () => {
     vi.mocked(updateDomain).mockResolvedValue(Object.create(null));
-    const { result } = setup([node("domain-8", { kind: "domain" }), node("domain-9", { kind: "domain", status: "archived" })]);
+    const { result } = setup([node(`domain-${storedRowId(8)}`, { kind: "domain" }), node(`domain-${storedRowId(9)}`, { kind: "domain", status: "archived" })]);
 
     act(() => {
-      result.current.toggleArchive("domain-8");
-      result.current.toggleArchive("domain-9");
+      result.current.toggleArchive(`domain-${storedRowId(8)}`);
+      result.current.toggleArchive(`domain-${storedRowId(9)}`);
     });
 
-    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(8, { status: "archived" }));
-    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(9, { status: "active" }));
+    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(storedRowId(8), { status: "archived" }));
+    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(storedRowId(9), { status: "active" }));
   });
 
   it("leaves a Habit occurrence and a Goal alone", () => {
-    const occurrence = node("task-4", { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
-    const { result } = setup([occurrence, node("goal-1", { kind: "goal" })]);
+    const occurrence = node(`task-${storedRowId(4)}`, { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
+    const { result } = setup([occurrence, node(`goal-${storedRowId(1)}`, { kind: "goal" })]);
 
     act(() => {
-      result.current.toggleArchive("task-4");
-      result.current.toggleArchive("goal-1");
+      result.current.toggleArchive(`task-${storedRowId(4)}`);
+      result.current.toggleArchive(`goal-${storedRowId(1)}`);
     });
 
     expect(updateTask).not.toHaveBeenCalled();
@@ -92,10 +93,10 @@ describe("useHandArchive", () => {
 
   it("says a refusal out loud", async () => {
     vi.mocked(updateTask).mockRejectedValue(new Error("nope"));
-    const { result, showToast } = setup([node("task-5")]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleArchive("task-5"); });
+    act(() => { result.current.toggleArchive(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-5" })));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: `task-${storedRowId(5)}` })));
   });
 });

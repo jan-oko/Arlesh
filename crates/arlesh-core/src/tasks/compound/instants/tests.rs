@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -11,10 +12,10 @@ fn key(item_id: i64) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowTask,
-            item_id,
+            item_id: tid(item_id),
         },
         iteration: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
-        cycle: 0,
+        cycle: tid(0),
     }
 }
 
@@ -60,13 +61,13 @@ fn an_occurrences_instant_is_its_overlays_resolved_at() {
 fn a_checks_instant_is_keyed_by_its_check_task() {
     let row = CheckRow {
         wait_kind: "stored".into(),
-        wait_id: Some(4),
+        wait_id: Some(tid(4)),
         wait_key: None,
         due_at: "2026-01-05T09:00:00".into(),
         resolved_at: "2026-01-05T11:00:00".into(),
     };
     let expected = DerivedKey::Check(CheckKey {
-        wait: WaitRef::Stored(4),
+        wait: WaitRef::Stored(tid(4)),
         due_at: at(9),
     })
     .node_id();

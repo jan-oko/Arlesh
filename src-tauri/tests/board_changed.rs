@@ -14,6 +14,9 @@
 
 mod helpers;
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+
 use arlesh_lib::backend::mindmap::BoardPort;
 use arlesh_lib::board::BOARD_CHANGED;
 use arlesh_lib::commands::tasks as task_commands;
@@ -46,8 +49,8 @@ async fn close(app: &App<MockRuntime>) -> GestureClose {
 }
 
 /// A project to hang tasks off, created outside any Gesture.
-async fn make_project(pool: &SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -58,6 +61,7 @@ async fn make_project(pool: &SqlitePool) -> i64 {
         .expect("connect")
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Broadcast Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -71,10 +75,11 @@ async fn make_project(pool: &SqlitePool) -> i64 {
 }
 
 /// Creates a task through the real command, inside whatever Gesture is open.
-async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i64 {
+async fn create_task(app: &App<MockRuntime>, project_id: RowId, title: &str) -> RowId {
     task_commands::create_task(
         app.state(),
         CreateTaskRequest {
+            id: None,
             title: title.into(),
             parent_type: "project".into(),
             parent_id: project_id.into(),
@@ -210,6 +215,7 @@ async fn the_mcp_tool_that_writes_announces_after_it_commits() {
         }));
 
     mcp.infos(Parameters(params::InfosOperation::Create {
+        id: None,
         task_id: task_id.into(),
         body: "a note from the agent".into(),
         details: None,
@@ -228,7 +234,7 @@ async fn the_mcp_tool_that_writes_announces_after_it_commits() {
 async fn an_mcp_refusal_announces_nothing() {
     let pool = helpers::test_pool().await;
     let _app = helpers::command_host(&pool);
-    let project_id = make_project(&pool).await;
+    let _project_id = make_project(&pool).await;
 
     let announced = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = announced.clone();
@@ -241,7 +247,8 @@ async fn an_mcp_refusal_announces_nothing() {
     // No such Task: the tool refuses, and nothing was written to tell anyone of.
     let _ = mcp
         .infos(Parameters(params::InfosOperation::Create {
-            task_id: (project_id + 9_000).into(),
+            id: None,
+            task_id: arlesh_lib::mcp::params::NodeIdParam::new(tid(9_000).to_string()),
             body: "a note under nothing".into(),
             details: None,
         }))

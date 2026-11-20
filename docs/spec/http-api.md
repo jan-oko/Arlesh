@@ -155,7 +155,12 @@ Routes follow the domain layer, not the Tauri command names. Request and respons
 core's own types: the pydantic models in `arlesh.models`, generated from the Rust types' JSON
 Schema. So the OpenAPI schema comes from the same source as the bindings, with no hand-written
 copies. An update's field left out stays unchanged, and an explicit `null` clears it. Ids in a path
-are row ids, or a Habit occurrence's UUID where the core takes either.
+are ids: a stored row's UUID, or a Habit occurrence's version-8 UUID where the core takes either (a UUID
+spelled as version 8 is a derived node's; no stored row has one). Every id in a body is a UUID string
+too, never a number. Every create route (tasks, goals, commitments, waits, infos, domains, flows and
+flow items) takes an optional `id`: a UUID a client chose for the row (version 4 or 7, not nil),
+which the server stores it under so both sides hold the same node; without one the server mints a
+UUIDv7. `api_version` is 2 since ids became UUIDs.
 
 | Path | What |
 | --- | --- |

@@ -5,6 +5,7 @@
 //! derived Tasks both count. Inside the MCP roots it is exactly what the MCP may write, which is how
 //! it is asked here.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDateTime;
@@ -129,7 +130,7 @@ pub(super) fn narrow(
             keep.insert((NodeTable::Expectation, expectation.id.clone()));
         }
     }
-    let infos: HashSet<i64> = load
+    let infos: HashSet<RowId> = load
         .infos
         .iter()
         .filter(|info| under_match(&info.parent_type, &info.parent_id))

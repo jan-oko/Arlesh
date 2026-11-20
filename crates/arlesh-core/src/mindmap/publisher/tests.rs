@@ -8,6 +8,7 @@ use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use tokio::sync::Notify;
 
 use super::*;
+use crate::nodes::id::tkey;
 
 struct TestClock {
     now: Mutex<NaiveDateTime>,
@@ -62,8 +63,8 @@ async fn rig(clock: Arc<TestClock>, seed: &[&str]) -> Rig {
         .unwrap();
     crate::database::run_migrations(&pool).await.unwrap();
     for sql in [
-        "INSERT INTO domains (id, title, subtype) VALUES (901, 'Growth', 'aspect')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (902, 'Arlesh', 'project', 901, 'active')",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000385', 'Growth', 'aspect')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000386', 'Arlesh', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
     ] {
         sqlx::query(sql).execute(&pool).await.unwrap();
     }
@@ -115,7 +116,7 @@ impl Rig {
     }
 }
 
-const TASK: &str = "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES (100, 'Docs', 'domain', 902, 'todo')";
+const TASK: &str = "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000064', 'Docs', 'domain', '00000000-0000-7000-8000-000000000386', 'todo')";
 
 #[tokio::test]
 async fn a_write_then_a_recorded_write_publishes_one_event_with_the_written_task() {
@@ -129,7 +130,10 @@ async fn a_write_then_a_recorded_write_publishes_one_event_with_the_written_task
     assert_eq!(events[0]["seq"], 2);
     assert_eq!(events[0]["revision"], 1);
     assert_eq!(events[0]["epoch"], &*rig.publisher.epoch());
-    assert_eq!(events[0]["changes"]["tasks"]["set"][0][0], "task-100");
+    assert_eq!(
+        events[0]["changes"]["tasks"]["set"][0][0],
+        tkey("task", 100)
+    );
     assert_eq!(events[0]["changes"]["tasks"]["set"][0][1]["title"], "Docs");
     assert_eq!(lock(&rig.heard).len(), 1, "the sink heard it too");
 }
@@ -139,7 +143,7 @@ async fn writes_that_land_before_the_loop_runs_again_publish_one_event() {
     let rig = rig(TestClock::at(13, 12), &[]).await;
     rig.publisher.current().await;
     for id in 100..103 {
-        let sql = format!("INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ({id}, 'T', 'domain', 902)");
+        let sql = format!("INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ('{}', 'T', 'domain', '00000000-0000-7000-8000-000000000386')", crate::nodes::id::tid(id));
         sqlx::query(&sql).execute(&rig.pool).await.unwrap();
     }
 
@@ -176,7 +180,7 @@ async fn a_tick_past_a_due_date_publishes_the_overdue_lifecycle_with_the_hash_of
     let day = r#"'{"kind":"day","date":"2026-11-13"}'"#;
     let due = format!(
         "INSERT INTO tasks (id, title, parent_type, parent_id, time_scope_start_id, time_scope_end_id, on_scope_exit) \
-         VALUES (100, 'Due', 'domain', 902, {day}, {day}, 'keep')"
+         VALUES ('00000000-0000-7000-8000-000000000064', 'Due', 'domain', '00000000-0000-7000-8000-000000000386', {day}, {day}, 'keep')"
     );
     let rig = rig(TestClock::at(13, 12), &[&due]).await;
     assert_eq!(rig.publisher.current().await.seq, 1);
@@ -186,7 +190,7 @@ async fn a_tick_past_a_due_date_publishes_the_overdue_lifecycle_with_the_hash_of
 
     assert_eq!(events.len(), 1);
     let lifecycle = &events[0]["changes"]["lifecycles"]["set"][0];
-    assert_eq!(lifecycle[0], "task-100");
+    assert_eq!(lifecycle[0], tkey("task", 100));
     assert_eq!(lifecycle[1]["overdue"], true);
     let mut db = rig.factory.begin().await.unwrap();
     let fresh = crate::mindmap::current(&mut db, moment(14, 3))
@@ -207,7 +211,7 @@ async fn an_oversized_change_says_reload_instead_of_carrying_its_changes() {
     rig.write(
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1500) \
          INSERT INTO tasks (title, parent_type, parent_id) \
-         SELECT printf('%0300d', i), 'domain', 902 FROM n",
+         SELECT printf('%0300d', i), 'domain', '00000000-0000-7000-8000-000000000386' FROM n",
     )
     .await;
     let events = rig.next(1).await;
@@ -223,7 +227,8 @@ async fn after_replays_the_ring_in_order() {
     rig.publisher.current().await;
     for id in 100..103 {
         rig.write(&format!(
-            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ({id}, 'T', 'domain', 902)"
+            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ('{}', 'T', 'domain', '00000000-0000-7000-8000-000000000386')",
+            crate::nodes::id::tid(id)
         ))
         .await;
         rig.next(id as u64 - 100 + 1).await;
@@ -245,8 +250,8 @@ async fn after_says_reload_once_the_ring_has_dropped_what_was_asked() {
     rig.publisher.current().await;
     for id in 0..70u64 {
         rig.write(&format!(
-            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ({}, 'T', 'domain', 902)",
-            100 + id
+            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ('{}', 'T', 'domain', '00000000-0000-7000-8000-000000000386')",
+            crate::nodes::id::tid(100 + id as i64)
         ))
         .await;
         rig.next(id + 1).await;
@@ -269,8 +274,8 @@ async fn a_publications_revision_never_counts_a_write_its_board_lacks() {
 
     for id in 0..5u64 {
         rig.write(&format!(
-            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ({}, 'T', 'domain', 902)",
-            100 + id
+            "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES ('{}', 'T', 'domain', '00000000-0000-7000-8000-000000000386')",
+            crate::nodes::id::tid(100 + id as i64)
         ))
         .await;
         rig.next(id + 1).await;

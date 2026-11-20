@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -15,7 +16,7 @@ vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: vi.fn(()
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, rowId: id, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${storedRowId(id)}`, rowId: storedRowId(id), kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend"), mkGoal(8, "Frontend")];
@@ -26,7 +27,7 @@ const defaultProps = {
   durationN: 2,
   durationKind: "week",
   defaultTargetType: "goal",
-  defaultTargetId: 7,
+  defaultTargetId: storedRowId(7),
   availableTargets: TARGETS,
   onStart: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
@@ -56,7 +57,7 @@ describe("StartFlowModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onStart).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Add Feature", targetType: "goal", targetId: 7 }),
+        expect.objectContaining({ title: "Add Feature", targetType: "goal", targetId: storedRowId(7) }),
       ),
     );
   });
@@ -78,7 +79,7 @@ describe("StartFlowModal", () => {
 
   it("blocks starting and warns when the chosen target is out of scope", () => {
     // Only Frontend (goal-8) is valid; the pre-filled default Backend (goal-7) is not.
-    vi.mocked(useValidFlowTargets).mockReturnValue(new Set(["goal-8"]));
+    vi.mocked(useValidFlowTargets).mockReturnValue(new Set([`goal-${storedRowId(8)}`]));
     render(<StartFlowModal {...defaultProps} />);
     expect(screen.getByText("targetOutOfScope")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "save" }));
@@ -91,7 +92,7 @@ describe("StartFlowModal", () => {
     fireEvent.mouseDown(screen.getByText("Frontend"));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onStart).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: 8 })),
+      expect(defaultProps.onStart).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: storedRowId(8) })),
     );
   });
 });

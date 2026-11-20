@@ -1,6 +1,7 @@
 //! The `commitments` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `commitments` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
@@ -17,7 +18,7 @@ pub trait CommitmentsPort: Send + Sync {
     ) -> Result<Commitment, WireError>;
 
     /// Fetches a commitment by id.
-    async fn get_commitment(&self, id: i64) -> Result<Commitment, WireError>;
+    async fn get_commitment(&self, id: RowId) -> Result<Commitment, WireError>;
 
     /// Lists every commitment — the Commitment virtual table: stored rows and every commitment
     async fn list_commitments(
@@ -39,13 +40,13 @@ pub trait CommitmentsPort: Send + Sync {
     async fn add_tag_to_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError>;
 
     /// Removes a tag from a commitment.
     async fn remove_tag_from_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError>;
 }

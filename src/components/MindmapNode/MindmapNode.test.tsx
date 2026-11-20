@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import MindmapNode from "./MindmapNode";
 import type { MindmapNode as MindmapNodeData } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
 
 function node(extra: Partial<MindmapNodeData> = {}): MindmapNodeData {
-  return { id: "task-1", rowId: 1, kind: "task", title: "Late work", status: "todo", position: 0, tagIds: [], children: [], ...extra };
+  return { id: "task-1", rowId: storedRowId(1), kind: "task", title: "Late work", status: "todo", position: 0, tagIds: [], children: [], ...extra };
 }
 
 function draw(data: MindmapNodeData, isSelected = false, handlers: { onSelect?: (id: string) => void; onStatusClick?: (id: string) => void } = {}) {

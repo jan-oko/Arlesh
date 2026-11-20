@@ -27,7 +27,7 @@ class DomainsRouter(BoardRouter):
         """Every Aspect, Domain, Project and Tag, or those of one subtype."""
         return await self._reader.list_domains(subtype)
 
-    async def _get(self, id: int) -> Domain:
+    async def _get(self, id: str) -> Domain:
         """One Aspect, Domain, Project or Tag."""
         return await self._reader.get_domain(id)
 
@@ -35,14 +35,14 @@ class DomainsRouter(BoardRouter):
         """Creates a Domain, Project or Tag."""
         return await (await self._writer()).create_domain(request)
 
-    async def _update(self, id: int, request: UpdateDomainRequest) -> Domain:
+    async def _update(self, id: str, request: UpdateDomainRequest) -> Domain:
         """Updates a Domain, Project or Tag; naming a parent moves it."""
         return await (await self._writer()).update_domain(id, request)
 
-    async def _delete(self, id: int) -> None:
+    async def _delete(self, id: str) -> None:
         """Deletes a Domain, Project or Tag."""
         await (await self._writer()).delete_domain(id)
 
-    async def _duplicate(self, id: int, target_id: int, position: int) -> DuplicatedDomain:
+    async def _duplicate(self, id: str, target_id: str, position: int) -> DuplicatedDomain:
         """Copies a Domain or Project and its subtree under a new parent."""
         return await (await self._writer()).duplicate_domain(id, target_id, position)

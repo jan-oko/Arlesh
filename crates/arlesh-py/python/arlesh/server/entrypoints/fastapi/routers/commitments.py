@@ -25,7 +25,7 @@ class CommitmentsRouter(BoardRouter):
         self.put("/{id}/archived")(self._set_archived)
         self.post("/{id}/verdict")(self._press_verdict)
 
-    async def _get(self, id: int) -> Commitment:
+    async def _get(self, id: str) -> Commitment:
         """One stored Commitment."""
         return await self._reader.get_commitment(id)
 

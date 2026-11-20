@@ -49,7 +49,7 @@ mod undo;
 
 /// The HTTP API version this app speaks: the integer `/health` answers. Pinned to the server's by
 /// `conformance/client-mode.json`.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
 
 /// How long a connection waits to be made before the attempt counts as a failure.
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);

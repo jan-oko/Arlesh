@@ -1,6 +1,7 @@
 //! The progress rule, and deriving compound Tasks' statuses over a board.
 
 use super::*;
+use crate::nodes::id::tid;
 use crate::{
     nodes::origin::WaitOrigin,
     tasks::{
@@ -155,7 +156,7 @@ impl Board {
     fn status_of(&self, id: i64) -> TaskStatus {
         self.derive_with(&HashMap::new())
             .into_iter()
-            .find(|outcome| outcome.id == NodeId::Stored(id))
+            .find(|outcome| outcome.id == NodeId::Stored(tid(id)))
             .map(|outcome| outcome.status)
             .unwrap()
     }
@@ -164,7 +165,7 @@ impl Board {
     fn agentic_of(&self, id: i64) -> AgenticStatus {
         self.derive_with(&HashMap::new())
             .into_iter()
-            .find(|outcome| outcome.id == NodeId::Stored(id))
+            .find(|outcome| outcome.id == NodeId::Stored(tid(id)))
             .and_then(|outcome| outcome.agentic)
             .unwrap()
     }
@@ -173,7 +174,7 @@ impl Board {
     fn outcome_of(&self, id: i64) -> Option<Outcome> {
         self.derive_with(&HashMap::new())
             .into_iter()
-            .find(|outcome| outcome.id == NodeId::Stored(id))
+            .find(|outcome| outcome.id == NodeId::Stored(tid(id)))
     }
 
     fn subtree(&self, id: i64) -> SubItems {
@@ -190,7 +191,7 @@ impl Board {
                 settled: &HashSet::new(),
                 instants: &HashMap::new(),
             },
-            &NodeId::Stored(id),
+            &NodeId::Stored(tid(id)),
         )
     }
 }
@@ -341,7 +342,7 @@ fn backlogged_and_delegated_items_still_count() {
                 ..task(2, ("task", 1), Todo)
             },
             Task {
-                delegate_to: Some(Delegate::Person { id: 2 }),
+                delegate_to: Some(Delegate::Person { id: tid(2) }),
                 ..task(3, ("task", 1), Done)
             },
         ],
@@ -379,12 +380,12 @@ fn a_compound_task_inside_is_counted_by_its_derived_status() {
 #[test]
 fn a_compound_task_does_not_count_the_wait_its_own_delegation_draws() {
     let delegated = Task {
-        delegate_to: Some(Delegate::Person { id: 2 }),
+        delegate_to: Some(Delegate::Person { id: tid(2) }),
         ..compound(1, ("project", 100))
     };
     let own_wait = Expectation {
         origin: Origin::DelegationWait(WaitOrigin {
-            task_id: NodeId::Stored(1),
+            task_id: NodeId::Stored(tid(1)),
         }),
         ..wait(9, ("task", 1), ExpectationStatus::Pending)
     };
@@ -399,12 +400,12 @@ fn a_compound_task_does_not_count_the_wait_its_own_delegation_draws() {
 #[test]
 fn an_ancestor_does_count_the_wait_a_compound_task_inside_draws() {
     let inner = Task {
-        delegate_to: Some(Delegate::Person { id: 2 }),
+        delegate_to: Some(Delegate::Person { id: tid(2) }),
         ..compound(2, ("task", 1))
     };
     let inner_wait = Expectation {
         origin: Origin::DelegationWait(WaitOrigin {
-            task_id: NodeId::Stored(2),
+            task_id: NodeId::Stored(tid(2)),
         }),
         ..wait(9, ("task", 2), ExpectationStatus::Pending)
     };
@@ -425,7 +426,7 @@ fn an_ancestor_does_count_the_wait_a_compound_task_inside_draws() {
 fn a_done_compound_task_whose_window_passed_is_archived_and_still_counts_as_done() {
     let window = (at(0), at(6));
     let governance = HashMap::from([(
-        NodeId::Stored(2),
+        NodeId::Stored(tid(2)),
         Governance {
             window: Some(window),
             on_exit: Some(OnScopeExit::Keep),
@@ -447,7 +448,7 @@ fn a_done_compound_task_whose_window_passed_is_archived_and_still_counts_as_done
     let outcomes = board.derive_with(&governance);
     let inner = outcomes
         .iter()
-        .find(|outcome| outcome.id == NodeId::Stored(2))
+        .find(|outcome| outcome.id == NodeId::Stored(tid(2)))
         .unwrap();
     assert_eq!(inner.status, Done);
     assert_eq!(
@@ -457,7 +458,7 @@ fn a_done_compound_task_whose_window_passed_is_archived_and_still_counts_as_done
     // Archived by finishing is still finished: the outer one counts it Done.
     let outer = outcomes
         .iter()
-        .find(|outcome| outcome.id == NodeId::Stored(1))
+        .find(|outcome| outcome.id == NodeId::Stored(tid(1)))
         .unwrap();
     assert_eq!(outer.status, Done);
 }
@@ -479,7 +480,7 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
     );
     apply(
         &[Outcome {
-            id: NodeId::Stored(1),
+            id: NodeId::Stored(tid(1)),
             status: Done,
             agentic: Some(AgenticStatus::Done),
             state: Some(state),
@@ -514,7 +515,10 @@ fn a_compound_tasks_done_time_is_its_latest_finish_while_it_is_done() {
         ],
         ..Board::default()
     };
-    let instants = HashMap::from([(NodeId::Stored(2), at(8)), (NodeId::Stored(3), at(10))]);
+    let instants = HashMap::from([
+        (NodeId::Stored(tid(2)), at(8)),
+        (NodeId::Stored(tid(3)), at(10)),
+    ]);
     let rows = |board: &Board, settled: &HashSet<NodeId>| {
         derive(
             &Rows {
@@ -537,7 +541,7 @@ fn a_compound_tasks_done_time_is_its_latest_finish_while_it_is_done() {
     assert_eq!(outcomes[0].done_at, Some(at(10)));
 
     assert!(
-        rows(&board, &HashSet::from([NodeId::Stored(1)])).is_empty(),
+        rows(&board, &HashSet::from([NodeId::Stored(tid(1))])).is_empty(),
         "a compound already derived is not derived again"
     );
 }
@@ -653,10 +657,10 @@ mod parents {
     #[test]
     fn the_wait_its_own_delegation_draws_is_not_a_sub_item() {
         let mut board = parent_with(vec![task(2, ("task", 1), Todo)]);
-        board.tasks[0].delegate_to = Some(Delegate::Person { id: 2 });
+        board.tasks[0].delegate_to = Some(Delegate::Person { id: tid(2) });
         board.waits = vec![Expectation {
             origin: Origin::DelegationWait(WaitOrigin {
-                task_id: NodeId::Stored(1),
+                task_id: NodeId::Stored(tid(1)),
             }),
             ..wait(9, ("task", 1), ExpectationStatus::Pending)
         }];

@@ -1,4 +1,4 @@
-import type { FilterState } from "@/utils/filter-tree";
+import type { FilterState, TagFilter } from "@/utils/filter-tree";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { ListFilterState } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, isListPreset, withCurrentPillDimensions } from "@/utils/list-filter";
@@ -10,6 +10,7 @@ import type { TabState } from "@/stores/tab-stores";
 import { DEFAULT_TAB_STATE } from "@/stores/tab-stores";
 import { mergeFilterDefaults } from "@/stores/persist-merge";
 import { scopeKeyFrom } from "@/utils/scope-key";
+import { upgradeSavedNodeKey, upgradeSavedTagId } from "@/utils/legacy-row-id";
 import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 
 /**
@@ -94,6 +95,10 @@ function readStringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function upgradeSavedKey(key: string | null): string | null {
+  return key === null ? null : upgradeSavedNodeKey(key);
+}
+
 /**
  * A stored view state, field by field. A `view` this build does not know — a tab left on a view
  * that has since been renamed or removed — falls back to the default rather than leaving the tab
@@ -130,7 +135,20 @@ function readFilterState(value: unknown): FilterState {
   delete merged.startHidesCheckedWaits;
   delete merged.startShowsStarted;
   delete merged.doShowsStarted;
-  return { ...merged, planScope: scopeKeyFrom(merged.planScope) };
+  return { ...merged, planScope: scopeKeyFrom(merged.planScope), tagFilters: readTagFilters(merged.tagFilters) };
+}
+
+/** Stored tag filters, with an id saved as an integer (before row ids were UUIDs) carried over. */
+function readTagFilters(value: unknown): TagFilter[] {
+  if (!Array.isArray(value)) return [];
+  const filters: TagFilter[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const tagId = upgradeSavedTagId(entry["tagId"]);
+    const mode = entry["mode"];
+    if (tagId !== null && (mode === "any" || mode === "all" || mode === "exclude")) filters.push({ tagId, mode });
+  }
+  return filters;
 }
 
 /**
@@ -151,11 +169,11 @@ function readListFilterState(value: unknown): ListFilterState {
 export function parseTabState(value: unknown): TabState {
   const source = isRecord(value) ? value : {};
   return {
-    subtreeRootId: readString(source["subtreeRootId"]),
+    subtreeRootId: upgradeSavedKey(readString(source["subtreeRootId"])),
     view: readViewState(source["view"]),
     filter: readFilterState(source["filter"]),
     listFilter: readListFilterState(source["listFilter"]),
-    expandedHabitGroupIds: readStringList(source["expandedHabitGroupIds"]),
+    expandedHabitGroupIds: readStringList(source["expandedHabitGroupIds"]).map(upgradeSavedNodeKey),
   };
 }
 

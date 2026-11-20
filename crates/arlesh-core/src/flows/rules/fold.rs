@@ -17,6 +17,7 @@
 //! `foldHabitRuns` in `src/utils/habit-collapse.ts`; `conformance/habit-fold.json` holds the two
 //! together.
 
+use crate::nodes::id::RowId;
 use chrono::{Datelike, NaiveDate};
 
 use crate::scopes::{key::ScopeKey, model::ScopeKind};
@@ -25,7 +26,7 @@ use crate::scopes::{key::ScopeKey, model::ScopeKind};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Iteration {
     /// The Habit it belongs to; iterations fold only with their own Habit's.
-    pub flow_id: i64,
+    pub flow_id: RowId,
     /// The scope kind its window is one unit of, or `None` for a sub-day window, which counts as a
     /// day: such a Habit steps whole days.
     pub scope_kind: Option<ScopeKind>,
@@ -156,7 +157,7 @@ pub struct Group<T> {
     /// `None` for the run, else the level.
     pub level: Option<Level>,
     /// The Habit behind it.
-    pub flow_id: i64,
+    pub flow_id: RowId,
     /// How its iterations ended.
     pub tally: Tally,
     /// The first day of its first iteration's window.
@@ -176,11 +177,11 @@ pub enum Folded<T> {
 
 /// The run's tree id. Passed iterations are a prefix of a Habit's, so one Habit has one run, and an
 /// id that survives the run growing keeps an expansion expanded.
-pub fn run_id(flow_id: i64) -> String {
+pub fn run_id(flow_id: RowId) -> String {
     format!("habitrun-{flow_id}-virtual")
 }
 
-fn level_id(flow_id: i64, level: Level, first: NaiveDate) -> String {
+fn level_id(flow_id: RowId, level: Level, first: NaiveDate) -> String {
     format!(
         "habitrun-{flow_id}-{}-{}-virtual",
         level.as_str(),

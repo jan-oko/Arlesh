@@ -5,6 +5,7 @@ import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { fixtureRowId } from "@/test/node-fixture";
 import { occurrenceRow } from "@/test/occurrence";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -138,11 +139,11 @@ describe("flattenTaskRows", () => {
   it("resolves this task's own dependency edges to target node ids", () => {
     const tree = n("root", "domain", {}, [n("task-5", "task", { status: "todo" })]);
     const deps: TaskDependencyEdge[] = [
-      { task_id: 5, dependency_type: "task", dependency_id: 9 },
-      { task_id: 5, dependency_type: "goal", dependency_id: 2 },
+      { task_id: storedRowId(5), dependency_type: "task", dependency_id: storedRowId(9) },
+      { task_id: storedRowId(5), dependency_type: "goal", dependency_id: storedRowId(2) },
     ];
     const [row] = flattenTaskRows(tree, deps);
-    expect(row?.dependencyRefs.sort()).toEqual(["goal-2", "task-9"]);
+    expect(row?.dependencyRefs.sort()).toEqual([`goal-${storedRowId(2)}`, `task-${storedRowId(9)}`]);
   });
 });
 

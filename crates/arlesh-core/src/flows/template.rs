@@ -11,6 +11,7 @@
 //! **Expectation template** its Asynchronous flag spawns a wait from (migration 0090, Task 611).
 //! A Flow root and a flow Goal item have neither.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use super::error::FlowError;
@@ -100,9 +101,9 @@ pub use arlesh_rules::flows::template::{TemplateFields, TemplateUpdate};
 /// One template row's columns, as read.
 #[derive(sqlx::FromRow)]
 struct TemplateColumns {
-    id: i64,
+    id: RowId,
     delegate_kind: Option<String>,
-    delegate_id: Option<i64>,
+    delegate_id: Option<RowId>,
     agentic: Option<bool>,
     asynchronous: bool,
     archival: String,
@@ -112,7 +113,7 @@ struct TemplateColumns {
 /// One Task template's wait template, as stored.
 #[derive(sqlx::FromRow)]
 struct AsyncTemplateRow {
-    item_id: i64,
+    item_id: RowId,
     title: String,
     time_scope_n: Option<i64>,
     time_scope_kind: Option<String>,
@@ -137,7 +138,7 @@ pub(in crate::flows) fn duration_columns(
 /// One template row's agentic brief, as stored.
 #[derive(sqlx::FromRow)]
 struct TemplateBriefRow {
-    item_id: i64,
+    item_id: RowId,
     priority: Option<i64>,
     spec: String,
     design: String,
@@ -174,7 +175,7 @@ impl<'session> TemplateOperator<'session> {
     pub async fn all(
         &mut self,
         table: TemplateTable,
-    ) -> Result<HashMap<i64, TemplateFields>, FlowError> {
+    ) -> Result<HashMap<RowId, TemplateFields>, FlowError> {
         let bare = format!(
             "SELECT id, NULL AS delegate_kind, NULL AS delegate_id, NULL AS agentic,
                     0 AS asynchronous, 'live' AS archival, 0 AS compound
@@ -197,13 +198,13 @@ impl<'session> TemplateOperator<'session> {
         let rows: Vec<TemplateColumns> = sqlx::query_as(select)
             .fetch_all(&mut *self.connection)
             .await?;
-        let tags: Vec<(i64, i64)> = sqlx::query_as(
+        let tags: Vec<(RowId, RowId)> = sqlx::query_as(
             "SELECT item_id, tag_id FROM template_tags WHERE item_type = ? ORDER BY tag_id",
         )
         .bind(table.as_str())
         .fetch_all(&mut *self.connection)
         .await?;
-        let reasons: Vec<(i64, String)> = sqlx::query_as(
+        let reasons: Vec<(RowId, String)> = sqlx::query_as(
             "SELECT item_id, reason FROM template_block_reasons WHERE item_type = ?
              ORDER BY item_id, position, id",
         )
@@ -211,7 +212,7 @@ impl<'session> TemplateOperator<'session> {
         .fetch_all(&mut *self.connection)
         .await?;
 
-        let mut fields: HashMap<i64, TemplateFields> = rows
+        let mut fields: HashMap<RowId, TemplateFields> = rows
             .into_iter()
             .map(|row| {
                 (
@@ -270,7 +271,7 @@ impl<'session> TemplateOperator<'session> {
     async fn async_templates(
         &mut self,
         table: TemplateTable,
-    ) -> Result<HashMap<i64, AsyncTemplate>, FlowError> {
+    ) -> Result<HashMap<RowId, AsyncTemplate>, FlowError> {
         let Some((templates, tags, key)) = table.wait_template() else {
             return Ok(HashMap::new());
         };
@@ -281,12 +282,12 @@ impl<'session> TemplateOperator<'session> {
         ))
         .fetch_all(&mut *self.connection)
         .await?;
-        let tags: Vec<(i64, i64)> = sqlx::query_as(&format!(
+        let tags: Vec<(RowId, RowId)> = sqlx::query_as(&format!(
             "SELECT {key}, tag_id FROM {tags} ORDER BY {key}, tag_id"
         ))
         .fetch_all(&mut *self.connection)
         .await?;
-        let mut templates: HashMap<i64, AsyncTemplate> = rows
+        let mut templates: HashMap<RowId, AsyncTemplate> = rows
             .into_iter()
             .map(|row| {
                 (
@@ -312,7 +313,7 @@ impl<'session> TemplateOperator<'session> {
     async fn set_async_template(
         &mut self,
         table: TemplateTable,
-        id: i64,
+        id: RowId,
         template: Option<&AsyncTemplate>,
     ) -> Result<(), FlowError> {
         let Some((templates, tags, key)) = table.wait_template() else {
@@ -356,7 +357,7 @@ impl<'session> TemplateOperator<'session> {
     pub async fn one(
         &mut self,
         table: TemplateTable,
-        id: i64,
+        id: RowId,
     ) -> Result<TemplateFields, FlowError> {
         Ok(self.all(table).await?.remove(&id).unwrap_or_default())
     }
@@ -367,7 +368,7 @@ impl<'session> TemplateOperator<'session> {
         &mut self,
         table: TemplateTable,
         is_task_template: bool,
-        id: i64,
+        id: RowId,
         update: &TemplateUpdate,
     ) -> Result<(), FlowError> {
         if update.touches_task_columns() && !is_task_template {
@@ -441,7 +442,7 @@ impl<'session> TemplateOperator<'session> {
     async fn write_task_template_columns(
         &mut self,
         table: TemplateTable,
-        id: i64,
+        id: RowId,
         update: &TemplateUpdate,
     ) -> Result<(), FlowError> {
         let name = table.table();
@@ -469,7 +470,7 @@ impl<'session> TemplateOperator<'session> {
     async fn set_brief(
         &mut self,
         table: TemplateTable,
-        id: i64,
+        id: RowId,
         brief: Option<&AgenticBrief>,
     ) -> Result<(), FlowError> {
         sqlx::query("DELETE FROM template_agentic_briefs WHERE item_type = ? AND item_id = ?")
@@ -505,10 +506,10 @@ impl<'session> TemplateOperator<'session> {
     async fn set_tags(
         &mut self,
         table: TemplateTable,
-        id: i64,
-        tags: &[i64],
+        id: RowId,
+        tags: &[RowId],
     ) -> Result<(), FlowError> {
-        let current: Vec<i64> = sqlx::query_scalar(
+        let current: Vec<RowId> = sqlx::query_scalar(
             "SELECT tag_id FROM template_tags WHERE item_type = ? AND item_id = ?",
         )
         .bind(table.as_str())
@@ -540,7 +541,7 @@ impl<'session> TemplateOperator<'session> {
     async fn set_block_reasons(
         &mut self,
         table: TemplateTable,
-        id: i64,
+        id: RowId,
         reasons: &[String],
     ) -> Result<(), FlowError> {
         sqlx::query("DELETE FROM template_block_reasons WHERE item_type = ? AND item_id = ?")
@@ -567,8 +568,8 @@ impl<'session> TemplateOperator<'session> {
     pub async fn copy_relations(
         &mut self,
         table: TemplateTable,
-        from: i64,
-        to: i64,
+        from: RowId,
+        to: RowId,
     ) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO template_tags (item_type, item_id, tag_id)
@@ -597,8 +598,8 @@ impl<'session> TemplateOperator<'session> {
     pub async fn copy(
         &mut self,
         table: TemplateTable,
-        from: i64,
-        to: i64,
+        from: RowId,
+        to: RowId,
     ) -> Result<(), FlowError> {
         // A goal, Commitment or wait item has no Task columns to copy, only relations (a
         // Commitment's and a wait's own columns travel with its row).
@@ -623,7 +624,7 @@ impl<'session> TemplateOperator<'session> {
     }
 
     /// Forgets a template row's relations — the row itself is going.
-    pub async fn forget(&mut self, table: TemplateTable, id: i64) -> Result<(), FlowError> {
+    pub async fn forget(&mut self, table: TemplateTable, id: RowId) -> Result<(), FlowError> {
         for relation in ["template_tags", "template_block_reasons"] {
             sqlx::query(&format!(
                 "DELETE FROM {relation} WHERE item_type = ? AND item_id = ?"

@@ -29,11 +29,12 @@ vi.mock("@/api/scopes", () => ({
 
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "flow-1",
-    rowId: 1,
+    id: `flow-${storedRowId(1)}`,
+    rowId: storedRowId(1),
     kind: "flow",
     title: "Ship a feature",
     position: 0,
@@ -45,7 +46,7 @@ function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
 }
 
 function mkGoal(id: number, title: string): MindmapNode {
-  return { id: `goal-${id}`, rowId: id, kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
+  return { id: `goal-${storedRowId(id)}`, rowId: storedRowId(id), kind: "goal", title, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];
@@ -54,7 +55,7 @@ const defaultProps = {
   node: mkFlow(),
   availableTargets: TARGETS,
   allTags: [],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -71,7 +72,7 @@ describe("FlowEditorModal — initial state", () => {
   });
 
   it("shows the existing target as a chip", () => {
-    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: 7, durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null } })} />);
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { instanceType: "task", targetType: "goal", targetId: storedRowId(7), durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null } })} />);
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
   });
 });
@@ -146,7 +147,7 @@ describe("FlowEditorModal — save", () => {
     fireEvent.mouseDown(screen.getByText("Frontend Polish"));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: 8 })),
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ targetType: "goal", targetId: storedRowId(8) })),
     );
   });
 
@@ -292,7 +293,7 @@ describe("FlowEditorModal — save", () => {
 
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
-      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
+      flow_id: storedRowId(1), start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
       clock: "window", miss_policy: "archive", cooldown_n: null, cooldown_kind: null,
     });
     vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);
@@ -333,14 +334,14 @@ describe("FlowEditorModal — keyboard", () => {
 });
 
 describe("FlowEditorModal — target display", () => {
-  const flowWith = (targetType: string, targetId: number) => ({
-    instanceType: "task" as const, targetType, targetId,
+  const flowWith = (targetType: string, targetNumber: number) => ({
+    instanceType: "task" as const, targetType, targetId: storedRowId(targetNumber),
     durationN: 2, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false, rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
   });
 
   it("resolves a domain-table target (project) to its title, not #id", () => {
     const project: MindmapNode = {
-      id: "domain-9", kind: "project", title: "Platform", position: 0, tagIds: [], children: [],
+      id: `domain-${storedRowId(9)}`, kind: "project", title: "Platform", position: 0, tagIds: [], children: [],
     };
     render(
       <FlowEditorModal
@@ -365,7 +366,7 @@ describe("FlowEditorModal — target display", () => {
     render(
       <FlowEditorModal
         {...defaultProps}
-        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+        inheritedTarget={{ kind: "domain", id: storedRowId(4), title: "Health" }}
       />,
     );
     expect(screen.getByText("Health")).toBeInTheDocument();
@@ -378,7 +379,7 @@ describe("FlowEditorModal — target display", () => {
       <FlowEditorModal
         {...defaultProps}
         node={mkFlow({ flow: flowWith("goal", 7) })}
-        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+        inheritedTarget={{ kind: "domain", id: storedRowId(4), title: "Health" }}
       />,
     );
     expect(screen.getByText("Backend Revamp")).toBeInTheDocument();
@@ -391,7 +392,7 @@ describe("FlowEditorModal — target display", () => {
       <FlowEditorModal
         {...defaultProps}
         node={mkFlow({ flow: flowWith("goal", 7) })}
-        inheritedTarget={{ kind: "domain", id: 4, title: "Health" }}
+        inheritedTarget={{ kind: "domain", id: storedRowId(4), title: "Health" }}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "×" }));
@@ -431,7 +432,7 @@ describe("FlowEditorModal — a commitment Habit's Verdict Window", () => {
 
   it("offers no Verdict Window on an Interval Habit, whose instance stays open until answered", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
-      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
+      flow_id: storedRowId(1), start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
       clock: "interval", miss_policy: null, cooldown_n: null, cooldown_kind: null,
     });
     render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);

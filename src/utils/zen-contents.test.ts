@@ -5,9 +5,10 @@ import type { FilterState } from "@/utils/filter-tree";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { zenContents } from "./zen-contents";
 import type { ZenOptions, ZenSourceRows } from "./zen-contents";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
+  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: storedRowId(1), ...over };
 }
 
 const root = n("root", "domain", {
@@ -21,7 +22,7 @@ const root = n("root", "domain", {
         }),
         n("task-todo", "task", { status: "todo" }),
         n("task-done", "task", { status: "done" }),
-        n("task-second", "task", { status: "in_progress", tagIds: [7], agentic: true, compound: true }),
+        n("task-second", "task", { status: "in_progress", tagIds: [storedRowId(7)], agentic: true, compound: true }),
       ],
     }),
     n("commitment-open", "commitment", { verdict: "unresolved" }),
@@ -78,7 +79,7 @@ describe("zenContents", () => {
   });
 
   it("still applies the shared tag filter", () => {
-    const contents = read({ tagFilters: [{ tagId: 7, mode: "all" }] });
+    const contents = read({ tagFilters: [{ tagId: storedRowId(7), mode: "all" }] });
     expect(ids(contents.tasks.rows)).toEqual(["task-second"]);
   });
 
@@ -169,7 +170,7 @@ describe("zenContents — Agentic Tasks", () => {
 });
 
 describe("zenContents — delegation", () => {
-  const delegationWait = (id: string) => n(id, "expectation", { status: "pending", origin: { kind: "delegation_wait", task_id: 1 } });
+  const delegationWait = (id: string) => n(id, "expectation", { status: "pending", origin: { kind: "delegation_wait", task_id: storedRowId(1) } });
   const board = n("root", "domain", {
     children: [
       n("goal-1", "goal", {
@@ -177,7 +178,7 @@ describe("zenContents — delegation", () => {
         children: [
           n("task-mine", "task", { status: "in_progress" }),
           n("task-tulis", "task", {
-            status: "in_progress", delegate: { kind: "person", id: 4 }, children: [delegationWait("wait-person")],
+            status: "in_progress", delegate: { kind: "person", id: storedRowId(4) }, children: [delegationWait("wait-person")],
           }),
         ],
       }),

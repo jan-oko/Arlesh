@@ -137,7 +137,7 @@ fn context_lists_the_verdicts_the_enum_has() {
 /// The six Aspects as the migrations seed them, in seeding order.
 async fn seeded_aspect_titles() -> Vec<String> {
     let pool = helpers::test_pool().await;
-    sqlx::query_scalar("SELECT title FROM domains WHERE subtype = 'aspect' ORDER BY id")
+    sqlx::query_scalar("SELECT title FROM domains WHERE subtype = 'aspect' ORDER BY position")
         .fetch_all(&pool)
         .await
         .expect("aspects should be readable")

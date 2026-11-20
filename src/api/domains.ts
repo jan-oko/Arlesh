@@ -7,11 +7,11 @@ export const DOMAIN_SUBTYPE = {
 } as const;
 
 export interface Domain {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   subtype: string;
-  parent_id: number | null;
+  parent_id: string | null;
   color: string | null;
   status: string | null;
   knowledge_base_directory: string | null;
@@ -23,7 +23,7 @@ export interface CreateDomainRequest {
   title: string;
   description: string | null;
   subtype: string;
-  parent_id: number | null;
+  parent_id: string | null;
   status: string | null;
   knowledge_base_directory: string | null;
 }
@@ -31,7 +31,7 @@ export interface CreateDomainRequest {
 export interface UpdateDomainRequest {
   title?: string;
   description?: string;
-  parent_id?: number;
+  parent_id?: string;
   subtype?: string;
   status?: string;
   knowledge_base_directory?: string;
@@ -47,14 +47,14 @@ export async function createDomain(request: CreateDomainRequest): Promise<Domain
   return invoke<Domain>("create_domain", { request });
 }
 
-export async function updateDomain(id: number, request: UpdateDomainRequest): Promise<Domain> {
+export async function updateDomain(id: string, request: UpdateDomainRequest): Promise<Domain> {
   return invoke<Domain>("update_domain", { id, request });
 }
 
-export async function deleteDomain(id: number): Promise<void> {
+export async function deleteDomain(id: string): Promise<void> {
   return invoke<void>("delete_domain", { id });
 }
 
-export async function duplicateDomain(id: number, targetId: number, position: number): Promise<DuplicatedSubtree<Domain>> {
+export async function duplicateDomain(id: string, targetId: string, position: number): Promise<DuplicatedSubtree<Domain>> {
   return invoke<DuplicatedSubtree<Domain>>("duplicate_domain", { id, targetId, position });
 }

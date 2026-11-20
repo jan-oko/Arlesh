@@ -18,7 +18,7 @@ interface Result {
  */
 function conditionKey(condition: LoadCondition): string | null {
   const ids = (flows: readonly FailedFlow[]): string =>
-    flows.map((flow) => flow.id).sort((a, b) => a - b).join(",");
+    flows.map((flow) => flow.id).sort().join(",");
   if (condition.failedFlows.length === 0 && condition.unrenderableCommitmentFlows.length === 0) {
     return null;
   }

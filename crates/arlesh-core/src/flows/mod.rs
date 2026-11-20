@@ -14,6 +14,7 @@
 //! window reads and writes nothing.
 
 mod compound_readings;
+use crate::nodes::id::RowId;
 pub use rules::cooldown;
 pub mod cycles;
 pub mod done_date;
@@ -56,12 +57,12 @@ use crate::tasks::{
 use error::FlowError;
 use habits::{classify_iterations, expire_unanswered, SlotWindow};
 use model::{
-    ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment,
-    FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType,
-    FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
-    HabitIteration, InstanceType, MaterializedFlow, MissPolicy, SetRecurrenceRequest,
-    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
-    NO_CYCLE,
+    no_cycle, ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow,
+    FlowCommitment, FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId,
+    FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild,
+    HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceType, MaterializedFlow, MissPolicy,
+    SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest,
+    UpdateFlowRequest,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
 use rows::{
@@ -85,7 +86,7 @@ fn now_position() -> i64 {
 /// One `derived_children` row, as the ancestry climb reads it.
 #[derive(sqlx::FromRow)]
 struct AttachmentRow {
-    flow_id: Option<i64>,
+    flow_id: Option<RowId>,
     parent_kind: String,
     parent_key: String,
     window_start_scope_id: Option<DbScopeKey>,
@@ -115,7 +116,7 @@ impl AttachmentRow {
 #[derive(sqlx::FromRow)]
 struct ChildAttachmentRow {
     child_type: String,
-    child_id: i64,
+    child_id: RowId,
     #[sqlx(flatten)]
     attachment: AttachmentRow,
 }
@@ -152,18 +153,17 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
         root_type: &str,
-        root_id: i64,
-    ) -> Result<i64, FlowError> {
-        Ok(sqlx::query(
-            "INSERT INTO flow_instances (flow_id, root_type, root_id, started_at) VALUES (?, ?, ?, ?)",
+        root_id: RowId,
+    ) -> Result<RowId, FlowError> {
+        Ok(sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO flow_instances (flow_id, root_type, root_id, started_at) VALUES (?, ?, ?, ?) RETURNING id",
         )
         .bind(flow_id.0)
         .bind(root_type)
         .bind(root_id)
         .bind(now_position())
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid())
+        .fetch_one(&mut *self.connection)
+        .await?)
     }
 
     /// Creates a new flow.
@@ -172,15 +172,16 @@ impl<'session> FlowOperator<'session> {
             .instance_type
             .map(|it| it.as_str())
             .unwrap_or("task");
-        let id = sqlx::query(
+        let id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO flows
-                (title, instance_type, parent_type, parent_id, target_type, target_id,
+                (id, title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
                  flow_window_part, flow_window_time_start, flow_window_time_end,
                  root_plan_kind, root_plan_start, root_plan_end,
                  verdict_window_n, verdict_window_kind, position, is_private)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(instance_type)
         .bind(stored_reference(&request.parent_type))
@@ -199,9 +200,8 @@ impl<'session> FlowOperator<'session> {
         .bind(&request.verdict_window_kind)
         .bind(now_position())
         .bind(request.is_private)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         self.get(FlowId(id)).await
     }
 
@@ -246,8 +246,8 @@ impl<'session> FlowOperator<'session> {
     pub async fn ids_under(
         &mut self,
         parent: NodeTable,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, FlowError> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, FlowError> {
         Ok(sqlx::query_scalar(
             "SELECT id FROM flows WHERE parent_type = ? AND parent_id = ?
              ORDER BY position ASC, id ASC",
@@ -428,18 +428,18 @@ impl<'session> FlowOperator<'session> {
             &request.parent_type,
             &instance_type,
         )?;
-        let id = sqlx::query(
-            "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position)
-             VALUES (?, ?, ?, ?, ?)",
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO flow_goals (id, flow_id, title, parent_type, parent_id, position)
+             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(request.flow_id)
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
         .bind(now_position())
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
@@ -459,18 +459,18 @@ impl<'session> FlowOperator<'session> {
             &request.parent_type,
             &instance_type,
         )?;
-        let id = sqlx::query(
-            "INSERT INTO flow_tasks (flow_id, title, parent_type, parent_id, position)
-             VALUES (?, ?, ?, ?, ?)",
+        let id = sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO flow_tasks (id, flow_id, title, parent_type, parent_id, position)
+             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(request.flow_id)
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
         .bind(now_position())
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
@@ -513,22 +513,22 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         kind: FlowItemType,
         request: &CreateFlowItemRequest,
-    ) -> Result<i64, FlowError> {
+    ) -> Result<RowId, FlowError> {
         let instance_type = self.get(FlowId(request.flow_id)).await?.instance_type;
         rules::items::require_placement(kind, &request.parent_type, &instance_type)?;
         let table = kind.table();
-        Ok(sqlx::query(&format!(
-            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position)
-             VALUES (?, ?, ?, ?, ?)"
+        Ok(sqlx::query_scalar::<_, RowId>(&format!(
+            "INSERT INTO {table} (id, flow_id, title, parent_type, parent_id, position)
+             VALUES (?, ?, ?, ?, ?, ?) RETURNING id"
         ))
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(request.flow_id)
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id)
         .bind(now_position())
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid())
+        .fetch_one(&mut *self.connection)
+        .await?)
     }
 
     /// Creates a flow **Commitment** item: each occurrence is its own Commitment.
@@ -554,7 +554,7 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// One Commitment item, with its tags.
-    pub async fn commitment_item(&mut self, id: i64) -> Result<FlowCommitment, FlowError> {
+    pub async fn commitment_item(&mut self, id: RowId) -> Result<FlowCommitment, FlowError> {
         let mut item =
             sqlx::query_as::<_, FlowCommitmentRow>("SELECT * FROM flow_commitments WHERE id = ?")
                 .bind(id)
@@ -570,7 +570,7 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// One wait item, with its tags.
-    pub async fn expectation_item(&mut self, id: i64) -> Result<FlowExpectation, FlowError> {
+    pub async fn expectation_item(&mut self, id: RowId) -> Result<FlowExpectation, FlowError> {
         let mut item =
             sqlx::query_as::<_, FlowExpectationRow>("SELECT * FROM flow_expectations WHERE id = ?")
                 .bind(id)
@@ -632,7 +632,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         kind: FlowItemType,
         flow_id: FlowId,
-    ) -> Result<Vec<i64>, FlowError> {
+    ) -> Result<Vec<RowId>, FlowError> {
         let table = kind.table();
         Ok(sqlx::query_scalar(&format!(
             "SELECT id FROM {table} WHERE flow_id = ? ORDER BY position ASC"
@@ -648,7 +648,7 @@ impl<'session> FlowOperator<'session> {
     pub async fn instance_items(
         &mut self,
         flow_id: FlowId,
-    ) -> Result<Vec<(String, i64)>, FlowError> {
+    ) -> Result<Vec<(String, RowId)>, FlowError> {
         let mut items = Vec::new();
         for kind in FlowItemType::ALL {
             for id in self.item_ids(kind, flow_id).await? {
@@ -663,7 +663,7 @@ impl<'session> FlowOperator<'session> {
     pub async fn cycles_by_item(
         &mut self,
         flow_id: FlowId,
-    ) -> Result<HashMap<(String, i64), Vec<FlowItemCycle>>, FlowError> {
+    ) -> Result<HashMap<(String, RowId), Vec<FlowItemCycle>>, FlowError> {
         let rows = sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE flow_id = ? ORDER BY item_type, item_id, position ASC",
         )
@@ -672,7 +672,7 @@ impl<'session> FlowOperator<'session> {
         .await?
         .into_iter()
         .map(FlowItemCycle::from);
-        let mut grouped: HashMap<(String, i64), Vec<FlowItemCycle>> = HashMap::new();
+        let mut grouped: HashMap<(String, RowId), Vec<FlowItemCycle>> = HashMap::new();
         for cycle in rows {
             grouped
                 .entry((cycle.item_type.clone(), cycle.item_id))
@@ -714,7 +714,7 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn update_goal(
         &mut self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, FlowError> {
         Self::refuse_foreign_fields(FlowItemType::FlowGoal, &request)?;
@@ -765,7 +765,7 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn update_task(
         &mut self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, FlowError> {
         Self::refuse_foreign_fields(FlowItemType::FlowTask, &request)?;
@@ -813,15 +813,15 @@ impl<'session> FlowOperator<'session> {
     async fn update_item_place(
         &mut self,
         kind: FlowItemType,
-        id: i64,
+        id: RowId,
         request: &UpdateFlowItemRequest,
     ) -> Result<(), FlowError> {
         let table = kind.table();
         let (flow_id, title, parent_type, parent_id, position, is_private): (
-            i64,
+            RowId,
             String,
             String,
-            i64,
+            RowId,
             i64,
             bool,
         ) = sqlx::query_as(&format!(
@@ -881,7 +881,7 @@ impl<'session> FlowOperator<'session> {
     /// is the entry point.
     async fn update_commitment_item(
         &mut self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowCommitment, FlowError> {
         Self::refuse_foreign_fields(FlowItemType::FlowCommitment, &request)?;
@@ -908,7 +908,7 @@ impl<'session> FlowOperator<'session> {
     /// is the entry point.
     async fn update_expectation_item(
         &mut self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowExpectation, FlowError> {
         Self::refuse_foreign_fields(FlowItemType::FlowExpectation, &request)?;
@@ -954,12 +954,16 @@ impl<'session> FlowOperator<'session> {
     /// # use arlesh_core::flows::{error::FlowError, model::FlowItemType};
     /// # async fn remove(factory: &SessionFactory) -> Result<(), FlowError> {
     /// let mut db = factory.begin().await?;
-    /// db.flows().delete_item(FlowItemType::FlowTask, 1).await?;
+    /// db.flows().delete_item(FlowItemType::FlowTask, arlesh_core::nodes::id::nil_row_id()).await?;
     /// db.commit().await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn delete_item(&mut self, item_type: FlowItemType, id: i64) -> Result<(), FlowError> {
+    pub async fn delete_item(
+        &mut self,
+        item_type: FlowItemType,
+        id: RowId,
+    ) -> Result<(), FlowError> {
         let table = item_type.table();
         self.clear_item_links(item_type, id).await?;
         self.templates()
@@ -980,7 +984,7 @@ impl<'session> FlowOperator<'session> {
     async fn clear_item_links(
         &mut self,
         item_type: FlowItemType,
-        id: i64,
+        id: RowId,
     ) -> Result<(), FlowError> {
         sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
             .bind(item_type.as_str())
@@ -1013,9 +1017,9 @@ impl<'session> FlowOperator<'session> {
     /// ADR-0004 the outermost caller decides the boundary, and every caller runs inside one.
     pub async fn set_cycles(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         cycles: &[FlowCycleInput],
     ) -> Result<(), FlowError> {
         let existing = self.item_cycles(item_type, item_id).await?;
@@ -1082,7 +1086,7 @@ impl<'session> FlowOperator<'session> {
     pub async fn item_cycles(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
     ) -> Result<Vec<FlowItemCycle>, FlowError> {
         Ok(sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
@@ -1102,8 +1106,8 @@ impl<'session> FlowOperator<'session> {
     pub async fn iterations_keyed_on(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
-        cycle_ids: &[i64],
+        item_id: RowId,
+        cycle_ids: &[RowId],
     ) -> Result<i64, FlowError> {
         let mut iterations: std::collections::HashSet<ScopeKey> = std::collections::HashSet::new();
         let related: Vec<String> = sqlx::query_scalar(
@@ -1161,11 +1165,11 @@ impl<'session> FlowOperator<'session> {
     /// Adds an intra-flow dependency (`dependent` waits on `depends_on`); a no-op if it exists.
     pub async fn add_dependency(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), FlowError> {
         if !rules::items::may_depend(dependent_type, depends_on_type) {
             return Err(FlowError::Invalid(
@@ -1193,9 +1197,9 @@ impl<'session> FlowOperator<'session> {
     pub async fn remove_dependency(
         &mut self,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), FlowError> {
         sqlx::query(
             "DELETE FROM flow_dependencies
@@ -1245,27 +1249,26 @@ impl<'session> FlowOperator<'session> {
     async fn open_copied_instance(
         &mut self,
         run: &rules::instance_copies::InstanceCopy,
-    ) -> Result<i64, FlowError> {
-        Ok(sqlx::query(
-            "INSERT INTO flow_instances (flow_id, root_type, root_id, started_at) VALUES (?, ?, ?, ?)",
+    ) -> Result<RowId, FlowError> {
+        Ok(sqlx::query_scalar::<_, RowId>(
+            "INSERT INTO flow_instances (flow_id, root_type, root_id, started_at) VALUES (?, ?, ?, ?) RETURNING id",
         )
         .bind(run.flow_id)
         .bind(&run.root.node_type)
         .bind(run.root.node_id)
         .bind(run.started_at)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid())
+        .fetch_one(&mut *self.connection)
+        .await?)
     }
 
     /// Records a materialised node against a flow instance. Each `(type, id)` pair identifies the
     /// real node, the flow item it came from, and the parent it was created under.
     async fn record_node(
         &mut self,
-        instance_id: i64,
-        node: (&str, i64),
-        source: (&str, i64),
-        parent: (&str, i64),
+        instance_id: RowId,
+        node: (&str, RowId),
+        source: (&str, RowId),
+        parent: (&str, RowId),
     ) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO flow_instance_nodes
@@ -1610,7 +1613,7 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// Every instance one iteration of this Habit holds, as `(item_type, item_id, cycle_id)`: the
-    /// flow root, then each item once per cycle pair it declares (once with [`NO_CYCLE`] when it
+    /// flow root, then each item once per cycle pair it declares (once with [`no_cycle()`] when it
     /// declares none).
     ///
     /// This is the same count SPEC means by "an iteration is resolved when every one of its
@@ -1618,10 +1621,10 @@ impl<'session> FlowOperator<'session> {
     async fn iteration_instance_keys(
         &mut self,
         flow_id: FlowId,
-    ) -> Result<Vec<(String, i64, i64)>, FlowError> {
+    ) -> Result<Vec<(String, RowId, RowId)>, FlowError> {
         let items = self.instance_items(flow_id).await?;
         let cycles = self.cycles_by_item(flow_id).await?;
-        let mut keys = vec![(ROOT_INSTANCE_TYPE.to_string(), flow_id.0, NO_CYCLE)];
+        let mut keys = vec![(ROOT_INSTANCE_TYPE.to_string(), flow_id.0, no_cycle())];
         for (item_type, item_id) in items {
             match cycles.get(&(item_type.clone(), item_id)) {
                 Some(pairs) if !pairs.is_empty() => keys.extend(
@@ -1629,7 +1632,7 @@ impl<'session> FlowOperator<'session> {
                         .iter()
                         .map(|pair| (item_type.clone(), item_id, pair.id)),
                 ),
-                _ => keys.push((item_type, item_id, NO_CYCLE)),
+                _ => keys.push((item_type, item_id, no_cycle())),
             }
         }
         Ok(keys)
@@ -1707,7 +1710,7 @@ impl<'session> FlowOperator<'session> {
     ///
     /// `instance` names the occurrence down to its cycle pair, because an item with several pairs
     /// draws one node per pair in the same iteration: completing the morning one leaves the
-    /// evening one to do. [`NO_CYCLE`] is the occurrence of an item that declares no pairs, and
+    /// evening one to do. [`no_cycle()`] is the occurrence of an item that declares no pairs, and
     /// the flow root's.
     pub async fn set_item_status(
         &mut self,
@@ -1759,9 +1762,9 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// One cycle pair by id, or `None` when the id names none — including [`NO_CYCLE`], the
+    /// One cycle pair by id, or `None` when the id names none — including [`no_cycle()`], the
     /// sentinel an occurrence with no pair of its own carries.
-    pub async fn cycle(&mut self, cycle_id: i64) -> Result<Option<FlowItemCycle>, FlowError> {
+    pub async fn cycle(&mut self, cycle_id: RowId) -> Result<Option<FlowItemCycle>, FlowError> {
         Ok(
             sqlx::query_as::<_, FlowItemCycleRow>("SELECT * FROM flow_item_cycles WHERE id = ?")
                 .bind(cycle_id)
@@ -1846,7 +1849,7 @@ impl<'session> FlowOperator<'session> {
     pub async fn child_attachment(
         &mut self,
         child_type: &str,
-        child_id: i64,
+        child_id: RowId,
     ) -> Result<Option<ChildAttachment>, sqlx::Error> {
         let row: Option<AttachmentRow> = sqlx::query_as(
             "SELECT flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id
@@ -1863,7 +1866,7 @@ impl<'session> FlowOperator<'session> {
     /// [`Self::child_attachment`] reads one child at a time, for a whole board.
     pub async fn child_attachments(
         &mut self,
-    ) -> Result<Vec<(String, i64, ChildAttachment)>, sqlx::Error> {
+    ) -> Result<Vec<(String, RowId, ChildAttachment)>, sqlx::Error> {
         let rows: Vec<ChildAttachmentRow> = sqlx::query_as(
             "SELECT child_type, child_id, flow_id, parent_kind, parent_key, window_start_scope_id,
                     window_end_scope_id
@@ -1889,7 +1892,7 @@ impl<'session> FlowOperator<'session> {
         parent: &OccurrenceKey,
         window: Option<&TimeScope>,
         child_type: &str,
-        child_id: i64,
+        child_id: RowId,
     ) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO derived_children
@@ -1917,7 +1920,7 @@ impl<'session> FlowOperator<'session> {
     pub async fn detach_instance_child(
         &mut self,
         child_type: &str,
-        child_id: i64,
+        child_id: RowId,
     ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM derived_children WHERE child_type = ? AND child_id = ?")
             .bind(child_type)
@@ -1986,15 +1989,16 @@ impl<'session> FlowOperator<'session> {
             Some(landing) => (landing.parent_type, landing.parent_id, landing.position),
             None => (flow.parent_type.clone(), flow.parent_id, now_position()),
         };
-        let new_id = sqlx::query(
+        let new_id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO flows
-                (title, instance_type, parent_type, parent_id, target_type, target_id,
+                (id, title, instance_type, parent_type, parent_id, target_type, target_id,
                  flow_duration_n, flow_duration_kind,
                  flow_window_part, flow_window_time_start, flow_window_time_end,
                  root_plan_kind, root_plan_start, root_plan_end,
                  verdict_window_n, verdict_window_kind, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(crate::nodes::new_id::new_row_id())
         .bind(&flow.title)
         .bind(&flow.instance_type)
         .bind(stored_reference(&parent_type))
@@ -2016,16 +2020,15 @@ impl<'session> FlowOperator<'session> {
         .bind(flow.verdict_window_n)
         .bind(&flow.verdict_window_kind)
         .bind(position)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
 
         // Pass 1: clone every item under the new flow (temporary parent), recording old->new ids.
-        let mut placed: Vec<(FlowItemType, i64, String, i64)> = Vec::new();
-        let mut items: HashMap<(FlowItemType, i64), i64> = HashMap::new();
+        let mut placed: Vec<(FlowItemType, RowId, String, RowId)> = Vec::new();
+        let mut items: HashMap<(FlowItemType, RowId), RowId> = HashMap::new();
         for kind in FlowItemType::ALL {
             let table = kind.table();
-            let rows: Vec<(i64, String, i64)> = sqlx::query_as(&format!(
+            let rows: Vec<(RowId, String, RowId)> = sqlx::query_as(&format!(
                 "SELECT id, parent_type, parent_id FROM {table} WHERE flow_id = ? ORDER BY position"
             ))
             .bind(flow_id.0)
@@ -2049,7 +2052,7 @@ impl<'session> FlowOperator<'session> {
             }
         }
         // Item-id remap for parent/cycle/dependency references.
-        let map_item = |item_type: &str, item_id: i64| -> Result<i64, FlowError> {
+        let map_item = |item_type: &str, item_id: RowId| -> Result<RowId, FlowError> {
             FlowItemType::from_db(item_type)
                 .and_then(|kind| items.get(&(kind, item_id)).copied())
                 .ok_or_else(|| {
@@ -2138,8 +2141,8 @@ impl<'session> FlowOperator<'session> {
     async fn copy_item_privacy(
         &mut self,
         item_type: FlowItemType,
-        from: i64,
-        to: i64,
+        from: RowId,
+        to: RowId,
     ) -> Result<(), FlowError> {
         let table = item_type.table();
         sqlx::query(&format!(
@@ -2179,10 +2182,10 @@ impl<'session> FlowOperator<'session> {
     pub async fn item_flow_id(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
-    ) -> Result<i64, FlowError> {
+        item_id: RowId,
+    ) -> Result<RowId, FlowError> {
         let table = item_type.table();
-        sqlx::query_scalar::<_, i64>(&format!("SELECT flow_id FROM {table} WHERE id = ?"))
+        sqlx::query_scalar::<_, RowId>(&format!("SELECT flow_id FROM {table} WHERE id = ?"))
             .bind(item_id)
             .fetch_optional(&mut *self.connection)
             .await?
@@ -2206,11 +2209,11 @@ impl<'session> FlowOperator<'session> {
     async fn clone_item_subtree(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         parent_type: &str,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
-    ) -> Result<i64, FlowError> {
+    ) -> Result<RowId, FlowError> {
         let flow_id = self.item_flow_id(item_type, item_id).await?;
         let new_root = self
             .clone_item_row(
@@ -2227,8 +2230,8 @@ impl<'session> FlowOperator<'session> {
 
         // Breadth-first, like `duplicate::duplicate_subtree`: a child is cloned only once its own
         // parent's new id exists, so every copy is attached from the start rather than repointed.
-        let mut copied: Vec<(FlowItemType, i64, i64)> = vec![(item_type, item_id, new_root)];
-        let mut queue: VecDeque<(FlowItemType, i64, i64)> = VecDeque::new();
+        let mut copied: Vec<(FlowItemType, RowId, RowId)> = vec![(item_type, item_id, new_root)];
+        let mut queue: VecDeque<(FlowItemType, RowId, RowId)> = VecDeque::new();
         queue.push_back((item_type, item_id, new_root));
         while let Some((kind, old_id, new_id)) = queue.pop_front() {
             for (child_kind, child_id) in self.item_children(kind, old_id).await? {
@@ -2270,9 +2273,9 @@ impl<'session> FlowOperator<'session> {
     async fn clone_item_row(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         landing: ItemLanding<'_>,
-    ) -> Result<i64, FlowError> {
+    ) -> Result<RowId, FlowError> {
         let table = item_type.table();
         // A Commitment's and a wait's own fields live on the row; a Task's travel through
         // `TemplateOperator::copy`.
@@ -2285,21 +2288,21 @@ impl<'session> FlowOperator<'session> {
         };
         // One INSERT ... SELECT so every column the source row carries is read and written in the
         // same statement, and a column added later cannot be silently dropped by the copy.
-        let new_id = sqlx::query(&format!(
-            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position, is_private{own})
-             SELECT COALESCE(?, flow_id), title, ?, ?, COALESCE(?, position),
+        let new_id = sqlx::query_scalar::<_, RowId>(&format!(
+            "INSERT INTO {table} (id, flow_id, title, parent_type, parent_id, position, is_private{own})
+             SELECT ?, COALESCE(?, flow_id), title, ?, ?, COALESCE(?, position),
                     CASE WHEN ? THEN is_private ELSE 0 END{own}
-             FROM {table} WHERE id = ?"
+             FROM {table} WHERE id = ? RETURNING id"
         ))
+        .bind(crate::nodes::new_id::new_row_id())
         .bind(landing.flow_id)
         .bind(landing.parent.0)
         .bind(landing.parent.1)
         .bind(landing.position)
         .bind(landing.privacy)
         .bind(item_id)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         Ok(new_id)
     }
 
@@ -2308,12 +2311,12 @@ impl<'session> FlowOperator<'session> {
     async fn item_children(
         &mut self,
         item_type: FlowItemType,
-        item_id: i64,
-    ) -> Result<Vec<(FlowItemType, i64)>, FlowError> {
+        item_id: RowId,
+    ) -> Result<Vec<(FlowItemType, RowId)>, FlowError> {
         let mut children = Vec::new();
         for kind in FlowItemType::ALL {
             let table = kind.table();
-            let ids = sqlx::query_scalar::<_, i64>(&format!(
+            let ids = sqlx::query_scalar::<_, RowId>(&format!(
                 "SELECT id FROM {table} WHERE parent_type = ? AND parent_id = ? ORDER BY position ASC"
             ))
             .bind(item_type.as_str())
@@ -2328,10 +2331,10 @@ impl<'session> FlowOperator<'session> {
     /// Copies an item's (Cycle Scope, Cycle Plan) pairs onto its clone, in the same order.
     async fn copy_item_cycles(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        old_id: i64,
-        new_id: i64,
+        old_id: RowId,
+        new_id: RowId,
     ) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO flow_item_cycles
@@ -2355,13 +2358,13 @@ impl<'session> FlowOperator<'session> {
     /// to the set, because each of those is outgoing for exactly one of its two ends.
     async fn copy_item_dependencies(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        old_id: i64,
-        new_id: i64,
-        items: &HashMap<(FlowItemType, i64), i64>,
+        old_id: RowId,
+        new_id: RowId,
+        items: &HashMap<(FlowItemType, RowId), RowId>,
     ) -> Result<(), FlowError> {
-        let edges: Vec<(String, i64)> = sqlx::query_as(
+        let edges: Vec<(String, RowId)> = sqlx::query_as(
             "SELECT depends_on_type, depends_on_id FROM flow_dependencies
              WHERE dependent_type = ? AND dependent_id = ?",
         )
@@ -2396,7 +2399,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<occurrences::CompletionInputs, FlowError> {
-        let keys: Vec<(nodes::key::TemplateItem, i64)> = self
+        let keys: Vec<(nodes::key::TemplateItem, RowId)> = self
             .iteration_instance_keys(flow_id)
             .await?
             .into_iter()
@@ -2493,8 +2496,8 @@ impl<'session> FlowOperator<'session> {
 async fn template_children<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
-    parent_id: i64,
-) -> Result<Vec<(String, i64)>, FlowError> {
+    parent_id: RowId,
+) -> Result<Vec<(String, RowId)>, FlowError> {
     let mut children = Vec::new();
     let tasks = db.tasks().child_ids(parent_type, parent_id).await?;
     children.extend(tasks.into_iter().map(|id| ("task".to_string(), id)));
@@ -2529,7 +2532,7 @@ enum ConvertedFields {
 async fn converted_node(
     db: &mut Db<Transactional>,
     kind: &str,
-    id: i64,
+    id: RowId,
 ) -> Result<(FlowItemType, String, Option<TimeScope>, ConvertedFields), FlowError> {
     Ok(match kind {
         "goal" => {
@@ -2579,7 +2582,7 @@ async fn converted_node(
 /// template's (`window_start`); otherwise its first check is its window's start.
 async fn write_converted_fields(
     db: &mut Db<Transactional>,
-    item: (FlowItemType, i64),
+    item: (FlowItemType, RowId),
     fields: ConvertedFields,
     window_start: Option<NaiveDate>,
 ) -> Result<(), FlowError> {
@@ -2652,7 +2655,7 @@ pub async fn delete_flow(db: &mut Db<Transactional>, id: FlowId) -> Result<(), F
 #[tracing::instrument(skip(db))]
 pub async fn update_flow_goal(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowGoal, FlowError> {
     let template = request.template.clone();
@@ -2673,7 +2676,7 @@ pub async fn update_flow_goal(
 #[tracing::instrument(skip(db))]
 pub async fn update_flow_task(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowTask, FlowError> {
     let template = request.template.clone();
@@ -2702,7 +2705,7 @@ pub async fn update_flow_task(
 #[tracing::instrument(skip(db))]
 pub async fn update_flow_commitment(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowCommitment, FlowError> {
     let template = request.template.clone();
@@ -2719,7 +2722,7 @@ pub async fn update_flow_commitment(
 #[tracing::instrument(skip(db))]
 pub async fn update_flow_expectation(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowExpectation, FlowError> {
     let template = request.template.clone();
@@ -2789,7 +2792,7 @@ pub(crate) async fn occurrence_window<M: SessionMode>(
     let Some((iteration, window_start)) = iteration_window(flow, key.iteration)? else {
         return Ok(None);
     };
-    if key.cycle == NO_CYCLE {
+    if key.cycle == no_cycle() {
         return Ok(Some(iteration));
     }
     let pair = db.flows().cycle(key.cycle).await?;
@@ -2882,6 +2885,7 @@ pub async fn create_instance_child(
         _ => {
             db.infos()
                 .create(CreateInfoRequest {
+                    id: None,
                     body: title,
                     details: None,
                     parent_type,
@@ -3061,7 +3065,7 @@ pub async fn duplicate_flow(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
 ) -> Result<Flow, FlowError> {
     let source = db.flows().get(flow_id).await?;
@@ -3110,7 +3114,7 @@ pub async fn duplicate_flow_with_subtree(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     copies: &rules::targets::CopiedNodes,
 ) -> Result<Flow, FlowError> {
     let source = db.flows().get(flow_id).await?;
@@ -3180,11 +3184,11 @@ pub async fn copy_instance_links(
 pub async fn duplicate_flow_item(
     db: &mut Db<Transactional>,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
-) -> Result<i64, FlowError> {
+) -> Result<RowId, FlowError> {
     let flow_id = db.flows().item_flow_id(item_type, item_id).await?;
     if destination_flow_id(db, parent_type, parent_id).await? != flow_id {
         return Err(FlowError::Invalid(
@@ -3207,8 +3211,8 @@ pub async fn duplicate_flow_item(
 async fn destination_flow_id(
     db: &mut Db<Transactional>,
     parent_type: &str,
-    parent_id: i64,
-) -> Result<i64, FlowError> {
+    parent_id: RowId,
+) -> Result<RowId, FlowError> {
     match parent_type {
         "flow" => Ok(db.flows().get(FlowId(parent_id)).await?.id),
         other => match FlowItemType::from_db(other) {
@@ -3346,7 +3350,7 @@ pub async fn valid_targets<M: SessionMode>(
 pub async fn convert_to_flow(
     db: &mut Db<Transactional>,
     root_type: &str,
-    root_id: i64,
+    root_id: RowId,
     keep_dependencies: bool,
     map_scopes: bool,
 ) -> Result<Flow, FlowError> {
@@ -3465,8 +3469,8 @@ pub async fn convert_to_flow(
 
     // BFS the subtree (parents before children), tracking each node's real parent.
     let root_key = (root_type.to_string(), root_id);
-    let mut order: Vec<(String, i64)> = template_children(db, root_type, root_id).await?;
-    let mut parent_of: HashMap<(String, i64), (String, i64)> = HashMap::new();
+    let mut order: Vec<(String, RowId)> = template_children(db, root_type, root_id).await?;
+    let mut parent_of: HashMap<(String, RowId), (String, RowId)> = HashMap::new();
     for child in &order {
         parent_of.insert(child.clone(), root_key.clone());
     }
@@ -3487,7 +3491,7 @@ pub async fn convert_to_flow(
     }
 
     // Create a flow item per subtree node, mirroring the hierarchy.
-    let mut item_map: HashMap<(String, i64), (FlowItemType, i64)> = HashMap::new();
+    let mut item_map: HashMap<(String, RowId), (FlowItemType, RowId)> = HashMap::new();
     for (kind, id) in &order {
         let (item_type, item_title, node_ts, own_fields) = converted_node(db, kind, *id).await?;
         let (parent_item_type, parent_item_id) = {
@@ -3500,6 +3504,7 @@ pub async fn convert_to_flow(
             }
         };
         let item_request = CreateFlowItemRequest {
+            id: None,
             flow_id,
             title: item_title,
             parent_type: parent_item_type,
@@ -3613,10 +3618,10 @@ async fn load_template<M: SessionMode>(
 
     let item = |kind: FlowItemType,
                 (id, title, parent_type, parent_id, position, is_private): (
-        i64,
+        RowId,
         &String,
         &String,
-        i64,
+        RowId,
         i64,
         bool,
     )| TemplateItem {
@@ -3709,11 +3714,11 @@ async fn write_plan(
     flow_id: FlowId,
     request: &StartFlowRequest,
     plan: &RenderedPlan,
-    fields: &HashMap<(String, i64), TemplateFields>,
+    fields: &HashMap<(String, RowId), TemplateFields>,
 ) -> Result<MaterializedFlow, FlowError> {
     let dangling = || FlowError::Invalid("rendered plan references an unwritten node".to_string());
-    let mut written: Vec<(String, i64)> = Vec::with_capacity(plan.nodes.len());
-    let mut opened: Option<i64> = None;
+    let mut written: Vec<(String, RowId)> = Vec::with_capacity(plan.nodes.len());
+    let mut opened: Option<RowId> = None;
 
     for node in &plan.nodes {
         // The root's two parent spellings differ: `create_*` takes the kind-mapped target type,
@@ -3734,6 +3739,7 @@ async fn write_plan(
                 let goal = create_goal(
                     db,
                     CreateGoalRequest {
+                        id: None,
                         title: node.title.clone(),
                         parent_type: create_parent.0,
                         parent_id: create_parent.1.into(),
@@ -3749,6 +3755,7 @@ async fn write_plan(
                 let task = create_task(
                     db,
                     CreateTaskRequest {
+                        id: None,
                         title: node.title.clone(),
                         parent_type: create_parent.0,
                         parent_id: create_parent.1.into(),
@@ -3827,6 +3834,7 @@ async fn write_plan(
                 let commitment = create_commitment(
                     db,
                     CreateCommitmentRequest {
+                        id: None,
                         title: node.title.clone(),
                         parent_type: create_parent.0,
                         parent_id: create_parent.1.into(),
@@ -3914,7 +3922,7 @@ pub async fn start(
     let cycles = template.planned_cycles(flow_id.0);
     let scopes = resolve_scopes(&flow, request.anchor_date, &cycles)?;
     let plan = render(&flow, &request.title, &template, &scopes);
-    let mut fields: HashMap<(String, i64), TemplateFields> = HashMap::new();
+    let mut fields: HashMap<(String, RowId), TemplateFields> = HashMap::new();
     fields.insert(("flow".to_string(), flow_id.0), flow.template.clone());
     for goal in db.flows().list_goals(flow_id).await? {
         fields.insert(("flow_goal".to_string(), goal.id), goal.template);
@@ -3938,7 +3946,7 @@ pub async fn start(
 async fn apply_template_fields(
     db: &mut Db<Transactional>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
     fields: &TemplateFields,
 ) -> Result<(), FlowError> {
     match node_type {
@@ -4002,7 +4010,7 @@ async fn apply_template_fields(
 async fn set_node_private(
     db: &mut Db<Transactional>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
 ) -> Result<(), FlowError> {
     match node_type {
         "goal" => db.goals().set_private(GoalId(node_id), true).await?,

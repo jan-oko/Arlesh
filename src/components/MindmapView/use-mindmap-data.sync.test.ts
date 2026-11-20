@@ -13,6 +13,7 @@ import { HEAD_CHECK_MS, IDLE_HEAD_CHECK_MS } from "@/stores/watch-board-changes"
 import { currentBoard } from "@/test/current-board";
 import { indexBoard } from "@/utils/board-changes";
 import { useMindmapData } from "./use-mindmap-data";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -41,7 +42,7 @@ const EPOCH = "run1";
 // One Aspect, a Goal and a Task to rename.
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
-    id: 1, title: "Domain", description: null, subtype: "aspect",
+    id: storedRowId(1), title: "Domain", description: null, subtype: "aspect",
     parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
@@ -49,7 +50,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
-    id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Goal", parent_type: "domain", parent_id: storedRowId(1),
     status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -57,22 +58,22 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 1, title: "Task", parent_type: "goal", parent_id: 1,
+    id: storedRowId(1), title: "Task", parent_type: "goal", parent_id: storedRowId(1),
     status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
 
 const ROWS = {
-  domains: [mkDomain({ id: 1, subtype: "aspect", title: "Work" })],
-  goals: [mkGoal({ id: 1, parent_type: "domain", parent_id: 1 })],
-  tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code" })],
+  domains: [mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" })],
+  goals: [mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) })],
+  tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: "Write code" })],
 };
 
 function emptyBoard(taskTitle = "Write code"): MindmapLoad {
   return {
     ...ROWS,
-    tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: taskTitle })],
+    tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: taskTitle })],
     commitments: [], expectations: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_commitments: [], flow_expectations: [], flow_cycles: [],
     flow_dependencies: [], block_reasons: [], task_dependencies: [], flow_instance_nodes: [],
@@ -105,7 +106,7 @@ function fakeServer(published = true) {
       return {
         epoch: server.epoch, seq: server.seq, revision: server.revision, now: "2026-11-13T12:00:00",
         hash: hash ?? indexBoard(emptyBoard(title)).digests.total,
-        changes: { tasks: { set: [["task-1", mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })]], del: [] } },
+        changes: { tasks: { set: [[`task-${storedRowId(1)}`, mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title })]], del: [] } },
       };
     },
   };
@@ -166,7 +167,7 @@ describe("a write and the event it brings about", () => {
     const before = server.boardFetches;
 
     let write: Promise<void> = Promise.resolve();
-    act(() => { write = hook?.result.current.renameNode("task-1", "task", "Renamed") ?? Promise.resolve(); });
+    act(() => { write = hook?.result.current.renameNode(`task-${storedRowId(1)}`, "task", "Renamed") ?? Promise.resolve(); });
     await act(async () => { await write; });
     server.fence = { epoch: EPOCH, revision: 1 };
     let settled = false;

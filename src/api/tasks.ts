@@ -31,7 +31,7 @@ export const TASK_AGENTIC = {
 /** A Task delegated to a Person, by the Person's id. */
 export interface PersonDelegate {
   kind: "person";
-  id: number;
+  id: string;
 }
 
 /** Who holds a delegated Task: a Person. (The Agent delegate was removed on 2026-10-01 — an agent
@@ -61,7 +61,7 @@ export type TaskStatus =
  */
 export interface AsyncTemplate {
   title: string;
-  tag_ids: number[];
+  tag_ids: string[];
   time_scope?: DurationSpec;
   check_every?: DurationSpec;
 }
@@ -131,7 +131,7 @@ export interface Task {
   // Overdue, none under Archive or while backlogged.
   due_scope?: TimeScope | null;
   archival: TaskArchival;
-  tag_ids: number[];
+  tag_ids: string[];
   position: number;
   is_private: boolean;
   // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
@@ -252,9 +252,9 @@ export async function deleteTask(id: RowId): Promise<void> {
 }
 
 export async function duplicateTask(
-  id: number,
+  id: string,
   targetType: string,
-  targetId: number,
+  targetId: string,
   position: number,
 ): Promise<DuplicatedSubtree<Task>> {
   return invoke<DuplicatedSubtree<Task>>("duplicate_task", { id, targetType, targetId, position });
@@ -276,7 +276,7 @@ export function backlogNeedsPlanCleared(error: unknown): boolean {
 
 export interface ViolatingDescendant {
   node_type: string;
-  node_id: number;
+  node_id: string;
 }
 
 export interface ReparentConflicts {
@@ -290,9 +290,9 @@ export interface ReparentConflicts {
  */
 export async function reparentScopeConflicts(
   nodeType: string,
-  nodeId: number,
+  nodeId: string,
   newParentType: string,
-  newParentId: number,
+  newParentId: string,
 ): Promise<ReparentConflicts> {
   return invoke<ReparentConflicts>("reparent_scope_conflicts", {
     nodeType,
@@ -308,7 +308,7 @@ export async function reparentScopeConflicts(
  */
 export async function scopeContainmentConflicts(
   nodeType: string,
-  nodeId: number,
+  nodeId: string,
   timeScope: TimeScope,
 ): Promise<ViolatingDescendant[]> {
   return invoke<ViolatingDescendant[]>("scope_containment_conflicts", {
@@ -321,14 +321,14 @@ export async function scopeContainmentConflicts(
 export type Dependency =
   | { type: "task"; id: RowId }
   | { type: "goal"; id: RowId }
-  | { type: "expectation"; id: number };
+  | { type: "expectation"; id: string };
 
 export interface TaskWithBlockers {
   task: Task;
   block_reasons: string[];
 }
 
-export async function getTask(id: number): Promise<TaskWithBlockers> {
+export async function getTask(id: string): Promise<TaskWithBlockers> {
   return invoke<TaskWithBlockers>("get_task", { id });
 }
 
@@ -382,10 +382,10 @@ export async function removeTaskDependency(taskId: RowId, dependency: Dependency
   return invoke<void>("remove_task_dependency", { taskId, dependency });
 }
 
-export async function addTagToTask(taskId: RowId, tagId: number): Promise<void> {
+export async function addTagToTask(taskId: RowId, tagId: string): Promise<void> {
   return invoke<void>("add_tag_to_task", { taskId, tagId });
 }
 
-export async function removeTagFromTask(taskId: RowId, tagId: number): Promise<void> {
+export async function removeTagFromTask(taskId: RowId, tagId: string): Promise<void> {
   return invoke<void>("remove_tag_from_task", { taskId, tagId });
 }

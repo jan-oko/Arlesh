@@ -10,6 +10,7 @@
 //! subtree remaps a target it carried along, as it remaps parent links, and leaves one outside the
 //! copy where it was.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use crate::access::model::NodeTable;
@@ -27,24 +28,24 @@ pub fn holds_instances(node_type: &str) -> bool {
 /// find the same copy.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CopiedNodes {
-    copies: HashMap<(NodeTable, i64), i64>,
+    copies: HashMap<(NodeTable, RowId), RowId>,
 }
 
 impl CopiedNodes {
     /// Records that `original` in `table` was copied as `copy`.
-    pub fn record(&mut self, table: NodeTable, original: i64, copy: i64) {
+    pub fn record(&mut self, table: NodeTable, original: RowId, copy: RowId) {
         self.copies.insert((table, original), copy);
     }
 
     /// The copy made of the node a reference names, if this copy carried it. `node_type` is
     /// spelled as any reference column spells it.
-    pub fn copy_of(&self, node_type: &str, original: i64) -> Option<i64> {
+    pub fn copy_of(&self, node_type: &str, original: RowId) -> Option<RowId> {
         let table = NodeTable::from_reference(node_type)?;
         self.copies.get(&(table, original)).copied()
     }
 
     /// Whether the node a reference names was carried by this copy.
-    pub fn contains(&self, node_type: &str, original: i64) -> bool {
+    pub fn contains(&self, node_type: &str, original: RowId) -> bool {
         self.copy_of(node_type, original).is_some()
     }
 }
@@ -66,9 +67,9 @@ impl CopiedNodes {
 /// Only the id changes. The stored type spelling stays, since a copy keeps its original's subtype.
 pub fn copied_target_id(
     target_type: Option<&str>,
-    target_id: Option<i64>,
+    target_id: Option<RowId>,
     copies: &CopiedNodes,
-) -> Option<i64> {
+) -> Option<RowId> {
     copies.copy_of(target_type?, target_id?)
 }
 

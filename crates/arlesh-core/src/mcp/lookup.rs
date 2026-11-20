@@ -5,6 +5,7 @@
 //! A row id needs none of that and is taken at its word; the tool's own access check follows
 //! either way.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use rmcp::model::{CallToolResult, ErrorData};
 
@@ -162,15 +163,10 @@ impl Board {
     }
 }
 
-/// The row id `id` names, for an entity that is not a node and has no full id — a Person: the
-/// id's text in decimal, and `None` for anything else.
-pub(super) fn plain_row(id: &NodeIdParam) -> Option<i64> {
-    let text = id.text();
-    let text = text.trim();
-    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    text.parse().ok()
+/// The id `id` names, for an entity that is not a node and has no full id — a Person: the id's
+/// text read as a UUID, and `None` for anything else.
+pub(super) fn plain_row(id: &NodeIdParam) -> Option<RowId> {
+    id.text().trim().parse().ok()
 }
 
 /// The visible node of kind `node_type` (any kind, when `None`) that `text` names, refused unless
@@ -203,7 +199,7 @@ pub(super) async fn stored_row(
     id: &NodeIdParam,
     node_type: &str,
     now: NaiveDateTime,
-) -> Result<i64, Answer> {
+) -> Result<RowId, Answer> {
     let text = id.text();
     // Only names are resolved here, and a block changes no name.
     let board = match Board::read_with(db, now, Blocking::default(), map.clone()).await {

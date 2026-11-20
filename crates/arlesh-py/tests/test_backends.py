@@ -10,6 +10,9 @@ import arlesh
 import pytest
 from arlesh.models import CreateDomainRequest, DomainSubtype
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 
 async def test_an_arlesh_over_a_sqlite_backend_is_what_open_returns(database_path: Path) -> None:
     async with arlesh.Arlesh(backend=arlesh.SqliteBackend(database_path, client="pytest")) as board:
@@ -37,7 +40,7 @@ async def test_a_sqlite_backend_without_a_client_is_read_only(database_path: Pat
         assert board.client is None
         with pytest.raises(arlesh.InvalidRequest):
             await board.create_domain(
-                CreateDomainRequest(title="x", subtype=DomainSubtype.domain, parent_id=1)
+                CreateDomainRequest(title="x", subtype=DomainSubtype.domain, parent_id=ROOT_ASPECT)
             )
 
 

@@ -45,7 +45,7 @@ async def db(database_path: Path) -> AsyncIterator[arlesh.Database]:
 
 
 @pytest.fixture
-async def domain_id(db: arlesh.Database) -> int:
+async def domain_id(db: arlesh.Database) -> str:
     """A Domain under the first seeded Aspect, for nodes to hang under."""
     aspects = await db.list_domains(DomainSubtype.aspect)
     domain = await db.create_domain(

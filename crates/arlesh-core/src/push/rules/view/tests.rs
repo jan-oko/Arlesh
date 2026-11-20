@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::mindmap::rules::changes::diff;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::push::rules::tests::{asking, check, lifecycle, todo};
 
 fn board(tasks: Vec<Task>, lifecycles: Vec<ItemLifecycle>) -> MindmapLoad {
@@ -31,7 +33,7 @@ fn a_view_of_the_board_as_json_is_the_view_of_the_board() {
             lifecycle(3, false, Archival::Live),
         ],
     );
-    load.facts.insert("task-1".to_string(), asking(7));
+    load.facts.insert(tkey("task", 1), asking(7));
 
     let from_json = BoardView::from_json(&json_of(&load)).unwrap();
 
@@ -52,7 +54,7 @@ fn applying_the_diff_of_two_boards_gives_the_view_of_the_second() {
             lifecycle(3, false, Archival::Live),
         ],
     );
-    after.facts.insert("task-1".to_string(), asking(5));
+    after.facts.insert(tkey("task", 1), asking(5));
 
     let mut view = BoardView::from_load(&before);
     view.apply(&changes_json(&before, &after)).unwrap();
@@ -63,7 +65,7 @@ fn applying_the_diff_of_two_boards_gives_the_view_of_the_second() {
 #[test]
 fn a_question_that_closes_is_forgotten_by_the_view() {
     let mut asked = board(vec![todo(1)], vec![]);
-    asked.facts.insert("task-1".to_string(), asking(5));
+    asked.facts.insert(tkey("task", 1), asking(5));
     let answered = board(vec![todo(1)], vec![]);
 
     let mut view = BoardView::from_load(&asked);
@@ -75,17 +77,17 @@ fn a_question_that_closes_is_forgotten_by_the_view() {
 #[test]
 fn the_capacity_lock_is_read_off_the_blocks_it_derives() {
     let locked = serde_json::json!({
-        "block_reasons": { "set": [["task-1", [{
-            "owner_type": "task", "owner_id": 1, "reason": "Agents at capacity",
+        "block_reasons": { "set": [[&tkey("task", 1), [{
+            "owner_type": "task", "owner_id": tid(1), "reason": "Agents at capacity",
             "position": 0, "derived": "agent_capacity"
         }]]], "del": [] }
     });
     let written = serde_json::json!({
-        "block_reasons": { "set": [["task-1", [{
-            "owner_type": "task", "owner_id": 1, "reason": "waiting", "position": 0
+        "block_reasons": { "set": [[&tkey("task", 1), [{
+            "owner_type": "task", "owner_id": tid(1), "reason": "waiting", "position": 0
         }]]], "del": [] }
     });
-    let lifted = serde_json::json!({ "block_reasons": { "set": [], "del": ["task-1"] } });
+    let lifted = serde_json::json!({ "block_reasons": { "set": [], "del": [tkey("task", 1)] } });
     let mut view = BoardView::default();
 
     view.apply(&locked).unwrap();
@@ -104,7 +106,7 @@ fn the_capacity_lock_is_read_off_the_blocks_it_derives() {
 fn an_entry_that_is_not_what_it_says_leaves_the_view_as_it_was() {
     let mut view = BoardView::from_load(&board(vec![todo(1)], vec![]));
     let before = view.clone();
-    let bad = serde_json::json!({ "tasks": { "set": [["task-2", { "id": "nonsense" }]], "del": ["task-1"] } });
+    let bad = serde_json::json!({ "tasks": { "set": [[&tkey("task", 2), { "id": "nonsense" }]], "del": [tkey("task", 1)] } });
 
     assert!(view.apply(&bad).is_err());
     assert_eq!(view, before);

@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `expectations` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
@@ -41,7 +42,7 @@ impl WaitsPort for HttpBackend {
             .await
     }
 
-    async fn complete_expectation_check(&self, id: i64) -> Result<Expectation, WireError> {
+    async fn complete_expectation_check(&self, id: RowId) -> Result<Expectation, WireError> {
         self.write(Call::new(
             Method::POST,
             format!("/waits/{}/check/complete", segment(&id)),
@@ -51,7 +52,7 @@ impl WaitsPort for HttpBackend {
 
     async fn update_spawned_wait(
         &self,
-        task_id: i64,
+        task_id: RowId,
         request: UpdateSpawnedWaitRequest,
     ) -> Result<SpawnedWait, WireError> {
         self.write(
@@ -64,7 +65,7 @@ impl WaitsPort for HttpBackend {
         .await
     }
 
-    async fn complete_spawned_wait_check(&self, task_id: i64) -> Result<(), WireError> {
+    async fn complete_spawned_wait_check(&self, task_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::POST,
             format!("/tasks/{}/spawned-wait/check/complete", segment(&task_id)),
@@ -75,7 +76,7 @@ impl WaitsPort for HttpBackend {
     async fn add_tag_to_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         self.write(Call::new(
             Method::PUT,
@@ -91,7 +92,7 @@ impl WaitsPort for HttpBackend {
     async fn remove_tag_from_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
@@ -114,7 +115,7 @@ impl WaitsPort for HttpBackend {
 
     async fn reopen_expectation_check(
         &self,
-        id: i64,
+        id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<Expectation, WireError> {
         self.write(
@@ -129,7 +130,7 @@ impl WaitsPort for HttpBackend {
 
     async fn reopen_spawned_wait_check(
         &self,
-        task_id: i64,
+        task_id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<(), WireError> {
         self.write(

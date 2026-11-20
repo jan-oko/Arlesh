@@ -45,7 +45,7 @@ class FlowsRouter(BoardRouter):
         self.post("/{id}/duplicate", status_code=201)(self._duplicate)
         self.post("/{id}/dependencies", status_code=204)(self._add_dependency)
 
-    async def _get(self, id: int) -> Flow:
+    async def _get(self, id: str) -> Flow:
         """One Flow or Habit template."""
         return await self._reader.get_flow(id)
 
@@ -53,45 +53,45 @@ class FlowsRouter(BoardRouter):
         """Creates a Flow."""
         return await (await self._writer()).create_flow(request)
 
-    async def _update(self, id: int, request: UpdateFlowRequest) -> Flow:
+    async def _update(self, id: str, request: UpdateFlowRequest) -> Flow:
         """Updates a Flow; naming a parent moves it."""
         return await (await self._writer()).update_flow(id, request)
 
-    async def _delete(self, id: int) -> None:
+    async def _delete(self, id: str) -> None:
         """Deletes a Flow and its items."""
         await (await self._writer()).delete_flow(id)
 
-    async def _start(self, id: int, request: StartFlowRequest) -> MaterializedFlow:
+    async def _start(self, id: str, request: StartFlowRequest) -> MaterializedFlow:
         """Starts a Flow: copies it into a real subtree under a target, in one transaction."""
         return await (await self._writer()).start_flow(id, request)
 
-    async def _set_recurrence(self, id: int, request: SetRecurrenceRequest) -> FlowRecurrence:
+    async def _set_recurrence(self, id: str, request: SetRecurrenceRequest) -> FlowRecurrence:
         """Makes a Flow a Habit, or changes its Recurrence."""
         return await (await self._writer()).set_flow_recurrence(id, request)
 
-    async def _delete_recurrence(self, id: int) -> None:
+    async def _delete_recurrence(self, id: str) -> None:
         """Takes a Habit's Recurrence away, leaving a plain Flow."""
         await (await self._writer()).delete_flow_recurrence(id)
 
-    async def _clear_modifications(self, id: int) -> None:
+    async def _clear_modifications(self, id: str) -> None:
         """Drops every edit made to a Habit's occurrences."""
         await (await self._writer()).clear_habit_modifications(id)
 
-    async def _fork(self, id: int, now: datetime | None = None) -> Flow:
+    async def _fork(self, id: str, now: datetime | None = None) -> Flow:
         """Archives a Habit and forks a fresh copy of it."""
         return await (await self._writer()).fork_flow(id, now=now)
 
-    async def _duplicate(self, id: int, parent_type: str, parent_id: int, position: int) -> Flow:
+    async def _duplicate(self, id: str, parent_type: str, parent_id: str, position: int) -> Flow:
         """Copies a Flow under a new parent."""
         return await (await self._writer()).duplicate_flow(id, parent_type, parent_id, position)
 
     async def _add_dependency(
         self,
-        id: int,
+        id: str,
         dependent_type: FlowItemType,
-        dependent_id: int,
+        dependent_id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         """Makes one of the Flow's items come after another."""
         await (await self._writer()).add_flow_dependency(
@@ -126,18 +126,18 @@ class FlowsRouter(BoardRouter):
             anchor_date=anchor_date,
         )
 
-    async def _goals(self, id: int) -> list[FlowGoal]:
+    async def _goals(self, id: str) -> list[FlowGoal]:
         """The Flow's Goal items."""
         return await self._reader.list_flow_goals(id)
 
-    async def _tasks(self, id: int) -> list[FlowTask]:
+    async def _tasks(self, id: str) -> list[FlowTask]:
         """The Flow's Task items."""
         return await self._reader.list_flow_tasks(id)
 
-    async def _recurrence(self, id: int) -> FlowRecurrence | None:
+    async def _recurrence(self, id: str) -> FlowRecurrence | None:
         """The Habit's recurrence, or ``null`` for a Flow without one."""
         return await self._reader.get_flow_recurrence(id)
 
-    async def _completion_count(self, id: int) -> int:
+    async def _completion_count(self, id: str) -> int:
         """How many of the Habit's occurrences are complete."""
         return await self._reader.habit_completion_count(id)

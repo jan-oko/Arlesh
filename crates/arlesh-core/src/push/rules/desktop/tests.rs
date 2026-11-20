@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::mindmap::{model::MindmapLoad, rules::changes::diff};
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::push::rules::tests::{asking, check, lifecycle, todo};
 use crate::tasks::lifecycle::Archival;
 
@@ -19,7 +21,7 @@ fn quiet() -> MindmapLoad {
 }
 
 fn asked(mut load: MindmapLoad) -> MindmapLoad {
-    load.facts.insert("task-1".to_string(), asking(7));
+    load.facts.insert(tkey("task", 1), asking(7));
     load
 }
 
@@ -69,11 +71,11 @@ fn starting_with_a_question_already_open_tells_nothing_and_a_new_one_tells_once(
     let before = asked(quiet());
     let mut notifier = started(&before);
     let mut after = before.clone();
-    after.facts.insert("task-2".to_string(), asking(8));
+    after.facts.insert(tkey("task", 2), asking(8));
     let delta = changes(&before, &after);
 
     let first = notifier.follow(&event(2, 2, &delta), &Switches::default());
-    assert_eq!(shown(first), ["question:8"]);
+    assert_eq!(shown(first), [format!("question:{}", tid(8))]);
 
     let again = notifier.follow(&event(2, 2, &delta), &Switches::default());
     assert!(shown(again).is_empty(), "a replayed event tells nothing");
@@ -87,7 +89,7 @@ fn a_task_going_overdue_is_told_by_a_tick_that_carries_no_write() {
 
     let intake = notifier.follow(&event(2, 1, &delta), &Switches::default());
 
-    assert_eq!(shown(intake), ["overdue:2"]);
+    assert_eq!(shown(intake), [format!("overdue:{}", tid(2))]);
 }
 
 #[test]
@@ -125,7 +127,7 @@ fn an_own_write_never_hides_an_agents_question() {
 
     let intake = notifier.follow(&event(2, 2, &delta), &Switches::default());
 
-    assert_eq!(shown(intake), ["question:7"]);
+    assert_eq!(shown(intake), [format!("question:{}", tid(7))]);
 }
 
 #[test]
@@ -137,7 +139,7 @@ fn an_own_write_the_publication_does_not_hold_yet_waits_for_the_one_that_does() 
     let tell = notifier.follow(&event(2, 3, &tick), &Switches::default());
     assert_eq!(
         shown(tell),
-        ["overdue:2"],
+        [format!("overdue:{}", tid(2))],
         "revision 3 does not hold write 5"
     );
 
@@ -190,7 +192,7 @@ fn a_board_loaded_after_a_gap_tells_what_is_new_on_it() {
     let before = asked(quiet());
     let mut notifier = started(&before);
     let mut now = overdue(before);
-    now.facts.insert("task-2".to_string(), asking(9));
+    now.facts.insert(tkey("task", 2), asking(9));
 
     let shown = notifier
         .load(
@@ -203,17 +205,23 @@ fn a_board_loaded_after_a_gap_tells_what_is_new_on_it() {
         .unwrap();
 
     let keys: Vec<&str> = shown.iter().map(|event| event.key.as_str()).collect();
-    assert_eq!(keys, ["overdue:2", "question:9"]);
+    assert_eq!(
+        keys,
+        [
+            format!("overdue:{}", tid(2)),
+            format!("question:{}", tid(9))
+        ]
+    );
 }
 
 #[test]
 fn the_capacity_lock_is_told_when_set_and_when_cleared() {
     let before = quiet();
     let mut notifier = started(&before);
-    let locked = serde_json::json!({ "block_reasons": { "set": [["task-1", [{
-        "owner_type": "task", "owner_id": 1, "reason": "Agents at capacity",
+    let locked = serde_json::json!({ "block_reasons": { "set": [[&tkey("task", 1), [{
+        "owner_type": "task", "owner_id": tid(1), "reason": "Agents at capacity",
         "position": 0, "derived": "agent_capacity" }]]], "del": [] } });
-    let lifted = serde_json::json!({ "block_reasons": { "set": [], "del": ["task-1"] } });
+    let lifted = serde_json::json!({ "block_reasons": { "set": [], "del": [tkey("task", 1)] } });
     let switches = Switches::default();
 
     let set = notifier.follow(&event(2, 2, &locked), &switches);

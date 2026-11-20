@@ -8,9 +8,10 @@ import {
 } from "./steps-card";
 import { testKey } from "@/test/scope-key";
 import { canParentAnyNewChild } from "@/utils/node-meta";
+import { storedRowId } from "@/test/stored-id";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
-  const rowId = extra.virtual === true ? {} : { rowId: 1 };
+  const rowId = extra.virtual === true ? {} : { rowId: storedRowId(1) };
   return { id: `${kind}-1`, ...rowId, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
@@ -36,7 +37,7 @@ describe("the fields a card spells out", () => {
   });
 
   it("reads the kind's own fields before the shared ones", () => {
-    const task = node("task", { timeScope: WINDOW, tagIds: [3], virtualBlockers: ["Blocked by Spec"] });
+    const task = node("task", { timeScope: WINDOW, tagIds: [storedRowId(3)], virtualBlockers: ["Blocked by Spec"] });
     expect(stepCardFields(task)).toEqual(["timeScope", "blockedBy", "tags"]);
   });
 
@@ -161,7 +162,7 @@ describe("what you can descend into", () => {
       id: "habitrun-1-virtual",
       virtual: true,
       habitGroup: {
-        flowId: 1, level: "run", passed: 9, done: 5, missed: 4,
+        flowId: storedRowId(1), level: "run", passed: 9, done: 5, missed: 4,
         spanStart: "2026-01-01", spanEnd: "2026-02-01", spanLabel: "January",
       },
     });

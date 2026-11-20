@@ -24,7 +24,7 @@ export interface Expectation {
   last_check_at?: string;
   /** Its own relevance window, like a Task's — separate from its Check every. */
   time_scope: TimeScope | null;
-  tag_ids: number[];
+  tag_ids: string[];
   position: number;
   is_private: boolean;
   /** Raised by an agent on the Agentic Task it hangs under: "the agent is waiting on you". The
@@ -110,11 +110,11 @@ export async function updateExpectation(id: RowId, request: UpdateExpectationReq
   return invoke<Expectation>("update_expectation", { id, request });
 }
 
-export async function addTagToExpectation(expectationId: RowId, tagId: number): Promise<void> {
+export async function addTagToExpectation(expectationId: RowId, tagId: string): Promise<void> {
   return invoke<void>("add_tag_to_expectation", { expectationId, tagId });
 }
 
-export async function removeTagFromExpectation(expectationId: RowId, tagId: number): Promise<void> {
+export async function removeTagFromExpectation(expectationId: RowId, tagId: string): Promise<void> {
   return invoke<void>("remove_tag_from_expectation", { expectationId, tagId });
 }
 

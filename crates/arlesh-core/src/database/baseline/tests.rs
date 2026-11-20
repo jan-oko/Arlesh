@@ -23,22 +23,37 @@ async fn empty_database() -> SqlitePool {
         .unwrap()
 }
 
-/// The chain up to and including `last`, run the way it ran before the baseline existed.
-async fn chain_through(last: i64) -> SqlitePool {
-    let pool = empty_database().await;
-    let partial = Migrator {
+/// A migrator over the chain's migrations that `keep` accepts.
+fn migrator(keep: impl Fn(i64) -> bool) -> Migrator {
+    Migrator {
         migrations: Cow::Owned(
             MIGRATOR
                 .iter()
-                .filter(|migration| migration.version <= last)
+                .filter(|migration| keep(migration.version))
                 .cloned()
                 .collect(),
         ),
         ignore_missing: false,
         locking: true,
         no_tx: false,
-    };
-    partial.run(&pool).await.unwrap();
+    }
+}
+
+/// The chain up to and including `last`, run the way it ran before the baseline existed. Past the
+/// baseline's version the id map migration 0107 reads is filled first, as `migrate` does.
+async fn chain_through(last: i64) -> SqlitePool {
+    let pool = empty_database().await;
+    migrator(|version| version <= last.min(BASELINE_VERSION))
+        .run(&pool)
+        .await
+        .unwrap();
+    if last > BASELINE_VERSION {
+        crate::database::row_ids::prepare(&pool).await.unwrap();
+        migrator(|version| version <= last)
+            .run(&pool)
+            .await
+            .unwrap();
+    }
     pool
 }
 
@@ -121,8 +136,8 @@ async fn a_database_built_from_the_baseline_equals_one_the_chain_built() {
 }
 
 #[tokio::test]
-async fn a_database_at_91_runs_the_rest_of_the_chain() {
-    let behind = chain_through(91).await;
+async fn a_database_at_the_baseline_runs_the_rest_of_the_chain() {
+    let behind = chain_through(BASELINE_VERSION).await;
     assert!(!is_fresh(&behind).await.unwrap());
     migrate(&behind).await.unwrap();
 
@@ -207,4 +222,24 @@ async fn a_migration_newer_than_the_baseline_runs_on_top_of_it() {
     assert_eq!(probe, 1);
     assert_eq!(recorded.last().copied(), Some(newer));
     assert_eq!(recorded.len(), MIGRATOR.iter().count() + 1);
+}
+
+#[tokio::test]
+async fn rows_written_before_the_uuid_migration_keep_the_full_ids_they_were_shown_under() {
+    let pool = chain_through(BASELINE_VERSION).await;
+    sqlx::query(
+        "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES (5, 'T', 'domain', 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    migrate(&pool).await.unwrap();
+
+    let row: (String, String) = sqlx::query_as("SELECT id, parent_id FROM tasks")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, crate::database::row_ids::new_id("task", 5));
+    assert_eq!(row.1, crate::database::row_ids::new_id("domain", 1));
 }

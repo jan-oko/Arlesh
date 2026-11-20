@@ -6,6 +6,7 @@
 //! Pure: a function of a finished board load. Keyed as the load's `short_ids` are (`task-12`,
 //! `expectation-3`).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -64,7 +65,7 @@ pub(super) fn content_parent(parent_type: &str, parent_id: &NodeId) -> Key {
 }
 
 /// The key a flow item's in-flow parent names: the flow itself, or another item.
-fn flow_item_parent(flow_id: i64, parent_type: &str, parent_id: i64) -> Key {
+fn flow_item_parent(flow_id: RowId, parent_type: &str, parent_id: RowId) -> Key {
     match parent_type {
         "flow_goal" => format!("flowgoal-{parent_id}"),
         "flow_task" => format!("flowtask-{parent_id}"),

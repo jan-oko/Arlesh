@@ -6,6 +6,7 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import { setFlowRecurrence } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
+import { storedRowId } from "@/test/stored-id";
 
 // A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
 vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
@@ -26,7 +27,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 
 const tree: MindmapNode = {
   id: "root", kind: "domain", title: "", position: 0, tagIds: [],
-  children: [{ id: "goal-4", rowId: 4, kind: "goal", title: "Ship", position: 0, tagIds: [], children: [] }],
+  children: [{ id: "goal-4", rowId: storedRowId(4), kind: "goal", title: "Ship", position: 0, tagIds: [], children: [] }],
 };
 
 function setup() {

@@ -1,5 +1,6 @@
 //! Task and Goal resource models.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
@@ -8,14 +9,14 @@ use crate::scopes::{key::ScopeKey, resolve::Bounds};
 
 /// Identifies a task row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct TaskId(pub i64);
+pub struct TaskId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for TaskId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for TaskId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<TaskId> for i64 {
+impl From<TaskId> for RowId {
     fn from(id: TaskId) -> Self {
         id.0
     }
@@ -23,14 +24,14 @@ impl From<TaskId> for i64 {
 
 /// Identifies a goal row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct GoalId(pub i64);
+pub struct GoalId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for GoalId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for GoalId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<GoalId> for i64 {
+impl From<GoalId> for RowId {
     fn from(id: GoalId) -> Self {
         id.0
     }
@@ -458,7 +459,8 @@ pub enum Delegate {
     /// Delegated to the Person with this id.
     Person {
         /// The `people` row the task is delegated to.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
 }
 
@@ -467,7 +469,7 @@ impl Delegate {
     const PERSON: &'static str = "person";
 
     /// The `(delegate_kind, delegate_id)` columns a delegate — or its absence — stores.
-    pub fn columns(delegate: Option<Self>) -> (Option<&'static str>, Option<i64>) {
+    pub fn columns(delegate: Option<Self>) -> (Option<&'static str>, Option<RowId>) {
         match delegate {
             None => (None, None),
             Some(Self::Person { id }) => (Some(Self::PERSON), Some(id)),
@@ -477,7 +479,7 @@ impl Delegate {
     /// The delegate a stored column pair holds. A pair the schema's CHECK would have refused — an
     /// unknown kind, or a Person without an id — reads as no delegate, the same fallback the other
     /// enum columns use.
-    pub fn from_columns(kind: Option<&str>, id: Option<i64>) -> Option<Self> {
+    pub fn from_columns(kind: Option<&str>, id: Option<RowId>) -> Option<Self> {
         match (kind?, id) {
             (Self::PERSON, Some(id)) => Some(Self::Person { id }),
             _ => None,
@@ -660,7 +662,8 @@ pub struct Task {
     #[serde(default)]
     pub archival: TaskArchival,
     /// Tag domain ids attached to this task.
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
@@ -709,7 +712,8 @@ pub struct Goal {
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
     pub on_scope_exit: Option<OnScopeExit>,
     /// Tag domain ids attached to this goal.
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
@@ -736,13 +740,23 @@ pub enum Dependency {
     /// Depends on an expectation being released.
     Expectation {
         /// The expectation being waited on.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
 }
 
 /// Request body for creating a task.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateTaskRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// Parent entity type.
@@ -891,6 +905,15 @@ pub struct UpdateTaskRequest {
 /// Request body for creating a goal.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateGoalRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// Parent entity type.
@@ -944,14 +967,14 @@ pub struct UpdateGoalRequest {
 
 /// Identifies a commitment row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct CommitmentId(pub i64);
+pub struct CommitmentId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for CommitmentId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for CommitmentId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<CommitmentId> for i64 {
+impl From<CommitmentId> for RowId {
     fn from(id: CommitmentId) -> Self {
         id.0
     }
@@ -1038,7 +1061,8 @@ pub struct Commitment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verdict_window: Option<DurationSpec>,
     /// Tag domain ids attached to this commitment.
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// Sort position among siblings; defaults to id (insertion order).
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
@@ -1089,6 +1113,15 @@ impl CommitmentArchival {
 /// Request body for creating a commitment.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateCommitmentRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// Parent entity type.
@@ -1241,7 +1274,8 @@ pub struct AsyncTemplate {
     pub title: String,
     /// Tags the spawned wait carries.
     #[serde(default)]
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// The spawned wait's Time Scope **rule**: N of a kind, counted from the day the wait begins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_scope: Option<DurationSpec>,
@@ -1257,7 +1291,8 @@ pub struct AsyncTemplate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SpawnedWait {
     /// The Task that spawned it.
-    pub task_id: i64,
+    #[schemars(with = "String")]
+    pub task_id: RowId,
     /// When the Task was completed — when the wait began. `None` for a Task whose completion time
     /// was never recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1282,14 +1317,14 @@ pub struct UpdateSpawnedWaitRequest {
 
 /// Identifies an expectation row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ExpectationId(pub i64);
+pub struct ExpectationId(#[schemars(with = "String")] pub RowId);
 
-impl From<i64> for ExpectationId {
-    fn from(value: i64) -> Self {
+impl From<RowId> for ExpectationId {
+    fn from(value: RowId) -> Self {
         Self(value)
     }
 }
-impl From<ExpectationId> for i64 {
+impl From<ExpectationId> for RowId {
     fn from(id: ExpectationId) -> Self {
         id.0
     }
@@ -1391,7 +1426,8 @@ pub struct Expectation {
     /// scoped ancestor's, but not inherited from it.
     pub time_scope: Option<TimeScope>,
     /// Tag domain ids attached to this expectation.
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// How often to look in on it, if ever — a counted Duration. While it is set and the wait is
     /// pending, a virtual "check on it" task is due at [`Self::check_starting`], and after each
     /// check one interval after that check was made. Nothing is stored for a check but its time.
@@ -1521,6 +1557,15 @@ impl Review {
 /// Request body for creating an expectation.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateExpectationRequest {
+    /// The new row's id, chosen by the caller (a client that has already shown the row under it);
+    /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::nodes::id::deserialize_chosen_id"
+    )]
+    #[schemars(with = "Option<String>")]
+    pub id: Option<RowId>,
     /// Display title.
     pub title: String,
     /// Parent entity type.

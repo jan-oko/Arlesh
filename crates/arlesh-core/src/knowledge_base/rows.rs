@@ -1,6 +1,7 @@
 //! The knowledge-base tables' rows: what a query decodes, before it becomes a domain value
 //! (ADR 0010, decision 8).
 
+use crate::nodes::id::RowId;
 use crate::scopes::db::DbScopeKey;
 
 use super::model::{Event, Person, Thread};
@@ -8,7 +9,7 @@ use super::model::{Event, Person, Thread};
 /// A [`Person`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct PersonRow {
-    id: i64,
+    id: RowId,
     name: String,
     aliases: String,
     linked_note: Option<String>,
@@ -28,7 +29,7 @@ impl From<PersonRow> for Person {
 /// A [`Event`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct EventRow {
-    id: i64,
+    id: RowId,
     title: String,
     scope_id: Option<DbScopeKey>,
     event_time: Option<String>,
@@ -50,7 +51,7 @@ impl From<EventRow> for Event {
 /// A [`Thread`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct ThreadRow {
-    id: i64,
+    id: RowId,
     title: String,
     linked_note: Option<String>,
 }

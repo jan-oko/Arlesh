@@ -40,9 +40,9 @@ from arlesh.models import (
 WEEK = ScopeKeyWeek(kind="week", date="2026-09-20")
 
 
-def stored(node_id: int | str) -> int:
-    """The row id of a node the test created, which is always a stored one."""
-    assert isinstance(node_id, int)
+def stored(node_id: str) -> str:
+    """The id of a node the test created, which is always a stored one: its ``full_id``."""
+    assert isinstance(node_id, str)
     return node_id
 
 
@@ -52,7 +52,7 @@ def week() -> TimeScope:
 
 
 async def test_a_task_is_created_read_updated_moved_and_deleted(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Write it", parent_type="domain", parent_id=domain_id)
@@ -76,7 +76,7 @@ async def test_a_task_is_created_read_updated_moved_and_deleted(
 
 
 async def test_an_update_sends_only_what_was_set_so_none_clears(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(
@@ -92,7 +92,7 @@ async def test_an_update_sends_only_what_was_set_so_none_clears(
     assert cleared.time_scope is None
 
 
-async def test_the_status_cycle_advances_a_task(db: arlesh.Database, domain_id: int) -> None:
+async def test_the_status_cycle_advances_a_task(db: arlesh.Database, domain_id: str) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Cycle", parent_type="domain", parent_id=domain_id)
     )
@@ -109,7 +109,7 @@ async def test_the_status_cycle_advances_a_task(db: arlesh.Database, domain_id: 
 
 
 async def test_the_agentic_key_flips_a_task_to_the_agentic_model(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Agent", parent_type="domain", parent_id=domain_id)
@@ -118,7 +118,7 @@ async def test_the_agentic_key_flips_a_task_to_the_agentic_model(
     assert flipped.status.kind == "agentic"
 
 
-async def test_a_goal_is_achieved_and_deleted(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_goal_is_achieved_and_deleted(db: arlesh.Database, domain_id: str) -> None:
     goal = await db.create_goal(
         CreateGoalRequest(title="Reach", parent_type="domain", parent_id=domain_id)
     )
@@ -129,7 +129,7 @@ async def test_a_goal_is_achieved_and_deleted(db: arlesh.Database, domain_id: in
         await db.get_goal(stored(goal.id))
 
 
-async def test_a_commitment_takes_a_verdict(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_commitment_takes_a_verdict(db: arlesh.Database, domain_id: str) -> None:
     commitment = await db.create_commitment(
         CreateCommitmentRequest(
             title="Phone off", parent_type="domain", parent_id=domain_id, time_scope=week()
@@ -140,7 +140,7 @@ async def test_a_commitment_takes_a_verdict(db: arlesh.Database, domain_id: int)
     await db.delete_commitment(commitment.id)
 
 
-async def test_a_wait_is_created_updated_and_deleted(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_wait_is_created_updated_and_deleted(db: arlesh.Database, domain_id: str) -> None:
     task = await db.create_task(
         CreateTaskRequest(title="Holder", parent_type="domain", parent_id=domain_id)
     )
@@ -154,7 +154,7 @@ async def test_a_wait_is_created_updated_and_deleted(db: arlesh.Database, domain
     assert all(expectation.id != wait.id for expectation in board.expectations)
 
 
-async def test_an_info_is_created_updated_and_deleted(db: arlesh.Database, domain_id: int) -> None:
+async def test_an_info_is_created_updated_and_deleted(db: arlesh.Database, domain_id: str) -> None:
     info = await db.create_info(
         CreateInfoRequest(body="A note", parent_type="domain", parent_id=domain_id, position=0)
     )
@@ -177,7 +177,7 @@ async def test_a_project_is_created_renamed_and_deleted(db: arlesh.Database) -> 
         await db.get_domain(project.id)
 
 
-async def test_a_flow_is_started_into_a_real_subtree(db: arlesh.Database, domain_id: int) -> None:
+async def test_a_flow_is_started_into_a_real_subtree(db: arlesh.Database, domain_id: str) -> None:
     flow = await db.create_flow(
         CreateFlowRequest(title="Routine", parent_type="domain", parent_id=domain_id)
     )
@@ -197,7 +197,7 @@ async def test_a_flow_is_started_into_a_real_subtree(db: arlesh.Database, domain
         ),
     )
     board = await db.board()
-    assert any(task.title == "This morning" for task in board.tasks) or started.root_id > 0
+    assert any(task.title == "This morning" for task in board.tasks) or bool(started.root_id)
 
     await db.delete_flow(flow.id)
     with pytest.raises(arlesh.NotFound):
@@ -205,7 +205,7 @@ async def test_a_flow_is_started_into_a_real_subtree(db: arlesh.Database, domain
 
 
 async def test_the_board_carries_every_kind_and_its_derived_values(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     await db.create_task(
         CreateTaskRequest(title="On the board", parent_type="domain", parent_id=domain_id)
@@ -218,7 +218,7 @@ async def test_the_board_carries_every_kind_and_its_derived_values(
 
 
 async def test_a_write_from_python_never_reaches_the_desktop_undo_stack(
-    db: arlesh.Database, database_path: Path, domain_id: int
+    db: arlesh.Database, database_path: Path, domain_id: str
 ) -> None:
     await db.create_task(
         CreateTaskRequest(title="Scripted", parent_type="domain", parent_id=domain_id)
@@ -231,7 +231,7 @@ async def test_a_write_from_python_never_reaches_the_desktop_undo_stack(
 
 
 async def test_the_board_as_json_leaves_absent_values_out_and_the_model_board_still_reads(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     """``board_json`` is for sending on as it is: no ``null`` members. ``board`` still reads the
     same board into models, whose nullable fields must be present."""

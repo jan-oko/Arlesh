@@ -9,9 +9,10 @@ import type { FilterState } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER, filterExpectationList, isListOnlyPreset } from "@/utils/list-filter";
 import type { ExpectationListRow, ListFilterState } from "@/utils/list-filter";
 import { flattenExpectationRows } from "@/utils/list-data";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
+  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: storedRowId(1), ...over };
 }
 
 /** A node drawn from no row of its own. */
@@ -41,7 +42,7 @@ describe("where a wait may hang", () => {
 describe("pasting a wait", () => {
   it("refuses a copied wait and any derived one by name", () => {
     const stored = n("e", "expectation");
-    const check = drawn("c", "task", { rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES });
+    const check = drawn("c", "task", { rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(1), due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES });
     const target = n("project-1", "project");
     const tree = n("root", "domain", { children: [stored, check, target] });
     expect(pasteRefusal(tree, "e", target, true)).toEqual({ reason: PASTE_REFUSAL.EXPECTATION });

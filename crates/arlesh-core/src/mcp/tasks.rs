@@ -10,6 +10,7 @@
 //! issue links, so it never enters the user's Undo Stack and never lands inside a gesture the user
 //! has open.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -157,6 +158,7 @@ impl ArleshMcp {
                 return result::ok(conflicts);
             }
             TasksOperation::Create {
+                id,
                 parent_type,
                 parent_id,
                 title,
@@ -191,6 +193,7 @@ impl ArleshMcp {
                 ));
                 Write::Create(
                     CreateTaskRequest {
+                        id,
                         title,
                         parent_type: stored_reference(&parent_type).to_string(),
                         parent_id: parent,
@@ -423,7 +426,7 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     }
     // A compound Task's status is derived from its sub-items, and an Agentic one's Review from its
     // questions: the board serves both, so every Task's status is read from it.
-    let served: std::collections::HashMap<i64, Status> = board
+    let served: std::collections::HashMap<RowId, Status> = board
         .load
         .tasks
         .iter()

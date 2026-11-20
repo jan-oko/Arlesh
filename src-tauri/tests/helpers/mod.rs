@@ -5,6 +5,7 @@ use std::sync::{Mutex, OnceLock};
 
 use arlesh_lib::backend::{sqlite::SqliteBackend, AppBackend};
 use arlesh_lib::database::session::SessionFactory;
+use arlesh_lib::nodes::id::RowId;
 use arlesh_lib::undo::stacks::UndoStacks;
 use libsqlite3_sys as ffi;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -230,7 +231,7 @@ pub async fn mcp_over_whole_board(pool: &SqlitePool) -> arlesh_lib::mcp::ArleshM
 /// Straight to the column, with no Gesture open, for the same reason as [`open_board_to_mcp`] —
 /// and so it converts by hand what the app's write would: the Task's status, and that of every
 /// Task beneath it that inherits the flag, into the Agentic model's spelling.
-pub async fn make_agentic(pool: &SqlitePool, task_id: i64) {
+pub async fn make_agentic(pool: &SqlitePool, task_id: RowId) {
     sqlx::query("UPDATE tasks SET agentic = 1 WHERE id = ?")
         .bind(task_id)
         .execute(pool)
@@ -256,24 +257,23 @@ pub async fn make_agentic(pool: &SqlitePool, task_id: i64) {
 
 /// Makes a Person to delegate to, and returns their id. Straight to the table, as
 /// [`make_agentic`] writes its column.
-pub async fn make_person(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query("INSERT INTO people (name) VALUES (?)")
+pub async fn make_person(pool: &SqlitePool, name: &str) -> RowId {
+    sqlx::query_scalar("INSERT INTO people (name) VALUES (?) RETURNING id")
         .bind(name)
-        .execute(pool)
+        .fetch_one(pool)
         .await
         .expect("failed to make a person")
-        .last_insert_rowid()
 }
 
-/// The integer id of a row a test made by hand. Every such row is stored, so a derived id here is
+/// The stored id of a row a test made by hand. Every such row is stored, so a derived id here is
 /// a broken fixture and fails loudly.
 pub trait StoredId {
     /// The stored primary key.
-    fn sid(&self) -> i64;
+    fn sid(&self) -> RowId;
 }
 
 impl StoredId for arlesh_lib::nodes::id::NodeId {
-    fn sid(&self) -> i64 {
+    fn sid(&self) -> RowId {
         self.stored().expect("a row made by hand is stored")
     }
 }
@@ -299,4 +299,52 @@ pub async fn load_board_at(
 
     let backend = app.state::<AppBackend>();
     backend.load_mindmap(now).await
+}
+
+/// The id the seeded row that was number `number` carries: a migrated database names each seeded
+/// aspect by the full id its integer row id became.
+pub fn seeded(number: i64) -> RowId {
+    arlesh_lib::nodes::id::parse_row_id(&arlesh_lib::database::row_ids::new_id("domain", number))
+        .expect("a seeded row's id is a UUID")
+}
+
+/// The row id a JSON value spells (ids travel as UUID strings), or `None` when it is no id.
+pub fn try_row_id(value: &serde_json::Value) -> Option<RowId> {
+    arlesh_lib::nodes::id::parse_row_id(value.as_str()?).ok()
+}
+
+/// The row id a JSON value spells; a value that is no id fails the test loudly.
+pub fn row_id(value: &serde_json::Value) -> RowId {
+    try_row_id(value).expect("an id travels as a UUID string")
+}
+
+/// What a test may hand an MCP helper as a node id: a stored row's id, a ready `NodeIdParam`, or the
+/// text an agent would type (a full id or a prefix).
+pub trait IntoParam {
+    /// The id as the MCP parameter.
+    fn param(self) -> arlesh_lib::mcp::params::NodeIdParam;
+}
+
+impl IntoParam for RowId {
+    fn param(self) -> arlesh_lib::mcp::params::NodeIdParam {
+        arlesh_lib::mcp::params::NodeIdParam::new(self.to_string())
+    }
+}
+
+impl IntoParam for arlesh_lib::mcp::params::NodeIdParam {
+    fn param(self) -> arlesh_lib::mcp::params::NodeIdParam {
+        self
+    }
+}
+
+impl IntoParam for String {
+    fn param(self) -> arlesh_lib::mcp::params::NodeIdParam {
+        arlesh_lib::mcp::params::NodeIdParam::new(self)
+    }
+}
+
+impl IntoParam for &str {
+    fn param(self) -> arlesh_lib::mcp::params::NodeIdParam {
+        arlesh_lib::mcp::params::NodeIdParam::new(self)
+    }
 }

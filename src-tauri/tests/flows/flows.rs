@@ -1,4 +1,7 @@
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::flows::{
     archive_and_fork, convert_to_flow, delete_flow, duplicate_flow, duplicate_flow_item,
@@ -8,7 +11,7 @@ use arlesh_lib::flows::{
         ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowId,
         FlowItemType, HabitInstanceRef, InstanceTiming, InstanceType, MissPolicy,
         SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
-        UpdateFlowRequest, NO_CYCLE,
+        UpdateFlowRequest,
     },
     set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_task, valid_targets,
 };
@@ -43,16 +46,17 @@ fn archive_recurrence(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
     }
 }
 
-async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
+async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> RowId {
     let scope = arlesh_lib::scopes::model::Scope::containing(kind, date).unwrap();
     {
         let mut db = helpers::session_factory(pool).begin().await.unwrap();
         let __r = create_goal(
             &mut db,
             CreateGoalRequest {
+                id: None,
                 title: "Scoped".into(),
                 parent_type: "domain".into(),
-                parent_id: 1.into(),
+                parent_id: crate::helpers::seeded(1).into(),
                 status: None,
                 time_scope: Some(TimeScope {
                     start_id: scope.id,
@@ -87,7 +91,7 @@ fn create_req(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Task),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(2),
         flow_duration_kind: Some("week".into()),
         ..Default::default()
@@ -134,7 +138,7 @@ async fn instance_type_defaults_to_task() {
         .create(CreateFlowRequest {
             title: "F".into(),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         })
         .await
@@ -163,7 +167,7 @@ async fn update_flow_changes_fields() {
                 title: Some("Renamed".into()),
                 instance_type: Some(InstanceType::Goal),
                 target_type: Some(Some("domain".into())),
-                target_id: Some(Some(3)),
+                target_id: Some(Some(tid(3))),
                 ..Default::default()
             },
         )
@@ -177,7 +181,7 @@ async fn update_flow_changes_fields() {
     assert_eq!(updated.title, "Renamed");
     assert_eq!(updated.instance_type, "goal");
     assert_eq!(updated.target_type.as_deref(), Some("domain"));
-    assert_eq!(updated.target_id, Some(3));
+    assert_eq!(updated.target_id, Some(tid(3)));
 }
 
 #[tokio::test]
@@ -198,6 +202,7 @@ async fn flow_items_are_created_and_listed() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Specify".into(),
             parent_type: "flow".into(),
@@ -213,6 +218,7 @@ async fn flow_items_are_created_and_listed() {
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Milestone".into(),
             parent_type: "flow".into(),
@@ -258,6 +264,7 @@ async fn update_flow_item_changes_fields() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Draft".into(),
             parent_type: "flow".into(),
@@ -303,6 +310,7 @@ async fn set_cycles_replaces_prior_pairs() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Exercise".into(),
             parent_type: "flow".into(),
@@ -404,6 +412,7 @@ async fn dependencies_add_dedupe_and_remove() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Specify".into(),
             parent_type: "flow".into(),
@@ -417,6 +426,7 @@ async fn dependencies_add_dedupe_and_remove() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Implement".into(),
             parent_type: "flow".into(),
@@ -508,6 +518,7 @@ async fn deleting_an_item_clears_its_cycles_and_dependencies() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "A".into(),
             parent_type: "flow".into(),
@@ -521,6 +532,7 @@ async fn deleting_an_item_clears_its_cycles_and_dependencies() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "B".into(),
             parent_type: "flow".into(),
@@ -620,6 +632,7 @@ async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Specify".into(),
             parent_type: "flow".into(),
@@ -633,6 +646,7 @@ async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Implement".into(),
             parent_type: "flow".into(),
@@ -694,7 +708,7 @@ async fn starting_a_flow_materialises_a_subtree_with_fan_in_deps() {
             StartFlowRequest {
                 title: "Feature Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -795,7 +809,7 @@ async fn starting_a_task_flow_resolves_its_root_cycle_plan() {
             StartFlowRequest {
                 title: "Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -837,7 +851,7 @@ async fn starting_an_unscoped_flow_materialises_one_item_each() {
             title: "Chores".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         })
         .await
@@ -848,6 +862,7 @@ async fn starting_an_unscoped_flow_materialises_one_item_each() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "A".into(),
             parent_type: "flow".into(),
@@ -861,6 +876,7 @@ async fn starting_an_unscoped_flow_materialises_one_item_each() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "B".into(),
             parent_type: "flow".into(),
@@ -878,7 +894,7 @@ async fn starting_an_unscoped_flow_materialises_one_item_each() {
             StartFlowRequest {
                 title: "Chores Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -916,7 +932,7 @@ async fn starting_a_flow_propagates_private_to_instances() {
             title: "Private".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         })
         .await
@@ -945,6 +961,7 @@ async fn starting_a_flow_propagates_private_to_instances() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Secret".into(),
             parent_type: "flow".into(),
@@ -958,6 +975,7 @@ async fn starting_a_flow_propagates_private_to_instances() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Public".into(),
             parent_type: "flow".into(),
@@ -992,7 +1010,7 @@ async fn starting_a_flow_propagates_private_to_instances() {
             StartFlowRequest {
                 title: "Private Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -1038,6 +1056,7 @@ async fn deleting_a_flow_cascades_to_its_items() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "T".into(),
             parent_type: "flow".into(),
@@ -1085,7 +1104,7 @@ async fn valid_targets_unscoped_flow_accepts_every_candidate() {
     let cands = vec![
         TargetRef {
             node_type: "aspect".into(),
-            node_id: 1,
+            node_id: tid(1),
         },
         TargetRef {
             node_type: "goal".into(),
@@ -1111,17 +1130,17 @@ async fn valid_targets_keeps_only_the_kinds_that_hold_instances_scoped_or_not() 
     let pool = helpers::test_pool().await;
     let aspect = TargetRef {
         node_type: "aspect".into(),
-        node_id: 1,
+        node_id: tid(1),
     };
     let cands = vec![
         aspect.clone(),
         TargetRef {
             node_type: "commitment".into(),
-            node_id: 5,
+            node_id: tid(5),
         },
         TargetRef {
             node_type: "tag".into(),
-            node_id: 6,
+            node_id: tid(6),
         },
     ];
 
@@ -1143,7 +1162,7 @@ async fn valid_targets_concrete_anchor_filters_by_interval_containment() {
         },
         TargetRef {
             node_type: "aspect".into(),
-            node_id: 1,
+            node_id: tid(1),
         }, // unscoped ancestor → always valid
     ];
 
@@ -1180,7 +1199,7 @@ async fn valid_targets_concrete_anchor_filters_by_interval_containment() {
         outside,
         vec![TargetRef {
             node_type: "aspect".into(),
-            node_id: 1
+            node_id: tid(1)
         }]
     );
 }
@@ -1238,6 +1257,7 @@ async fn origins_reports_the_flow_title_for_materialised_nodes_only() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Specify".into(),
             parent_type: "flow".into(),
@@ -1254,7 +1274,7 @@ async fn origins_reports_the_flow_title_for_materialised_nodes_only() {
             StartFlowRequest {
                 title: "Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -1278,7 +1298,7 @@ async fn origins_reports_the_flow_title_for_materialised_nodes_only() {
             },
             TargetRef {
                 node_type: "task".into(),
-                node_id: 999_999,
+                node_id: tid(999_999),
             }, // never materialised
         ])
         .await
@@ -1457,7 +1477,7 @@ async fn a_window_recurrence_requires_a_scoped_flow_and_an_interval_one_does_not
         .create(CreateFlowRequest {
             title: "Chores".into(),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         })
         .await
@@ -1540,7 +1560,7 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
             title: "Exercise".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             ..Default::default()
@@ -1553,6 +1573,7 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Workout".into(),
             parent_type: "flow".into(),
@@ -1692,7 +1713,7 @@ async fn phase_part_window_round_trips() {
             title: "Evening flow".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("part".into()),
             flow_window_part: Some("evening".into()),
@@ -1717,7 +1738,7 @@ async fn phase_exact_window_round_trips() {
             title: "10-12 flow".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("exact".into()),
             flow_window_time_start: Some("10:00".into()),
@@ -1741,7 +1762,7 @@ async fn phase_exact_window_round_trips() {
             title: "bad".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_kind: Some("part".into()),
             flow_window_part: Some("teatime".into()),
             ..Default::default()
@@ -1768,7 +1789,7 @@ async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
             title: "Meds".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("exact".into()),
             flow_window_time_start: Some("10:00".into()),
@@ -1838,7 +1859,7 @@ async fn part_phase_habit_recurs_every_gap_days_in_the_same_band() {
             title: "Evening walk".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("part".into()),
             flow_window_part: Some("evening".into()),
@@ -1903,7 +1924,7 @@ async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
             title: "Meds".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("exact".into()),
             flow_window_time_start: Some("10:00".into()),
@@ -1922,7 +1943,7 @@ async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
             StartFlowRequest {
                 title: "Meds today".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: ymd(2026, 1, 5),
             },
         )
@@ -1961,7 +1982,7 @@ async fn starting_a_part_phase_flow_materializes_the_band() {
             title: "Evening walk".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("part".into()),
             flow_window_part: Some("evening".into()),
@@ -1977,7 +1998,7 @@ async fn starting_a_part_phase_flow_materializes_the_band() {
             StartFlowRequest {
                 title: "Walk".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: ymd(2026, 1, 5),
             },
         )
@@ -2018,6 +2039,7 @@ async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Do it".into(),
             parent_type: "flow".into(),
@@ -2115,6 +2137,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Breakfast".into(),
             parent_type: "flow".into(),
@@ -2128,6 +2151,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Dinner".into(),
             parent_type: "flow".into(),
@@ -2170,7 +2194,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
                 item_type: "flow_task".into(),
                 item_id: breakfast.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             Some("done"),
             1_767_600_000_000,
@@ -2188,7 +2212,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
                 item_type: "flow_task".into(),
                 item_id: dinner.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             Some("done"),
             1_767_600_000_000,
@@ -2224,7 +2248,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
                 item_type: "flow_root".into(),
                 item_id: flow.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             Some("done"),
             1_767_600_000_000,
@@ -2272,7 +2296,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
                 item_type: "flow_root".into(),
                 item_id: flow.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             None,
             0,
@@ -2314,6 +2338,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -2355,7 +2380,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
                 item_type: "flow_task".into(),
                 item_id: step.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             Some("in_progress"),
             0,
@@ -2401,7 +2426,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
                 item_type: "flow_task".into(),
                 item_id: step.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             None,
             0,
@@ -2480,7 +2505,7 @@ async fn an_item_less_habit_resolves_by_completing_its_root() {
                 item_type: "flow_root".into(),
                 item_id: flow.id,
                 iteration_scope_id: scope,
-                cycle_id: NO_CYCLE,
+                cycle_id: no_cycle(),
             },
             Some("done"),
             1_767_600_000_000,
@@ -2524,6 +2549,7 @@ async fn fork_flow_deep_clones_the_template_and_leaves_the_original() {
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Milestone".into(),
             parent_type: "flow".into(),
@@ -2537,6 +2563,7 @@ async fn fork_flow_deep_clones_the_template_and_leaves_the_original() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow_goal".into(),
@@ -2679,6 +2706,7 @@ async fn clearing_modifications_drops_completions_and_reverts_iterations() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Do".into(),
             parent_type: "flow".into(),
@@ -2777,7 +2805,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateGoalRequest {
                 title: "Routine".into(),
                 parent_type: "domain".into(),
-                parent_id: 1.into(),
+                parent_id: crate::helpers::seeded(1).into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -2961,7 +2989,7 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
             CreateTaskRequest {
                 title: "Parent".into(),
                 parent_type: "domain".into(),
-                parent_id: 1.into(),
+                parent_id: crate::helpers::seeded(1).into(),
                 ..Default::default()
             },
         )
@@ -3013,7 +3041,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
             CreateTaskRequest {
                 title: "Build".into(),
                 parent_type: "domain".into(),
-                parent_id: 1.into(),
+                parent_id: crate::helpers::seeded(1).into(),
                 ..Default::default()
             },
         )
@@ -3203,10 +3231,13 @@ fn an_explicit_null_target_in_an_update_payload_clears_it() {
     );
     assert_eq!(nulled.target_id, Some(None));
 
-    let set: UpdateFlowRequest =
-        serde_json::from_str(r#"{"target_type":"goal","target_id":5}"#).unwrap();
+    let set: UpdateFlowRequest = serde_json::from_str(&format!(
+        r#"{{"target_type":"goal","target_id":"{}"}}"#,
+        tid(5)
+    ))
+    .unwrap();
     assert_eq!(set.target_type, Some(Some("goal".to_string())));
-    assert_eq!(set.target_id, Some(Some(5)));
+    assert_eq!(set.target_id, Some(Some(tid(5))));
 }
 
 // ===========================================================================
@@ -3219,7 +3250,7 @@ fn commitment_flow_req(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Commitment),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(1),
         flow_duration_kind: Some("day".into()),
         ..Default::default()
@@ -3463,7 +3494,8 @@ async fn a_commitment_flow_refuses_a_goal_item() {
         .unwrap();
     let task_flow = db.flows().create(create_req("Exercise")).await.unwrap();
 
-    let goal_item = |flow_id: i64| CreateFlowItemRequest {
+    let goal_item = |flow_id: RowId| CreateFlowItemRequest {
+        id: None,
         flow_id,
         title: "Be rested".into(),
         parent_type: "flow".into(),
@@ -3513,6 +3545,7 @@ async fn a_flow_holding_goal_items_cannot_become_a_commitment_flow() {
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Be fit".into(),
             parent_type: "flow".into(),
@@ -3760,7 +3793,7 @@ async fn habit_with_cycles(
     cycles: &[FlowCycleInput],
     start: chrono::NaiveDate,
     policy: MissPolicy,
-) -> (i64, i64) {
+) -> (RowId, RowId) {
     let flow = helpers::session_factory(pool)
         .connect()
         .await
@@ -3770,7 +3803,7 @@ async fn habit_with_cycles(
             title: "Routine".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some(duration_kind.into()),
             flow_window_part: window_part.map(str::to_string),
@@ -3784,6 +3817,7 @@ async fn habit_with_cycles(
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -3835,7 +3869,7 @@ async fn habit_with_cycles(
 /// The Habit's iterations at `at`.
 async fn iterations_at(
     pool: &sqlx::SqlitePool,
-    flow_id: i64,
+    flow_id: RowId,
     at: chrono::NaiveDateTime,
 ) -> Vec<arlesh_lib::flows::model::HabitIteration> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -4077,7 +4111,7 @@ async fn an_item_with_three_cycle_pairs_renders_three_instances_each_with_its_ow
         ],
         "each instance carries its own pair's window",
     );
-    let cycle_ids: std::collections::HashSet<i64> =
+    let cycle_ids: std::collections::HashSet<RowId> =
         night[0].instances.iter().map(|i| i.cycle_id).collect();
     assert_eq!(cycle_ids.len(), 3, "each instance is keyed by its own pair");
 
@@ -4138,7 +4172,7 @@ async fn an_unpaired_item_still_renders_once_with_no_window_of_its_own() {
     assert_eq!(noon[0].instances.len(), 1);
     let instance = &noon[0].instances[0];
     assert_eq!(instance.item_id, item_id);
-    assert_eq!(instance.cycle_id, NO_CYCLE);
+    assert_eq!(instance.cycle_id, no_cycle());
     assert!(
         instance.time_scope.is_none(),
         "no pair, no window — it inherits the iteration's"
@@ -4163,11 +4197,11 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
     let now = day.and_hms_opt(23, 0, 0).unwrap();
     let iterations = iterations_at(&pool, flow_id, now).await;
     let scope = iterations[0].anchor_scope_id;
-    let pairs: Vec<i64> = iterations[0].instances.iter().map(|i| i.cycle_id).collect();
+    let pairs: Vec<RowId> = iterations[0].instances.iter().map(|i| i.cycle_id).collect();
     assert_eq!(pairs.len(), 2);
 
     // The root plus both occurrences: completing only the first leaves the iteration open.
-    let mark = |cycle_id: i64, item_type: &'static str, id: i64| {
+    let mark = |cycle_id: RowId, item_type: &'static str, id: RowId| {
         let pool = pool.clone();
         async move {
             helpers::session_factory(&pool)
@@ -4190,7 +4224,7 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
                 .unwrap();
         }
     };
-    mark(NO_CYCLE, "flow_root", flow_id).await;
+    mark(no_cycle(), "flow_root", flow_id).await;
     mark(pairs[0], "flow_task", item_id).await;
     assert_ne!(
         format!("{:?}", iterations_at(&pool, flow_id, now).await[0].status),
@@ -4213,7 +4247,7 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
         .await
         .unwrap();
     assert_eq!(statuses.len(), 3, "root plus one row per occurrence");
-    let keyed: std::collections::HashSet<(String, i64, i64)> = statuses
+    let keyed: std::collections::HashSet<(String, RowId, RowId)> = statuses
         .iter()
         .map(|s| (s.item_type.clone(), s.item_id, s.cycle_id))
         .collect();
@@ -4226,9 +4260,9 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
 /// Runs `duplicate_flow` in its own transaction, committing only on success.
 async fn copy_flow(
     pool: &sqlx::SqlitePool,
-    flow_id: i64,
+    flow_id: RowId,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<Flow, FlowError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let result = duplicate_flow(&mut db, FlowId(flow_id), parent_type, parent_id, 7).await;
@@ -4242,10 +4276,10 @@ async fn copy_flow(
 async fn copy_item(
     pool: &sqlx::SqlitePool,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     parent_type: &str,
-    parent_id: i64,
-) -> Result<i64, FlowError> {
+    parent_id: RowId,
+) -> Result<RowId, FlowError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let result = duplicate_flow_item(&mut db, item_type, item_id, parent_type, parent_id, 3).await;
     if result.is_ok() {
@@ -4257,7 +4291,7 @@ async fn copy_item(
 /// The `flow_item_cycles` rows belonging to one flow, in id order.
 async fn cycles_of(
     pool: &sqlx::SqlitePool,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Vec<arlesh_lib::flows::model::FlowItemCycle> {
     let mut all = helpers::session_factory(pool)
         .connect()
@@ -4274,7 +4308,7 @@ async fn cycles_of(
 /// The `flow_dependencies` rows belonging to one flow.
 async fn deps_of(
     pool: &sqlx::SqlitePool,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Vec<arlesh_lib::flows::model::FlowDependency> {
     let mut all = helpers::session_factory(pool)
         .connect()
@@ -4305,6 +4339,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Milestone".into(),
             parent_type: "flow".into(),
@@ -4318,6 +4353,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow_goal".into(),
@@ -4362,7 +4398,9 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert_ne!(copy.id, flow.id);
     assert_eq!(
@@ -4371,7 +4409,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     );
     assert_eq!(
         (copy.parent_type.as_str(), copy.parent_id, copy.position),
-        ("domain", 2, 7)
+        ("domain", helpers::seeded(2), 7)
     );
     assert!(copy.is_habit, "a copy of a Habit is a Habit");
     let recurrence = helpers::session_factory(&pool)
@@ -4457,7 +4495,9 @@ async fn a_copied_flow_keeps_a_derived_target_and_so_follows_the_paste() {
         "created with no explicit target"
     );
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 3).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3))
+        .await
+        .unwrap();
 
     assert!(
         copy.target_type.is_none() && copy.target_id.is_none(),
@@ -4474,7 +4514,7 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
         CreateGoalRequest {
             title: "Elsewhere".into(),
             parent_type: "project".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -4493,7 +4533,9 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
         .await
         .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 3).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(3))
+        .await
+        .unwrap();
 
     assert_eq!(copy.target_type.as_deref(), Some("goal"));
     assert_eq!(
@@ -4520,6 +4562,7 @@ async fn a_copied_habit_carries_no_completion_history() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Do".into(),
             parent_type: "flow".into(),
@@ -4582,7 +4625,9 @@ async fn a_copied_habit_carries_no_completion_history() {
         1
     );
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 1).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(1))
+        .await
+        .unwrap();
 
     assert_eq!(
         helpers::session_factory(&pool)
@@ -4596,12 +4641,12 @@ async fn a_copied_habit_carries_no_completion_history() {
         0,
         "history belongs to the original — the copy has not been done",
     );
-    let original_pairs: Vec<i64> = cycles_of(&pool, flow.id)
+    let original_pairs: Vec<RowId> = cycles_of(&pool, flow.id)
         .await
         .iter()
         .map(|c| c.id)
         .collect();
-    let copied_pairs: Vec<i64> = cycles_of(&pool, copy.id)
+    let copied_pairs: Vec<RowId> = cycles_of(&pool, copy.id)
         .await
         .iter()
         .map(|c| c.id)
@@ -4662,6 +4707,7 @@ async fn a_copy_of_a_private_flow_is_private() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Do".into(),
             parent_type: "flow".into(),
@@ -4704,7 +4750,9 @@ async fn a_copy_of_a_private_flow_is_private() {
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert!(
         copy.is_private,
@@ -4741,6 +4789,7 @@ async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() 
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Lights out".into(),
             parent_type: "flow".into(),
@@ -4767,7 +4816,9 @@ async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() 
     }
     .unwrap();
 
-    let copy = copy_flow(&pool, flow.id, "aspect", 2).await.unwrap();
+    let copy = copy_flow(&pool, flow.id, "aspect", helpers::seeded(2))
+        .await
+        .unwrap();
 
     assert_eq!(copy.instance_type, "commitment");
     assert!(copy.is_habit);
@@ -4858,6 +4909,7 @@ async fn copying_a_flow_item_duplicates_it_with_its_cycle_pairs() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -4935,6 +4987,7 @@ async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_th
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Prep".into(),
             parent_type: "flow".into(),
@@ -4948,6 +5001,7 @@ async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_th
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Block".into(),
             parent_type: "flow".into(),
@@ -4961,6 +5015,7 @@ async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_th
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "First".into(),
             parent_type: "flow_goal".into(),
@@ -4974,6 +5029,7 @@ async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_th
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Second".into(),
             parent_type: "flow_goal".into(),
@@ -5029,7 +5085,7 @@ async fn copying_a_flow_item_clones_what_is_nested_under_it_and_rewires_it_to_th
     let copied_second = copied.iter().find(|t| t.title == "Second").unwrap();
     let copied_first = copied.iter().find(|t| t.title == "First").unwrap();
 
-    let edges: Vec<i64> = deps_of(&pool, flow.id)
+    let edges: Vec<RowId> = deps_of(&pool, flow.id)
         .await
         .iter()
         .filter(|d| d.dependent_id == copied_second.id && d.dependent_type == "flow_task")
@@ -5071,6 +5127,7 @@ async fn copying_a_flow_item_into_another_flow_is_refused() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: source.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -5118,6 +5175,7 @@ async fn copying_a_goal_item_onto_a_task_item_is_refused_by_name() {
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Block".into(),
             parent_type: "flow".into(),
@@ -5131,6 +5189,7 @@ async fn copying_a_goal_item_onto_a_task_item_is_refused_by_name() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -5161,11 +5220,14 @@ async fn copying_an_item_that_does_not_exist_is_a_not_found() {
         .await
         .unwrap();
 
-    let refused = copy_item(&pool, FlowItemType::FlowTask, 9_999, "flow", flow.id)
+    let refused = copy_item(&pool, FlowItemType::FlowTask, tid(9_999), "flow", flow.id)
         .await
         .unwrap_err();
 
-    assert!(matches!(refused, FlowError::NotFound(9_999)), "{refused}");
+    assert!(
+        matches!(refused, FlowError::NotFound(id) if id == tid(9_999)),
+        "{refused}"
+    );
 }
 
 #[tokio::test]
@@ -5185,6 +5247,7 @@ async fn pasting_a_flow_item_onto_a_real_node_is_refused() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -5193,7 +5256,7 @@ async fn pasting_a_flow_item_onto_a_real_node_is_refused() {
         .await
         .unwrap();
 
-    let refused = copy_item(&pool, FlowItemType::FlowTask, task.id, "goal", 1)
+    let refused = copy_item(&pool, FlowItemType::FlowTask, task.id, "goal", tid(1))
         .await
         .unwrap_err();
 
@@ -5220,6 +5283,7 @@ async fn a_flow_item_can_be_pasted_onto_another_item_inside_the_same_flow() {
         .unwrap()
         .flows()
         .create_goal(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Block".into(),
             parent_type: "flow".into(),
@@ -5233,6 +5297,7 @@ async fn a_flow_item_can_be_pasted_onto_another_item_inside_the_same_flow() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -5280,7 +5345,7 @@ async fn archive_and_fork_stops_the_original_recurring() {
             title: "Exercise".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             ..Default::default()

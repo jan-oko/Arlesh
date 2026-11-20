@@ -18,7 +18,7 @@ vi.mock("@/api/window", async () => (await import("@/test/window-api-mock")).win
 const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
 const EMPTY_DISPLAY = {
-  tagOptions: [], tagName: (id: number) => `#${id}`, tagColor: () => null,
+  tagOptions: [], tagName: (id: string) => `#${id}`, tagColor: () => null,
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
   antecedentPool: [], dependencyPool: [],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => v,

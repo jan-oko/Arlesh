@@ -5,6 +5,7 @@
 //! `src/utils/habit-fold-conformance.test.ts` runs the same cases through `foldHabitRuns`. Neither
 //! side generates the file.
 
+use arlesh_lib::nodes::id::tid;
 use arlesh_lib::{
     flows::rules::fold::{fold, Child, Folded, Iteration},
     scopes::model::ScopeKind,
@@ -54,7 +55,7 @@ impl CorpusChild {
             (Some(flow_id), Some(anchor_date)) => Child::Iteration(
                 self.id.clone(),
                 Iteration {
-                    flow_id,
+                    flow_id: tid(flow_id),
                     scope_kind: self.kind,
                     anchor_date,
                     passed: self.passed,
@@ -91,6 +92,13 @@ fn every_case_folds_as_the_corpus_says() {
     for case in &corpus.cases {
         let children = case.children.iter().map(CorpusChild::child).collect();
         let folded: Vec<Value> = fold(children, case.threshold).iter().map(drawn).collect();
-        assert_eq!(Value::Array(folded), case.folded, "{}", case.name);
+        // A run's id spells its Habit's row id, which the corpus writes as the number the Habit
+        // was given: `tid(n)` is the id of row number `n`.
+        let mut text = serde_json::to_string(&folded).expect("a folded child serialises");
+        for number in (0..100).rev() {
+            text = text.replace(&tid(number).to_string(), &number.to_string());
+        }
+        let folded: Value = serde_json::from_str(&text).expect("it reads back");
+        assert_eq!(folded, case.folded, "{}", case.name);
     }
 }

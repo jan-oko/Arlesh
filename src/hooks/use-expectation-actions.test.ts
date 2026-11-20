@@ -4,6 +4,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { lane, patchedFields } from "@/test/lane-helpers";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 const updateExpectation = vi.fn((_id: number | string, request: { status?: string }) =>
@@ -31,24 +32,24 @@ describe("useExpectationActions", () => {
   });
 
   it("releases a pending wait", () => {
-    setup(node({ rowId: 3, status: "pending" })).actions.toggleRelease("x");
-    expect(updateExpectation).toHaveBeenLastCalledWith(3, { status: "released" });
+    setup(node({ rowId: storedRowId(3), status: "pending" })).actions.toggleRelease("x");
+    expect(updateExpectation).toHaveBeenLastCalledWith(storedRowId(3), { status: "released" });
   });
 
   it("takes a release back", () => {
-    setup(node({ rowId: 3, status: "released" })).actions.toggleRelease("x");
-    expect(updateExpectation).toHaveBeenLastCalledWith(3, { status: "pending" });
+    setup(node({ rowId: storedRowId(3), status: "released" })).actions.toggleRelease("x");
+    expect(updateExpectation).toHaveBeenLastCalledWith(storedRowId(3), { status: "pending" });
   });
 
   it("shows the release at once and the returned row's status after the answer", async () => {
-    setup(node({ rowId: 3, status: "pending" })).actions.toggleRelease("x");
+    setup(node({ rowId: storedRowId(3), status: "pending" })).actions.toggleRelease("x");
     expect(patchedFields()).toEqual([{ status: "released" }]);
     await waitFor(() => expect(lane()[0]?.answer?.fields).toEqual({ status: "released" }));
   });
 
   it("refuses to release a delegated task's wait by hand, out loud", () => {
     const { actions, showToast } = setup(node({
-      rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 }, status: "pending",
+      rowId: "d-5", origin: { kind: "delegation_wait", task_id: storedRowId(5) }, status: "pending",
     }));
     actions.toggleRelease("x");
     expect(updateExpectation).not.toHaveBeenCalled();
@@ -57,7 +58,7 @@ describe("useExpectationActions", () => {
   });
 
   it("releases a spawned wait on its own row, like any wait", () => {
-    setup(node({ rowId: "s-7", origin: { kind: "spawned_wait", task_id: 7 }, status: "pending" })).actions.toggleRelease("x");
+    setup(node({ rowId: "s-7", origin: { kind: "spawned_wait", task_id: storedRowId(7) }, status: "pending" })).actions.toggleRelease("x");
     expect(updateExpectation).toHaveBeenLastCalledWith("s-7", { status: "released" });
   });
 });

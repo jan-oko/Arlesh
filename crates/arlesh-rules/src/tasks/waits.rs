@@ -1,6 +1,7 @@
 //! The pure items of a wait: which kind it is, how a check names it, and the instant spelling the
 //! `wait_checks` columns store.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
@@ -42,9 +43,9 @@ impl WaitKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WaitRef {
     /// A stored Expectation.
-    Stored(i64),
+    Stored(RowId),
     /// The wait a stored Task spawned, by the Task.
-    Spawned(i64),
+    Spawned(RowId),
     /// The wait a Habit occurrence spawned, by the occurrence's canonical node key.
     Occurrence(String),
 }
@@ -60,7 +61,7 @@ impl WaitRef {
     }
 
     /// The `wait_checks` columns naming it: an integer id, or an occurrence's key.
-    pub fn columns(&self) -> (Option<i64>, Option<&str>) {
+    pub fn columns(&self) -> (Option<RowId>, Option<&str>) {
         match self {
             Self::Stored(id) | Self::Spawned(id) => (Some(*id), None),
             Self::Occurrence(key) => (None, Some(key.as_str())),

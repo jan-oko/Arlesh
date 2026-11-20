@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useWaitEditor } from "@/hooks/use-wait-editor";
+import { storedRowId } from "@/test/stored-id";
 
-const createExpectation = vi.fn((_request: unknown) => Promise.resolve({ id: 42 }));
+const createExpectation = vi.fn((_request: unknown) => Promise.resolve({ id: storedRowId(42) }));
 // A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
 vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
@@ -30,7 +31,7 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
 }
 
 function board(task: MindmapNode): MindmapNode {
-  return node("root", "domain", { children: [node("domain-1", "project", { rowId: 1, children: [task] })] });
+  return node("root", "domain", { children: [node(`domain-${storedRowId(1)}`, "project", { rowId: storedRowId(1), children: [task] })] });
 }
 
 const SAVE = {
@@ -42,15 +43,15 @@ describe("useWaitEditor — Shift+E", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("creates a stored wait under a row, bound to nothing", async () => {
-    const tree = board(node("task-5", "task", { rowId: 5 }));
+    const tree = board(node(`task-${storedRowId(5)}`, "task", { rowId: storedRowId(5) }));
     const { result } = renderHook(() => useWaitEditor(tree, vi.fn(() => Promise.resolve())));
-    act(() => result.current.createUnder("task-5"));
-    expect(result.current.create).toEqual({ parentType: "task", parentId: 5 });
+    act(() => result.current.createUnder(`task-${storedRowId(5)}`));
+    expect(result.current.create).toEqual({ parentType: "task", parentId: storedRowId(5) });
     await act(() => result.current.saveCreate("gesture", {
       ...SAVE, checkEvery: { n: 1, kind: "week" }, checkStartingDate: "2026-10-01",
     }));
     expect(createExpectation).toHaveBeenCalledWith({
-      title: "Reply", parent_type: "task", parent_id: 5,
+      title: "Reply", parent_type: "task", parent_id: storedRowId(5),
       check_every: { n: 1, kind: "week" }, check_starting: "2026-10-01T02:00:00",
     });
     expect(updateTask).not.toHaveBeenCalled();

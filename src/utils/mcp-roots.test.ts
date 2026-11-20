@@ -1,14 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { catalogueKeyOf, describeRoots, rootCandidates } from "@/utils/mcp-roots";
 import type { McpCatalogueNode, McpNodeKind } from "@/api/mcp-access";
+import { storedRowId } from "@/test/stored-id";
 
 function node(
   kind: McpNodeKind, id: number, title: string, parent: [McpNodeKind, number] | null,
   subtype: string | null = null,
 ): McpCatalogueNode {
   return {
-    node_kind: kind, node_id: id, subtype, title,
-    parent_kind: parent?.[0] ?? null, parent_id: parent?.[1] ?? null,
+    node_kind: kind, node_id: storedRowId(id), subtype, title,
+    parent_kind: parent?.[0] ?? null, parent_id: parent === null ? null : storedRowId(parent[1]),
     is_private: false, agentic: null,
   };
 }
@@ -23,13 +24,13 @@ const NODES: McpCatalogueNode[] = [
 describe("describeRoots", () => {
   it("names each root with its kind and its path from the top of the board", () => {
     const rows = describeRoots(
-      [{ node_kind: "task", node_id: 100 }],
+      [{ node_kind: "task", node_id: storedRowId(100) }],
       NODES,
-      [{ node_kind: "task", node_id: 100, root_kind: "task", root_id: 100 }],
+      [{ node_kind: "task", node_id: storedRowId(100), root_kind: "task", root_id: storedRowId(100) }],
     );
 
     expect(rows).toEqual([{
-      key: { node_kind: "task", node_id: 100 },
+      key: { node_kind: "task", node_id: storedRowId(100) },
       title: "Write docs",
       kind: "task",
       path: ["Growth", "Arlesh", "Ship"],
@@ -38,17 +39,17 @@ describe("describeRoots", () => {
   });
 
   it("reads a domain-table root by its subtype", () => {
-    const [row] = describeRoots([{ node_kind: "domain", node_id: 2 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "domain", node_id: storedRowId(2) }], NODES, []);
     expect(row?.kind).toBe("project");
   });
 
   it("marks a root the backend did not list as visible — a private one", () => {
-    const [row] = describeRoots([{ node_kind: "goal", node_id: 10 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "goal", node_id: storedRowId(10) }], NODES, []);
     expect(row?.visible).toBe(false);
   });
 
   it("keeps a root whose row is gone, unnamed, rather than dropping it silently", () => {
-    const [row] = describeRoots([{ node_kind: "task", node_id: 9 }], NODES, []);
+    const [row] = describeRoots([{ node_kind: "task", node_id: storedRowId(9) }], NODES, []);
     expect(row).toMatchObject({ title: null, kind: null, path: [] });
   });
 });
@@ -56,7 +57,7 @@ describe("describeRoots", () => {
 describe("rootCandidates", () => {
   it("names and places the nodes the backend offers, with their ancestors nearest first", () => {
     // Which nodes may be made roots is the backend's (`access::resolve::root_candidates`).
-    const offered = NODES.filter((n) => !(n.node_kind === "goal" && n.node_id === 10));
+    const offered = NODES.filter((n) => !(n.node_kind === "goal" && n.node_id === storedRowId(10)));
     const candidates = rootCandidates(offered, NODES);
 
     expect(candidates.map((candidate) => candidate.title)).toEqual(["Growth", "Arlesh", "Write docs"]);
@@ -67,7 +68,7 @@ describe("rootCandidates", () => {
   it("gives ids that lead back to the node they were made from", () => {
     const [growth] = rootCandidates(NODES, NODES);
     expect(growth).toBeDefined();
-    expect(catalogueKeyOf(growth?.id ?? "", NODES)).toEqual({ node_kind: "domain", node_id: 1 });
+    expect(catalogueKeyOf(growth?.id ?? "", NODES)).toEqual({ node_kind: "domain", node_id: storedRowId(1) });
     expect(catalogueKeyOf("nothing", NODES)).toBeUndefined();
   });
 });

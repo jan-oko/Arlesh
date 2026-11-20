@@ -7,6 +7,7 @@
 //! template's with the difference applied, so a template edit still reaches every occurrence that
 //! has not said otherwise.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use sqlx::SqliteConnection;
@@ -14,19 +15,19 @@ use sqlx::SqliteConnection;
 use super::id::NodeId;
 
 /// Tag differences, by node key: `(tag, added)` pairs.
-pub type TagDifferences = HashMap<String, Vec<(i64, bool)>>;
+pub type TagDifferences = HashMap<String, Vec<(RowId, bool)>>;
 
 /// One `derived_dependencies` row: an edge with at least one derived end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedEdge {
     /// A stored dependent, when the dependent is stored.
-    pub dependent_id: Option<i64>,
+    pub dependent_id: Option<RowId>,
     /// A derived dependent's node key, when the dependent is derived.
     pub dependent_key: Option<String>,
     /// What is depended on: `task`, `goal` or `expectation`.
     pub target_type: String,
     /// A stored target, when the target is stored.
-    pub target_id: Option<i64>,
+    pub target_id: Option<RowId>,
     /// A derived target's node key, when the target is derived.
     pub target_key: Option<String>,
     /// Whether the edge is added, or one of the template's own removed.
@@ -36,10 +37,10 @@ pub struct DerivedEdge {
 /// A [`DerivedEdge`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct DerivedEdgeRow {
-    dependent_id: Option<i64>,
+    dependent_id: Option<RowId>,
     dependent_key: Option<String>,
     target_type: String,
-    target_id: Option<i64>,
+    target_id: Option<RowId>,
     target_key: Option<String>,
     added: bool,
 }
@@ -70,7 +71,7 @@ impl DerivedEdge {
 }
 
 /// One end of an edge as the row id it names.
-fn endpoint(id: Option<i64>, key: Option<&str>) -> Option<NodeId> {
+fn endpoint(id: Option<RowId>, key: Option<&str>) -> Option<NodeId> {
     match (id, key) {
         (Some(id), _) => Some(NodeId::Stored(id)),
         (None, Some(key)) => Some(NodeId::Derived(super::id::DerivedId::of_key(key))),
@@ -82,13 +83,13 @@ fn endpoint(id: Option<i64>, key: Option<&str>) -> Option<NodeId> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Endpoint {
     /// A stored row.
-    Stored(i64),
+    Stored(RowId),
     /// A derived node, by canonical key.
     Derived(String),
 }
 
 impl Endpoint {
-    fn columns(&self) -> (Option<i64>, Option<&str>) {
+    fn columns(&self) -> (Option<RowId>, Option<&str>) {
         match self {
             Self::Stored(id) => (Some(*id), None),
             Self::Derived(key) => (None, Some(key.as_str())),
@@ -108,8 +109,8 @@ impl<'session> RelationOperator<'session> {
     }
 
     /// Every tag difference one Habit's occurrences carry.
-    pub async fn tags_for_habit(&mut self, flow_id: i64) -> Result<TagDifferences, sqlx::Error> {
-        let rows: Vec<(String, i64, bool)> = sqlx::query_as(
+    pub async fn tags_for_habit(&mut self, flow_id: RowId) -> Result<TagDifferences, sqlx::Error> {
+        let rows: Vec<(String, RowId, bool)> = sqlx::query_as(
             "SELECT node_key, tag_id, added FROM derived_tags WHERE flow_id = ? ORDER BY tag_id",
         )
         .bind(flow_id)
@@ -124,7 +125,7 @@ impl<'session> RelationOperator<'session> {
 
     /// Every tag difference a derived node that belongs to no Habit carries — a wait's check task.
     pub async fn tags_without_habit(&mut self) -> Result<TagDifferences, sqlx::Error> {
-        let rows: Vec<(String, i64, bool)> = sqlx::query_as(
+        let rows: Vec<(String, RowId, bool)> = sqlx::query_as(
             "SELECT node_key, tag_id, added FROM derived_tags WHERE flow_id IS NULL ORDER BY tag_id",
         )
         .fetch_all(&mut *self.connection)
@@ -138,7 +139,7 @@ impl<'session> RelationOperator<'session> {
 
     /// Every tag difference a derived wait carries — a spawned or delegation wait, whoever its Task.
     pub async fn expectation_tags(&mut self) -> Result<TagDifferences, sqlx::Error> {
-        let rows: Vec<(String, i64, bool)> = sqlx::query_as(
+        let rows: Vec<(String, RowId, bool)> = sqlx::query_as(
             "SELECT node_key, tag_id, added FROM derived_tags WHERE node_kind = 'expectation'
              ORDER BY tag_id",
         )
@@ -156,10 +157,10 @@ impl<'session> RelationOperator<'session> {
     /// lacks needs none to be absent. `flow_id` is the Habit the node belongs to, if any.
     pub async fn set_tag(
         &mut self,
-        flow_id: Option<i64>,
+        flow_id: Option<RowId>,
         node_kind: &str,
         node_key: &str,
-        tag_id: i64,
+        tag_id: RowId,
         in_template: bool,
         present: bool,
     ) -> Result<(), sqlx::Error> {
@@ -188,7 +189,7 @@ impl<'session> RelationOperator<'session> {
     /// Every derived node's own block-reason list, by node key, in order.
     pub async fn block_reasons_for_habit(
         &mut self,
-        flow_id: i64,
+        flow_id: RowId,
     ) -> Result<HashMap<String, Vec<String>>, sqlx::Error> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT node_key, reason FROM derived_block_reasons WHERE flow_id = ?
@@ -225,7 +226,7 @@ impl<'session> RelationOperator<'session> {
     /// template's again). `flow_id` is the Habit the node belongs to, if any.
     pub async fn set_block_reasons(
         &mut self,
-        flow_id: Option<i64>,
+        flow_id: Option<RowId>,
         node_kind: &str,
         node_key: &str,
         reasons: Option<&[String]>,
@@ -278,7 +279,7 @@ impl<'session> RelationOperator<'session> {
     /// template's own edges as removed. Any earlier difference for the same edge is replaced.
     pub async fn put_dependency(
         &mut self,
-        flow_id: Option<i64>,
+        flow_id: Option<RowId>,
         dependent: &Endpoint,
         target_type: &str,
         target: &Endpoint,
@@ -330,7 +331,7 @@ impl<'session> RelationOperator<'session> {
     }
 
     /// Forgets every edge naming a stored row that is going.
-    pub async fn forget_stored(&mut self, node_type: &str, id: i64) -> Result<(), sqlx::Error> {
+    pub async fn forget_stored(&mut self, node_type: &str, id: RowId) -> Result<(), sqlx::Error> {
         sqlx::query(
             "DELETE FROM derived_dependencies
              WHERE (dependent_id = ?1 AND ?2 = 'task') OR (target_type = ?2 AND target_id = ?1)",

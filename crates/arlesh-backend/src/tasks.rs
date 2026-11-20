@@ -1,6 +1,7 @@
 //! The `tasks` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `tasks` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::DuplicatedSubtree,
     error::WireError,
@@ -22,7 +23,7 @@ pub trait TasksPort: Send + Sync {
     async fn create_task(&self, request: CreateTaskRequest) -> Result<Task, WireError>;
 
     /// Fetches a task by id with computed blockers.
-    async fn get_task(&self, id: i64) -> Result<TaskWithBlockers, WireError>;
+    async fn get_task(&self, id: RowId) -> Result<TaskWithBlockers, WireError>;
 
     /// Lists every task — the Task virtual table: stored rows and every Habit occurrence.
     async fn list_tasks(&self, now: chrono::NaiveDateTime) -> Result<Vec<Task>, WireError>;
@@ -58,7 +59,7 @@ pub trait TasksPort: Send + Sync {
     async fn scope_containment_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         time_scope: TimeScope,
     ) -> Result<Vec<ViolatingDescendant>, WireError>;
 
@@ -66,9 +67,9 @@ pub trait TasksPort: Send + Sync {
     async fn reparent_scope_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         new_parent_type: String,
-        new_parent_id: i64,
+        new_parent_id: RowId,
     ) -> Result<ReparentConflicts, WireError>;
 
     /// Deletes a task — or archives a Habit occurrence, which is never deleted.
@@ -77,9 +78,9 @@ pub trait TasksPort: Send + Sync {
     /// Deep-clones a task and its whole subtree under `(target_type, target_id)`, putting the new
     async fn duplicate_task(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Task>, WireError>;
 
@@ -117,7 +118,7 @@ pub trait TasksPort: Send + Sync {
     async fn create_goal(&self, request: CreateGoalRequest) -> Result<Goal, WireError>;
 
     /// Fetches a goal by id.
-    async fn get_goal(&self, id: i64) -> Result<Goal, WireError>;
+    async fn get_goal(&self, id: RowId) -> Result<Goal, WireError>;
 
     /// Lists every goal — the Goal virtual table: stored rows and every Habit occurrence.
     async fn list_goals(&self, now: chrono::NaiveDateTime) -> Result<Vec<Goal>, WireError>;
@@ -136,23 +137,23 @@ pub trait TasksPort: Send + Sync {
     /// Deep-clones a goal and its whole subtree under `(target_type, target_id)`, putting the new
     async fn duplicate_goal(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Goal>, WireError>;
 
     /// Adds a tag to a task.
-    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError>;
+    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError>;
 
     /// Removes a tag from a task.
-    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError>;
+    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError>;
 
     /// Adds a tag to a goal.
-    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError>;
+    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError>;
 
     /// Removes a tag from a goal.
-    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError>;
+    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError>;
 
     /// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`
     async fn derive_scope_lifecycles(

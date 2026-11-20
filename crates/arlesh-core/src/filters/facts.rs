@@ -14,6 +14,7 @@
 //! pretending otherwise would mean a second, thinner definition of what a Flow node is. A filtered
 //! read therefore narrows the real-node sections and passes the flow sections through whole.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -33,7 +34,7 @@ use super::{
 };
 
 /// The tree-node id for a domains-table row.
-fn domain_id(id: i64) -> String {
+fn domain_id(id: RowId) -> String {
     format!("domain-{id}")
 }
 

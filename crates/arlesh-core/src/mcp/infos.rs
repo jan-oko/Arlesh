@@ -86,6 +86,7 @@ impl ArleshMcp {
         Parameters(operation): Parameters<InfosOperation>,
     ) -> Result<CallToolResult, ErrorData> {
         let InfosOperation::Create {
+            id,
             task_id,
             body,
             details,
@@ -114,6 +115,7 @@ impl ArleshMcp {
         let created = crate::nodes::write::create_info(
             &mut db,
             CreateInfoRequest {
+                id,
                 body,
                 details,
                 parent_type: "task".into(),

@@ -1,6 +1,6 @@
 import { useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { storedId } from "@/api/node-id";
+import { isDerivedId, storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
 import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
@@ -286,7 +286,7 @@ export default function MindmapView() {
       const steps: GestureStep[] = [];
       // A Habit occurrence has no stored Time Scope to clamp against: moving one is refused by the
       // backend, and a row moved onto one takes its iteration's window there.
-      if (clamps && typeof nodeDbId === "number" && typeof parentDbId === "number") {
+      if (clamps && nodeDbId !== null && parentDbId !== null && !isDerivedId(nodeDbId) && !isDerivedId(parentDbId)) {
         const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
         if (ancestor_time_scope !== null && conflicts.length > 0) {
           if (!(await confirmScopeClamp(conflicts))) return;

@@ -4,6 +4,9 @@
 //! occurrence *is* afterwards: which row it reads as, where it hangs, what a write to it did, and
 //! what it refuses. The overlay rows are looked at only where their absence is the behaviour.
 
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 use std::borrow::Cow;
 
 use crate::helpers;
@@ -51,14 +54,14 @@ async fn daily_habit(
     pool: &sqlx::SqlitePool,
     app: &App,
     instance_type: InstanceType,
-) -> (i64, i64) {
+) -> (RowId, RowId) {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Morning".into(),
             instance_type: Some(instance_type),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("day".into()),
             ..Default::default()
@@ -67,11 +70,12 @@ async fn daily_habit(
     .await
     .unwrap();
     let item = if instance_type == InstanceType::Commitment {
-        0
+        tid(0)
     } else {
         flow_commands::create_flow_task(
             app.state(),
             CreateFlowItemRequest {
+                id: None,
                 flow_id: flow.id,
                 title: "Stretch".into(),
                 parent_type: "flow".into(),
@@ -104,9 +108,9 @@ async fn daily_habit(
 
 fn key(
     item_type: TemplateKind,
-    item_id: i64,
+    item_id: RowId,
     date: chrono::NaiveDate,
-    cycle: i64,
+    cycle: RowId,
 ) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem { item_type, item_id },
@@ -115,12 +119,12 @@ fn key(
     }
 }
 
-fn root(flow_id: i64, date: chrono::NaiveDate) -> NodeId {
-    NodeId::Derived(key(TemplateKind::FlowRoot, flow_id, date, 0).id())
+fn root(flow_id: RowId, date: chrono::NaiveDate) -> NodeId {
+    NodeId::Derived(key(TemplateKind::FlowRoot, flow_id, date, no_cycle()).id())
 }
 
-fn item(item_id: i64, date: chrono::NaiveDate) -> NodeId {
-    NodeId::Derived(key(TemplateKind::FlowTask, item_id, date, 0).id())
+fn item(item_id: RowId, date: chrono::NaiveDate) -> NodeId {
+    NodeId::Derived(key(TemplateKind::FlowTask, item_id, date, no_cycle()).id())
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
@@ -153,7 +157,7 @@ async fn every_occurrence_is_an_ordinary_row_with_a_habit_origin() {
     assert_eq!(first_root.status.as_str(), "todo");
     assert_eq!(
         (first_root.parent_type.as_str(), &first_root.parent_id),
-        ("domain", &NodeId::Stored(1)),
+        ("domain", &NodeId::Stored(helpers::seeded(1))),
         "a root hangs on the Habit's host"
     );
     let Origin::Habit(origin) = &first_root.origin else {
@@ -634,7 +638,12 @@ async fn a_future_occurrence_with_an_edit_stays_on_the_board() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     arlesh_lib::flows::occurrence_edit::update_task(
         &mut db,
-        &key(TemplateKind::FlowTask, item_id, ymd(2026, 1, 20), 0),
+        &key(
+            TemplateKind::FlowTask,
+            item_id,
+            ymd(2026, 1, 20),
+            no_cycle(),
+        ),
         UpdateTaskRequest {
             title: Some("Stretch, far ahead".into()),
             ..Default::default()
@@ -669,7 +678,7 @@ async fn a_stored_child_of_an_occurrence_hangs_on_it_in_the_load() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow_id, _) = daily_habit(&pool, &app, InstanceType::Task).await;
-    let parent = key(TemplateKind::FlowRoot, flow_id, ymd(2026, 1, 5), 0);
+    let parent = key(TemplateKind::FlowRoot, flow_id, ymd(2026, 1, 5), no_cycle());
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let child =
         arlesh_lib::flows::create_instance_child(&mut db, &parent, "task", "buy milk".into())
@@ -887,7 +896,7 @@ async fn a_stored_task_is_still_written_where_it_always_was() {
         CreateTaskRequest {
             title: "Ordinary".into(),
             parent_type: "project".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -954,6 +963,26 @@ async fn pool_before_0060() -> sqlx::SqlitePool {
     pool
 }
 
+/// A key as migration 0060 wrote it, spelled as migration 0107 leaves it: the ids inside it become
+/// the full ids their rows keep, and the no-cycle `0` the nil UUID.
+fn old_key(text: &str) -> String {
+    use arlesh_lib::database::row_ids::{new_id, NO_CYCLE_ID};
+    let mut parts = text.splitn(3, ':');
+    let (kind, number, rest) = (
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+        parts.next().unwrap_or_default(),
+    );
+    let row_kind = if kind == "flow_root" { "flow" } else { kind };
+    let rest = rest
+        .strip_suffix(":0")
+        .map_or(rest.to_string(), |scope| format!("{scope}:{NO_CYCLE_ID}"));
+    format!(
+        "{kind}:{}:{rest}",
+        new_id(row_kind, number.parse().unwrap_or_default())
+    )
+}
+
 #[tokio::test]
 async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     let pool = pool_before_0060().await;
@@ -986,7 +1015,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     .await
     .unwrap();
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    arlesh_lib::database::migrate(&pool).await.unwrap();
 
     let tasks: Vec<TaskOverlayRow> = sqlx::query_as(
         "SELECT node_key, status, title, tombstone, resolved_at, block_reasons_set
@@ -995,42 +1024,43 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     .fetch_all(&pool)
     .await
     .unwrap();
+    let mut expected_tasks = vec![
+        (
+            old_key("flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("done".into()),
+            None,
+            None,
+            Some(100),
+            0,
+        ),
+        (
+            old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("in_progress".into()),
+            Some("Own title".into()),
+            None,
+            None,
+            1,
+        ),
+        (
+            old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-06\"}:0"),
+            None,
+            None,
+            Some("archived".into()),
+            None,
+            0,
+        ),
+        (
+            old_key("flow_task:11:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
+            Some("done".into()),
+            None,
+            Some("missed".into()),
+            Some(300),
+            0,
+        ),
+    ];
+    expected_tasks.sort();
     assert_eq!(
-        tasks,
-        vec![
-            (
-                "flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
-                Some("done".into()),
-                None,
-                None,
-                Some(100),
-                0
-            ),
-            (
-                "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
-                Some("in_progress".into()),
-                Some("Own title".into()),
-                None,
-                None,
-                1
-            ),
-            (
-                "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-06\"}:0".into(),
-                None,
-                None,
-                Some("archived".into()),
-                None,
-                0
-            ),
-            (
-                "flow_task:11:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
-                Some("done".into()),
-                None,
-                Some("missed".into()),
-                Some(300),
-                0
-            ),
-        ],
+        tasks, expected_tasks,
         "a task's status carries as itself; a deleted tombstone becomes archived"
     );
 
@@ -1042,7 +1072,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         goals,
         vec![(
-            "flow_root:2:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
+            old_key("flow_root:2:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
             Some("achieved".into())
         )],
         "a goal's done is achieved"
@@ -1053,15 +1083,16 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(
-        commitments,
-        vec![
-            ("flow_root:3:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(), Some("kept".into())),
+    let mut expected_commitments = vec![
+            (old_key("flow_root:3:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"), Some("kept".into())),
             (
-                "flow_root:3:{\"kind\":\"part_of_day\",\"date\":\"2026-01-05\",\"part\":\"evening\"}:0".into(),
+                old_key("flow_root:3:{\"kind\":\"part_of_day\",\"date\":\"2026-01-05\",\"part\":\"evening\"}:0"),
                 Some("broken".into())
             ),
-        ],
+        ];
+    expected_commitments.sort();
+    assert_eq!(
+        commitments, expected_commitments,
         "each verdict carries under its own iteration key; a stale done is no verdict, and an \
          overlay left saying nothing is not kept"
     );
@@ -1074,12 +1105,12 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         reasons,
         vec![(
-            "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
+            old_key("flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
             "stuck".into()
         )]
     );
 
-    let children: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
+    let children: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
         "SELECT parent_key, child_type, child_id, window_start_scope_id FROM derived_children",
     )
     .fetch_all(&pool)
@@ -1088,9 +1119,9 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         children,
         vec![(
-            "flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
+            old_key("flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"),
             "task".into(),
-            70,
+            arlesh_lib::database::row_ids::new_id("task", 70),
             Some("{\"kind\":\"day\",\"date\":\"2026-01-05\"}".into())
         )]
     );
@@ -1133,7 +1164,7 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
             title: "Weekly".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             root_plan_kind: Some("day".into()),
@@ -1147,6 +1178,7 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
     let prepare = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Prepare".into(),
             parent_type: "flow".into(),
@@ -1200,7 +1232,7 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
                 item_id: flow.id,
             },
             iteration: week,
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     );
@@ -1237,7 +1269,7 @@ async fn an_item_cycle_plan_outside_the_roots_plan_is_refused_naming_it() {
             title: "Weekly".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             root_plan_kind: Some("day".into()),
@@ -1251,6 +1283,7 @@ async fn an_item_cycle_plan_outside_the_roots_plan_is_refused_naming_it() {
     let prepare = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Prepare".into(),
             parent_type: "flow".into(),
@@ -1359,7 +1392,7 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
             title: "Weekly".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             root_plan_kind: Some("week".into()),
@@ -1373,6 +1406,7 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
     let review = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Review".into(),
             parent_type: "flow".into(),
@@ -1424,7 +1458,7 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
                 item_id: flow.id,
             },
             iteration: week,
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     );
@@ -1438,7 +1472,7 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
         Some((week, week)),
         "the root is planned into its iteration's window"
     );
-    let pair: i64 = sqlx::query_scalar("SELECT id FROM flow_item_cycles WHERE item_id = ?")
+    let pair: RowId = sqlx::query_scalar("SELECT id FROM flow_item_cycles WHERE item_id = ?")
         .bind(review.id)
         .fetch_one(&pool)
         .await

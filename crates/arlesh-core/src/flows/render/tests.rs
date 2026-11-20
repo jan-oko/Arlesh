@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 use crate::scopes::key::test_key;
 
 const FLOW_ID: i64 = 7;
@@ -6,11 +7,11 @@ const FLOW_ID: i64 = 7;
 /// A task-instance flow, public, with no window and no root plan unless a test adds one.
 fn flow() -> Flow {
     Flow {
-        id: FLOW_ID,
+        id: tid(FLOW_ID),
         title: "Flow".to_string(),
         instance_type: "task".to_string(),
         parent_type: "aspect".to_string(),
-        parent_id: 1,
+        parent_id: tid(1),
         target_type: None,
         target_id: None,
         flow_duration_n: None,
@@ -39,10 +40,10 @@ fn item(
 ) -> TemplateItem {
     TemplateItem {
         kind,
-        id,
+        id: tid(id),
         title: title.to_string(),
         parent_type: parent.0.to_string(),
-        parent_id: parent.1,
+        parent_id: tid(parent.1),
         position,
         is_private: false,
     }
@@ -50,10 +51,10 @@ fn item(
 
 fn cycle(id: i64, item: (FlowItemType, i64), position: i64) -> FlowItemCycle {
     FlowItemCycle {
-        id,
-        flow_id: FLOW_ID,
+        id: tid(id),
+        flow_id: tid(FLOW_ID),
         item_type: item.0.as_str().to_string(),
-        item_id: item.1,
+        item_id: tid(item.1),
         scope_kind: Some("day".to_string()),
         scope_index: Some(position + 1),
         plan_kind: None,
@@ -69,12 +70,12 @@ fn dependency(
     blocker: (FlowItemType, i64),
 ) -> FlowDependency {
     FlowDependency {
-        id,
-        flow_id: FLOW_ID,
+        id: tid(id),
+        flow_id: tid(FLOW_ID),
         dependent_type: dependent.0.as_str().to_string(),
-        dependent_id: dependent.1,
+        dependent_id: tid(dependent.1),
         depends_on_type: blocker.0.as_str().to_string(),
-        depends_on_id: blocker.1,
+        depends_on_id: tid(blocker.1),
     }
 }
 
@@ -89,7 +90,7 @@ fn table(cycle_ids: &[i64]) -> ScopeTable {
             .iter()
             .map(|id| {
                 (
-                    *id,
+                    tid(*id),
                     ResolvedPair {
                         time_scope: scope(*id * 100),
                         plan: None,
@@ -160,7 +161,7 @@ fn an_item_with_no_cycle_pairs_yields_one_unscoped_instance() {
     assert_eq!(plan.nodes[1].parent, Some(NodeRef(0)));
     assert_eq!(
         plan.nodes[1].source,
-        PlannedSource::Item(FlowItemType::FlowTask, 1)
+        PlannedSource::Item(FlowItemType::FlowTask, tid(1))
     );
 }
 
@@ -295,7 +296,7 @@ fn an_orphaned_item_is_never_reached() {
     );
     // And the gather is told not to resolve that orphan's scopes, exactly as the single-pass
     // version never reached them.
-    assert!(template.planned_cycles(FLOW_ID).is_empty());
+    assert!(template.planned_cycles(tid(FLOW_ID)).is_empty());
 }
 
 #[test]
@@ -312,12 +313,12 @@ fn planned_cycles_keeps_pairs_of_items_reached_through_a_parent_chain() {
         ..Default::default()
     };
 
-    let kept: Vec<i64> = template
-        .planned_cycles(FLOW_ID)
+    let kept: Vec<RowId> = template
+        .planned_cycles(tid(FLOW_ID))
         .iter()
         .map(|cycle| cycle.id)
         .collect();
-    assert_eq!(kept, [10, 20]);
+    assert_eq!(kept, [tid(10), tid(20)]);
 }
 
 // ---- The fan-in remapping ----------------------------------------------------------------

@@ -6,6 +6,7 @@
 //! Neither the caller nor the request knows the difference: that is the whole of ADR 0008's
 //! "the normal editor sends a normal update request for either".
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{
@@ -308,7 +309,7 @@ pub async fn create_info(
 async fn move_stored(
     db: &mut Db<Transactional>,
     child_type: &str,
-    child_id: i64,
+    child_id: RowId,
     parent_type: &mut Option<String>,
     parent_id: &mut Option<NodeId>,
     now: NaiveDateTime,
@@ -335,7 +336,7 @@ async fn finish_move(
     db: &mut Db<Transactional>,
     moved: Option<(OccurrenceKey, OccurrenceHost)>,
     child_type: &str,
-    child_id: i64,
+    child_id: RowId,
 ) -> Result<Option<(String, NodeId)>, AppError> {
     let Some((key, host)) = moved else {
         return Ok(None);
@@ -786,7 +787,7 @@ pub async fn update_expectation(
 #[tracing::instrument(skip(db, request))]
 pub async fn update_info(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: RowId,
     mut request: UpdateInfoRequest,
     now: NaiveDateTime,
 ) -> Result<Info, AppError> {
@@ -823,7 +824,7 @@ pub async fn set_tag(
     db: &mut Db<Transactional>,
     kind: &str,
     id: &NodeId,
-    tag_id: i64,
+    tag_id: RowId,
     present: bool,
     now: NaiveDateTime,
 ) -> Result<(), AppError> {
@@ -951,7 +952,7 @@ async fn endpoint(
     db: &mut Db<Transactional>,
     id: &NodeId,
     now: NaiveDateTime,
-) -> Result<(Endpoint, Option<i64>), AppError> {
+) -> Result<(Endpoint, Option<RowId>), AppError> {
     match id {
         NodeId::Stored(id) => Ok((Endpoint::Stored(*id), None)),
         NodeId::Derived(derived) => match resolve_key(db, derived, now).await? {

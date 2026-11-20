@@ -11,6 +11,8 @@
 //! as the refactor's frozen behavioural contract.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::flows::{
     model::{
@@ -26,7 +28,7 @@ fn create_req(title: &str, instance_type: InstanceType) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(instance_type),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: helpers::seeded(1),
         flow_duration_n: Some(2),
         flow_duration_kind: Some("week".into()),
         ..Default::default()
@@ -45,9 +47,9 @@ fn day_cycle(index: i64) -> FlowCycleInput {
 async fn nodes_from(
     pool: &sqlx::SqlitePool,
     item_type: FlowItemType,
-    item_id: i64,
-) -> Vec<(String, i64)> {
-    sqlx::query_as::<_, (String, i64)>(
+    item_id: RowId,
+) -> Vec<(String, RowId)> {
+    sqlx::query_as::<_, (String, RowId)>(
         "SELECT node_type, node_id FROM flow_instance_nodes
          WHERE source_item_type = ? AND source_item_id = ? ORDER BY rowid",
     )
@@ -59,8 +61,8 @@ async fn nodes_from(
 }
 
 /// Every materialised dependency edge, as `(task_id, dependency_type, dependency_id)`.
-async fn edges(pool: &sqlx::SqlitePool) -> Vec<(i64, String, i64)> {
-    sqlx::query_as::<_, (i64, String, i64)>(
+async fn edges(pool: &sqlx::SqlitePool) -> Vec<(RowId, String, RowId)> {
+    sqlx::query_as::<_, (RowId, String, RowId)>(
         "SELECT task_id, dependency_type, dependency_id FROM task_dependencies
          ORDER BY task_id, dependency_type, dependency_id",
     )
@@ -91,6 +93,7 @@ async fn fan_in_filters_dependents_to_tasks_but_never_filters_blockers() {
         .unwrap();
 
     let item = |title: &str| CreateFlowItemRequest {
+        id: None,
         flow_id: flow.id,
         title: title.into(),
         parent_type: "flow".into(),
@@ -181,7 +184,7 @@ async fn fan_in_filters_dependents_to_tasks_but_never_filters_blockers() {
             StartFlowRequest {
                 title: "Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -206,7 +209,7 @@ async fn fan_in_filters_dependents_to_tasks_but_never_filters_blockers() {
     assert_eq!(approves[0].0, "goal");
     assert_eq!(designs[0].0, "goal");
 
-    let mut expected: Vec<(i64, String, i64)> = builds
+    let mut expected: Vec<(RowId, String, RowId)> = builds
         .iter()
         // The blocker is a GOAL instance, so the edge must be `Dependency::Goal`, not `::Task`.
         .map(|(_, build_node)| (*build_node, "goal".to_string(), approves[0].1))
@@ -242,6 +245,7 @@ async fn fan_in_is_a_cross_product_of_dependent_and_blocker_instances() {
         .unwrap();
 
     let item = |title: &str| CreateFlowItemRequest {
+        id: None,
         flow_id: flow.id,
         title: title.into(),
         parent_type: "flow".into(),
@@ -306,7 +310,7 @@ async fn fan_in_is_a_cross_product_of_dependent_and_blocker_instances() {
             StartFlowRequest {
                 title: "Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )
@@ -320,7 +324,7 @@ async fn fan_in_is_a_cross_product_of_dependent_and_blocker_instances() {
     assert_eq!(dependents.len(), 3);
     assert_eq!(blockers.len(), 2);
 
-    let mut expected: Vec<(i64, String, i64)> = Vec::new();
+    let mut expected: Vec<(RowId, String, RowId)> = Vec::new();
     for (_, dependent_node) in &dependents {
         for (_, blocker_node) in &blockers {
             expected.push((*dependent_node, "task".to_string(), *blocker_node));
@@ -360,6 +364,7 @@ async fn fan_in_ignores_other_flows_and_items_without_instances() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Work".into(),
             parent_type: "flow".into(),
@@ -374,10 +379,11 @@ async fn fan_in_ignores_other_flows_and_items_without_instances() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Orphan".into(),
             parent_type: "flow_task".into(),
-            parent_id: 9_999,
+            parent_id: tid(9_999),
         })
         .await
         .unwrap();
@@ -387,6 +393,7 @@ async fn fan_in_ignores_other_flows_and_items_without_instances() {
         .unwrap()
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: other.id,
             title: "Elsewhere".into(),
             parent_type: "flow".into(),
@@ -431,7 +438,7 @@ async fn fan_in_ignores_other_flows_and_items_without_instances() {
             StartFlowRequest {
                 title: "Run".into(),
                 target_type: "aspect".into(),
-                target_id: 1,
+                target_id: tid(1),
                 anchor_date: anchor,
             },
         )

@@ -5,6 +5,7 @@
 //! `src/utils/parenting-conformance.test.ts` asks the frontend's `isValidDropTarget`. Neither side
 //! generates the file.
 
+use crate::helpers;
 use std::collections::BTreeMap;
 
 use arlesh_lib::{filters::model::NodeKind, nodes::rules::parenting::may_parent};
@@ -69,7 +70,7 @@ async fn a_writer_refuses_a_kind_the_table_does_not_allow_there() {
         CreateTaskRequest {
             title: "Write".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -103,10 +104,13 @@ async fn a_domains_table_parent_is_the_kind_its_subtype_says_however_it_is_spell
 
     let pool = crate::helpers::test_pool().await;
     let app = crate::helpers::command_host(&pool);
-    sqlx::query(
+    sqlx::query(&format!(
         "INSERT INTO domains (id, title, subtype, parent_id) VALUES
-             (100, 'Label', 'tag', NULL), (101, 'Engines', 'project', 1)",
-    )
+             ('{}', 'Label', 'tag', NULL), ('{}', 'Engines', 'project', '{}')",
+        arlesh_lib::nodes::id::tid(100),
+        arlesh_lib::nodes::id::tid(101),
+        helpers::seeded(1)
+    ))
     .execute(&pool)
     .await
     .unwrap();
@@ -116,7 +120,7 @@ async fn a_domains_table_parent_is_the_kind_its_subtype_says_however_it_is_spell
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 100.into(),
+            parent_id: arlesh_lib::nodes::id::tid(100).into(),
             ..Default::default()
         },
     )
@@ -130,7 +134,7 @@ async fn a_domains_table_parent_is_the_kind_its_subtype_says_however_it_is_spell
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "aspect".into(),
-            parent_id: 101.into(),
+            parent_id: arlesh_lib::nodes::id::tid(101).into(),
             ..Default::default()
         },
     )

@@ -2,6 +2,8 @@
 //! `conformance/board-changes.json`.
 
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use serde_json::{json, Value};
 
 const CORPUS: &str = concat!(
@@ -14,15 +16,15 @@ const CORPUS: &str = concat!(
 fn base() -> Value {
     json!({
         "domains": [
-            {"id": 1, "title": "Aspect \"quoted\" \\ back / slash", "description": null,
+            {"id": tid(1), "title": "Aspect \"quoted\" \\ back / slash", "description": null,
              "subtype": "aspect", "parent_id": null, "color": null, "status": null,
              "knowledge_base_directory": null, "position": 1, "is_private": false},
-            {"id": 2, "title": "Project é \u{1F600} \u{2028}\u{2029}", "description": "tab\tand\u{1}\u{1f}\u{7f}",
-             "subtype": "project", "parent_id": 1, "color": null, "status": "active",
+            {"id": tid(2), "title": "Project é \u{1F600} \u{2028}\u{2029}", "description": "tab\tand\u{1}\u{1f}\u{7f}",
+             "subtype": "project", "parent_id": tid(1), "color": null, "status": "active",
              "knowledge_base_directory": null, "position": 1, "is_private": false}
         ],
         "goals": [
-            {"id": 3, "title": "Goal", "parent_type": "project", "parent_id": 2, "status": "active",
+            {"id": tid(3), "title": "Goal", "parent_type": "project", "parent_id": tid(2), "status": "active",
              "time_scope": null, "on_scope_exit": null, "tag_ids": [], "position": 1, "is_private": false}
         ],
         "tasks": [
@@ -33,19 +35,19 @@ fn base() -> Value {
             extreme_position("6f1d2c1e-8e0a-5b7e-9d57-3a1f0e6f7a12", i64::MAX),
         ],
         "commitments": [
-            {"id": 4, "title": "Commitment", "parent_type": "project", "parent_id": 2, "verdict": "unresolved",
+            {"id": tid(4), "title": "Commitment", "parent_type": "project", "parent_id": tid(2), "verdict": "unresolved",
              "time_scope": null, "tag_ids": [], "position": 3, "is_private": false}
         ],
         "expectations": [
-            {"id": 5, "title": "Wait", "parent_type": "task", "parent_id": 10, "status": "pending",
+            {"id": tid(5), "title": "Wait", "parent_type": "task", "parent_id": tid(10), "status": "pending",
              "archival": "live", "time_scope": null, "tag_ids": [], "position": 1, "is_private": false}
         ],
         "infos": [
-            {"id": 6, "body": "Note", "details": null, "parent_type": "task", "parent_id": 10,
+            {"id": tid(6), "body": "Note", "details": null, "parent_type": "task", "parent_id": tid(10),
              "position": 1, "is_private": false}
         ],
         "flows": [
-            {"id": 7, "title": "Flow", "instance_type": "task", "parent_type": "project", "parent_id": 2,
+            {"id": tid(7), "title": "Flow", "instance_type": "task", "parent_type": "project", "parent_id": tid(2),
              "target_type": null, "target_id": null, "flow_duration_n": null, "flow_duration_kind": null,
              "flow_window_part": null, "flow_window_time_start": null, "flow_window_time_end": null,
              "root_plan_kind": null, "root_plan_start": null, "root_plan_end": null,
@@ -53,53 +55,53 @@ fn base() -> Value {
              "position": 1, "is_private": false}
         ],
         "flow_goals": [
-            {"id": 8, "flow_id": 7, "title": "Flow goal", "parent_type": "flow", "parent_id": 7,
+            {"id": tid(8), "flow_id": tid(7), "title": "Flow goal", "parent_type": "flow", "parent_id": tid(7),
              "position": 1, "is_private": false}
         ],
         "flow_tasks": [
-            {"id": 9, "flow_id": 7, "title": "Flow task", "parent_type": "flow", "parent_id": 7,
+            {"id": tid(9), "flow_id": tid(7), "title": "Flow task", "parent_type": "flow", "parent_id": tid(7),
              "position": 2, "is_private": false}
         ],
         "flow_commitments": [
-            {"id": 12, "flow_id": 7, "title": "Flow commitment", "parent_type": "flow", "parent_id": 7,
+            {"id": tid(12), "flow_id": tid(7), "title": "Flow commitment", "parent_type": "flow", "parent_id": tid(7),
              "position": 3, "is_private": false, "verdict_window": null}
         ],
         "flow_expectations": [
-            {"id": 13, "flow_id": 7, "title": "Flow wait", "parent_type": "flow", "parent_id": 7,
+            {"id": tid(13), "flow_id": tid(7), "title": "Flow wait", "parent_type": "flow", "parent_id": tid(7),
              "position": 4, "is_private": false, "check_every": null, "first_check": null}
         ],
         "flow_cycles": [
-            {"id": 14, "flow_id": 7, "item_type": "task", "item_id": 9, "scope_kind": null,
+            {"id": tid(14), "flow_id": tid(7), "item_type": "task", "item_id": tid(9), "scope_kind": null,
              "scope_index": null, "plan_kind": null, "plan_start": null, "plan_end": null, "position": 1}
         ],
         "flow_dependencies": [
-            {"id": 15, "flow_id": 7, "dependent_type": "task", "dependent_id": 9,
-             "depends_on_type": "goal", "depends_on_id": 8}
+            {"id": tid(15), "flow_id": tid(7), "dependent_type": "task", "dependent_id": tid(9),
+             "depends_on_type": "goal", "depends_on_id": tid(8)}
         ],
         "block_reasons": [
-            {"owner_type": "task", "owner_id": 11, "reason": "first", "position": 1},
-            {"owner_type": "task", "owner_id": 11, "reason": "second", "position": 2},
-            {"owner_type": "task", "owner_id": 10, "reason": "other", "position": 1}
+            {"owner_type": "task", "owner_id": tid(11), "reason": "first", "position": 1},
+            {"owner_type": "task", "owner_id": tid(11), "reason": "second", "position": 2},
+            {"owner_type": "task", "owner_id": tid(10), "reason": "other", "position": 1}
         ],
         "task_dependencies": [
-            {"task_id": 11, "dependency_type": "task", "dependency_id": 10},
-            {"task_id": 11, "dependency_type": "goal", "dependency_id": 3}
+            {"task_id": tid(11), "dependency_type": "task", "dependency_id": tid(10)},
+            {"task_id": tid(11), "dependency_type": "goal", "dependency_id": tid(3)}
         ],
-        "flow_instance_nodes": [{"node_type": "task", "node_id": 10}],
+        "flow_instance_nodes": [{"node_type": "task", "node_id": tid(10)}],
         "lifecycles": [
-            lifecycle("task", json!(10), "active", false),
-            lifecycle("task", json!(11), "active", false),
+            lifecycle("task", json!(tid(10)), "active", false),
+            lifecycle("task", json!(tid(11)), "active", false),
             lifecycle("task", json!("6f1d2c1e-8e0a-5b7e-9d57-3a1f0e6f7a10"), "pending", false)
         ],
-        "habits": [{"flow_id": 7, "flow_title": "Flow", "result": {"outcome": "loaded"}}],
-        "short_ids": {"task-10": "a1", "task-11": "a2", "goal-3": "b1"},
-        "facts": {"task-11": {"dependency_blocks": [{"kind": "task", "id": 10, "short_id": "a1", "title": "Step one"}]}},
+        "habits": [{"flow_id": tid(7), "flow_title": "Flow", "result": {"outcome": "loaded"}}],
+        "short_ids": {(tkey("task", 10)): "a1", (tkey("task", 11)): "a2", (tkey("goal", 3)): "b1"},
+        "facts": {(tkey("task", 11)): {"dependency_blocks": [{"kind": "task", "id": tid(10), "short_id": "a1", "title": "Step one"}]}},
         "agent_activity": {"review": 0, "waits": 0, "on_agent": 1}
     })
 }
 
 fn task(id: i64, title: &str, status: &str, position: i64) -> Value {
-    json!({"id": id, "title": title, "parent_type": "project", "parent_id": 2,
+    json!({"id": tid(id), "title": title, "parent_type": "project", "parent_id": tid(2),
            "status": {"kind": "ordinary", "status": status}, "tag_ids": [],
            "position": position, "is_private": false})
 }
@@ -167,7 +169,7 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
             edited(&|b| {
                 b["tasks"][0]["status"]["status"] = json!("done");
                 b["lifecycles"][0]["timing"] = json!("lapsed");
-                b["facts"]["task-11"] = json!({});
+                b["facts"][tkey("task", 11)] = json!({});
             }),
         ),
         (
@@ -180,11 +182,11 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
                     .push(task(12, "New", "todo", 4));
                 b["lifecycles"].as_array_mut().unwrap().push(lifecycle(
                     "task",
-                    json!(12),
+                    json!(tid(12)),
                     "active",
                     false,
                 ));
-                b["short_ids"]["task-12"] = json!("a3");
+                b["short_ids"][tkey("task", 12)] = json!("a3");
             }),
         ),
         (
@@ -192,7 +194,7 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
             before.clone(),
             edited(&|b| {
                 b["tasks"][0]["parent_type"] = json!("goal");
-                b["tasks"][0]["parent_id"] = json!(3);
+                b["tasks"][0]["parent_id"] = json!(tid(3));
                 b["tasks"][0]["position"] = json!(1);
                 b["tasks"][1]["position"] = json!(1);
             }),
@@ -206,7 +208,10 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
                 b["infos"] = json!([]);
                 b["lifecycles"].as_array_mut().unwrap().remove(0);
                 b["block_reasons"].as_array_mut().unwrap().remove(2);
-                b["short_ids"].as_object_mut().unwrap().remove("task-10");
+                b["short_ids"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(&tkey("task", 10));
             }),
         ),
         (
@@ -220,18 +225,17 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
             "a dependency added",
             before.clone(),
             edited(&|b| {
-                b["task_dependencies"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push(json!({"task_id": 10, "dependency_type": "goal", "dependency_id": 3}));
+                b["task_dependencies"].as_array_mut().unwrap().push(
+                    json!({"task_id": tid(10), "dependency_type": "goal", "dependency_id": tid(3)}),
+                );
             }),
         ),
         (
             "a short id lengthened by a new node",
             before.clone(),
             edited(&|b| {
-                b["short_ids"]["task-10"] = json!("a10");
-                b["short_ids"]["task-11"] = json!("a11");
+                b["short_ids"][tkey("task", 10)] = json!("a10");
+                b["short_ids"][tkey("task", 11)] = json!("a11");
             }),
         ),
         (
@@ -273,11 +277,11 @@ fn a_status_step_changes_the_row_its_lifecycle_and_its_facts_and_nothing_else() 
     let changes = changes_between(&before, &after);
 
     assert_eq!(touched(&changes), ["tasks", "lifecycles", "facts"]);
-    assert_eq!(keys(&changes, Collection::Tasks).0, ["task-10"]);
-    assert_eq!(keys(&changes, Collection::Lifecycles).0, ["task-10"]);
+    assert_eq!(keys(&changes, Collection::Tasks).0, [tkey("task", 10)]);
+    assert_eq!(keys(&changes, Collection::Lifecycles).0, [tkey("task", 10)]);
     assert_eq!(
         keys(&changes, Collection::Facts),
-        (vec!["task-11".to_string()], Vec::new())
+        (vec![tkey("task", 11)], Vec::new())
     );
 }
 
@@ -288,7 +292,10 @@ fn a_move_gives_the_moved_row_and_the_sibling_whose_position_changed() {
     let changes = changes_between(&before, &after);
 
     assert_eq!(touched(&changes), ["tasks"]);
-    assert_eq!(keys(&changes, Collection::Tasks).0, ["task-10", "task-11"]);
+    assert_eq!(
+        keys(&changes, Collection::Tasks).0,
+        [tkey("task", 10), tkey("task", 11)]
+    );
 }
 
 #[test]
@@ -297,15 +304,18 @@ fn a_delete_gives_a_key_for_every_entry_of_the_subtree() {
 
     let changes = changes_between(&before, &after);
 
-    assert_eq!(keys(&changes, Collection::Tasks).1, ["task-10"]);
+    assert_eq!(keys(&changes, Collection::Tasks).1, [tkey("task", 10)]);
     assert_eq!(
         keys(&changes, Collection::Expectations).1,
-        ["expectation-5"]
+        [tkey("expectation", 5)]
     );
-    assert_eq!(keys(&changes, Collection::Infos).1, ["6"]);
-    assert_eq!(keys(&changes, Collection::Lifecycles).1, ["task-10"]);
-    assert_eq!(keys(&changes, Collection::BlockReasons).1, ["task-10"]);
-    assert_eq!(keys(&changes, Collection::ShortIds).1, ["task-10"]);
+    assert_eq!(keys(&changes, Collection::Infos).1, [tid(6).to_string()]);
+    assert_eq!(keys(&changes, Collection::Lifecycles).1, [tkey("task", 10)]);
+    assert_eq!(
+        keys(&changes, Collection::BlockReasons).1,
+        [tkey("task", 10)]
+    );
+    assert_eq!(keys(&changes, Collection::ShortIds).1, [tkey("task", 10)]);
 }
 
 #[test]
@@ -316,7 +326,7 @@ fn an_edited_block_reason_replaces_its_owners_whole_group() {
 
     let group = &changes.by_collection[&Collection::BlockReasons];
     assert_eq!(group.set.len(), 1);
-    assert_eq!(group.set[0].0, "task-11");
+    assert_eq!(group.set[0].0, tkey("task", 11));
     let reasons: Value = serde_json::from_str(&group.set[0].1).unwrap();
     assert_eq!(reasons.as_array().unwrap().len(), 2);
     assert!(group.del.is_empty());
@@ -328,7 +338,10 @@ fn an_added_dependency_replaces_its_tasks_group() {
 
     let changes = changes_between(&before, &after);
 
-    assert_eq!(keys(&changes, Collection::TaskDependencies).0, ["task-10"]);
+    assert_eq!(
+        keys(&changes, Collection::TaskDependencies).0,
+        [tkey("task", 10)]
+    );
 }
 
 #[test]
@@ -383,8 +396,11 @@ fn the_digest_is_fnv_1a_over_collection_key_and_json_split_by_zero_bytes() {
     assert_eq!(fnv(FNV_OFFSET_BASIS, b""), 0x811c_9dc5);
     assert_eq!(fnv(FNV_OFFSET_BASIS, b"a"), 0xe40c_292c);
     assert_eq!(
-        digest(Collection::Tasks, "task-1", "{}"),
-        fnv(FNV_OFFSET_BASIS, b"tasks\0task-1\0{}")
+        digest(Collection::Tasks, &tkey("task", 1), "{}"),
+        fnv(
+            FNV_OFFSET_BASIS,
+            format!("tasks\0{}\0{{}}", tkey("task", 1)).as_bytes()
+        )
     );
 }
 

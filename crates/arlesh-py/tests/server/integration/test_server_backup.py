@@ -17,6 +17,9 @@ from arlesh.server.ports.tokens.connect_token_store import ConnectTokens
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 SECRET = "admin-secret-0123456789"
 
 
@@ -86,7 +89,7 @@ def test_the_snapshot_is_a_valid_database_with_the_live_rows(
 ) -> None:
     created = backup_server.post(
         "/domains",
-        json={"title": "Written before", "subtype": "domain", "parent_id": 1},
+        json={"title": "Written before", "subtype": "domain", "parent_id": ROOT_ASPECT},
         headers={"Authorization": f"Bearer {tokens.add('writer')}"},
     )
     assert created.status_code == 201, created.text

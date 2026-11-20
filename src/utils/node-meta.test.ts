@@ -4,6 +4,7 @@ import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDr
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
+import { storedRowId } from "@/test/stored-id";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -313,7 +314,7 @@ describe("canParentNewChild", () => {
   const foldedRun = node("habitgroup-3-run", "habit_group", {
     virtual: true,
     habitGroup: {
-      flowId: 3, level: "run", passed: 3, done: 2, missed: 1,
+      flowId: storedRowId(3), level: "run", passed: 3, done: 2, missed: 1,
       spanStart: "2026-09-14", spanEnd: "2026-09-16", spanLabel: "2026-09-14..2026-09-16",
     },
   });

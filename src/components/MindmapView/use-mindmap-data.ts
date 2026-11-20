@@ -207,7 +207,7 @@ interface MindmapData {
   /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
-  updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
+  updateFlow: (id: string, request: UpdateFlowRequest) => Promise<void>;
   /** Resolves once the window holds the board its own latest write brought about (ADR 0020). */
   settle: () => Promise<void>;
 }
@@ -351,7 +351,7 @@ function templateFieldsOf(item: TemplateFields): TemplateFields {
 }
 
 /** Node id of a flow item's in-flow parent (the flow itself, or another item). */
-function flowItemParentKey(flowId: number, parentType: string, parentId: number): string {
+function flowItemParentKey(flowId: string, parentType: string, parentId: string): string {
   return isFlowItemType(parentType) ? flowItemNodeId(parentType, parentId) : `flow-${flowId}`;
 }
 
@@ -365,7 +365,7 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
 
 /** A Task's `delegateName` field: its Person delegate's name, when it has one that is known. */
 function personNameOf(
-  delegate: Delegate | null | undefined, personNames: ReadonlyMap<number, string>,
+  delegate: Delegate | null | undefined, personNames: ReadonlyMap<string, string>,
 ): { delegateName?: string } {
   const name = delegate?.kind === "person" ? personNames.get(delegate.id) : undefined;
   return name === undefined ? {} : { delegateName: name };
@@ -388,8 +388,7 @@ function cooldownFields(
 function factNodeKey(key: string): string {
   const wait = /^expectation-(.+)$/.exec(key);
   if (wait?.[1] === undefined) return key;
-  const id = Number(wait[1]);
-  return expectationNodeId(Number.isNaN(id) ? wait[1] : id);
+  return expectationNodeId(wait[1]);
 }
 
 /** The node id a dependency's target is drawn under. */
@@ -448,7 +447,7 @@ export function buildTree(
   /** Each node's short id, keyed `task-12` / `expectation-3` (the load's `short_ids`). */
   shortIds: Readonly<Record<string, string>> = {},
   /** Every known Person's name, by id — what a Person delegate is called. */
-  personNames: ReadonlyMap<number, string> = new Map(),
+  personNames: ReadonlyMap<string, string> = new Map(),
   /** What the board's rules say about each node beyond its row, keyed `task-12` (the load's
    * `facts`): which dependencies block it, what it inherits, its open question, whether it has
    * expired. */
@@ -867,7 +866,7 @@ export function buildTree(
 
 /** One flow whose Habit iterations failed to derive, as the banner needs it. */
 export interface FailedFlow {
-  id: number;
+  id: string;
   title: string;
 }
 
@@ -920,11 +919,11 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
   const failedFlows = data.habits
     .filter((entry) => entry.result.outcome === "failed")
     .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => a.id.localeCompare(b.id));
   const unrenderableCommitmentFlows = data.flows
     .filter((flow) => flow.is_habit && holdsUnrenderableGoalItems(flow, data.flow_goals))
     .map((flow) => ({ id: flow.id, title: flow.title }))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => a.id.localeCompare(b.id));
   return failedFlows.length === 0 && unrenderableCommitmentFlows.length === 0
     ? NO_CONDITIONS
     : { failedFlows, unrenderableCommitmentFlows };
@@ -1561,7 +1560,7 @@ export function useMindmapData(): MindmapData {
       ]);
       const made = answers[0];
       const id: unknown = typeof made === "object" && made !== null ? Reflect.get(made, "id") : undefined;
-      if (typeof id !== "number") throw new Error("insert parent made no node");
+      if (typeof id !== "string") throw new Error("insert parent made no node");
       await settle();
       if (childKind === "domain" || childKind === "project" || childKind === "tag") return `domain-${id}`;
       if (isFlowItemType(childKind)) return flowItemNodeId(childKind, id);
@@ -1638,7 +1637,7 @@ export function useMindmapData(): MindmapData {
   );
 
   const updateFlowNode = useCallback(
-    async (id: number, request: UpdateFlowRequest): Promise<void> => {
+    async (id: string, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
       await settle();
     },

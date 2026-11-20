@@ -142,17 +142,17 @@ How the presets read them:
   - [ADR 0008](adr/0008-virtual-node-tables.md) covers virtual node tables.
 - **Spec:** [Derived nodes](spec/virtual-nodes.md).
 
-### Three kinds of id
-- **Is:** the three ids a node can have:
-  - a stored row's integer **row id**;
-  - every node's **full id**, a UUID-v5 (a stored row's is the hash of `{kind}:{row id}`);
-  - a **short id**, the shortest prefix of at least three hex digits that is unique and is not any visible row id.
-- **Why:** derived rows have no row number, and people need a handle shorter than a UUID that can't be mistaken for a row or PR number.
-- **Without:** two id types in every request, and a number meaning three different things.
+### Two kinds of id
+- **Is:** the two ids a node can have:
+  - its **id** (also its **full id**): a UUID. A stored row's is chosen by whoever creates it (a client may send one; the server mints a UUIDv7 otherwise), and a row that predates UUID identity kept the UUID-v5 of `{kind}:{old row number}` it was always shown under. A derived row's is a version-8 UUID, the hash of its value key, so the id alone says stored or derived;
+  - a **short id**, the shortest prefix of at least three hex digits that is unique among the visible nodes.
+- **Why:** a client's Replica has to create rows whose ids match the server's, so the id cannot be an integer the server counts out; people still need a handle shorter than a UUID.
+- **Without:** a number meaning three different things, and a client unable to name a row before the server has.
 - **Lives:**
-  - `rs:nodes/id.rs` and `rs:nodes/key.rs`.
+  - `rs:nodes/id.rs` (`NodeId`, `RowId`) and `rs:nodes/key.rs`; `rs:nodes/new_id.rs` mints UUIDv7s.
+  - `rs:database/row_ids.rs` and migrations 0107 to 0109 (the one-time move from integers).
   - `rs:mcp/ids.rs` (`NodeNames`, `short_id_among`, `board_short_ids`).
-  - Frontend: `ts:utils/uuid-v5.ts` and `ts:utils/node-identity.ts`.
+  - Frontend: `ts:api/node-id.ts`, `ts:utils/uuid-v5.ts` and `ts:utils/node-identity.ts`.
 - **Spec:** [MCP § Short ids](spec/mcp-server.md#short-ids), [Derived nodes](spec/virtual-nodes.md).
 
 ### Two status models

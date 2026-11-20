@@ -4,6 +4,7 @@
 //! Pure: it takes the rows a load has read and the occurrences it derived. The reads live in
 //! [`crate::nodes::table`], which re-exports these names (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -60,7 +61,7 @@ pub fn attach_children(
             present.insert(id.clone(), "expectation");
         }
     }
-    let parents: HashMap<(String, i64), (&'static str, DerivedId)> = children
+    let parents: HashMap<(String, RowId), (&'static str, DerivedId)> = children
         .iter()
         .filter_map(|child| {
             let id = DerivedId::of_key(&child.parent_key);
@@ -69,7 +70,7 @@ pub fn attach_children(
         })
         .collect();
     let reparent =
-        |kind: &str, id: Option<i64>, parent_type: &mut String, parent_id: &mut NodeId| {
+        |kind: &str, id: Option<RowId>, parent_type: &mut String, parent_id: &mut NodeId| {
             if let Some((parent_kind, parent)) =
                 id.and_then(|id| parents.get(&(kind.to_string(), id)))
             {

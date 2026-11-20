@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
@@ -69,48 +70,48 @@ describe("planning through the lane", () => {
     const { result } = setup();
 
     let moved: string[] = [];
-    await act(async () => { moved = await result.current.planInto([task("task-1")]); });
+    await act(async () => { moved = await result.current.planInto([task(`task-${storedRowId(1)}`)]); });
 
-    expect(moved).toEqual(["task-1"]);
+    expect(moved).toEqual([`task-${storedRowId(1)}`]);
     expect(patchedFields()).toEqual([{ plan: PLAN }]);
-    const board: MindmapNode = { id: "root", kind: "goal", title: "r", position: 0, tagIds: [], children: [task("task-1").node] };
+    const board: MindmapNode = { id: "root", kind: "goal", title: "r", position: 0, tagIds: [], children: [task(`task-${storedRowId(1)}`).node] };
     const drawn = applyPendingWrites(board, { read: 0, epoch: null, seq: null, revision: null, at: 0 }, lane(), new Map());
     expect(drawn.children[0]).toMatchObject({ plan: PLAN, pending: true });
 
-    await act(async () => { held.resolve([{ id: 1 }]); await held.promise; });
+    await act(async () => { held.resolve([{ id: storedRowId(1) }]); await held.promise; });
     await settleLane();
     expect(lane()[0]?.answer?.fields).toEqual({ plan: PLAN });
   });
 
   it("takes work out the same way, clearing a Plan with none above", async () => {
-    runGesture.mockResolvedValue([{ id: 2 }]);
+    runGesture.mockResolvedValue([{ id: storedRowId(2) }]);
     const { result } = setup();
 
-    await act(async () => { await result.current.takeOut([task("task-2", { plan: PLAN })], { kind: "clear" }); });
+    await act(async () => { await result.current.takeOut([task(`task-${storedRowId(2)}`, { plan: PLAN })], { kind: "clear" }); });
     await settleLane();
 
     expect(patchedFields()).toEqual([{ plan: null }]);
-    expect(runGesture).toHaveBeenCalledWith("plan-move", [expect.objectContaining({ id: 2, request: { plan: null } })]);
+    expect(runGesture).toHaveBeenCalledWith("plan-move", [expect.objectContaining({ id: storedRowId(2), request: { plan: null } })]);
   });
 
   it("rolls back a refused step with one toast, and keeps the rest of its batch", async () => {
-    runGesture.mockResolvedValue([{ id: 1 }, { refused: { kind: "invalid_request", message: "no" } }]);
+    runGesture.mockResolvedValue([{ id: storedRowId(1) }, { refused: { kind: "invalid_request", message: "no" } }]);
     const { result, showToast } = setup();
 
-    await act(async () => { await result.current.planInto([task("task-1"), task("task-2")]); });
+    await act(async () => { await result.current.planInto([task(`task-${storedRowId(1)}`), task(`task-${storedRowId(2)}`)]); });
     await settleLane();
 
     expect(runGesture).toHaveBeenCalledTimes(1);
-    expect(lane().map((write) => write.nodeId)).toEqual(["task-1"]);
+    expect(lane().map((write) => write.nodeId)).toEqual([`task-${storedRowId(1)}`]);
     expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-2", message: "planView:moveFailed" });
+    expect(showToast).toHaveBeenCalledWith({ nodeId: `task-${storedRowId(2)}`, message: "planView:moveFailed" });
   });
 
   it("rolls everything back with one toast when the call itself is refused", async () => {
     runGesture.mockRejectedValue(new Error("locked"));
     const { result, showToast } = setup();
 
-    await act(async () => { await result.current.planInto([task("task-1")]); });
+    await act(async () => { await result.current.planInto([task(`task-${storedRowId(1)}`)]); });
     await settleLane();
 
     expect(lane()).toEqual([]);
@@ -119,27 +120,27 @@ describe("planning through the lane", () => {
 
   it("shows two quick swipes at once and sends them in order", async () => {
     const first = deferred<unknown[]>();
-    runGesture.mockReturnValueOnce(first.promise).mockResolvedValueOnce([{ id: 2 }]);
+    runGesture.mockReturnValueOnce(first.promise).mockResolvedValueOnce([{ id: storedRowId(2) }]);
     const { result } = setup();
 
     await act(async () => {
-      await result.current.planInto([task("task-1")]);
-      await result.current.planInto([task("task-2")]);
+      await result.current.planInto([task(`task-${storedRowId(1)}`)]);
+      await result.current.planInto([task(`task-${storedRowId(2)}`)]);
     });
 
     expect(patchedFields()).toEqual([{ plan: PLAN }, { plan: PLAN }]);
     expect(runGesture).toHaveBeenCalledTimes(1);
-    await act(async () => { first.resolve([{ id: 1 }]); await first.promise; });
+    await act(async () => { first.resolve([{ id: storedRowId(1) }]); await first.promise; });
     await settleLane();
-    expect(runGesture.mock.calls.map(([, steps]) => steps[0]?.id)).toEqual([1, 2]);
+    expect(runGesture.mock.calls.map(([, steps]) => steps[0]?.id)).toEqual([storedRowId(1), storedRowId(2)]);
   });
 
   it("rolls back, asks the clamp prompt, and writes again acknowledged when Tasks below would be left outside", async () => {
-    conflicts.mockResolvedValue([{ id: 9 }]);
-    runGesture.mockResolvedValue([{ id: 1 }]);
+    conflicts.mockResolvedValue([{ id: storedRowId(9) }]);
+    runGesture.mockResolvedValue([{ id: storedRowId(1) }]);
     const { result, showToast } = setup();
 
-    await act(async () => { await result.current.planInto([task("task-1")]); });
+    await act(async () => { await result.current.planInto([task(`task-${storedRowId(1)}`)]); });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     await vi.waitFor(() => expect(usePlanClampStore.getState().request).not.toBeNull());
 
@@ -152,15 +153,15 @@ describe("planning through the lane", () => {
     expect(patchedFields()).toEqual([{ plan: PLAN }]);
     await settleLane();
     expect(runGesture).toHaveBeenCalledWith("plan-move", [
-      expect.objectContaining({ id: 1, descendant_plans: "clamp" }),
+      expect.objectContaining({ id: storedRowId(1), descendant_plans: "clamp" }),
     ]);
   });
 
   it("writes nothing when the clamp prompt is cancelled", async () => {
-    conflicts.mockResolvedValue([{ id: 9 }]);
+    conflicts.mockResolvedValue([{ id: storedRowId(9) }]);
     const { result } = setup();
 
-    await act(async () => { await result.current.planInto([task("task-1")]); });
+    await act(async () => { await result.current.planInto([task(`task-${storedRowId(1)}`)]); });
     await vi.waitFor(() => expect(usePlanClampStore.getState().request).not.toBeNull());
     await act(async () => { usePlanClampStore.getState().answer(null); });
 

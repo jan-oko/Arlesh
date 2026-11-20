@@ -7,6 +7,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-filter-display");
@@ -15,8 +16,8 @@ const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
 const DISPLAY = {
   tagOptions: [],
-  tagName: (id: number) => (id === 5 ? "urgent" : `#${id}`),
-  tagColor: (id: number) => (id === 5 ? "#3498db" : null),
+  tagName: (id: string) => (id === storedRowId(5) ? "urgent" : `#${id}`),
+  tagColor: (id: string) => (id === storedRowId(5) ? "#3498db" : null),
   nodeLabel: (ref: string) => (ref === "project-1" ? "Rocket" : ref),
   nodeColor: (ref: string) => (ref === "project-1" ? "#e74c3c" : null),
   antecedentPool: [],
@@ -45,13 +46,13 @@ describe("FilterChips", () => {
   });
 
   it("renders a chip for an active tag filter with its resolved name", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "any" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(5), mode: "any" }] } });
     render(<FilterChips />);
     expect(screen.getByText("urgent")).toBeInTheDocument();
   });
 
   it("clicking the chip body cycles All → Any → Not → All", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "all" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(5), mode: "all" }] } });
     render(<FilterChips />);
     const modes: string[] = [];
     for (let step = 0; step < 3; step += 1) {
@@ -97,14 +98,14 @@ describe("FilterChips", () => {
   });
 
   it("Delete on a focused chip removes it", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "all" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(5), mode: "all" }] } });
     render(<FilterChips />);
     fireEvent.keyDown(screen.getByRole("button", { name: "chipAria" }), { key: "Delete" });
     expect(useFilterStore.getState().filter.tagFilters).toEqual([]);
   });
 
   it("clicking the embedded × removes the chip without cycling its mode", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "any" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(5), mode: "any" }] } });
     render(<FilterChips />);
     fireEvent.click(screen.getByRole("button", { name: "removeTagFilter" }));
     expect(useFilterStore.getState().filter.tagFilters).toEqual([]);

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -30,39 +31,39 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskAsynchronous", () => {
   it("flags an unflagged task in one press", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result, settle } = setup([node("task-5")]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleAsynchronous("task-5"); });
+    act(() => { result.current.toggleAsynchronous(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { asynchronous: true }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { asynchronous: true }));
     await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("unflags a flagged task in one press", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
-    const { result } = setup([node("task-5", { asynchronous: true })]);
+    const { result } = setup([node(`task-${storedRowId(5)}`, { asynchronous: true })]);
 
-    act(() => { result.current.toggleAsynchronous("task-5"); });
+    act(() => { result.current.toggleAsynchronous(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { asynchronous: false }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { asynchronous: false }));
   });
 
   it("reads the task's own flag and nothing above it", async () => {
     vi.mocked(updateTask).mockResolvedValue({} as never);
     // The flag does not inherit, so a child of a flagged Task is unflagged and one press sets it.
-    const { result } = setup([node("task-6", { asynchronous: false })]);
+    const { result } = setup([node(`task-${storedRowId(6)}`, { asynchronous: false })]);
 
-    act(() => { result.current.toggleAsynchronous("task-6"); });
+    act(() => { result.current.toggleAsynchronous(`task-${storedRowId(6)}`); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { asynchronous: true }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(storedRowId(6), { asynchronous: true }));
   });
 
   it("declines every node that has no asynchronous column of its own", () => {
-    const goal = node("goal-1", { kind: "goal" });
+    const goal = node(`goal-${storedRowId(1)}`, { kind: "goal" });
     const { result } = setup([goal]);
 
     act(() => {
-      result.current.toggleAsynchronous("goal-1");
+      result.current.toggleAsynchronous(`goal-${storedRowId(1)}`);
       result.current.toggleAsynchronous("task-missing");
     });
 
@@ -70,23 +71,23 @@ describe("useTaskAsynchronous", () => {
   });
 
   it("flips a Habit occurrence's flag on its own row", async () => {
-    const occurrence = node("task-4", { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
+    const occurrence = node(`task-${storedRowId(4)}`, { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
     vi.mocked(updateTask).mockResolvedValue({} as never);
     const { result } = setup([occurrence]);
 
-    act(() => { result.current.toggleAsynchronous("task-4"); });
+    act(() => { result.current.toggleAsynchronous(`task-${storedRowId(4)}`); });
 
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(occurrence.rowId, { asynchronous: true }));
   });
 
   it("says so when the write fails rather than leaving the flag silently unchanged", async () => {
     vi.mocked(updateTask).mockRejectedValue(new Error("db is gone"));
-    const { result, showToast } = setup([node("task-5")]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleAsynchronous("task-5"); });
+    act(() => { result.current.toggleAsynchronous(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith(
-      expect.objectContaining({ nodeId: "task-5" }),
+      expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }),
     ));
   });
 });

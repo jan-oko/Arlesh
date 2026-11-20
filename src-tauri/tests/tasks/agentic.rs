@@ -2,6 +2,7 @@
 //! before it starts, and the agentic waits that may hang only under one.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 use helpers::StoredId;
 
 use arlesh_lib::{
@@ -18,8 +19,8 @@ use arlesh_lib::{
     },
 };
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -30,6 +31,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Agents".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -53,10 +55,10 @@ async fn create(pool: &sqlx::SqlitePool, request: CreateTaskRequest) -> Result<T
 
 async fn task(
     pool: &sqlx::SqlitePool,
-    parent: (&str, i64),
+    parent: (&str, RowId),
     agentic: TaskAgentic,
     brief: Option<AgenticBrief>,
-) -> i64 {
+) -> RowId {
     create(
         pool,
         CreateTaskRequest {
@@ -76,7 +78,7 @@ async fn task(
 
 async fn update(
     pool: &sqlx::SqlitePool,
-    id: i64,
+    id: RowId,
     request: UpdateTaskRequest,
 ) -> Result<Task, TaskError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -87,7 +89,7 @@ async fn update(
     updated
 }
 
-async fn start(pool: &sqlx::SqlitePool, id: i64) -> Result<Task, TaskError> {
+async fn start(pool: &sqlx::SqlitePool, id: RowId) -> Result<Task, TaskError> {
     update(
         pool,
         id,
@@ -111,7 +113,7 @@ fn with_spec(spec: &str) -> Option<AgenticBrief> {
 
 async fn wait_under(
     pool: &sqlx::SqlitePool,
-    parent: (&str, i64),
+    parent: (&str, RowId),
 ) -> Result<arlesh_lib::tasks::model::Expectation, TaskError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let created = create_expectation(
@@ -231,7 +233,7 @@ fn ordinary(status: TaskStatus) -> Status {
     Status::Ordinary(status)
 }
 
-async fn set(pool: &sqlx::SqlitePool, id: i64, status: Status) -> Result<Task, TaskError> {
+async fn set(pool: &sqlx::SqlitePool, id: RowId, status: Status) -> Result<Task, TaskError> {
     update(
         pool,
         id,

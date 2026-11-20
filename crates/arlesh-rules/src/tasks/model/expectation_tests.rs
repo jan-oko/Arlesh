@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn expectation_status_roundtrips_every_variant() {
@@ -35,14 +36,17 @@ fn expectation_archival_roundtrips_every_variant() {
 
 #[test]
 fn expectation_id_roundtrip() {
-    let id = ExpectationId::from(9_i64);
-    assert_eq!(i64::from(id), 9);
+    let id = ExpectationId::from(tid(9));
+    assert_eq!(id.0, tid(9));
 }
 
 #[test]
 fn an_expectation_dependency_serialises_under_its_own_tag() {
-    let json = serde_json::to_value(Dependency::Expectation { id: 4 }).expect("serialises");
-    assert_eq!(json, serde_json::json!({ "type": "expectation", "id": 4 }));
+    let json = serde_json::to_value(Dependency::Expectation { id: tid(4) }).expect("serialises");
+    assert_eq!(
+        json,
+        serde_json::json!({ "type": "expectation", "id": tid(4) })
+    );
 }
 
 #[test]

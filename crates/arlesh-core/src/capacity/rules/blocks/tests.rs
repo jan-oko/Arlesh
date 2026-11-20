@@ -1,6 +1,8 @@
 //! The lock as a derived block: who it blocks, and how the reason is carried.
 
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::{
     domains::model::Domain,
     filters::{facts, model::NodeKind, tree::FactNode},
@@ -9,7 +11,7 @@ use crate::{
 
 fn domain_row(id: i64, parent: Option<i64>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: if parent.is_none() {
@@ -18,7 +20,7 @@ fn domain_row(id: i64, parent: Option<i64>) -> Domain {
             "project"
         }
         .to_string(),
-        parent_id: parent,
+        parent_id: parent.map(tid),
         color: None,
         status: parent.map(|_| "active".to_string()),
         knowledge_base_directory: None,
@@ -106,7 +108,7 @@ fn everything() -> Blocking {
     Blocking {
         subtrees: vec![crate::access::model::NodeKey::new(
             crate::access::model::NodeTable::Domain,
-            1,
+            tid(1),
         )],
     }
 }
@@ -156,7 +158,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         .all(|reason| reason.reason == AGENT_CAPACITY_REASON));
     let on_20 = derived
         .iter()
-        .find(|reason| reason.owner_id.stored() == Some(20))
+        .find(|reason| reason.owner_id.stored() == Some(tid(20)))
         .unwrap();
     assert_eq!(on_20.position, 1, "numbered on from the Task's own reason");
 }
@@ -177,10 +179,10 @@ fn an_agentic_wait_is_not_blocked() {
 
 fn expectation_under(task: i64) -> Expectation {
     serde_json::from_value(serde_json::json!({
-        "id": 50,
+        "id": tid(50),
         "title": "wait",
         "parent_type": "task",
-        "parent_id": task,
+        "parent_id": tid(task),
         "status": "pending",
         "archival": "live",
         "time_scope": null,
@@ -208,11 +210,14 @@ fn the_filters_read_a_capacity_blocked_task_as_blocked() {
     let forest = facts::forest(&load);
 
     let blocked = |id: &str| find(&forest, id).unwrap().facts.is_blocked;
-    assert!(blocked("task-20"));
-    assert!(blocked("task-31"));
-    assert!(!blocked("task-23"), "explicitly Not agentic");
-    assert!(!blocked("task-40"));
-    assert_eq!(find(&forest, "task-20").unwrap().facts.kind, NodeKind::Task);
+    assert!(blocked(&tkey("task", 20)));
+    assert!(blocked(&tkey("task", 31)));
+    assert!(!blocked(&tkey("task", 23)), "explicitly Not agentic");
+    assert!(!blocked(&tkey("task", 40)));
+    assert_eq!(
+        find(&forest, &tkey("task", 20)).unwrap().facts.kind,
+        NodeKind::Task
+    );
 }
 
 #[test]
@@ -239,7 +244,7 @@ fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
 
 #[test]
 fn an_agent_at_capacity_blocks_only_the_agentic_tasks_inside_its_claim() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Goal, 30);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Goal, tid(30));
     let blocking = Blocking {
         subtrees: vec![claim],
     };
@@ -252,7 +257,7 @@ fn an_agent_at_capacity_blocks_only_the_agentic_tasks_inside_its_claim() {
 
 #[test]
 fn a_claim_on_a_task_blocks_that_task_and_everything_below_it() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Task, 20);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Task, tid(20));
     let blocking = Blocking {
         subtrees: vec![claim],
     };
@@ -265,7 +270,7 @@ fn a_claim_on_a_task_blocks_that_task_and_everything_below_it() {
 
 #[test]
 fn a_claim_on_a_domain_blocks_what_hangs_under_it() {
-    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Domain, 2);
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Domain, tid(2));
     let blocking = Blocking {
         subtrees: vec![claim],
     };

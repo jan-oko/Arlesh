@@ -6,6 +6,7 @@
 
 use crate::helpers;
 use crate::helpers::StoredId;
+use arlesh_lib::nodes::id::RowId;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -23,8 +24,8 @@ use arlesh_lib::{
     },
 };
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -35,6 +36,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Scoped work".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -54,9 +56,9 @@ fn exact_key() -> ScopeKey {
 
 async fn task_with_window(
     pool: &sqlx::SqlitePool,
-    project_id: i64,
+    project_id: RowId,
     window: TimeScope,
-) -> Result<i64, arlesh_lib::tasks::error::TaskError> {
+) -> Result<RowId, arlesh_lib::tasks::error::TaskError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
@@ -73,7 +75,7 @@ async fn task_with_window(
     Ok(task.id.sid())
 }
 
-async fn stored_window(pool: &sqlx::SqlitePool, task_id: i64) -> (String, String) {
+async fn stored_window(pool: &sqlx::SqlitePool, task_id: RowId) -> (String, String) {
     sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(pool)

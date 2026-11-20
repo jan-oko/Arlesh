@@ -10,6 +10,7 @@
 //! returns `Ok`, and only a read taken after the command returned can tell the difference.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     commands::{
@@ -50,7 +51,7 @@ use tauri::Manager;
 // ===========================================================================
 
 /// The fixed "Growth" aspect's id — the anchor every domain-table fixture hangs off.
-async fn growth_aspect_id(pool: &sqlx::SqlitePool) -> i64 {
+async fn growth_aspect_id(pool: &sqlx::SqlitePool) -> RowId {
     sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
         .fetch_one(pool)
         .await
@@ -62,14 +63,15 @@ async fn make_domain(
     pool: &sqlx::SqlitePool,
     title: &str,
     subtype: DomainSubtype,
-    parent_id: i64,
-) -> i64 {
+    parent_id: RowId,
+) -> RowId {
     helpers::session_factory(pool)
         .connect()
         .await
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: title.into(),
             description: None,
             subtype,
@@ -151,6 +153,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
     .unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Nozzle notes".into(),
             details: Some("Bell ratio 40:1".into()),
             parent_type: "task".into(),
@@ -191,19 +194,19 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
     );
 
     // …and the copy is a tree, not a flat pile: each clone hangs off the clone above it.
-    let engines_copy: i64 =
+    let engines_copy: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Engines' AND parent_id = ?")
             .bind(copy.id)
             .fetch_one(&pool)
             .await
             .unwrap();
-    let goal_copy: i64 =
+    let goal_copy: RowId =
         sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'domain' AND parent_id = ?")
             .bind(engines_copy)
             .fetch_one(&pool)
             .await
             .unwrap();
-    let task_copy: i64 =
+    let task_copy: RowId =
         sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = 'goal' AND parent_id = ?")
             .bind(goal_copy)
             .fetch_one(&pool)
@@ -320,6 +323,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
     let task = create_task(
         &mut db,
         CreateTaskRequest {
+            id: None,
             title: "Cast the bell".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
@@ -445,6 +449,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
     let task = create_task(
         &mut db,
         CreateTaskRequest {
+            id: None,
             title: "Re-cast the bell".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
@@ -511,6 +516,7 @@ async fn a_duplicated_goal_carries_status_scope_tags_and_reasons() {
     let goal = create_goal(
         &mut db,
         CreateGoalRequest {
+            id: None,
             title: "Reach orbit".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
@@ -577,6 +583,7 @@ async fn a_duplicated_project_carries_its_description_status_and_directory() {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Rocket".into(),
             description: Some("Build a rocket".into()),
             subtype: DomainSubtype::Project,
@@ -612,6 +619,7 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Nozzle notes".into(),
             details: Some("Bell ratio 40:1".into()),
             parent_type: "project".into(),
@@ -632,6 +640,7 @@ async fn a_duplicated_info_carries_its_details_and_privacy() {
         .unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Sub-note".into(),
             details: None,
             parent_type: "info".into(),
@@ -750,7 +759,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
     .unwrap()
     .copy;
 
-    let copied_a: i64 = sqlx::query_scalar(
+    let copied_a: RowId = sqlx::query_scalar(
         "SELECT id FROM tasks WHERE title = 'Cast the bell' AND parent_id = ? AND parent_type = 'task'",
     )
     .bind(copy.id.sid())
@@ -765,7 +774,7 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
         .unwrap();
     drop(db);
 
-    let mut targets: Vec<(String, i64)> = deps
+    let mut targets: Vec<(String, RowId)> = deps
         .into_iter()
         .map(|dep| match dep {
             Dependency::Task { id } => ("task".to_string(), id.sid()),
@@ -910,9 +919,9 @@ async fn a_duplicate_that_fails_part_way_leaves_the_tree_untouched() {
 async fn habit_under(
     app: &tauri::App<tauri::test::MockRuntime>,
     title: &str,
-    parent: (&str, i64),
-    target: Option<(&str, i64)>,
-) -> i64 {
+    parent: (&str, RowId),
+    target: Option<(&str, RowId)>,
+) -> RowId {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
@@ -949,14 +958,14 @@ async fn habit_under(
 }
 
 /// The Habit's root occurrence in its first iteration.
-fn first_occurrence(flow_id: i64) -> OccurrenceKey {
+fn first_occurrence(flow_id: RowId) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowRoot,
             item_id: flow_id,
         },
         iteration: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
-        cycle: 0,
+        cycle: arlesh_lib::nodes::key::no_cycle(),
     }
 }
 
@@ -1015,7 +1024,7 @@ async fn a_flow_under_a_copied_project_comes_with_it_and_its_target_follows_the_
         .await
         .unwrap();
 
-    let goal_copy: i64 =
+    let goal_copy: RowId =
         sqlx::query_scalar("SELECT id FROM goals WHERE title = 'Reach orbit' AND parent_id = ?")
             .bind(pasted.copy.id)
             .fetch_one(&pool)
@@ -1188,6 +1197,7 @@ async fn commitments_and_waits_under_a_copied_project_come_with_their_subtrees()
     .unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Called Tuesday".into(),
             details: None,
             parent_type: "expectation".into(),
@@ -1230,7 +1240,7 @@ async fn commitments_and_waits_under_a_copied_project_come_with_their_subtrees()
 
     // The Commitment comes as stored — its verdict too, as a Task keeps its status — under the
     // copied Task, with its own child.
-    let pledges: Vec<(String, i64, String)> = sqlx::query_as(
+    let pledges: Vec<(String, RowId, String)> = sqlx::query_as(
         "SELECT parent_type, parent_id, verdict FROM commitments WHERE title = 'No sugar' ORDER BY id",
     )
     .fetch_all(&pool)
@@ -1245,7 +1255,7 @@ async fn commitments_and_waits_under_a_copied_project_come_with_their_subtrees()
     );
 
     // The wait comes with its note and its checks.
-    let waits: Vec<i64> = sqlx::query_scalar(
+    let waits: Vec<RowId> = sqlx::query_scalar(
         "SELECT id FROM expectations WHERE title = 'Hear from the dietician' ORDER BY id",
     )
     .fetch_all(&pool)
@@ -1266,7 +1276,7 @@ async fn commitments_and_waits_under_a_copied_project_come_with_their_subtrees()
     assert_eq!(checks, 1);
 
     // A copied Task's dependency on the wait stays as stored: on the original.
-    let copied_waiting: i64 =
+    let copied_waiting: RowId =
         sqlx::query_scalar("SELECT id FROM tasks WHERE title = 'Book the follow-up' AND id <> ?")
             .bind(waiting.id.sid())
             .fetch_one(&pool)
@@ -1307,6 +1317,7 @@ async fn a_copied_started_instance_still_reads_from_the_original_flow() {
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Tag the build".into(),
             parent_type: "flow".into(),
@@ -1332,7 +1343,7 @@ async fn a_copied_started_instance_still_reads_from_the_original_flow() {
         .await
         .unwrap();
 
-    let copied: Vec<(String, i64)> = sqlx::query_as(
+    let copied: Vec<(String, RowId)> = sqlx::query_as(
         "SELECT 'task', id FROM tasks WHERE title IN ('Release 1.0', 'Tag the build') AND id NOT IN
            (SELECT node_id FROM flow_instance_nodes WHERE flow_instance_id =
               (SELECT id FROM flow_instances ORDER BY id LIMIT 1))
@@ -1360,7 +1371,7 @@ async fn a_copied_started_instance_still_reads_from_the_original_flow() {
     assert_eq!(origins.len(), 2, "each copy still reads 'from flow'");
 
     // The Flow itself was copied too, but the copies are recorded against the original.
-    let runs: Vec<(Option<i64>, String, i64)> =
+    let runs: Vec<(Option<RowId>, String, RowId)> =
         sqlx::query_as("SELECT flow_id, root_type, root_id FROM flow_instances ORDER BY id")
             .fetch_all(&pool)
             .await
@@ -1461,7 +1472,8 @@ async fn a_flows_commitment_and_wait_items_and_what_they_started_come_with_a_cop
     )
     .await
     .unwrap();
-    let item = |title: &str, parent: (&str, i64)| CreateFlowItemRequest {
+    let item = |title: &str, parent: (&str, RowId)| CreateFlowItemRequest {
+        id: None,
         flow_id: flow.id,
         title: title.into(),
         parent_type: parent.0.into(),
@@ -1514,7 +1526,7 @@ async fn a_flows_commitment_and_wait_items_and_what_they_started_come_with_a_cop
         .await
         .try_into()
         .unwrap();
-    let promise_copy: (i64, String, i64, Option<i64>, Option<String>) = sqlx::query_as(
+    let promise_copy: (RowId, String, RowId, Option<i64>, Option<String>) = sqlx::query_as(
         "SELECT id, parent_type, parent_id, verdict_window_n, verdict_window_kind
          FROM flow_commitments WHERE flow_id = ?",
     )
@@ -1527,7 +1539,7 @@ async fn a_flows_commitment_and_wait_items_and_what_they_started_come_with_a_cop
         (promise_copy.3, promise_copy.4.as_deref()),
         (Some(2), Some("day"))
     );
-    let wait_parent: (String, i64) =
+    let wait_parent: (String, RowId) =
         sqlx::query_as("SELECT parent_type, parent_id FROM flow_expectations WHERE flow_id = ?")
             .bind(copy.id)
             .fetch_one(&pool)
@@ -1536,7 +1548,7 @@ async fn a_flows_commitment_and_wait_items_and_what_they_started_come_with_a_cop
     assert_eq!(wait_parent, ("flow_commitment".to_string(), promise_copy.0));
 
     // The started run's Commitment and wait were copied as stored, and still read "from flow".
-    let copies: Vec<(String, i64)> = sqlx::query_as(
+    let copies: Vec<(String, RowId)> = sqlx::query_as(
         "SELECT 'commitment', id FROM commitments WHERE title = 'Rest days kept'
          UNION ALL SELECT 'expectation', id FROM expectations WHERE title = 'Coach''s plan arrives'
          ORDER BY 1, 2",

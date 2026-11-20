@@ -4,6 +4,6 @@
  * id while it has none. The one place the app spells it, so the board, the cards and the editors
  * cannot drift apart.
  */
-export function blockedByText(kind: string, shortId: string | undefined, id: string | number, title: string): string {
+export function blockedByText(kind: string, shortId: string | undefined, id: string, title: string): string {
   return `Blocked by ${kind} ${shortId ?? String(id)} (${title})`;
 }

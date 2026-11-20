@@ -1,13 +1,14 @@
 use super::*;
+use crate::nodes::id::tid;
 use crate::nodes::id::DerivedId;
 
 fn entry(table: NodeTable, id: i64, title: &str, parent: Option<(NodeTable, i64)>) -> Entry {
     Entry {
         table,
-        id: NodeId::Stored(id),
+        id: NodeId::Stored(tid(id)),
         kind: table.as_str().to_string(),
         title: title.into(),
-        parent: parent.map(|(table, id)| (table, NodeId::Stored(id))),
+        parent: parent.map(|(table, id)| (table, NodeId::Stored(tid(id)))),
     }
 }
 
@@ -23,20 +24,16 @@ fn board() -> NodeNames {
 }
 
 #[test]
-fn a_stored_nodes_full_id_is_a_uuid_v5_of_its_kind_and_row() {
-    let id = full_id(NodeTable::Task, &NodeId::Stored(5));
+fn a_stored_nodes_full_id_is_its_row_uuid() {
+    let id = full_id(NodeTable::Task, &NodeId::Stored(tid(5)));
 
-    assert_eq!(id, uuid_v5(&NODE_NAMESPACE, "task:5"));
+    assert_eq!(id, tid(5).to_string());
     assert_eq!(
         id,
-        full_id(NodeTable::Task, &NodeId::Stored(5)),
-        "deterministic"
+        full_id(NodeTable::Goal, &NodeId::Stored(tid(5))),
+        "the kind is not part of it"
     );
-    assert_ne!(
-        id,
-        full_id(NodeTable::Goal, &NodeId::Stored(5)),
-        "the kind is part of it"
-    );
+    assert_ne!(id, full_id(NodeTable::Task, &NodeId::Stored(tid(6))));
 }
 
 #[test]
@@ -79,7 +76,7 @@ fn a_short_id_grows_only_as_far_as_a_collision_needs() {
     ]);
     let short = |id: i64| {
         names
-            .short_id(NodeTable::Task, &NodeId::Stored(id))
+            .short_id(NodeTable::Task, &NodeId::Stored(tid(id)))
             .unwrap_or("")
     };
     assert_eq!(short(1), "abcde1");
@@ -91,7 +88,7 @@ fn named(hex: &str, table: NodeTable, id: i64) -> Named {
     Named {
         short_id: String::new(),
         id: hex.into(),
-        node_id: NodeId::Stored(id),
+        node_id: NodeId::Stored(tid(id)),
         kind: "task".into(),
         title: format!("task {id}"),
         path: String::new(),
@@ -116,12 +113,12 @@ fn a_short_id_a_longer_prefix_and_the_full_id_all_resolve() {
 
     for text in [
         search.short_id.clone(),
-        search.hex[..search.short_id.len() + 1].to_string(),
+        search.hex[..(search.short_id.len() + 1).min(search.hex.len())].to_string(),
         search.id.clone(),
         search.id.to_uppercase(),
     ] {
         let resolved = names.resolve(&text).expect("it names the task");
-        assert_eq!(resolved.node_id, NodeId::Stored(5), "{text}");
+        assert_eq!(resolved.node_id, NodeId::Stored(tid(5)), "{text}");
     }
 }
 
@@ -156,7 +153,7 @@ fn nothing_shorter_than_three_digits_or_that_is_not_hex_resolves() {
     assert!(matches!(names.resolve("ab"), Err(IdRefusal::Unknown)));
     assert!(matches!(names.resolve("xyz1"), Err(IdRefusal::Unknown)));
     assert!(matches!(
-        names.resolve("000000000"),
+        names.resolve("fffffffff"),
         Err(IdRefusal::Unknown)
     ));
 }
@@ -210,41 +207,35 @@ fn a_digit_only_short_id_is_handed_out_and_resolves() {
     ]);
 
     assert_eq!(
-        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        names.short_id(NodeTable::Task, &NodeId::Stored(tid(1))),
         Some("269")
     );
     assert!(matches!(
         names.resolve("269").map(|node| node.node_id.clone()),
-        Ok(NodeId::Stored(1))
+        Ok(id) if id == NodeId::Stored(tid(1))
     ));
 }
 
 #[test]
-fn a_string_that_is_both_a_row_id_and_a_prefix_is_ambiguous_listing_both() {
+fn a_decimal_string_is_a_prefix_never_a_row_number() {
     let names = with_short_ids(vec![
         named("269590f6", NodeTable::Task, 1),
         named("abc123", NodeTable::Task, 269),
     ]);
 
-    match names.resolve("269") {
-        Err(IdRefusal::Ambiguous(candidates)) => {
-            let rows: Vec<Option<i64>> = candidates
-                .iter()
-                .map(|candidate| candidate.node_id.stored())
-                .collect();
-            assert_eq!(rows.len(), 2);
-            assert!(rows.contains(&Some(1)) && rows.contains(&Some(269)));
-        }
-        other => panic!("expected ambiguous_id, got {other:?}"),
-    }
+    // "269" matches only the node whose id starts with those digits, not the node numbered 269.
+    assert!(matches!(
+        names.resolve("269").map(|node| node.node_id.clone()),
+        Ok(id) if id == NodeId::Stored(tid(1))
+    ));
     assert!(matches!(
         names.resolve("abc").map(|node| node.node_id.clone()),
-        Ok(NodeId::Stored(269))
+        Ok(id) if id == NodeId::Stored(tid(269))
     ));
 }
 
 #[test]
-fn no_short_id_handed_out_equals_a_visible_row_id() {
+fn a_short_id_is_the_shortest_unshared_prefix_with_no_row_number_to_avoid() {
     let names = with_short_ids(vec![
         named("269590f6", NodeTable::Task, 1),
         named("abc123", NodeTable::Task, 269),
@@ -252,23 +243,18 @@ fn no_short_id_handed_out_equals_a_visible_row_id() {
         named("777000", NodeTable::Task, 7),
     ]);
 
-    let rows: Vec<String> = names
-        .nodes
-        .iter()
-        .filter_map(|node| node.node_id.stored().map(|row| row.to_string()))
-        .collect();
     for node in &names.nodes {
-        assert!(
-            !rows.contains(&node.short_id),
-            "{} is a row id",
-            node.short_id
-        );
         assert!(node.short_id.len() >= SHORTEST);
     }
     assert_eq!(
-        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        names.short_id(NodeTable::Task, &NodeId::Stored(tid(1))),
         Some("26959"),
-        "past 269 (a row id) and 2695 (another)"
+        "past the 2695 it shares with another"
+    );
+    assert_eq!(
+        names.short_id(NodeTable::Task, &NodeId::Stored(tid(7))),
+        Some("777"),
+        "three digits when nothing is shared"
     );
     assert_eq!(
         names.short_id_among("269500"),
@@ -283,8 +269,11 @@ fn a_node_of_another_kind_is_named_in_the_refusal() {
 
     assert!(matches!(
         names.resolve_as("abc", Some(NodeTable::Task)),
-        Err(IdRefusal::WrongKind(node)) if node.node_id == NodeId::Stored(4)
+        Err(IdRefusal::WrongKind(node)) if node.node_id == NodeId::Stored(tid(4))
     ));
     assert!(names.resolve_as("abc", Some(NodeTable::Goal)).is_ok());
-    assert!(names.resolve_as("4", Some(NodeTable::Goal)).is_ok());
+    assert!(matches!(
+        names.resolve_as("4", Some(NodeTable::Goal)),
+        Err(IdRefusal::Unknown)
+    ));
 }

@@ -1,5 +1,6 @@
 //! MCP access models: which stored nodes are MCP roots, and what the MCP may do with a node.
 
+use crate::nodes::id::RowId;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -117,18 +118,19 @@ pub struct NodeKey {
     /// The table the node is a row of.
     pub node_kind: NodeTable,
     /// Its primary key in that table.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
 }
 
 impl NodeKey {
     /// The node `node_id` of `node_kind`.
-    pub fn new(node_kind: NodeTable, node_id: i64) -> Self {
+    pub fn new(node_kind: NodeTable, node_id: RowId) -> Self {
         Self { node_kind, node_id }
     }
 
     /// The node a board reference names — see [`NodeTable::from_reference`] — or `None` when the
     /// reference is not to a stored row.
-    pub fn from_reference(node_type: &str, node_id: i64) -> Option<Self> {
+    pub fn from_reference(node_type: &str, node_id: RowId) -> Option<Self> {
         NodeTable::from_reference(node_type).map(|node_kind| Self::new(node_kind, node_id))
     }
 }
@@ -189,7 +191,8 @@ pub struct CatalogueNode {
     /// The node's table.
     pub node_kind: NodeTable,
     /// The node's row id.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
     /// For a domain-table row, its subtype (`aspect`, `project`, `domain` or `tag`); `None`
     /// otherwise.
     pub subtype: Option<String>,
@@ -198,7 +201,8 @@ pub struct CatalogueNode {
     /// The table of the stored node it hangs under, if any.
     pub parent_kind: Option<NodeTable>,
     /// The row id of the stored node it hangs under, if any.
-    pub parent_id: Option<i64>,
+    #[schemars(with = "Option<String>")]
+    pub parent_id: Option<RowId>,
     /// Its own private flag.
     pub is_private: bool,
     /// Its own Agentic flag, for a Task that sets one.
@@ -241,11 +245,13 @@ pub struct EffectiveAccess {
     /// The node's table.
     pub node_kind: NodeTable,
     /// The node's row id.
-    pub node_id: i64,
+    #[schemars(with = "String")]
+    pub node_id: RowId,
     /// The table of the nearest MCP root at or above the node.
     pub root_kind: NodeTable,
     /// The row id of that root.
-    pub root_id: i64,
+    #[schemars(with = "String")]
+    pub root_id: RowId,
 }
 
 /// A knowledge-base entity a stored node points at: a Person a Task is delegated to, or a
@@ -260,7 +266,8 @@ pub struct KnowledgeBaseReference {
     /// `person`, `event` or `thread`.
     pub entity_type: String,
     /// The entity's row id.
-    pub entity_id: i64,
+    #[schemars(with = "String")]
+    pub entity_id: RowId,
 }
 
 #[cfg(test)]

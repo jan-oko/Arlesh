@@ -128,7 +128,7 @@ impl ArleshMcp {
 
         // Whether the answer to a write carries the wait whole, note and answer included.
         let verbose_answer;
-        let (task_id, title, note, question, review) = match operation {
+        let (wait_id, task_id, title, note, question, review) = match operation {
             WaitsOperation::List {
                 status,
                 under,
@@ -183,15 +183,17 @@ impl ArleshMcp {
                 return result::ok(written_wait(&board, &released, short::is_verbose(verbose)));
             }
             WaitsOperation::Ask {
+                id,
                 task_id,
                 title,
                 note,
                 verbose,
             } => {
                 verbose_answer = short::is_verbose(verbose);
-                (task_id, title, note, true, None)
+                (id, task_id, title, note, true, None)
             }
             WaitsOperation::RaiseReview {
+                id,
                 task_id,
                 title,
                 summary,
@@ -201,6 +203,7 @@ impl ArleshMcp {
             } => {
                 verbose_answer = short::is_verbose(verbose);
                 (
+                    id,
                     task_id,
                     title,
                     Some(summary),
@@ -209,6 +212,7 @@ impl ArleshMcp {
                 )
             }
             WaitsOperation::Raise {
+                id,
                 task_id,
                 title,
                 note,
@@ -216,7 +220,7 @@ impl ArleshMcp {
                 verbose,
             } => {
                 verbose_answer = short::is_verbose(verbose);
-                (task_id, title, note, question, None)
+                (id, task_id, title, note, question, None)
             }
         };
 
@@ -245,6 +249,7 @@ impl ArleshMcp {
         let created = crate::nodes::write::create_expectation(
             &mut db,
             CreateExpectationRequest {
+                id: wait_id,
                 title,
                 parent_type: "task".into(),
                 parent_id: task_id,

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import MindmapView from "./MindmapView";
@@ -39,7 +40,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const FLOW = 7;
+const FLOW = storedRowId(7);
 
 /** One passed, day-long iteration of Habit 7, anchored on `date`. */
 function iteration(date: string, index: number): MindmapNode {
@@ -77,10 +78,10 @@ function iteration(date: string, index: number): MindmapNode {
 const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Root", position: 0, tagIds: [],
   children: [{
-    id: "goal-5", kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
+    id: `goal-${storedRowId(5)}`, kind: "goal", title: "Fitness", status: "active", position: 0, tagIds: [],
     children: [
       ...["2026-09-08", "2026-09-09", "2026-09-15", "2026-09-16"].map(iteration),
-      { id: "task-9", kind: "task", title: "Live task", status: "todo", position: 4, tagIds: [], children: [] },
+      { id: `task-${storedRowId(9)}`, kind: "task", title: "Live task", status: "todo", position: 4, tagIds: [], children: [] },
     ],
   }],
 };
@@ -121,7 +122,7 @@ beforeEach(() => {
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
     pasteNodes: vi.fn().mockResolvedValue([]),
-    insertParent: vi.fn().mockResolvedValue("domain-99"),
+    insertParent: vi.fn().mockResolvedValue(`domain-${storedRowId(99)}`),
     removeNode: vi.fn(),
     createCommitment: vi.fn(),
     createFlow: vi.fn(),
@@ -150,7 +151,7 @@ beforeEach(() => {
 describe("arrow navigation over a folded Habit run", () => {
   it("arrows onto the folded run from the sibling below it", () => {
     render(<MindmapView />);
-    select("task-9");
+    select(`task-${storedRowId(9)}`);
 
     press("ArrowUp");
 
@@ -163,7 +164,7 @@ describe("arrow navigation over a folded Habit run", () => {
 
     press("ArrowDown");
 
-    expect(selected()).toBe("task-9");
+    expect(selected()).toBe(`task-${storedRowId(9)}`);
   });
 
   it("arrows off the folded run to its parent", () => {
@@ -172,12 +173,12 @@ describe("arrow navigation over a folded Habit run", () => {
 
     press("ArrowLeft");
 
-    expect(selected()).toBe("goal-5");
+    expect(selected()).toBe(`goal-${storedRowId(5)}`);
   });
 
   it("arrows from the parent down into the folded run", () => {
     render(<MindmapView />);
-    select("goal-5");
+    select(`goal-${storedRowId(5)}`);
 
     press("ArrowRight");
 
@@ -199,7 +200,7 @@ describe("arrow navigation inside an opened run", () => {
   function openRun(container: HTMLElement): string {
     select(RUN);
     press("/", { ctrlKey: true });
-    const level = container.querySelector("[data-node-id^='habitrun-7-week-']");
+    const level = container.querySelector(`[data-node-id^='habitrun-${FLOW}-week-']`);
     const id = level?.getAttribute("data-node-id");
     if (id === null || id === undefined) throw new Error("the opened run drew no scope level");
     return id;
@@ -224,7 +225,7 @@ describe("arrow navigation inside an opened run", () => {
     press("ArrowLeft");
     press("ArrowDown");
 
-    expect(selected()).toBe("task-9");
+    expect(selected()).toBe(`task-${storedRowId(9)}`);
   });
 
   it("opens a scope level onto its iterations, which arrow back to it", () => {
@@ -233,7 +234,7 @@ describe("arrow navigation inside an opened run", () => {
     select(week);
     press("/", { ctrlKey: true });
 
-    select("habit-7-0-virtual");
+    select(`habit-${FLOW}-0-virtual`);
     press("ArrowLeft");
 
     expect(selected()).toBe(week);
@@ -249,21 +250,21 @@ describe("opening a folded run", () => {
     const { container } = render(<MindmapView />);
     openWithCtrlSlash();
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).toBeNull();
   });
 
   it("opens one level onto its own iterations, leaving its neighbour shut", () => {
     const { container } = render(<MindmapView />);
     openWithCtrlSlash();
-    const levels = [...container.querySelectorAll("[data-node-id^='habitrun-7-week-']")];
+    const levels = [...container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)];
     const first = levels[0]?.getAttribute("data-node-id") ?? "";
 
     select(first);
     press("/", { ctrlKey: true });
 
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='habit-7-2-virtual']")).toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-2-virtual']`)).toBeNull();
   });
 
   function openWithCtrlSlash(): void {
@@ -286,31 +287,31 @@ describe("expanding a folded Habit run and everything under it", () => {
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
     for (const index of [0, 1, 2, 3]) {
-      expect(container.querySelector(`[data-node-id='habit-7-${index}-virtual']`)).not.toBeNull();
+      expect(container.querySelector(`[data-node-id='habit-${FLOW}-${index}-virtual']`)).not.toBeNull();
     }
   });
 
   it("clears an ordinary collapse and opens the fold beneath it in the same press", () => {
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
-    select("goal-5");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`goal-${storedRowId(5)}`]) }); });
+    select(`goal-${storedRowId(5)}`);
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelector("[data-node-id='task-9']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='habit-7-3-virtual']")).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='task-${storedRowId(9)}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-3-virtual']`)).not.toBeNull();
   });
 
   it("leaves a run outside the pressed subtree folded", () => {
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["task-9"]) }); });
-    select("task-9");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`task-${storedRowId(9)}`]) }); });
+    select(`task-${storedRowId(9)}`);
 
     press("/", { ctrlKey: true, altKey: true });
 
-    expect(container.querySelector("[data-node-id^='habitrun-7-week-']")).toBeNull();
+    expect(container.querySelector(`[data-node-id^='habitrun-${FLOW}-week-']`)).toBeNull();
   });
 });
 
@@ -339,8 +340,8 @@ describe("collapsing a subtree with the same chord", () => {
     // `goal-5` is collapsed and the fold sits underneath it: one press has to clear the ordinary
     // collapse *and* open the run, and the second has to undo both.
     const { container } = render(<MindmapView />);
-    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set(["goal-5"]) }); });
-    select("goal-5");
+    act(() => { mindmapStore().setState({ collapsedNodeIds: new Set([`goal-${storedRowId(5)}`]) }); });
+    select(`goal-${storedRowId(5)}`);
     const before = drawnIds(container);
 
     pressChord();
@@ -348,7 +349,7 @@ describe("collapsing a subtree with the same chord", () => {
     pressChord();
 
     expect(opened).not.toEqual(before);
-    expect(opened).toContain("habit-7-3-virtual");
+    expect(opened).toContain(`habit-${FLOW}-3-virtual`);
     expect(drawnIds(container)).toEqual(before);
   });
 
@@ -371,18 +372,18 @@ describe("collapsing a subtree with the same chord", () => {
     pressChord();
     press("/", { ctrlKey: true });
 
-    expect(container.querySelectorAll("[data-node-id^='habitrun-7-week-']")).toHaveLength(2);
-    expect(container.querySelector("[data-node-id='habit-7-0-virtual']")).toBeNull();
+    expect(container.querySelectorAll(`[data-node-id^='habitrun-${FLOW}-week-']`)).toHaveLength(2);
+    expect(container.querySelector(`[data-node-id='habit-${FLOW}-0-virtual']`)).toBeNull();
   });
 
   it("shuts a cell that was already open, rather than opening it again", () => {
     const { container } = render(<MindmapView />);
-    select("goal-5");
+    select(`goal-${storedRowId(5)}`);
 
     pressChord();
 
-    expect(container.querySelector("[data-node-id='goal-5']")).not.toBeNull();
-    expect(container.querySelector("[data-node-id='task-9']")).toBeNull();
+    expect(container.querySelector(`[data-node-id='goal-${storedRowId(5)}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-node-id='task-${storedRowId(9)}']`)).toBeNull();
     expect(container.querySelector(`[data-node-id='${RUN}']`)).toBeNull();
   });
 });

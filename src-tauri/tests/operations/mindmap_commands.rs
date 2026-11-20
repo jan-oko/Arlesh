@@ -16,6 +16,7 @@
 //! only after the command's session has closed.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::commands::{
     block_reasons as block_reason_commands, domains as domain_commands, flows as flow_commands,
@@ -46,7 +47,7 @@ fn scoped_flow(title: &str) -> CreateFlowRequest {
         title: title.into(),
         instance_type: Some(InstanceType::Task),
         parent_type: "aspect".into(),
-        parent_id: 1,
+        parent_id: crate::helpers::seeded(1),
         flow_duration_n: Some(2),
         flow_duration_kind: Some("week".into()),
         ..Default::default()
@@ -76,16 +77,17 @@ async fn week_scope(_pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> ScopeK
 /// dependency, one a plain flow.
 ///
 /// Returns the Habit's id.
-async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePool) -> i64 {
+async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePool) -> RowId {
     use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
 
     domain_commands::create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: "Ops".into(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(1),
+            parent_id: Some(crate::helpers::seeded(1)),
             status: None,
             knowledge_base_directory: None,
         },
@@ -98,7 +100,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -146,6 +148,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
     info_commands::create_info(
         app.state(),
         CreateInfoRequest {
+            id: None,
             body: "a note".into(),
             details: None,
             parent_type: "task".into(),
@@ -162,6 +165,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: habit.id,
             title: "Exercise".into(),
             parent_type: "flow".into(),
@@ -173,6 +177,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
     let other = flow_commands::create_flow_goal(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: habit.id,
             title: "Feel good".into(),
             parent_type: "flow".into(),

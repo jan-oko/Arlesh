@@ -1,15 +1,18 @@
 import type { ScopeKey } from "@/api/scopes";
 
 /**
- * Which row a node is: a stored row's integer id, or a derived row's UUID (ADR 0008). A Habit's
- * occurrence is an ordinary row of its kind with a UUID id; every request that names a node takes
- * either, and the backend routes a derived one into its overlay.
+ * Which row a node is: a UUID string. A stored row's id is a v5 (existing rows) or v7 (new rows)
+ * UUID; a derived row's — a Habit occurrence, a wait's check task — is a version 8 UUID. Every
+ * request that names a node takes either, and the backend routes a derived one into its overlay.
  */
-export type RowId = number | string;
+export type RowId = string;
+
+/** The version nibble (first character of the third group) that marks a derived row's UUID. */
+const DERIVED_VERSION = "8";
 
 /** Whether `id` names a derived row — a Habit occurrence — rather than a stored one. */
-export function isDerivedId(id: RowId): id is string {
-  return typeof id === "string";
+export function isDerivedId(id: RowId): boolean {
+  return id.charAt(14) === DERIVED_VERSION && id.charAt(8) === "-" && id.charAt(13) === "-";
 }
 
 /** The iteration a Habit occurrence is in, as its `origin` carries it. */
@@ -38,12 +41,12 @@ export interface IterationScope {
 /** A Habit occurrence's provenance. */
 export interface HabitOrigin {
   kind: "habit";
-  habit_id: number;
+  habit_id: string;
   iteration_scope: IterationScope;
   /** `flow_root` for the iteration's root, else the template item's table. */
   item_type: "flow_root" | "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation";
-  item_id: number;
-  cycle_id: number;
+  item_id: string;
+  cycle_id: string;
 }
 
 /** A wait's check task: which check on which wait. */
@@ -87,7 +90,7 @@ export function habitOrigin(origin: Origin | undefined): HabitOrigin | undefined
 
 /**
  * A derived row was named where only a stored one can be: a Domain, a Flow, a wait, or a copy
- * source. Thrown rather than sending a UUID to a command that takes an integer.
+ * source. Thrown rather than sending a derived id to a command that takes a stored one.
  */
 export class NotStoredError extends Error {
   constructor(id: string) {
@@ -96,8 +99,8 @@ export class NotStoredError extends Error {
   }
 }
 
-/** `id` as a stored row's integer id; throws {@link NotStoredError} for a derived one. */
-export function storedId(id: RowId): number {
+/** `id` as a stored row's id; throws {@link NotStoredError} for a derived one. */
+export function storedId(id: RowId): string {
   if (isDerivedId(id)) throw new NotStoredError(id);
   return id;
 }

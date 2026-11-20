@@ -3,6 +3,7 @@
 //! every other bound still holds.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     database::session::SessionFactory,
@@ -37,8 +38,8 @@ fn week(month: u32, day: u32) -> TimeScope {
     }
 }
 
-async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -49,6 +50,7 @@ async fn make_project(factory: &SessionFactory, pool: &sqlx::SqlitePool) -> i64 
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -71,7 +73,7 @@ async fn create(factory: &SessionFactory, request: CreateTaskRequest) -> Task {
 }
 
 /// A task under the project, its own window the week of 15 July.
-async fn july_task(factory: &SessionFactory, project_id: i64, on_exit: OnScopeExit) -> Task {
+async fn july_task(factory: &SessionFactory, project_id: RowId, on_exit: OnScopeExit) -> Task {
     create(
         factory,
         CreateTaskRequest {

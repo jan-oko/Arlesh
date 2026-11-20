@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn instance_type_as_str_covers_all_variants() {
@@ -27,7 +28,7 @@ fn an_unrecognised_instance_type_reads_as_a_task() {
 
 #[test]
 fn flow_id_roundtrip() {
-    assert_eq!(i64::from(FlowId::from(9_i64)), 9);
+    assert_eq!(FlowId::from(tid(9)).0, tid(9));
 }
 
 #[test]
