@@ -217,7 +217,7 @@ export default function ZenView() {
     onToggleRelease: toggleRelease,
     onBindWait: openAsyncTemplate,
     // Borrowed with the List View's Expectation context, but never dispatched: the Zen table
-    // leaves out `Alt+E`'s list option and `Shift+E`'s create (see `ZEN_BINDINGS`).
+    // leaves out `Alt+W`'s list option and `Shift+E`'s create (see `ZEN_BINDINGS`).
     onSetExpectationsPreset: () => {},
     onCreateExpectation: () => {},
     onOpenEditor: openEditor,

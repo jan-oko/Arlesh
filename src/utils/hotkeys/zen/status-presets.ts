@@ -7,7 +7,7 @@ export interface ZenStatusPresetContext {
 }
 
 /**
- * The Alt+letter presets the other views carry, and the List View's `Alt+U`, `Alt+E` and `Alt+R`. The Zen View always
+ * The Alt+letter presets the other views carry, and the List View's `Alt+U`, `Alt+W` and `Alt+E`. The Zen View always
  * reads under **Do**, so here they change nothing — but a press with no visible effect reads as a
  * key that is not bound, so each says why in a toast instead, as the Plan View's do. Hidden from the
  * sheet: listing "All" against a key that cannot choose All would be the sheet disagreeing with the
@@ -19,8 +19,8 @@ const PRESET_CODES: ReadonlyArray<{ code: string; id: string }> = [
   { code: "KeyD", id: "do" },
   { code: "KeyB", id: "backlog" },
   { code: "KeyU", id: "unblock" },
-  { code: "KeyE", id: "expectations" },
-  { code: "KeyR", id: "review" },
+  { code: "KeyW", id: "expectations" },
+  { code: "KeyE", id: "review" },
 ];
 
 export const ZEN_STATUS_PRESET_BINDINGS: readonly Binding<ZenStatusPresetContext>[] =

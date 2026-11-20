@@ -341,6 +341,13 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  // A chord for a List-View-only option (Unblock, Expectations, Review) that would select the option
+  // already selected clears it instead, back to the shared preset the Mindmap holds — as an Alt+click
+  // on a filter already set that way removes it (ruled by the user, 2026-11-20).
+  function toggleListOption(option: "unblock" | "expectations" | "review") {
+    setListPreset(listFilter.preset === option ? sharedFilter.statusMode : option);
+  }
+
   // Deleting on the Mindmap's terms: its chord, its confirmation, its subtree cascade and its
   // writer — so one undo step covers a delete made from either view.
   const { pendingDelete, isDeleting, error: deleteError, requestDelete, confirmDelete, cancelDelete } =
@@ -383,7 +390,7 @@ export default function ListView() {
     selectedExpectationId,
     selectedRowId: activeSelectedId,
     onToggleRelease: toggleRelease,
-    onSetExpectationsPreset: () => setListPreset("expectations"),
+    onSetExpectationsPreset: () => toggleListOption("expectations"),
     onBindWait: openAsyncTemplate,
     onCreateExpectation: (id) => {
       const node = findNode(tree, id);
@@ -408,8 +415,8 @@ export default function ListView() {
     onDelete: requestDelete,
     onDeselect: () => setSelectedRowId(null),
     onSetStatusMode: handleSetStatusPreset,
-    onSetUnblockPreset: () => setListPreset("unblock"),
-    onSetReviewPreset: () => setListPreset("review"),
+    onSetUnblockPreset: () => toggleListOption("unblock"),
+    onSetReviewPreset: () => toggleListOption("review"),
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,

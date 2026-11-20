@@ -22,7 +22,7 @@ Exactly as the [Plan View is always Plan](plan-view.md#always-the-plan-preset), 
 - The top bar's preset control shows **Do** while this view is active; the other presets are drawn
   but disabled, each saying on hover that the Zen View always reads under Do, and so does the
   closed control.
-- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U`, `Alt+E` and `Alt+R`, change nothing
+- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U`, `Alt+W` and `Alt+E`, change nothing
   here and say so in a toast. They are left off this view's cheat-sheet.
 - The tab's own preset is **not overwritten**: the view reads the board *as* Do, and switching to
   another view gives the tab its preset back. The Plan preset's scope narrowing is not read either,
