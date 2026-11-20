@@ -344,3 +344,21 @@ test('the context block says whether the session is attached and how a claim wor
   expect(waiting).toContain('Settings → Agents')
   expect(waiting).toContain('arlesh_agents.attach')
 })
+
+test('a review raised with raise_review is a wait to watch, read as the server answers it', () => {
+  const reviewed = {
+    full_id: '24a2ff72-dada',
+    short_id: '24a',
+    task_id: '1a0d197b-20f9',
+    task_short_id: '1a0',
+    status: 'pending',
+    archival: 'live',
+    question: true,
+    review: { links: [], hand_tests: [] },
+  }
+
+  expect(waitsFrom('raise_review', JSON.stringify(reviewed), 'ignored-label')).toEqual([
+    { waitId: '24a2ff72-dada', shortId: '24a', taskShortId: '1a0', status: 'pending', archived: false },
+  ])
+  expect(waitsFrom('raise_review', { structuredContent: reviewed }, '1a0')).toHaveLength(1)
+})

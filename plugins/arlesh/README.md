@@ -118,7 +118,7 @@ environment variables:
     tasks cannot be changed by a mod and shows nothing of it.
   - When the session is not attached, or Arlesh is not running, nothing is registered and the
     subagent is told nothing: its Arlesh calls behave as the session's would.
-- Records every wait the session passes through `arlesh_waits.ask`, `raise` or `watch`, per session
+- Records every wait the session passes through `arlesh_waits.ask`, `raise`, `raise_review` or `watch`, per session
   (kept in the mod's store for 30 days, so a restart or `claude --resume` still watches them).
 - Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch` (sending the session's agent token, so it hears only of waits inside its Claim; an unattached session does not poll), one
   request at a time: the server answers as soon as a wait changes, else empty after the wait. With
@@ -126,6 +126,12 @@ environment variables:
   (`arlesh_waits.get_many`) to catch up on what changed while it was away. If requests time out
   early the wait is halved, down to 5 seconds. After three failures in a row it says once in the
   transcript that Arlesh cannot be reached, and keeps trying with a backoff.
+- Never submits while a turn of the main conversation is running. A prompt submitted then is only
+  queued behind the turn, and the host discards it if the turn is stopped, so the host's "entered"
+  answer proves nothing. The mod follows the main loop's `turn.start` and `turn.complete` (a stopped
+  turn completes too, `isAborted`), holds what it owes while a turn runs, and flushes when it
+  completes: the session being idle is the only moment a submit is known to start a turn. A dialog
+  such as `AskUserQuestion` is inside a running turn, so it holds too.
 - Keeps a change **owed** until its notification has entered the session. The host can refuse a
   prompt without an error (`$.prompt.submit` resolves `{ drop }`, for instance after an interrupted
   turn), and a message to a sub-agent can be undelivered; either leaves the change owed in the

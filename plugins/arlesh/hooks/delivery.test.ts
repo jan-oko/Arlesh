@@ -32,6 +32,7 @@ function session(
   waits: Record<string, unknown>,
   submits: Array<'enter' | 'drop' | 'reject'>,
   agents: unknown[] = [],
+  entersTurn = false,
 ) {
   const clock = mock.clock(on)
   const stored: Record<string, unknown> = { 'watch:s1': waits, 'agent:s1': { token: 't' } }
@@ -57,6 +58,7 @@ function session(
   on('session.id', () => ({ value: 's1' }))
   on('agent.list', () => ({ value: agents }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.start', () => ({ turnId: 't' }))
   on('mcp.call', () => releasedAnswer(released))
   on('http.fetch', async () => {
     const first = !polled
@@ -71,12 +73,13 @@ function session(
       },
     }
   })
-  on('prompt.submit', (_, e) => {
+  on('prompt.submit', async ($, e) => {
     const how = submits[Math.min(attempts, submits.length - 1)]
     attempts += 1
     if (how === 'reject') throw new Error('not now')
     if (how === 'drop') return { drop: 'a Stop stands' }
     prompts.push(e.text)
+    if (entersTurn) await $.turn.start({ turnId: `t${attempts}` })
     return { text: e.text }
   })
   on('ui.log', (_, e) => {
@@ -199,4 +202,39 @@ test('a book stored before changes could be owed still reads, owing nothing', ()
 
   expect(revive(old)['w1-full']).toEqual(old['w1-full'])
   expect(revive({ 'w1-full': { ...old['w1-full'], owed: ['nonsense'], attempts: 'x' } })['w1-full']).toEqual(old['w1-full'])
+})
+
+const turnOver = { reason: 'answer', answer: 'x', durationMs: 1, isAborted: true, turnId: 't' } as const
+
+test('a wait released while a turn runs is not submitted into it, and goes in once the turn is over, exactly once', async ($, on) => {
+  // The host queues a prompt submitted mid-turn and discards it when the turn is stopped, resolving
+  // as if it had entered: here every submit made while the turn runs vanishes that way.
+  const s = session(on, ['w1'], { 'w1-full': watched('w1') }, ['enter'])
+  await $.turn.start({ turnId: 't' })
+
+  await start($, s.clock)
+  await pollRounds(s.clock, 2)
+  expect(s.attempts()).toBe(0)
+  expect(bookOf(s.stored)['w1-full']?.owed).toEqual(['released'])
+
+  await $.turn.complete(turnOver)
+  await s.clock.settle()
+  await pollRounds(s.clock, 2)
+
+  expect(s.prompts).toHaveLength(1)
+  expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
+})
+
+test('two waits released in one busy turn are told one after the other, each in a turn of its own', async ($, on) => {
+  const s = session(on, ['w1', 'w2'], { 'w1-full': watched('w1'), 'w2-full': watched('w2') }, ['enter'], [], true)
+  await $.turn.start({ turnId: 't' })
+
+  await start($, s.clock)
+  await $.turn.complete(turnOver)
+  await s.clock.settle()
+  expect(s.prompts).toHaveLength(1)
+
+  await $.turn.complete({ ...turnOver, turnId: 't2' })
+  await s.clock.settle()
+  expect(s.prompts).toHaveLength(2)
 })

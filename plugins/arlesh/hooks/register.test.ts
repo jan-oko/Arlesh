@@ -33,6 +33,26 @@ test('a wait asked in the session is recorded when the hook sees the result as t
   })
 })
 
+test('a review raised with raise_review is recorded like a question', async ($, on) => {
+  const stored: Record<string, unknown> = {}
+  storeTo(on, stored)
+  const review = { ...asked, task_short_id: '9a1', review: { links: [], hand_tests: [] } }
+  on('tool.call', () => ({ result: JSON.stringify(review), text: JSON.stringify(review) }))
+
+  await $.tool.call({
+    tool: 'mcp__Arlesh__arlesh_waits',
+    operation: 'raise_review',
+    task_id: '9a1',
+    title: 'PR is green',
+    summary: 's',
+    agentId: 'a1',
+  })
+
+  expect(stored['watch:s1']).toMatchObject({
+    'w-full': { shortId: 'w1', taskShortId: '9a1', via: { agentId: 'a1', description: 'Fix CI' } },
+  })
+})
+
 test('a wait is recorded from an object result too', async ($, on) => {
   const stored: Record<string, unknown> = {}
   storeTo(on, stored)

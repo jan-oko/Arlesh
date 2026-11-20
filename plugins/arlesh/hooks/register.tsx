@@ -52,7 +52,7 @@ type SpawnInput = AgentSpawnInput
 
 /** What the agents are told at the start of a session in which the notifications are on. */
 const NOTES =
-  'Arlesh notifications are on in this session: waits you ask, raise or `arlesh_waits.watch` ' +
+  'Arlesh notifications are on in this session: waits you ask, raise (a review included) or `arlesh_waits.watch` ' +
   "will notify you when they change; don't poll."
 
 const BACKOFF_FIRST_MS = 1_000
@@ -140,6 +140,13 @@ export const register: Register = (on) => {
     }
   })
 
+  // Whether the main conversation is mid-turn: a prompt submitted then is only queued behind the
+  // turn, and the host discards it if the turn is stopped. See `flush`.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) turnRunning = true
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // The plan limits the session is under, reported for its account whenever one moves.
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
@@ -179,6 +186,7 @@ export const register: Register = (on) => {
 
   // A subagent that stops has its Claim paused; the child stays listed, still naming its Task.
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) turnRunning = false
     const done = await next(e)
     if (e.agentId !== undefined) void childStopped($, e.agentId)
     // The session is idle again: what could not be delivered while it ran or after a stop goes now.
@@ -449,10 +457,12 @@ async function apply($: Engine, answers: Current[], pruneFirst = false): Promise
 }
 
 let flushing = false
+/** True from the main loop's `turn.start` to its `turn.complete`. */
+let turnRunning = false
 
 /**
  * Tells the session of every change it is owed, oldest first, stopping at the first that does not
- * go through (it stays owed, and the next poll, the next idle turn or the next session start tries
+ * go through, or while a turn runs (it stays owed, and the next poll, the next idle turn or the next session start tries
  * again). One flush runs at a time, so a change in flight is never sent twice. It is not awaited by
  * the poll loop: a prompt may wait for the running turn to end.
  */
@@ -461,6 +471,9 @@ async function flush($: Engine): Promise<void> {
   flushing = true
   try {
     for (;;) {
+      // Only an idle session is known to start a turn from a submit; mid-turn the prompt would be
+      // queued, and lost if the turn is stopped. `turn.complete` flushes again.
+      if (turnRunning) return
       const next = await serially(async () => firstOwed(await loadBook($)))
       if (next === undefined) return
       const outcome = await deliver($, next.entry, next.change)

@@ -61,7 +61,7 @@ really on, and no agent is promised a wake-up it will not get.
 3. The orchestrating-agents skill puts the same rules in briefs, and treats a notification as the
    cue to re-read the board.
 4. The mod adds one line to the session-start context: "Arlesh notifications are on in this
-   session: waits you ask, raise or `arlesh_waits.watch` will notify you when they change; don't
+   session: waits you ask, raise (a review included) or `arlesh_waits.watch` will notify you when they change; don't
    poll."
 
 Cloud sessions are out of scope: they cannot reach a local Arlesh.
@@ -98,7 +98,11 @@ Checked against the API, and built as decided except where noted:
   prompt entered or the message was queued. An owed change is tried again on every poll round, when
   the main session's turn completes, and at session start; one flush runs at a time, so a change in
   flight is not sent twice. A message a sub-agent did not take goes to the session instead, naming
-  the sub-agent. After 20 failed attempts it is given up on and the transcript says so; every
+  the sub-agent. Nothing is submitted while a turn of the main conversation runs: the host queues a
+  prompt submitted mid-turn, answers as if it entered, and discards it if the turn is stopped. The
+  mod follows `turn.start` and `turn.complete` (a stopped turn completes with `isAborted`; a dialog
+  inside a turn is still the turn) and flushes when the turn completes. Reviews raised with
+  `raise_review` are watched like questions. After 20 failed attempts it is given up on and the transcript says so; every
   attempt, its outcome and the drop reason go to the debug log.
 - **A sub-agent is notified of a release it made itself** (it raised the wait, so it is its
   notification), and a message that goes to anyone else than the raiser names the sub-agent.
