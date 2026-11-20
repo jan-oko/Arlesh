@@ -5,6 +5,7 @@ import GoalEditorModal from "./GoalEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { Domain } from "@/api/domains";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -25,21 +26,21 @@ vi.mock("@/api/scopes", () => ({
 
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
-    id: "goal-1",
-    rowId: 1,
+    id: `goal-${storedRowId(1)}`,
+    rowId: storedRowId(1),
     kind: "goal",
     title: "Ship it",
     status: "active",
     blockReasons: [],
     position: 0,
-    tagIds: [2],
+    tagIds: [storedRowId(2)],
     children: [],
     ...overrides,
   };
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAG_A = mkTag(1, "frontend");
@@ -48,7 +49,7 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -74,7 +75,7 @@ describe("GoalEditorModal — initial state", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+        expect.objectContaining({ tagIds: expect.arrayContaining([storedRowId(1), storedRowId(2)]) }),
       ),
     );
   });
@@ -89,7 +90,7 @@ describe("GoalEditorModal — save", () => {
         title: "Ship it",
         status: "active",
         blockReasons: [],
-        tagIds: [2],
+        tagIds: [storedRowId(2)],
         timeScope: null,
         onScopeExit: null,
         isPrivate: false,
@@ -110,7 +111,7 @@ describe("GoalEditorModal — save", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+        expect.objectContaining({ tagIds: expect.arrayContaining([storedRowId(1), storedRowId(2)]) }),
       ),
     );
   });
@@ -220,7 +221,7 @@ describe("GoalEditorModal — reopened after a refused Save", () => {
         {...defaultProps}
         reopened={{
           draft: {
-            title: "Typed title", status: "achieved", blockReasons: ["waiting"], tagIds: [1],
+            title: "Typed title", status: "achieved", blockReasons: ["waiting"], tagIds: [storedRowId(1)],
             timeScope: null, onScopeExit: null, isPrivate: true,
           },
           error: "Goal title is taken",

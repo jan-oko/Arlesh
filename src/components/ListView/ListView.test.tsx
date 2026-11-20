@@ -17,6 +17,7 @@ import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
 import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -69,13 +70,13 @@ function ListViewInApp() {
 
 /** A row id per fixture id, stable across the file. `commitment-7` draws row 7; a fixture named
  * by word (`task-parent`) draws one of its own, numbered from 1000 so it meets no numbered one. */
-const wordRows = new Map<string, number>();
-function fixtureRow(id: string): number {
+const wordRows = new Map<string, string>();
+function fixtureRow(id: string): string {
   const numbered = fixtureRowId(id).rowId;
   if (numbered !== undefined) return numbered;
   const known = wordRows.get(id);
   if (known !== undefined) return known;
-  const next = 1000 + wordRows.size;
+  const next = storedRowId(1000 + wordRows.size);
   wordRows.set(id, next);
   return next;
 }
@@ -766,10 +767,10 @@ describe("ListView", () => {
   });
 
   it("clicking a task's tag pill adds a shared tag filter", () => {
-    mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [7] }) })] }));
+    mockUseListData.mockReturnValue(listData({ rows: [row({ node: n("task-1", "task", { status: "todo", tagIds: [storedRowId(7)] }) })] }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByTitle("filterByTag"));
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 7, mode: "any" }]);
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(7), mode: "any" }]);
   });
 
   describe("keyboard navigation and actions", () => {
@@ -1383,7 +1384,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
   });
 
   it("draws a Commitment as a row among the tasks, with the same control, when bands are off", () => {
@@ -1397,7 +1398,7 @@ describe("ListView — the commitments section", () => {
 
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
     useDisplayStore.setState({ listBands: true });
   });
 
@@ -1412,13 +1413,13 @@ describe("ListView — the commitments section", () => {
 
   it.each(["unresolved", "kept", "broken"] as const)("sends a cycle press for the selected commitment on Enter, from %s", (current) => {
     pressOnCommitment(current, { key: "Enter", code: "Enter" });
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "cycle");
   });
 
   it.each(["unresolved", "kept"] as const)("sends the Broken press on X from %s", (current) => {
     // Enter walks past Broken, so X is what keeps Broken reachable in one press from anywhere.
     pressOnCommitment(current, { key: "x", code: "KeyX" });
-    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "broken");
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(1), "broken");
   });
 
   it("gives a commitment Habit's iteration the same verdict control as any other commitment", () => {
@@ -1787,7 +1788,7 @@ describe("ListView — expectations", () => {
 
   it("completes a check task's check on Enter, and leaves D free", () => {
     const onCycleStatus = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(1), due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

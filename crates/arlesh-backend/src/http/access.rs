@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `access` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     access::model::{EffectiveAccess, NodeTable},
     error::WireError,
@@ -23,7 +24,7 @@ impl AccessPort for HttpBackend {
             .await
     }
 
-    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::PUT,
             format!(
@@ -35,7 +36,7 @@ impl AccessPort for HttpBackend {
         .await
     }
 
-    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!(

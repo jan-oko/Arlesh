@@ -14,7 +14,7 @@ from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 from tests.server.integration.live_stream import follow as _follow
 
-ROOT_ASPECT = 1
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 Start = Callable[..., ArleshServer]
 
 

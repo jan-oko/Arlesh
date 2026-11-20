@@ -10,6 +10,7 @@
 //! it is synchronous and runs per render — so "one definition" has to mean one *specification*
 //! both evaluators are held to, rather than one call stack.
 
+use arlesh_lib::nodes::id::RowId;
 use std::collections::{BTreeSet, HashMap};
 
 use arlesh_lib::{
@@ -143,7 +144,7 @@ fn yes() -> bool {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CorpusTag {
-    tag_id: i64,
+    tag_id: RowId,
     mode: TagMode,
 }
 

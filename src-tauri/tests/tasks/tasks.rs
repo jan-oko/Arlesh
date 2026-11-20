@@ -1,4 +1,6 @@
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 
 // Aliased rather than imported by name: several command functions share a name with a test below
 // (`delete_task`, `delete_goal`), and the alias keeps the call sites saying which one they mean.
@@ -26,8 +28,8 @@ use chrono::NaiveDate;
 use helpers::StoredId;
 use tauri::Manager;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -38,6 +40,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -50,8 +53,8 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_tag(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -62,6 +65,7 @@ async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "test-tag".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -492,7 +496,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
 async fn reparent_task_to_different_project() {
     let pool = helpers::test_pool().await;
     let project_a_id = make_project(&pool).await;
-    let aspect_id: i64 =
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(&pool)
             .await
@@ -503,6 +507,7 @@ async fn reparent_task_to_different_project() {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Project B".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -1064,7 +1069,7 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
 /// Applies one update request, read from its wire JSON, the way an IPC call arrives.
 async fn update_task_from_wire(
     pool: &sqlx::SqlitePool,
-    task_id: i64,
+    task_id: RowId,
     wire: &str,
 ) -> arlesh_lib::tasks::model::Task {
     let request: UpdateTaskRequest = serde_json::from_str(wire).unwrap();
@@ -1104,14 +1109,14 @@ async fn a_task_is_delegated_to_a_person_and_back_over_the_wire() {
     let delegated = update_task_from_wire(
         &pool,
         task.id.sid(),
-        &format!(r#"{{"delegate_to":{{"kind":"person","id":{person}}}}}"#),
+        &format!(r#"{{"delegate_to":{{"kind":"person","id":"{person}"}}}}"#),
     )
     .await;
     assert_eq!(
         delegated.delegate_to,
         Some(arlesh_lib::tasks::model::Delegate::Person { id: person })
     );
-    let stored: (Option<String>, Option<i64>) =
+    let stored: (Option<String>, Option<RowId>) =
         sqlx::query_as("SELECT delegate_kind, delegate_id FROM tasks WHERE id = ?")
             .bind(task.id.sid())
             .fetch_one(&pool)
@@ -1159,7 +1164,7 @@ async fn delegating_to_a_person_who_does_not_exist_is_refused() {
         task.id.sid().into(),
         UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
-                id: 9_999,
+                id: tid(9_999),
             })),
             ..Default::default()
         },
@@ -1512,7 +1517,7 @@ async fn list_goals_includes_tag_ids() {
 async fn reparent_goal_to_different_project() {
     let pool = helpers::test_pool().await;
     let project_a_id = make_project(&pool).await;
-    let aspect_id: i64 =
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(&pool)
             .await
@@ -1523,6 +1528,7 @@ async fn reparent_goal_to_different_project() {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Project B".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -2796,7 +2802,7 @@ async fn lifecycles(
 
 fn task_state(
     states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle],
-    id: i64,
+    id: RowId,
 ) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
     states
         .iter()
@@ -3082,7 +3088,7 @@ async fn inherited_scope_and_on_exit_govern_children() {
 
 fn goal_state(
     states: &[arlesh_lib::tasks::lifecycle::ItemLifecycle],
-    id: i64,
+    id: RowId,
 ) -> arlesh_lib::tasks::lifecycle::ItemLifecycle {
     states
         .iter()
@@ -3149,6 +3155,7 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
         let __r = create_goal(
             &mut db,
             CreateGoalRequest {
+                id: None,
                 title: "Achieved".into(),
                 parent_type: "project".into(),
                 parent_id: project_id.into(),
@@ -3347,8 +3354,8 @@ async fn deleting_a_goal_cascades_its_subtree() {
 // after the command's session has been committed and dropped.
 
 /// A second project, so a reparent has somewhere to go.
-async fn make_second_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_second_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -3359,6 +3366,7 @@ async fn make_second_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Second Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -3372,7 +3380,7 @@ async fn make_second_project(pool: &sqlx::SqlitePool) -> i64 {
 }
 
 /// The row's title and sort position, read straight from the database.
-async fn title_and_position(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+async fn title_and_position(pool: &sqlx::SqlitePool, table: &str, id: RowId) -> (String, i64) {
     sqlx::query_as(&format!("SELECT title, position FROM {table} WHERE id = ?"))
         .bind(id)
         .fetch_one(pool)
@@ -3381,7 +3389,7 @@ async fn title_and_position(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (S
 }
 
 /// The row's title and parent id, read straight from the database.
-async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (String, i64) {
+async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: RowId) -> (String, RowId) {
     sqlx::query_as(&format!(
         "SELECT title, parent_id FROM {table} WHERE id = ?"
     ))
@@ -3397,7 +3405,7 @@ async fn title_and_parent(pool: &sqlx::SqlitePool, table: &str, id: i64) -> (Str
 /// caller-supplied SQL silently binds NULL for every extra `?`, so `id = ? OR parent_id = ?` reads
 /// as `id = 1 OR parent_id = NULL` and the second half quietly never matches. One placeholder,
 /// one bind, no way to get that wrong.
-async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: i64) -> i64 {
+async fn count_where(pool: &sqlx::SqlitePool, table: &str, column: &str, value: RowId) -> i64 {
     sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?"))
         .bind(value)
         .fetch_one(pool)
@@ -3802,7 +3810,7 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
 
 /// Inserts a task row straight into the database, skipping every rule, so a test can build a
 /// tree the write path would never produce.
-async fn insert_raw_task(pool: &sqlx::SqlitePool, id: i64, parent_type: &str, parent_id: i64) {
+async fn insert_raw_task(pool: &sqlx::SqlitePool, id: RowId, parent_type: &str, parent_id: RowId) {
     sqlx::query(
         "INSERT INTO tasks (id, title, parent_type, parent_id, status) VALUES (?, ?, ?, ?, 'todo')",
     )
@@ -3905,9 +3913,9 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
 }
 
 /// Counts the tasks parented by task `parent_id`. Written out rather than reusing `count_where`
-/// because the polymorphic parent link needs both halves: task 1 and goal 1 are different
+/// because the polymorphic parent link needs both halves: task 1 and goal tid(1) are different
 /// parents, and matching on `parent_id` alone conflates them.
-async fn scoped_children_of(pool: &sqlx::SqlitePool, parent_id: i64) -> i64 {
+async fn scoped_children_of(pool: &sqlx::SqlitePool, parent_id: RowId) -> i64 {
     sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE parent_type = 'task' AND parent_id = ?")
         .bind(parent_id)
         .fetch_one(pool)
@@ -3934,8 +3942,8 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
     // 9001 and 9002 are each other's parent. Nothing in `update_task`, `reparent_conflicts` or
     // the schema prevents this today; before the chain's cycle guard every walk below spun
     // forever and hung the app.
-    insert_raw_task(&pool, 9001, "task", 9002).await;
-    insert_raw_task(&pool, 9002, "task", 9001).await;
+    insert_raw_task(&pool, tid(9001), "task", tid(9002)).await;
+    insert_raw_task(&pool, tid(9002), "task", tid(9001)).await;
 
     // Read path: the derivation terminates, the cyclic pair is unconstrained, and the healthy
     // task beside them still renders.
@@ -3944,7 +3952,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         .and_hms_opt(12, 0, 0)
         .unwrap();
     let states = lifecycles(&pool, now).await;
-    assert_eq!(task_state(&states, 9001).timing, Timing::Active);
+    assert_eq!(task_state(&states, tid(9001)).timing, Timing::Active);
     assert_eq!(task_state(&states, anchor.id.sid()).timing, Timing::Active);
 
     // Write path: the same cycle refuses a scoped child.
@@ -3967,7 +3975,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         "a cyclic chain must reject the write rather than hang, got {rejected:?}",
     );
     assert_eq!(
-        scoped_children_of(&pool, 9001).await,
+        scoped_children_of(&pool, tid(9001)).await,
         1,
         "only 9002 remains a child of 9001 — the rejected write left nothing behind"
     );
@@ -3981,7 +3989,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
 // absence of an error.
 
 /// A project, a week Time Scope and a day inside it — the setting for every test below.
-async fn backlog_fixture(pool: &sqlx::SqlitePool) -> (i64, TimeScope, TimeScope) {
+async fn backlog_fixture(pool: &sqlx::SqlitePool) -> (RowId, TimeScope, TimeScope) {
     let project_id = make_project(pool).await;
     let week = arlesh_lib::scopes::model::Scope::containing(
         ScopeKind::Week,
@@ -4010,7 +4018,7 @@ async fn new_task(
 
 async fn try_update(
     pool: &sqlx::SqlitePool,
-    id: i64,
+    id: RowId,
     request: UpdateTaskRequest,
 ) -> Result<arlesh_lib::tasks::model::Task, arlesh_lib::tasks::error::TaskError> {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -4491,11 +4499,16 @@ fn an_explicit_null_delegate_in_a_task_update_payload_clears_it() {
         Some(None),
         "an explicit null clears the delegate"
     );
-    let set: UpdateTaskRequest =
-        serde_json::from_str(r#"{"delegate_to":{"kind":"person","id":7}}"#).unwrap();
+    let set: UpdateTaskRequest = serde_json::from_str(&format!(
+        r#"{{"delegate_to":{{"kind":"person","id":"{}"}}}}"#,
+        tid(7)
+    ))
+    .unwrap();
     assert_eq!(
         set.delegate_to,
-        Some(Some(arlesh_lib::tasks::model::Delegate::Person { id: 7 }))
+        Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+            id: tid(7)
+        }))
     );
 }
 

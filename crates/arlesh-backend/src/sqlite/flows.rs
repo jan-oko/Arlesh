@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `flows` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     flows::{
@@ -30,7 +31,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn get_flow(&self, id: i64) -> Result<Flow, WireError> {
+    async fn get_flow(&self, id: RowId) -> Result<Flow, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -51,7 +52,7 @@ impl FlowsPort for SqliteBackend {
         db.flows().list().await.map_err(WireError::from_error)
     }
 
-    async fn update_flow(&self, id: i64, request: UpdateFlowRequest) -> Result<Flow, WireError> {
+    async fn update_flow(&self, id: RowId, request: UpdateFlowRequest) -> Result<Flow, WireError> {
         let now = chrono::Local::now().naive_local();
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let flow =
@@ -61,7 +62,7 @@ impl FlowsPort for SqliteBackend {
         Ok(flow)
     }
 
-    async fn delete_flow(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_flow(&self, id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         flows::delete_flow(&mut db, FlowId(id))
             .await
@@ -131,7 +132,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn update_flow_commitment(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowCommitment, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -144,7 +145,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn update_flow_expectation(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowExpectation, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -155,7 +156,7 @@ impl FlowsPort for SqliteBackend {
         Ok(item)
     }
 
-    async fn list_flow_goals(&self, flow_id: i64) -> Result<Vec<FlowGoal>, WireError> {
+    async fn list_flow_goals(&self, flow_id: RowId) -> Result<Vec<FlowGoal>, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -167,7 +168,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn list_flow_tasks(&self, flow_id: i64) -> Result<Vec<FlowTask>, WireError> {
+    async fn list_flow_tasks(&self, flow_id: RowId) -> Result<Vec<FlowTask>, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -205,7 +206,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn update_flow_goal(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -218,7 +219,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn update_flow_task(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -231,7 +232,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn start_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: StartFlowRequest,
     ) -> Result<MaterializedFlow, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -266,7 +267,7 @@ impl FlowsPort for SqliteBackend {
 
     async fn set_flow_recurrence(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         request: SetRecurrenceRequest,
     ) -> Result<FlowRecurrence, WireError> {
         let now = chrono::Local::now().naive_local();
@@ -282,7 +283,10 @@ impl FlowsPort for SqliteBackend {
         Ok(recurrence)
     }
 
-    async fn get_flow_recurrence(&self, flow_id: i64) -> Result<Option<FlowRecurrence>, WireError> {
+    async fn get_flow_recurrence(
+        &self,
+        flow_id: RowId,
+    ) -> Result<Option<FlowRecurrence>, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -294,7 +298,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn delete_flow_recurrence(&self, flow_id: i64) -> Result<(), WireError> {
+    async fn delete_flow_recurrence(&self, flow_id: RowId) -> Result<(), WireError> {
         let mut db = self
             .factory
             .connect()
@@ -330,7 +334,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn delete_flow_item(&self, item_type: FlowItemType, id: i64) -> Result<(), WireError> {
+    async fn delete_flow_item(&self, item_type: FlowItemType, id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         db.flows()
             .delete_item(item_type, id)
@@ -341,9 +345,9 @@ impl FlowsPort for SqliteBackend {
 
     async fn set_flow_item_cycles(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         cycles: Vec<FlowCycleInput>,
         reconcile: Option<flows::cycles::Reconcile>,
         now: Option<chrono::NaiveDateTime>,
@@ -378,11 +382,11 @@ impl FlowsPort for SqliteBackend {
 
     async fn add_flow_dependency(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self
             .factory
@@ -404,9 +408,9 @@ impl FlowsPort for SqliteBackend {
     async fn remove_flow_dependency(
         &self,
         dependent_type: FlowItemType,
-        dependent_id: i64,
+        dependent_id: RowId,
         depends_on_type: FlowItemType,
-        depends_on_id: i64,
+        depends_on_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self
             .factory
@@ -431,7 +435,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn habit_completion_count(&self, flow_id: i64) -> Result<i64, WireError> {
+    async fn habit_completion_count(&self, flow_id: RowId) -> Result<i64, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -443,7 +447,7 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn clear_habit_modifications(&self, flow_id: i64) -> Result<(), WireError> {
+    async fn clear_habit_modifications(&self, flow_id: RowId) -> Result<(), WireError> {
         let mut db = self
             .factory
             .connect()
@@ -455,7 +459,11 @@ impl FlowsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn fork_flow(&self, flow_id: i64, now: chrono::NaiveDateTime) -> Result<Flow, WireError> {
+    async fn fork_flow(
+        &self,
+        flow_id: RowId,
+        now: chrono::NaiveDateTime,
+    ) -> Result<Flow, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let forked = flows::archive_and_fork(&mut db, FlowId(flow_id), now)
             .await
@@ -466,9 +474,9 @@ impl FlowsPort for SqliteBackend {
 
     async fn duplicate_flow(
         &self,
-        flow_id: i64,
+        flow_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
     ) -> Result<Flow, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -483,11 +491,11 @@ impl FlowsPort for SqliteBackend {
     async fn duplicate_flow_item(
         &self,
         item_type: FlowItemType,
-        item_id: i64,
+        item_id: RowId,
         parent_type: String,
-        parent_id: i64,
+        parent_id: RowId,
         position: i64,
-    ) -> Result<i64, WireError> {
+    ) -> Result<RowId, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let new_id = flows::duplicate_flow_item(
             &mut db,
@@ -506,7 +514,7 @@ impl FlowsPort for SqliteBackend {
     async fn convert_to_flow(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         keep_dependencies: bool,
         map_scopes: bool,
     ) -> Result<Flow, WireError> {

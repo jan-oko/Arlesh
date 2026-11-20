@@ -10,6 +10,7 @@ import { DEFAULT_FILTER } from "./filter-tree";
 import type { FilterState, StatusMode } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
@@ -298,11 +299,11 @@ describe("filterTaskList", () => {
   });
 
   it("combines the shared tag filter with a list-exclusive filter", () => {
-    const rows = [row({ node: n("task-1", "task", { status: "todo", tagIds: [5] }) })];
-    const shared = sf({ tagFilters: [{ tagId: 5, mode: "any" }] });
+    const rows = [row({ node: n("task-1", "task", { status: "todo", tagIds: [storedRowId(5)] }) })];
+    const shared = sf({ tagFilters: [{ tagId: storedRowId(5), mode: "any" }] });
     const filter = lf({ pills: { ...DEFAULT_LIST_FILTER.pills, taskStatus: [{ value: "todo", mode: "all" }] } });
     expect(filterTaskList(rows, shared, filter)).toHaveLength(1);
-    expect(filterTaskList(rows, sf({ tagFilters: [{ tagId: 6, mode: "any" }] }), filter)).toHaveLength(0);
+    expect(filterTaskList(rows, sf({ tagFilters: [{ tagId: storedRowId(6), mode: "any" }] }), filter)).toHaveLength(0);
   });
 });
 

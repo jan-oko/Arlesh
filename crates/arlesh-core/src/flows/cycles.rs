@@ -11,11 +11,12 @@
 //! given some — is refused until the caller answers the Habit editor's own question (see
 //! [`Reconcile`]): **Archive & new** or **Discard & regenerate**.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{
     error::FlowError,
-    model::{FlowCycleInput, FlowId, FlowItemCycle, FlowItemType, UpdateFlowRequest, NO_CYCLE},
+    model::{no_cycle, FlowCycleInput, FlowId, FlowItemCycle, FlowItemType, UpdateFlowRequest},
     stop_recurring,
 };
 use crate::database::session::{Db, Transactional};
@@ -24,7 +25,7 @@ use crate::database::session::{Db, Transactional};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeptPair {
     /// The stored pair's id, which survives.
-    pub id: i64,
+    pub id: RowId,
     /// Its index in the asked-for list, which is also its new position.
     pub position: usize,
 }
@@ -37,7 +38,7 @@ pub struct CycleDiff {
     /// Indices, in the asked-for list, of pairs that are new.
     pub added: Vec<usize>,
     /// Ids of stored pairs that go.
-    pub removed: Vec<i64>,
+    pub removed: Vec<RowId>,
 }
 
 /// Matches asked-for cycle pairs to stored ones by **Cycle Scope**: a pair whose `(scope_kind,
@@ -69,15 +70,15 @@ pub fn diff_cycles(existing: &[FlowItemCycle], wanted: &[FlowCycleInput]) -> Cyc
 
 /// The occurrence keys (`cycle_id`s) a cycle edit leaves behind: every removed pair's, and the
 /// no-pair sentinel's when an item that had no pairs is given some — its occurrences stop being
-/// drawn by [`NO_CYCLE`].
+/// drawn by [`no_cycle()`].
 pub fn orphaned_cycle_ids(
     existing: &[FlowItemCycle],
     wanted: &[FlowCycleInput],
     diff: &CycleDiff,
-) -> Vec<i64> {
+) -> Vec<RowId> {
     let mut orphaned = diff.removed.clone();
     if existing.is_empty() && !wanted.is_empty() {
-        orphaned.push(NO_CYCLE);
+        orphaned.push(no_cycle());
     }
     orphaned
 }
@@ -102,15 +103,20 @@ pub enum Reconcile {
 )]
 pub struct ForkedTemplate {
     /// The fork's flow id.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// Old→new `flow_goals` ids.
-    pub goals: Vec<(i64, i64)>,
+    #[schemars(with = "Vec<(String, String)>")]
+    pub goals: Vec<(RowId, RowId)>,
     /// Old→new `flow_tasks` ids.
-    pub tasks: Vec<(i64, i64)>,
+    #[schemars(with = "Vec<(String, String)>")]
+    pub tasks: Vec<(RowId, RowId)>,
     /// Old→new `flow_commitments` ids.
-    pub commitments: Vec<(i64, i64)>,
+    #[schemars(with = "Vec<(String, String)>")]
+    pub commitments: Vec<(RowId, RowId)>,
     /// Old→new `flow_expectations` ids.
-    pub expectations: Vec<(i64, i64)>,
+    #[schemars(with = "Vec<(String, String)>")]
+    pub expectations: Vec<(RowId, RowId)>,
 }
 
 /// How many iterations hold something recorded that a cycle edit would orphan: an overlay, a
@@ -119,7 +125,7 @@ pub struct ForkedTemplate {
 pub async fn orphaned_edits(
     db: &mut Db<Transactional>,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     cycles: &[FlowCycleInput],
 ) -> Result<i64, FlowError> {
     let existing = db.flows().item_cycles(item_type, item_id).await?;
@@ -148,7 +154,7 @@ pub async fn set_item_cycles(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     cycles: &[FlowCycleInput],
     reconcile: Option<Reconcile>,
     now: Option<NaiveDateTime>,
@@ -183,7 +189,7 @@ async fn fork_and_set_cycles(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     cycles: &[FlowCycleInput],
 ) -> Result<ForkedTemplate, FlowError> {
     let source = db.flows().get(flow_id).await?;
@@ -211,7 +217,7 @@ async fn fork_and_set_cycles(
         .set_cycles(fork.0, item_type, forked_item, cycles)
         .await?;
     let of_kind = |kind: FlowItemType| {
-        let mut ids: Vec<(i64, i64)> = clone
+        let mut ids: Vec<(RowId, RowId)> = clone
             .items
             .iter()
             .filter(|((item_kind, _), _)| *item_kind == kind)

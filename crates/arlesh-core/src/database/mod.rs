@@ -4,6 +4,7 @@ pub mod baseline;
 pub mod client;
 pub mod hold;
 pub mod open;
+pub mod row_ids;
 pub mod rules;
 pub mod session;
 
@@ -164,6 +165,22 @@ async fn migrate_with(
 ) -> Result<(), sqlx::migrate::MigrateError> {
     if baseline::is_fresh(pool).await? {
         baseline::install(pool, chain).await?;
+    }
+    if !row_ids::migration_applied(pool).await? {
+        // The row-id map is read from the integer schema as it stands just below migration 0107, so
+        // a database further behind catches up first (the baseline already stands there).
+        let below = Migrator {
+            migrations: std::borrow::Cow::Owned(
+                chain
+                    .iter()
+                    .filter(|migration| migration.version < row_ids::MIGRATION)
+                    .cloned()
+                    .collect(),
+            ),
+            ..Migrator::DEFAULT
+        };
+        below.run(pool).await?;
+        row_ids::prepare(pool).await?;
     }
     chain.run(pool).await
 }

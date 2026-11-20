@@ -5,6 +5,7 @@
 //! What the rows are — check tasks, spawned waits, delegation waits — is pure and lives in
 //! [`crate::nodes::rules::waits`], whose names are re-exported here (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -30,7 +31,7 @@ pub struct WaitData {
     expectations: Vec<Expectation>,
     checks: HashMap<WaitRef, Vec<CheckRecord>>,
     spawned: Vec<SpawnedWait>,
-    templates: HashMap<i64, AsyncTemplate>,
+    templates: HashMap<RowId, AsyncTemplate>,
     wait_overlays: HashMap<String, ExpectationOverlay>,
     check_state: CheckState,
     wait_state: WaitState,

@@ -1,4 +1,5 @@
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     commands::domains::create_domain,
@@ -6,7 +7,7 @@ use arlesh_lib::{
 };
 use tauri::Manager;
 
-async fn green_aspect_id(pool: &sqlx::SqlitePool) -> i64 {
+async fn green_aspect_id(pool: &sqlx::SqlitePool) -> RowId {
     sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
         .fetch_one(pool)
         .await
@@ -22,6 +23,7 @@ async fn create_project_under_aspect() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Rust Learning".into(),
             description: Some("Learn Rust".into()),
             subtype: DomainSubtype::Project,
@@ -48,6 +50,7 @@ async fn cannot_create_aspect() {
     let err = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "New Aspect".into(),
             description: None,
             subtype: DomainSubtype::Aspect,
@@ -88,6 +91,7 @@ async fn tag_cannot_be_parent_of_another_tag() {
     let tag = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "rust".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -101,6 +105,7 @@ async fn tag_cannot_be_parent_of_another_tag() {
     let err = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "child-tag".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -130,6 +135,7 @@ async fn project_requires_aspect_or_project_parent() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "General".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -143,6 +149,7 @@ async fn project_requires_aspect_or_project_parent() {
     let err = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Bad Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -172,6 +179,7 @@ async fn update_domain() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Old Title".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -212,6 +220,7 @@ async fn a_domain_archives_and_unarchives_back_to_no_status() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Old hobby".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -256,6 +265,7 @@ async fn list_all_domains_includes_aspects_and_created() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Listed Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -282,6 +292,7 @@ async fn list_domains_by_subtype() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Only Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -294,6 +305,7 @@ async fn list_domains_by_subtype() {
 
     db.domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "A Domain".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -322,6 +334,7 @@ async fn convert_project_subtype_to_domain() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Becoming Domain".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -364,6 +377,7 @@ async fn delete_domain() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Doomed Domain".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -424,6 +438,7 @@ async fn cannot_change_subtype_to_aspect() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Aspiring Domain".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -467,6 +482,7 @@ async fn project_without_parent_is_rejected() {
     let err = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Parentless Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -496,6 +512,7 @@ async fn convert_domain_subtype_to_project() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Will Become Project".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -536,6 +553,7 @@ async fn convert_domain_subtype_to_tag() {
     let domain = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Will Become Tag".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -592,6 +610,7 @@ async fn project_status_achieved_and_archived() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Status Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -640,6 +659,7 @@ async fn the_create_domain_command_commits_the_insert_and_the_position_update_to
     let project = create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: "Committed Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -681,6 +701,7 @@ async fn a_project_created_without_a_status_defaults_to_active() {
     let project = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Unset".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -710,6 +731,7 @@ async fn a_domain_created_without_a_status_keeps_none() {
         let created = db
             .domains()
             .create(CreateDomainRequest {
+                id: None,
                 title: format!("{subtype:?} unset"),
                 description: None,
                 subtype: subtype.clone(),

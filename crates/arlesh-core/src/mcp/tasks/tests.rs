@@ -1,5 +1,6 @@
 //! A To Do Task with an open agent question reads Review, over the handler an endpoint serves.
 
+use crate::nodes::id::tid;
 use serde_json::{json, Value};
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
@@ -13,11 +14,11 @@ async fn board() -> (ArleshMcp, SqlitePool) {
         .unwrap();
     crate::database::run_migrations(&pool).await.unwrap();
     for sql in [
-        "INSERT INTO domains (id, title, subtype) VALUES (901, 'Growth', 'aspect')",
-        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES (902, 'Arlesh', 'project', 901, 'active')",
-        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES (10, 'Ship', 'domain', 902, 'active')",
-        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES (100, 'Docs', 'goal', 10, 'agentic_todo', 1)",
-        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', 901)",
+        "INSERT INTO domains (id, title, subtype) VALUES ('00000000-0000-7000-8000-000000000385', 'Growth', 'aspect')",
+        "INSERT INTO domains (id, title, subtype, parent_id, status) VALUES ('00000000-0000-7000-8000-000000000386', 'Arlesh', 'project', '00000000-0000-7000-8000-000000000385', 'active')",
+        "INSERT INTO goals (id, title, parent_type, parent_id, status) VALUES ('00000000-0000-7000-8000-00000000000a', 'Ship', 'domain', '00000000-0000-7000-8000-000000000386', 'active')",
+        "INSERT INTO tasks (id, title, parent_type, parent_id, status, agentic) VALUES ('00000000-0000-7000-8000-000000000064', 'Docs', 'goal', '00000000-0000-7000-8000-00000000000a', 'agentic_todo', 1)",
+        "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', '00000000-0000-7000-8000-000000000385')",
     ] {
         sqlx::query(sql).execute(&pool).await.unwrap();
     }
@@ -45,7 +46,10 @@ async fn shown(mcp: &ArleshMcp) -> String {
     )
     .await;
     let tasks = structured(&answer)["tasks"].as_array().unwrap().clone();
-    let task = tasks.iter().find(|task| task["id"] == 100).unwrap();
+    let task = tasks
+        .iter()
+        .find(|task| task["id"] == tid(100).to_string())
+        .unwrap();
     task["status"]["status"]
         .as_str()
         .unwrap_or_else(|| panic!("{task}"))
@@ -53,7 +57,7 @@ async fn shown(mcp: &ArleshMcp) -> String {
 }
 
 async fn stored(pool: &SqlitePool) -> String {
-    sqlx::query_scalar("SELECT status FROM tasks WHERE id = 100")
+    sqlx::query_scalar("SELECT status FROM tasks WHERE id = '00000000-0000-7000-8000-000000000064'")
         .fetch_one(pool)
         .await
         .unwrap()
@@ -63,18 +67,18 @@ async fn ask(mcp: &ArleshMcp, question: bool) -> String {
     let answer = call(
         mcp,
         "arlesh_waits",
-        json!({ "operation": "raise", "task_id": "100", "title": "Which?", "question": question }),
+        json!({ "operation": "raise", "task_id": tid(100).to_string(), "title": "Which?", "question": question }),
     )
     .await;
     assert!(!is_error(&answer), "{answer}");
-    structured(&answer)["id"].as_i64().unwrap().to_string()
+    structured(&answer)["id"].as_str().unwrap().to_string()
 }
 
 async fn give_spec(mcp: &ArleshMcp) {
     let answer = call(
         mcp,
         "arlesh_tasks",
-        json!({ "operation": "update", "id": "100", "brief": { "spec": "Do it" } }),
+        json!({ "operation": "update", "id": tid(100).to_string(), "brief": { "spec": "Do it" } }),
     )
     .await;
     assert!(!is_error(&answer), "{answer}");
@@ -84,7 +88,7 @@ async fn set_status(mcp: &ArleshMcp, expected: &str, status: &str) -> Value {
     call(
         mcp,
         "arlesh_tasks",
-        json!({ "operation": "set_status", "id": "100", "expected": expected, "status": status }),
+        json!({ "operation": "set_status", "id": tid(100).to_string(), "expected": expected, "status": status }),
     )
     .await
 }
@@ -158,7 +162,7 @@ async fn a_review_is_refused_under_a_to_do_task_even_while_a_question_is_open() 
     let review = call(
         &mcp,
         "arlesh_waits",
-        json!({ "operation": "raise_review", "task_id": "100", "title": "Done", "summary": "It is" }),
+        json!({ "operation": "raise_review", "task_id": tid(100).to_string(), "title": "Done", "summary": "It is" }),
     )
     .await;
 

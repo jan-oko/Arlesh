@@ -2,15 +2,16 @@
 //! decision 8).
 
 use super::model::Domain;
+use crate::nodes::id::RowId;
 
 /// A [`Domain`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct DomainRow {
-    id: i64,
+    id: RowId,
     title: String,
     description: Option<String>,
     subtype: String,
-    parent_id: Option<i64>,
+    parent_id: Option<RowId>,
     color: Option<String>,
     status: Option<String>,
     knowledge_base_directory: Option<String>,

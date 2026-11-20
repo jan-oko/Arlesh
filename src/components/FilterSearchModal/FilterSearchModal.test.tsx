@@ -10,6 +10,7 @@ import { useFilterDisplay } from "@/hooks/use-filter-display";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { dismissTopSheet } from "@/utils/dismiss-sheet";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -21,17 +22,17 @@ vi.mock("@/hooks/use-close-to-tray", () => ({ useQuit: () => vi.fn() }));
 const mockUseFilterDisplay = vi.mocked(useFilterDisplay);
 
 const DISPLAY = {
-  tagOptions: [{ id: 1, label: "urgent", color: "#e74c3c" }, { id: 2, label: "home", color: null }],
-  tagName: (id: number) => (id === 1 ? "urgent" : "home"), tagColor: () => null,
+  tagOptions: [{ id: storedRowId(1), label: "urgent", color: "#e74c3c" }, { id: storedRowId(2), label: "home", color: null }],
+  tagName: (id: string) => (id === storedRowId(1) ? "urgent" : "home"), tagColor: () => null,
   nodeLabel: (ref: string) => ref, nodeColor: () => null,
   antecedentPool: [
     { id: "aspect-1", label: "ARLESH", color: null, path: "" },
-    { id: "domain-2", label: "Connections", color: null, path: "Growth › BOND" },
+    { id: `domain-${storedRowId(2)}`, label: "Connections", color: null, path: "Growth › BOND" },
     { id: "project-1", label: "Rocket", color: null, path: "" },
   ],
   dependencyPool: [
-    { id: "task-9", label: "Fuel up", color: null, path: "" },
-    { id: "task-10", label: "Connections review", color: null, path: "Growth" },
+    { id: `task-${storedRowId(9)}`, label: "Fuel up", color: null, path: "" },
+    { id: `task-${storedRowId(10)}`, label: "Connections review", color: null, path: "Growth" },
   ],
   displayTaskStatus: (v: string) => v, displayGoalStatus: (v: string) => `goal ${v}`,
   displayProjectStatus: (v: string) => `project ${v}`, displayVerdict: (v: string) => v,
@@ -121,7 +122,7 @@ describe("FilterSearchModal", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     fireEvent.change(box(), { target: { value: "connections" } });
     fireEvent.click(within(screen.getByRole("group", { name: "groups.dependency" })).getByRole("option"), { shiftKey: true });
-    expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: "task-10", mode: "any" }]);
+    expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: `task-${storedRowId(10)}`, mode: "any" }]);
   });
 
   it("outside the List View, says node filters are List View only instead of showing nothing", () => {
@@ -163,7 +164,7 @@ describe("FilterSearchModal", () => {
     render(<FilterSearchModal onClose={onClose} />);
     fireEvent.change(box(), { target: { value: "urg" } });
     fireEvent.keyDown(box(), { key: "Enter", ...keys });
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode }]);
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(1), mode }]);
     expect(box()).toHaveValue("");
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByRole("option", { name: "urgent" })).not.toBeInTheDocument();
@@ -302,7 +303,7 @@ describe("FilterSearchModal", () => {
 
 describe("FilterSearchModal — active filters", () => {
   function withActive() {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "all" }] } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: storedRowId(1), mode: "all" }] } });
     useListFilterStore.setState({
       filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, taskStatus: [{ value: "done", mode: "exclude" }] } },
     });
@@ -325,7 +326,7 @@ describe("FilterSearchModal — active filters", () => {
     withActive();
     render(<FilterSearchModal onClose={vi.fn()} />);
     fireEvent.keyDown(box(), { key: "Enter" });
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "any" }]);
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: storedRowId(1), mode: "any" }]);
     fireEvent.click(within(activeGroup()).getAllByRole("option")[1] ?? document.body);
     expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "done", mode: "all" }]);
   });

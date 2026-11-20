@@ -114,8 +114,8 @@ from arlesh.models import (
     ViolatingDescendant,
 )
 
-NodeId = int | str
-"""A node's id: a stored row's integer id, or a derived node's (a Habit occurrence's) UUID."""
+NodeId = str
+"""A node's id: a UUID string (a stored row's, or a derived Habit occurrence's)."""
 
 AnyDependency = Dependency | DependencyTask | DependencyGoal | DependencyExpectation
 """What a Task can come after: a Task, a Goal or a wait — one variant, or the union model."""
@@ -293,27 +293,27 @@ class Database(ABC):
         sends it on as it is (``GET /board``) rather than reading it into models."""
 
     @abstractmethod
-    async def get_task(self, id: int) -> TaskWithBlockers:
+    async def get_task(self, id: str) -> TaskWithBlockers:
         """One stored Task, with what blocks it."""
 
     @abstractmethod
-    async def get_goal(self, id: int) -> Goal:
+    async def get_goal(self, id: str) -> Goal:
         """One stored Goal."""
 
     @abstractmethod
-    async def get_commitment(self, id: int) -> Commitment:
+    async def get_commitment(self, id: str) -> Commitment:
         """One stored Commitment."""
 
     @abstractmethod
-    async def get_domain(self, id: int) -> Domain:
+    async def get_domain(self, id: str) -> Domain:
         """One Aspect, Domain, Project or Tag."""
 
     @abstractmethod
-    async def get_info(self, id: int) -> Info:
+    async def get_info(self, id: str) -> Info:
         """One Info."""
 
     @abstractmethod
-    async def get_flow(self, id: int) -> Flow:
+    async def get_flow(self, id: str) -> Flow:
         """One Flow or Habit template."""
 
     @abstractmethod
@@ -395,7 +395,7 @@ class Database(ABC):
 
     @abstractmethod
     async def duplicate_task(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedTask:
         """Copies a Task and its subtree under a new parent.
         ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
@@ -420,7 +420,7 @@ class Database(ABC):
 
     @abstractmethod
     async def duplicate_goal(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedGoal:
         """Copies a Goal and its subtree under a new parent.
         ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
@@ -464,31 +464,31 @@ class Database(ABC):
         """Deletes a stored wait. A derived one is refused: it goes with its Task."""
 
     @abstractmethod
-    async def complete_wait_check(self, id: int) -> Expectation:
+    async def complete_wait_check(self, id: str) -> Expectation:
         """Marks a stored wait's check done."""
 
     @abstractmethod
-    async def reopen_wait_check(self, id: int, due_at: datetime) -> Expectation:
+    async def reopen_wait_check(self, id: str, due_at: datetime) -> Expectation:
         """Reopens a stored wait's check, due again at ``due_at``."""
 
     @abstractmethod
     async def update_spawned_wait(
-        self, task_id: int, request: UpdateSpawnedWaitRequest
+        self, task_id: str, request: UpdateSpawnedWaitRequest
     ) -> SpawnedWait:
         """Updates the wait an Asynchronous Task spawned."""
 
     @abstractmethod
-    async def complete_spawned_wait_check(self, task_id: int) -> None:
+    async def complete_spawned_wait_check(self, task_id: str) -> None:
         """Marks a spawned wait's check done."""
 
     @abstractmethod
-    async def reopen_spawned_wait_check(self, task_id: int, due_at: datetime) -> None:
+    async def reopen_spawned_wait_check(self, task_id: str, due_at: datetime) -> None:
         """Reopens a spawned wait's check, due again at ``due_at``."""
 
     # ---- Tags and block reasons ---------------------------------------------------------------
 
     @abstractmethod
-    async def set_tag(self, kind: str, id: NodeId, tag_id: int, present: bool) -> None:
+    async def set_tag(self, kind: str, id: NodeId, tag_id: str, present: bool) -> None:
         """Puts a Tag on a ``task``, ``goal``, ``commitment`` or ``expectation`` — or, with
         ``present=False``, takes it off."""
 
@@ -505,16 +505,16 @@ class Database(ABC):
         """Creates an Info."""
 
     @abstractmethod
-    async def update_info(self, id: int, request: UpdateInfoRequest) -> Info:
+    async def update_info(self, id: str, request: UpdateInfoRequest) -> Info:
         """Updates an Info; naming a parent moves it."""
 
     @abstractmethod
-    async def delete_info(self, id: int) -> None:
+    async def delete_info(self, id: str) -> None:
         """Deletes an Info."""
 
     @abstractmethod
     async def duplicate_info(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedInfo:
         """Copies an Info and its subtree under a new parent.
         ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
@@ -527,15 +527,15 @@ class Database(ABC):
         """Creates a Domain, Project or Tag."""
 
     @abstractmethod
-    async def update_domain(self, id: int, request: UpdateDomainRequest) -> Domain:
+    async def update_domain(self, id: str, request: UpdateDomainRequest) -> Domain:
         """Updates a Domain, Project or Tag; naming a parent moves it."""
 
     @abstractmethod
-    async def delete_domain(self, id: int) -> None:
+    async def delete_domain(self, id: str) -> None:
         """Deletes a Domain, Project or Tag."""
 
     @abstractmethod
-    async def duplicate_domain(self, id: int, target_id: int, position: int) -> DuplicatedDomain:
+    async def duplicate_domain(self, id: str, target_id: str, position: int) -> DuplicatedDomain:
         """Copies a Domain or Project and its subtree under a new parent.
         ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
         """
@@ -547,11 +547,11 @@ class Database(ABC):
         """Creates a Flow."""
 
     @abstractmethod
-    async def update_flow(self, id: int, request: UpdateFlowRequest) -> Flow:
+    async def update_flow(self, id: str, request: UpdateFlowRequest) -> Flow:
         """Updates a Flow; naming a parent moves it."""
 
     @abstractmethod
-    async def delete_flow(self, id: int) -> None:
+    async def delete_flow(self, id: str) -> None:
         """Deletes a Flow and its items."""
 
     @abstractmethod
@@ -572,32 +572,32 @@ class Database(ABC):
 
     @abstractmethod
     async def update_flow_commitment(
-        self, id: int, request: UpdateFlowItemRequest
+        self, id: str, request: UpdateFlowItemRequest
     ) -> FlowCommitment:
         """Updates a Flow's Commitment item."""
 
     @abstractmethod
-    async def update_flow_wait(self, id: int, request: UpdateFlowItemRequest) -> FlowExpectation:
+    async def update_flow_wait(self, id: str, request: UpdateFlowItemRequest) -> FlowExpectation:
         """Updates a Flow's wait item."""
 
     @abstractmethod
-    async def update_flow_goal(self, id: int, request: UpdateFlowItemRequest) -> FlowGoal:
+    async def update_flow_goal(self, id: str, request: UpdateFlowItemRequest) -> FlowGoal:
         """Updates a Flow's Goal item."""
 
     @abstractmethod
-    async def update_flow_task(self, id: int, request: UpdateFlowItemRequest) -> FlowTask:
+    async def update_flow_task(self, id: str, request: UpdateFlowItemRequest) -> FlowTask:
         """Updates a Flow's Task item."""
 
     @abstractmethod
-    async def delete_flow_item(self, item_type: FlowItemType, id: int) -> None:
+    async def delete_flow_item(self, item_type: FlowItemType, id: str) -> None:
         """Deletes a Flow item."""
 
     @abstractmethod
     async def set_flow_item_cycles(
         self,
-        flow_id: int,
+        flow_id: str,
         item_type: FlowItemType,
-        item_id: int,
+        item_id: str,
         cycles: list[FlowCycleInput],
         *,
         reconcile: Reconcile | None = None,
@@ -609,11 +609,11 @@ class Database(ABC):
     @abstractmethod
     async def add_flow_dependency(
         self,
-        flow_id: int,
+        flow_id: str,
         dependent_type: FlowItemType,
-        dependent_id: int,
+        dependent_id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         """Makes one Flow item come after another."""
 
@@ -621,37 +621,37 @@ class Database(ABC):
     async def remove_flow_dependency(
         self,
         dependent_type: FlowItemType,
-        dependent_id: int,
+        dependent_id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         """Removes a dependency between Flow items."""
 
     @abstractmethod
-    async def start_flow(self, flow_id: int, request: StartFlowRequest) -> MaterializedFlow:
+    async def start_flow(self, flow_id: str, request: StartFlowRequest) -> MaterializedFlow:
         """Starts a Flow: copies it into a real subtree under a target."""
 
     @abstractmethod
     async def set_flow_recurrence(
-        self, flow_id: int, request: SetRecurrenceRequest
+        self, flow_id: str, request: SetRecurrenceRequest
     ) -> FlowRecurrence:
         """Makes a Flow a Habit, or changes its Recurrence."""
 
     @abstractmethod
-    async def delete_flow_recurrence(self, flow_id: int) -> None:
+    async def delete_flow_recurrence(self, flow_id: str) -> None:
         """Takes a Habit's Recurrence away, leaving a plain Flow."""
 
     @abstractmethod
-    async def clear_habit_modifications(self, flow_id: int) -> None:
+    async def clear_habit_modifications(self, flow_id: str) -> None:
         """Drops every edit made to a Habit's occurrences."""
 
     @abstractmethod
-    async def fork_flow(self, flow_id: int, *, now: datetime | None = None) -> Flow:
+    async def fork_flow(self, flow_id: str, *, now: datetime | None = None) -> Flow:
         """Archives a Habit and forks a fresh copy of it."""
 
     @abstractmethod
     async def duplicate_flow(
-        self, flow_id: int, parent_type: str, parent_id: int, position: int
+        self, flow_id: str, parent_type: str, parent_id: str, position: int
     ) -> Flow:
         """Copies a Flow under a new parent."""
 
@@ -659,16 +659,16 @@ class Database(ABC):
     async def duplicate_flow_item(
         self,
         item_type: FlowItemType,
-        item_id: int,
+        item_id: str,
         parent_type: str,
-        parent_id: int,
+        parent_id: str,
         position: int,
-    ) -> int:
+    ) -> str:
         """Copies a Flow item under a new parent in its Flow, and answers the copy's id."""
 
     @abstractmethod
     async def convert_to_flow(
-        self, node_type: str, node_id: int, *, keep_dependencies: bool, map_scopes: bool
+        self, node_type: str, node_id: str, *, keep_dependencies: bool, map_scopes: bool
     ) -> Flow:
         """Turns a Task or Goal subtree into a Flow."""
 
@@ -709,13 +709,13 @@ class Database(ABC):
 
     @abstractmethod
     async def scope_containment_conflicts(
-        self, node_type: str, node_id: int, time_scope: TimeScope
+        self, node_type: str, node_id: str, time_scope: TimeScope
     ) -> list[ViolatingDescendant]:
         """The descendants of a node that ``time_scope`` would leave outside it. Writes nothing."""
 
     @abstractmethod
     async def reparent_conflicts(
-        self, node_type: str, node_id: int, new_parent_type: str, new_parent_id: int
+        self, node_type: str, node_id: str, new_parent_type: str, new_parent_id: str
     ) -> ReparentConflicts:
         """What moving a node under a new parent would leave outside its new ancestors' Time
         Scope, and the scope to clamp them to. Writes nothing."""
@@ -729,11 +729,11 @@ class Database(ABC):
         """Every Flow and Habit template."""
 
     @abstractmethod
-    async def list_flow_goals(self, flow_id: int) -> list[FlowGoal]:
+    async def list_flow_goals(self, flow_id: str) -> list[FlowGoal]:
         """One Flow's Goal items."""
 
     @abstractmethod
-    async def list_flow_tasks(self, flow_id: int) -> list[FlowTask]:
+    async def list_flow_tasks(self, flow_id: str) -> list[FlowTask]:
         """One Flow's Task items."""
 
     @abstractmethod
@@ -753,11 +753,11 @@ class Database(ABC):
         """Every dependency between Flow items."""
 
     @abstractmethod
-    async def get_flow_recurrence(self, flow_id: int) -> FlowRecurrence | None:
+    async def get_flow_recurrence(self, flow_id: str) -> FlowRecurrence | None:
         """A Habit's recurrence, or ``None`` for a Flow without one."""
 
     @abstractmethod
-    async def habit_completion_count(self, flow_id: int) -> int:
+    async def habit_completion_count(self, flow_id: str) -> int:
         """How many of a Habit's occurrences are complete."""
 
     @abstractmethod
@@ -792,11 +792,11 @@ class Database(ABC):
         """Every stored node the MCP can see, with the root it is seen through."""
 
     @abstractmethod
-    async def add_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def add_mcp_root(self, node_kind: NodeTable, node_id: str) -> None:
         """Makes one stored node an MCP root."""
 
     @abstractmethod
-    async def remove_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def remove_mcp_root(self, node_kind: NodeTable, node_id: str) -> None:
         """Stops one node being an MCP root."""
 
     @abstractmethod
@@ -1081,22 +1081,22 @@ class Arlesh(Database):
     async def board_json(self, *, now: datetime | None = None) -> str:
         return await self._call_raw("board", now=now, without_nulls=True)
 
-    async def get_task(self, id: int) -> TaskWithBlockers:
+    async def get_task(self, id: str) -> TaskWithBlockers:
         return await self._call(_TASK_WITH_BLOCKERS, "get_task", id=id)
 
-    async def get_goal(self, id: int) -> Goal:
+    async def get_goal(self, id: str) -> Goal:
         return await self._call(_GOAL, "get_goal", id=id)
 
-    async def get_commitment(self, id: int) -> Commitment:
+    async def get_commitment(self, id: str) -> Commitment:
         return await self._call(_COMMITMENT, "get_commitment", id=id)
 
-    async def get_domain(self, id: int) -> Domain:
+    async def get_domain(self, id: str) -> Domain:
         return await self._call(_DOMAIN, "get_domain", id=id)
 
-    async def get_info(self, id: int) -> Info:
+    async def get_info(self, id: str) -> Info:
         return await self._call(_INFO, "get_info", id=id)
 
-    async def get_flow(self, id: int) -> Flow:
+    async def get_flow(self, id: str) -> Flow:
         return await self._call(_FLOW, "get_flow", id=id)
 
     async def list_domains(self, subtype: DomainSubtype | None = None) -> list[Domain]:
@@ -1160,7 +1160,7 @@ class Arlesh(Database):
         await self._call(_NOTHING, "set_task_done_at", id=id, at=at)
 
     async def duplicate_task(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedTask:
         return await self._call(
             _DUPLICATED_TASK,
@@ -1183,7 +1183,7 @@ class Arlesh(Database):
         await self._call(_NOTHING, "delete_goal", id=id)
 
     async def duplicate_goal(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedGoal:
         return await self._call(
             _DUPLICATED_GOAL,
@@ -1219,26 +1219,26 @@ class Arlesh(Database):
     async def delete_wait(self, id: NodeId) -> None:
         await self._call(_NOTHING, "delete_wait", id=id)
 
-    async def complete_wait_check(self, id: int) -> Expectation:
+    async def complete_wait_check(self, id: str) -> Expectation:
         return await self._call(_EXPECTATION, "complete_wait_check", id=id)
 
-    async def reopen_wait_check(self, id: int, due_at: datetime) -> Expectation:
+    async def reopen_wait_check(self, id: str, due_at: datetime) -> Expectation:
         return await self._call(_EXPECTATION, "reopen_wait_check", id=id, due_at=due_at)
 
     async def update_spawned_wait(
-        self, task_id: int, request: UpdateSpawnedWaitRequest
+        self, task_id: str, request: UpdateSpawnedWaitRequest
     ) -> SpawnedWait:
         return await self._call(
             _SPAWNED_WAIT, "update_spawned_wait", task_id=task_id, request=request
         )
 
-    async def complete_spawned_wait_check(self, task_id: int) -> None:
+    async def complete_spawned_wait_check(self, task_id: str) -> None:
         await self._call(_NOTHING, "complete_spawned_wait_check", task_id=task_id)
 
-    async def reopen_spawned_wait_check(self, task_id: int, due_at: datetime) -> None:
+    async def reopen_spawned_wait_check(self, task_id: str, due_at: datetime) -> None:
         await self._call(_NOTHING, "reopen_spawned_wait_check", task_id=task_id, due_at=due_at)
 
-    async def set_tag(self, kind: str, id: NodeId, tag_id: int, present: bool) -> None:
+    async def set_tag(self, kind: str, id: NodeId, tag_id: str, present: bool) -> None:
         await self._call(_NOTHING, "set_tag", kind=kind, id=id, tag_id=tag_id, present=present)
 
     async def set_block_reasons(
@@ -1255,14 +1255,14 @@ class Arlesh(Database):
     async def create_info(self, request: CreateInfoRequest) -> Info:
         return await self._call(_INFO, "create_info", request=request)
 
-    async def update_info(self, id: int, request: UpdateInfoRequest) -> Info:
+    async def update_info(self, id: str, request: UpdateInfoRequest) -> Info:
         return await self._call(_INFO, "update_info", id=id, request=request)
 
-    async def delete_info(self, id: int) -> None:
+    async def delete_info(self, id: str) -> None:
         await self._call(_NOTHING, "delete_info", id=id)
 
     async def duplicate_info(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedInfo:
         return await self._call(
             _DUPLICATED_INFO,
@@ -1276,13 +1276,13 @@ class Arlesh(Database):
     async def create_domain(self, request: CreateDomainRequest) -> Domain:
         return await self._call(_DOMAIN, "create_domain", request=request)
 
-    async def update_domain(self, id: int, request: UpdateDomainRequest) -> Domain:
+    async def update_domain(self, id: str, request: UpdateDomainRequest) -> Domain:
         return await self._call(_DOMAIN, "update_domain", id=id, request=request)
 
-    async def delete_domain(self, id: int) -> None:
+    async def delete_domain(self, id: str) -> None:
         await self._call(_NOTHING, "delete_domain", id=id)
 
-    async def duplicate_domain(self, id: int, target_id: int, position: int) -> DuplicatedDomain:
+    async def duplicate_domain(self, id: str, target_id: str, position: int) -> DuplicatedDomain:
         return await self._call(
             _DUPLICATED_DOMAIN, "duplicate_domain", id=id, target_id=target_id, position=position
         )
@@ -1290,10 +1290,10 @@ class Arlesh(Database):
     async def create_flow(self, request: CreateFlowRequest) -> Flow:
         return await self._call(_FLOW, "create_flow", request=request)
 
-    async def update_flow(self, id: int, request: UpdateFlowRequest) -> Flow:
+    async def update_flow(self, id: str, request: UpdateFlowRequest) -> Flow:
         return await self._call(_FLOW, "update_flow", id=id, request=request)
 
-    async def delete_flow(self, id: int) -> None:
+    async def delete_flow(self, id: str) -> None:
         await self._call(_NOTHING, "delete_flow", id=id)
 
     async def create_flow_goal(self, request: CreateFlowItemRequest) -> FlowGoal:
@@ -1309,27 +1309,27 @@ class Arlesh(Database):
         return await self._call(_FLOW_WAIT, "create_flow_wait", request=request)
 
     async def update_flow_commitment(
-        self, id: int, request: UpdateFlowItemRequest
+        self, id: str, request: UpdateFlowItemRequest
     ) -> FlowCommitment:
         return await self._call(_FLOW_COMMITMENT, "update_flow_commitment", id=id, request=request)
 
-    async def update_flow_wait(self, id: int, request: UpdateFlowItemRequest) -> FlowExpectation:
+    async def update_flow_wait(self, id: str, request: UpdateFlowItemRequest) -> FlowExpectation:
         return await self._call(_FLOW_WAIT, "update_flow_wait", id=id, request=request)
 
-    async def update_flow_goal(self, id: int, request: UpdateFlowItemRequest) -> FlowGoal:
+    async def update_flow_goal(self, id: str, request: UpdateFlowItemRequest) -> FlowGoal:
         return await self._call(_FLOW_GOAL, "update_flow_goal", id=id, request=request)
 
-    async def update_flow_task(self, id: int, request: UpdateFlowItemRequest) -> FlowTask:
+    async def update_flow_task(self, id: str, request: UpdateFlowItemRequest) -> FlowTask:
         return await self._call(_FLOW_TASK, "update_flow_task", id=id, request=request)
 
-    async def delete_flow_item(self, item_type: FlowItemType, id: int) -> None:
+    async def delete_flow_item(self, item_type: FlowItemType, id: str) -> None:
         await self._call(_NOTHING, "delete_flow_item", item_type=item_type, id=id)
 
     async def set_flow_item_cycles(
         self,
-        flow_id: int,
+        flow_id: str,
         item_type: FlowItemType,
-        item_id: int,
+        item_id: str,
         cycles: list[FlowCycleInput],
         *,
         reconcile: Reconcile | None = None,
@@ -1348,11 +1348,11 @@ class Arlesh(Database):
 
     async def add_flow_dependency(
         self,
-        flow_id: int,
+        flow_id: str,
         dependent_type: FlowItemType,
-        dependent_id: int,
+        dependent_id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         await self._call(
             _NOTHING,
@@ -1367,9 +1367,9 @@ class Arlesh(Database):
     async def remove_flow_dependency(
         self,
         dependent_type: FlowItemType,
-        dependent_id: int,
+        dependent_id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         await self._call(
             _NOTHING,
@@ -1380,27 +1380,27 @@ class Arlesh(Database):
             depends_on_id=depends_on_id,
         )
 
-    async def start_flow(self, flow_id: int, request: StartFlowRequest) -> MaterializedFlow:
+    async def start_flow(self, flow_id: str, request: StartFlowRequest) -> MaterializedFlow:
         return await self._call(_MATERIALIZED, "start_flow", flow_id=flow_id, request=request)
 
     async def set_flow_recurrence(
-        self, flow_id: int, request: SetRecurrenceRequest
+        self, flow_id: str, request: SetRecurrenceRequest
     ) -> FlowRecurrence:
         return await self._call(
             _RECURRENCE, "set_flow_recurrence", flow_id=flow_id, request=request
         )
 
-    async def delete_flow_recurrence(self, flow_id: int) -> None:
+    async def delete_flow_recurrence(self, flow_id: str) -> None:
         await self._call(_NOTHING, "delete_flow_recurrence", flow_id=flow_id)
 
-    async def clear_habit_modifications(self, flow_id: int) -> None:
+    async def clear_habit_modifications(self, flow_id: str) -> None:
         await self._call(_NOTHING, "clear_habit_modifications", flow_id=flow_id)
 
-    async def fork_flow(self, flow_id: int, *, now: datetime | None = None) -> Flow:
+    async def fork_flow(self, flow_id: str, *, now: datetime | None = None) -> Flow:
         return await self._call(_FLOW, "fork_flow", flow_id=flow_id, now=now)
 
     async def duplicate_flow(
-        self, flow_id: int, parent_type: str, parent_id: int, position: int
+        self, flow_id: str, parent_type: str, parent_id: str, position: int
     ) -> Flow:
         return await self._call(
             _FLOW,
@@ -1414,13 +1414,13 @@ class Arlesh(Database):
     async def duplicate_flow_item(
         self,
         item_type: FlowItemType,
-        item_id: int,
+        item_id: str,
         parent_type: str,
-        parent_id: int,
+        parent_id: str,
         position: int,
-    ) -> int:
+    ) -> str:
         return await self._call(
-            _ID,
+            _NODE_ID,
             "duplicate_flow_item",
             item_type=item_type,
             item_id=item_id,
@@ -1430,7 +1430,7 @@ class Arlesh(Database):
         )
 
     async def convert_to_flow(
-        self, node_type: str, node_id: int, *, keep_dependencies: bool, map_scopes: bool
+        self, node_type: str, node_id: str, *, keep_dependencies: bool, map_scopes: bool
     ) -> Flow:
         return await self._call(
             _FLOW,
@@ -1467,7 +1467,7 @@ class Arlesh(Database):
         return await self._call(_DEPENDENCIES, "dependency_candidates", id=id, now=now)
 
     async def scope_containment_conflicts(
-        self, node_type: str, node_id: int, time_scope: TimeScope
+        self, node_type: str, node_id: str, time_scope: TimeScope
     ) -> list[ViolatingDescendant]:
         return await self._call(
             _VIOLATIONS,
@@ -1478,7 +1478,7 @@ class Arlesh(Database):
         )
 
     async def reparent_conflicts(
-        self, node_type: str, node_id: int, new_parent_type: str, new_parent_id: int
+        self, node_type: str, node_id: str, new_parent_type: str, new_parent_id: str
     ) -> ReparentConflicts:
         return await self._call(
             _REPARENT_CONFLICTS,
@@ -1495,10 +1495,10 @@ class Arlesh(Database):
     async def list_flows(self) -> list[Flow]:
         return await self._call(_FLOWS, "list_flows")
 
-    async def list_flow_goals(self, flow_id: int) -> list[FlowGoal]:
+    async def list_flow_goals(self, flow_id: str) -> list[FlowGoal]:
         return await self._call(_FLOW_GOALS, "list_flow_goals", flow_id=flow_id)
 
-    async def list_flow_tasks(self, flow_id: int) -> list[FlowTask]:
+    async def list_flow_tasks(self, flow_id: str) -> list[FlowTask]:
         return await self._call(_FLOW_TASKS, "list_flow_tasks", flow_id=flow_id)
 
     async def list_all_flow_goals(self) -> list[FlowGoal]:
@@ -1513,11 +1513,11 @@ class Arlesh(Database):
     async def list_all_flow_dependencies(self) -> list[FlowDependency]:
         return await self._call(_FLOW_DEPENDENCIES, "list_all_flow_dependencies")
 
-    async def get_flow_recurrence(self, flow_id: int) -> FlowRecurrence | None:
+    async def get_flow_recurrence(self, flow_id: str) -> FlowRecurrence | None:
         return await self._call(_RECURRENCE_OR_NONE, "get_flow_recurrence", flow_id=flow_id)
 
-    async def habit_completion_count(self, flow_id: int) -> int:
-        return await self._call(_ID, "habit_completion_count", flow_id=flow_id)
+    async def habit_completion_count(self, flow_id: str) -> int:
+        return await self._call(_COUNT, "habit_completion_count", flow_id=flow_id)
 
     async def flow_origins(self, nodes: list[TargetRef]) -> list[FlowOrigin]:
         return await self._call(_FLOW_ORIGINS, "flow_origins", nodes=nodes)
@@ -1551,10 +1551,10 @@ class Arlesh(Database):
     async def list_mcp_access(self) -> list[EffectiveAccess]:
         return await self._call(_EFFECTIVE_ACCESS, "list_mcp_access")
 
-    async def add_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def add_mcp_root(self, node_kind: NodeTable, node_id: str) -> None:
         await self._call(_NOTHING, "add_mcp_root", node_kind=node_kind, node_id=node_id)
 
-    async def remove_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def remove_mcp_root(self, node_kind: NodeTable, node_id: str) -> None:
         await self._call(_NOTHING, "remove_mcp_root", node_kind=node_kind, node_id=node_id)
 
     async def list_agents(self) -> AgentsOverview:
@@ -1675,7 +1675,8 @@ _FORK: TypeAdapter[ForkedTemplate | None] = TypeAdapter(ForkedTemplate | None)
 _DEPENDENCIES = TypeAdapter(list[Dependency])
 _STATUS_STEP = TypeAdapter(StatusStepOutcome)
 _INSTANT: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)
-_ID = TypeAdapter(int)
+_COUNT = TypeAdapter(int)
+_NODE_ID = TypeAdapter(str)
 _CLAMPS = TypeAdapter(list[PlanClampTarget])
 _DUPLICATED_TASK = TypeAdapter(DuplicatedTask)
 _DUPLICATED_GOAL = TypeAdapter(DuplicatedGoal)

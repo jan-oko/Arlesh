@@ -16,6 +16,7 @@
 //! anchored to when the check was made, not to the schedule, so a late check does not leave a run
 //! of overdue ones behind it.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -60,7 +61,7 @@ struct TemplateRow {
 /// A task's template row, with the task it belongs to, as a whole board reads it.
 #[derive(sqlx::FromRow)]
 struct KeyedTemplateRow {
-    task_id: i64,
+    task_id: RowId,
     #[sqlx(flatten)]
     template: TemplateRow,
 }
@@ -68,7 +69,7 @@ struct KeyedTemplateRow {
 /// A derived wait's Task, joined to its overlay if it has one.
 #[derive(sqlx::FromRow)]
 struct SpawnedRow {
-    task_id: i64,
+    task_id: RowId,
     done_at: Option<String>,
     status: Option<String>,
     archival: Option<String>,
@@ -276,19 +277,19 @@ impl TaskOperator<'_> {
 
     /// Every Asynchronous Task's Expectation template, with its tags, by Task id — what
     /// [`Self::async_template`] reads one Task at a time, for a whole board.
-    pub async fn async_templates(&mut self) -> Result<HashMap<i64, AsyncTemplate>, TaskError> {
+    pub async fn async_templates(&mut self) -> Result<HashMap<RowId, AsyncTemplate>, TaskError> {
         let rows = sqlx::query_as::<_, KeyedTemplateRow>(
             "SELECT task_id, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind
              FROM task_async_templates",
         )
         .fetch_all(&mut *self.connection)
         .await?;
-        let tags: Vec<(i64, i64)> = sqlx::query_as(
+        let tags: Vec<(RowId, RowId)> = sqlx::query_as(
             "SELECT task_id, tag_id FROM tags_on_async_templates ORDER BY task_id, tag_id",
         )
         .fetch_all(&mut *self.connection)
         .await?;
-        let mut templates: HashMap<i64, AsyncTemplate> = rows
+        let mut templates: HashMap<RowId, AsyncTemplate> = rows
             .into_iter()
             .map(|row| {
                 let template = AsyncTemplate {
@@ -374,7 +375,7 @@ impl CheckRow {
 #[derive(sqlx::FromRow)]
 struct KeyedCheckRow {
     wait_kind: String,
-    wait_id: Option<i64>,
+    wait_id: Option<RowId>,
     wait_key: Option<String>,
     #[sqlx(flatten)]
     check: CheckRow,
@@ -409,7 +410,8 @@ pub(crate) async fn reopen_latest<M: SessionMode>(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ExpectationCheck {
     /// The Expectation being checked on.
-    pub expectation_id: i64,
+    #[schemars(with = "String")]
+    pub expectation_id: RowId,
     /// The Day the check fell due on.
     pub due: TimeScope,
     /// When it fell due — which check it is.

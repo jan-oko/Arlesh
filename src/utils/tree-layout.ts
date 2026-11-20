@@ -60,9 +60,9 @@ export function entityNodeId(type: string, id: RowId): string {
 /** The `(type, id)` reference a flow stores for its parent and (optionally) its Target Node. */
 export interface FlowPlacement {
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   target_type: string | null;
-  target_id: number | null;
+  target_id: string | null;
 }
 
 /**
@@ -80,7 +80,7 @@ export function flowTargetNodeId(flow: FlowPlacement): string {
 export interface FlowData {
   instanceType: InstanceType;
   targetType: string | null;
-  targetId: number | null;
+  targetId: string | null;
   durationN: number | null;
   durationKind: string | null;
   /** Phase-`part` band (e.g. "evening"), when durationKind is "part". */
@@ -115,13 +115,13 @@ export interface FlowCyclePair {
 /** A resolved intra-flow dependency edge (this item waits on `{type,id}`). */
 export interface FlowItemDep {
   type: FlowItemType;
-  id: number;
+  id: string;
 }
 
 /** Template data carried by a `flow_goal`/`flow_task` node. */
 export interface FlowItemData {
   itemType: FlowItemType;
-  flowId: number;
+  flowId: string;
   flowScopeN: number | null;
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];
@@ -145,7 +145,7 @@ export interface FlowItemData {
  */
 export interface HabitIterationMeta {
   /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
-  flowId: number;
+  flowId: string;
   /** That Habit's own title — "Journal", not the iteration's "Journal 2026-09-14". A folded run
    * names the Habit it stands for, and this is the only place the renderer can read it: the run
    * node is built from the iterations alone, and the Flow node may be filtered out of the tree. */
@@ -177,7 +177,7 @@ export type HabitGroupLevel = "run" | "year" | "season" | "month" | "week";
  * that run's expansion. It has no DB row, no status and no filter of its own — it is the tally and
  * the span, and everything else about it is read from the iterations behind it. */
 export interface HabitGroup {
-  flowId: number;
+  flowId: string;
   level: HabitGroupLevel;
   /** How many passed iterations this node stands for. */
   passed: number;
@@ -396,7 +396,7 @@ export interface MindmapNode {
    * load. */
   pending?: true;
   position: number;
-  tagIds: number[];
+  tagIds: string[];
   children: MindmapNode[];
 }
 

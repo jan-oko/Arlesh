@@ -1,6 +1,8 @@
 //! Assembling a fact forest from a load, and narrowing a load to what a filter keeps.
 
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
@@ -14,11 +16,11 @@ use crate::{
 
 fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: subtype.to_string(),
-        parent_id: parent,
+        parent_id: parent.map(tid),
         color: None,
         status: status.map(str::to_string),
         knowledge_base_directory: None,
@@ -87,7 +89,7 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
 
 fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
     Info {
-        id,
+        id: tid(id),
         body: format!("info {id}"),
         details: None,
         parent_type: parent_type.to_string(),
@@ -138,18 +140,18 @@ fn ids(forest: &[FactNode]) -> Vec<String> {
 fn the_forest_follows_the_rows_own_parent_links() {
     let forest = forest(&board());
     assert_eq!(forest.len(), 1);
-    assert_eq!(forest[0].facts.id, "domain-1");
+    assert_eq!(forest[0].facts.id, tkey("domain", 1));
     assert_eq!(
         ids(&forest),
         [
-            "commitment-30",
-            "domain-1",
-            "domain-2",
-            "goal-10",
-            "info-40",
-            "task-20",
-            "task-21",
-            "task-22",
+            tkey("commitment", 30),
+            tkey("domain", 1),
+            tkey("domain", 2),
+            tkey("goal", 10),
+            tkey("info", 40),
+            tkey("task", 20),
+            tkey("task", 21),
+            tkey("task", 22),
         ]
     );
 }
@@ -157,9 +159,9 @@ fn the_forest_follows_the_rows_own_parent_links() {
 #[test]
 fn an_in_progress_task_with_a_todo_child_says_so() {
     let forest = forest(&board());
-    let task_20 = find(&forest, "task-20").expect("the task is on the board");
+    let task_20 = find(&forest, &tkey("task", 20)).expect("the task is on the board");
     assert!(task_20.facts.has_todo_child);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert!(!task_22.facts.has_todo_child);
 }
 
@@ -180,7 +182,7 @@ fn an_orphan_row_is_dropped_rather_than_promoted_to_a_root() {
     let mut load = board();
     load.tasks.push(task_row(99, "goal", 404, "todo"));
     let forest = forest(&load);
-    assert!(find(&forest, "task-99").is_none());
+    assert!(find(&forest, &tkey("task", 99)).is_none());
     assert_eq!(forest.len(), 1);
 }
 
@@ -208,18 +210,16 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     });
 
     let forest = forest(&load);
-    assert!(find(&forest, "goal-10").is_some_and(|node| node.facts.is_blocked));
-    assert!(find(&forest, "task-21").is_some_and(|node| node.facts.is_blocked));
-    assert!(find(&forest, "task-20").is_some_and(|node| !node.facts.is_blocked));
+    assert!(find(&forest, &tkey("goal", 10)).is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 21)).is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 20)).is_some_and(|node| !node.facts.is_blocked));
     // Only the unmet dependency is named; an explicit reason names none.
-    assert!(find(&forest, "task-21")
-        .is_some_and(|node| node.facts.blocking_dependencies == ["task-20"]));
-    assert!(
-        find(&forest, "task-20").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
-    );
-    assert!(
-        find(&forest, "goal-10").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
-    );
+    assert!(find(&forest, &tkey("task", 21))
+        .is_some_and(|node| node.facts.blocking_dependencies == [tkey("task", 20)]));
+    assert!(find(&forest, &tkey("task", 20))
+        .is_some_and(|node| node.facts.blocking_dependencies.is_empty()));
+    assert!(find(&forest, &tkey("goal", 10))
+        .is_some_and(|node| node.facts.blocking_dependencies.is_empty()));
 }
 
 #[test]
@@ -228,11 +228,11 @@ fn a_lifecycle_supplies_the_two_derived_facts_a_filter_reads() {
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Lapsed, Archival::Archived));
     let forest = forest(&load);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert_eq!(task_22.facts.timing, Some(Timing::Lapsed));
     assert!(task_22.facts.archived);
     // An item the derivation skipped keeps its neutral values.
-    let task_21 = find(&forest, "task-21").expect("the task is on the board");
+    let task_21 = find(&forest, &tkey("task", 21)).expect("the task is on the board");
     assert_eq!(task_21.facts.timing, None);
     assert!(!task_21.facts.archived);
 }
@@ -246,9 +246,9 @@ fn a_lifecycle_supplies_the_task_plan_position_too() {
     load.lifecycles
         .push(lifecycle("task", 21, Timing::Active, Archival::Live));
     let forest = forest(&load);
-    let task_22 = find(&forest, "task-22").expect("the task is on the board");
+    let task_22 = find(&forest, &tkey("task", 22)).expect("the task is on the board");
     assert_eq!(task_22.facts.plan_timing, Some(Timing::Pending));
-    let task_21 = find(&forest, "task-21").expect("the task is on the board");
+    let task_21 = find(&forest, &tkey("task", 21)).expect("the task is on the board");
     assert_eq!(task_21.facts.plan_timing, None);
 }
 
@@ -274,7 +274,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
 
     // The done task is gone, and so is everything the payload said about it.
-    assert!(load.tasks.iter().all(|task| task.id != 22));
+    assert!(load.tasks.iter().all(|task| task.id != tid(22)));
     assert!(load.infos.is_empty(), "the note under it went with it");
     assert!(load.lifecycles.is_empty());
     assert!(load.block_reasons.is_empty());
@@ -294,14 +294,14 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
             .iter()
             .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
-        [20]
+        [tid(20)]
     );
     assert_eq!(
         load.domains
             .iter()
             .map(|domain| domain.id)
             .collect::<Vec<_>>(),
-        [1, 2]
+        [tid(1), tid(2)]
     );
     assert_eq!(load.goals.len(), 1);
 }
@@ -309,13 +309,13 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
 #[test]
 fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
     let mut load = board();
-    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == 21) {
+    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == tid(21)) {
         task.archival = TaskArchival::Backlog;
     }
 
     let mut planned = load.clone();
     narrow(&mut planned, &BoardFilter::preset(Preset::Plan));
-    assert!(planned.tasks.iter().all(|task| task.id != 21));
+    assert!(planned.tasks.iter().all(|task| task.id != tid(21)));
 
     // Task 20 is task 21's parent: it does not match Backlog itself, and comes back only as the
     // ancestor that reaches what does.
@@ -327,7 +327,7 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
             .iter()
             .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
-        [20, 21]
+        [tid(20), tid(21)]
     );
     assert!(
         backlogged.commitments.is_empty(),
@@ -348,9 +348,16 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
     load.infos.push(info_row(43, "domain", 2));
 
     let forest = forest(&load);
-    assert!(find(&forest, "domain-3").is_some_and(|node| node.facts.kind == NodeKind::Tag));
-    assert!(find(&forest, "domain-4").is_some_and(|node| node.facts.kind == NodeKind::Domain));
-    for id in ["commitment-31", "info-41", "info-42", "info-43"] {
+    assert!(find(&forest, &tkey("domain", 3)).is_some_and(|node| node.facts.kind == NodeKind::Tag));
+    assert!(
+        find(&forest, &tkey("domain", 4)).is_some_and(|node| node.facts.kind == NodeKind::Domain)
+    );
+    for id in [
+        &tkey("commitment", 31),
+        &tkey("info", 41),
+        &tkey("info", 42),
+        &tkey("info", 43),
+    ] {
         assert!(find(&forest, id).is_some(), "{id} found its parent");
     }
 }
@@ -409,7 +416,7 @@ fn a_check_task_row_hangs_under_its_wait_timed_by_its_own_lifecycle() {
         .push(lifecycle("expectation", 50, Timing::Lapsed, Archival::Live));
 
     let forest = forest(&load);
-    let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
+    let wait = find(&forest, &tkey("expectation", 50)).expect("the expectation is on the board");
     assert!(wait.facts.has_check);
     assert_eq!(wait.facts.timing, Some(Timing::Lapsed));
     let check = find(&forest, &check_fact).expect("the check task is a row");
@@ -435,8 +442,8 @@ fn a_released_expectation_stops_blocking() {
         dependency_id: 51.into(),
     });
     let forest = forest(&load);
-    assert!(find(&forest, "task-21").is_some_and(|node| !node.facts.is_blocked));
-    assert!(find(&forest, "task-22").is_some_and(|node| node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 21)).is_some_and(|node| !node.facts.is_blocked));
+    assert!(find(&forest, &tkey("task", 22)).is_some_and(|node| node.facts.is_blocked));
 }
 
 #[test]
@@ -466,7 +473,7 @@ fn narrowing_keeps_an_expectation_the_filter_keeps_and_drops_one_it_does_not() {
     load.expectations.push(released);
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
     let kept: Vec<NodeId> = load.expectations.iter().map(|e| e.id.clone()).collect();
-    assert_eq!(kept, [NodeId::Stored(50)]);
+    assert_eq!(kept, [NodeId::Stored(tid(50))]);
 }
 
 #[test]
@@ -489,7 +496,7 @@ fn a_spawned_wait_takes_no_plan_from_its_planned_task() {
     use crate::nodes::{key::DerivedKey, origin::WaitOrigin};
 
     let mut load = board();
-    let task_id = NodeId::Stored(22);
+    let task_id = NodeId::Stored(tid(22));
     let wait_id = DerivedKey::SpawnedWait(task_id.clone()).node_id();
     // Task 22 is done and planned into a week that has not begun yet.
     let mut planned = lifecycle("task", 22, Timing::Lapsed, Archival::Live);
@@ -542,7 +549,7 @@ fn a_pill_narrows_to_the_rows_the_list_keeps_with_the_chains_they_hang_from() {
     // Task 21 is the row; task 20, goal 10 and both domains are the chain it hangs from. The
     // done task, the commitment the kind selector leaves out, and the info are not rows.
     let tasks: Vec<_> = load.tasks.iter().map(|task| task.id.clone()).collect();
-    assert_eq!(tasks, [20, 21]);
+    assert_eq!(tasks, [tid(20), tid(21)]);
     assert_eq!(load.goals.len(), 1);
     assert_eq!(load.domains.len(), 2);
     assert!(load.commitments.is_empty());
@@ -564,16 +571,16 @@ fn a_task_carries_its_dependencies_met_or_not_and_its_own_flags() {
             dependency_id: 10.into(),
         },
     ];
-    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == 21) {
+    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == tid(21)) {
         task.asynchronous = true;
     }
     let forest = forest(&load);
-    let task = find(&forest, "task-21").map(|node| node.facts.clone());
+    let task = find(&forest, &tkey("task", 21)).map(|node| node.facts.clone());
     let task = task.unwrap_or_else(|| NodeFacts::new("missing", NodeKind::Task));
-    assert_eq!(task.dependencies, ["task-22", "goal-10"]);
+    assert_eq!(task.dependencies, [tkey("task", 22), tkey("goal", 10)]);
     assert_eq!(
         task.blocking_dependencies,
-        ["goal-10"],
+        [tkey("goal", 10)],
         "the done task is met"
     );
     assert!(task.asynchronous);

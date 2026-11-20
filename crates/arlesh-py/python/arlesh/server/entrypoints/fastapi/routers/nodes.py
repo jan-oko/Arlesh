@@ -20,11 +20,11 @@ class NodesRouter(BoardRouter):
         self.post("/{kind}/{id}/scope-containment-conflicts")(self._scope_conflicts)
         self.get("/{kind}/{id}/reparent-conflicts")(self._reparent_conflicts)
 
-    async def _put_tag(self, kind: Taggable, id: str, tag_id: int) -> None:
+    async def _put_tag(self, kind: Taggable, id: str, tag_id: str) -> None:
         """Puts a Tag on a node."""
         await (await self._writer()).set_tag(kind, node_id(id), tag_id, True)
 
-    async def _remove_tag(self, kind: Taggable, id: str, tag_id: int) -> None:
+    async def _remove_tag(self, kind: Taggable, id: str, tag_id: str) -> None:
         """Takes a Tag off a node."""
         await (await self._writer()).set_tag(kind, node_id(id), tag_id, False)
 
@@ -35,14 +35,14 @@ class NodesRouter(BoardRouter):
         await (await self._writer()).set_block_reasons(owner_type, node_id(id), reasons)
 
     async def _scope_conflicts(
-        self, kind: str, id: int, time_scope: TimeScope
+        self, kind: str, id: str, time_scope: TimeScope
     ) -> list[ViolatingDescendant]:
         """The node's descendants that ``time_scope`` (the body) would leave outside it, for the
         clamp-or-cancel prompt. Writes nothing."""
         return await self._reader.scope_containment_conflicts(kind, id, time_scope)
 
     async def _reparent_conflicts(
-        self, kind: str, id: int, parent_type: str, parent_id: int
+        self, kind: str, id: str, parent_type: str, parent_id: str
     ) -> ReparentConflicts:
         """What moving the node under ``parent_type`` ``parent_id`` would leave outside its new
         ancestors' Time Scope, and the scope to clamp them to. Writes nothing."""

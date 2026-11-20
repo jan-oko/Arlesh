@@ -12,6 +12,7 @@ import { updateGoal } from "@/api/goals";
 import { flowOrigins, setFlowItemCycles, updateFlowItem, addFlowDependency } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
 import { updateDomain } from "@/api/domains";
+import { storedRowId } from "@/test/stored-id";
 
 // A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
 vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
@@ -51,7 +52,7 @@ vi.mock("@/api/block-reasons", () => ({
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: storedRowId(5), kind: "task", title: "Task", tagIds: [], position: 0, children: [],
 };
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],
@@ -107,19 +108,19 @@ describe("useNodeEditor — double-click", () => {
 describe("useNodeEditor — scope clamp", () => {
   it("clamps conflicting descendants to the new window before saving the parent", async () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([
-      { node_type: "task", node_id: 9 },
-      { node_type: "goal", node_id: 12 },
+      { node_type: "task", node_id: storedRowId(9) },
+      { node_type: "goal", node_id: storedRowId(12) },
     ]);
     const result = setup();
 
     await act(async () => { await result.current.onTaskSave(saveData); });
     await settleLane();
 
-    expect(updateTask).toHaveBeenCalledWith(9, { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
-    expect(updateGoal).toHaveBeenCalledWith(12, { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(9), { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
+    expect(updateGoal).toHaveBeenCalledWith(storedRowId(12), { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
     // Parent saved with its new time scope.
     expect(updateTask).toHaveBeenCalledWith(
-      5,
+      storedRowId(5),
       expect.objectContaining({ time_scope: { start_id: testKey(1), end_id: testKey(1) } }),
     );
   });
@@ -139,16 +140,16 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
   it("returns true immediately when there are no conflicts", async () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
-    await expect(result.current.checkScopeClamp("task", 5, { start_id: testKey(1), end_id: testKey(1) })).resolves.toBe(true);
+    await expect(result.current.checkScopeClamp("task", storedRowId(5), { start_id: testKey(1), end_id: testKey(1) })).resolves.toBe(true);
   });
 
   it("surfaces a prompt and resolves with the user's choice", async () => {
-    vi.mocked(scopeContainmentConflicts).mockResolvedValue([{ node_type: "task", node_id: 9 }]);
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([{ node_type: "task", node_id: storedRowId(9) }]);
     const result = setup();
 
     let decision: Promise<boolean>;
     act(() => {
-      decision = result.current.checkScopeClamp("task", 5, { start_id: testKey(1), end_id: testKey(1) });
+      decision = result.current.checkScopeClamp("task", storedRowId(5), { start_id: testKey(1), end_id: testKey(1) });
     });
     await waitFor(() => expect(useScopeClampStore.getState().request).not.toBeNull());
 
@@ -159,16 +160,16 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
 
   it("annotates conflicting descendants that were materialized from a flow", async () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([
-      { node_type: "task", node_id: 9 },
-      { node_type: "goal", node_id: 12 },
+      { node_type: "task", node_id: storedRowId(9) },
+      { node_type: "goal", node_id: storedRowId(12) },
     ]);
-    vi.mocked(flowOrigins).mockResolvedValue([{ node_type: "task", node_id: 9, flow_title: "Add Feature" }]);
+    vi.mocked(flowOrigins).mockResolvedValue([{ node_type: "task", node_id: storedRowId(9), flow_title: "Add Feature" }]);
     const result = setup();
 
-    act(() => { void result.current.checkScopeClamp("task", 5, { start_id: testKey(1), end_id: testKey(1) }); });
+    act(() => { void result.current.checkScopeClamp("task", storedRowId(5), { start_id: testKey(1), end_id: testKey(1) }); });
     await waitFor(() => expect(useScopeClampStore.getState().request).not.toBeNull());
 
-    expect(useScopeClampStore.getState().request?.flowOrigins).toEqual({ "task-9": "Add Feature" });
+    expect(useScopeClampStore.getState().request?.flowOrigins).toEqual({ [`task-${storedRowId(9)}`]: "Add Feature" });
   });
 });
 
@@ -176,9 +177,9 @@ describe("useNodeEditor — delegation", () => {
   it("sends the delegate the editor changed", async () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
-    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "person", id: 4 } }); });
+    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "person", id: storedRowId(4) } }); });
     await settleLane();
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: { kind: "person", id: 4 } }));
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.objectContaining({ delegate_to: { kind: "person", id: storedRowId(4) } }));
   });
 
   it("sends an explicit null to take the delegate back", async () => {
@@ -186,7 +187,7 @@ describe("useNodeEditor — delegation", () => {
     const result = setup();
     await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: null }); });
     await settleLane();
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: null }));
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.objectContaining({ delegate_to: null }));
   });
 
   it("says nothing about delegation when the editor did not touch it", async () => {
@@ -206,7 +207,7 @@ describe("useNodeEditor — done date", () => {
       await result.current.onTaskSave({ ...saveData, status: { kind: "ordinary", status: "done" }, doneAt: "2026-09-26T19:00:00" });
     });
     await settleLane();
-    expect(setTaskDoneAt).toHaveBeenCalledWith(5, "2026-09-26T19:00:00");
+    expect(setTaskDoneAt).toHaveBeenCalledWith(storedRowId(5), "2026-09-26T19:00:00");
     const updated = vi.mocked(updateTask).mock.invocationCallOrder[0] ?? 0;
     const dated = vi.mocked(setTaskDoneAt).mock.invocationCallOrder[0] ?? 0;
     expect(dated).toBeGreaterThan(updated);
@@ -247,22 +248,22 @@ describe("useNodeEditor — Compound", () => {
       await result.current.onTaskSave({ ...saveData, timeScope: null, status: { kind: "ordinary", status: "started" }, compound: false });
     });
     await settleLane();
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: { kind: "ordinary", status: "started" }, compound: false }));
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.objectContaining({ status: { kind: "ordinary", status: "started" }, compound: false }));
   });
 
   it("switching it on sends the flag", async () => {
     const result = setupWith(taskNode);
     await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, compound: true }); });
     await settleLane();
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ compound: true }));
+    expect(updateTask).toHaveBeenCalledWith(storedRowId(5), expect.objectContaining({ compound: true }));
   });
 });
 
 describe("useNodeEditor — saving a flow item", () => {
   const flowTask: MindmapNode = {
-    id: "flowtask-7", rowId: 7, kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
+    id: "flowtask-7", rowId: storedRowId(7), kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
     flowItem: {
-      itemType: "flow_task", flowId: 3, flowScopeN: 1, flowScopeKind: "day",
+      itemType: "flow_task", flowId: storedRowId(3), flowScopeN: 1, flowScopeKind: "day",
       cycles: [], dependsOn: [], template: {},
     },
   };
@@ -275,12 +276,12 @@ describe("useNodeEditor — saving a flow item", () => {
 
     await act(() => result.current.onFlowItemSave({
       title: "Stretch well", cycles: [], isPrivate: true, addedDeps: [], removedDeps: [],
-      template: { tag_ids: [4], block_reasons: [], asynchronous: true },
+      template: { tag_ids: [storedRowId(4)], block_reasons: [], asynchronous: true },
     }));
 
     // Privacy travels as the backend spells it; `isPrivate` was dropped on the floor.
-    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", 7, expect.objectContaining({
-      title: "Stretch well", is_private: true, tag_ids: [4], block_reasons: [], asynchronous: true,
+    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", storedRowId(7), expect.objectContaining({
+      title: "Stretch well", is_private: true, tag_ids: [storedRowId(4)], block_reasons: [], asynchronous: true,
     }));
   });
 
@@ -295,13 +296,13 @@ describe("useNodeEditor — saving a flow item", () => {
       cycles: [{ scopeKind: "part_of_day", scopeIndex: 2, planKind: "part_of_day", planStart: 1, planEnd: 1 }],
     }));
 
-    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [
+    expect(setFlowItemCycles).toHaveBeenCalledWith(storedRowId(3), "flow_task", storedRowId(7), [
       { scope_kind: "part_of_day", scope_index: 2, plan_kind: "part_of_day", plan_start: 1, plan_end: 1 },
     ], undefined, undefined);
   });
 
   it("lands the rest of the save on the fork an Archive & new answer created", async () => {
-    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], commitments: [], expectations: [], tasks: [[7, 70], [6, 60]] });
+    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: storedRowId(9), goals: [], commitments: [], expectations: [], tasks: [[storedRowId(7), storedRowId(70)], [storedRowId(6), storedRowId(60)]] });
     const settle = vi.fn().mockResolvedValue(undefined);
     const tree: MindmapNode = { ...root, children: [flowTask] };
     const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], settle }));
@@ -309,18 +310,18 @@ describe("useNodeEditor — saving a flow item", () => {
 
     await act(() => result.current.onFlowItemSave({
       title: "Stretch well", cycles: [], isPrivate: false, reconcile: "fork", template: {},
-      addedDeps: [{ type: "flow_task", id: 6 }], removedDeps: [],
+      addedDeps: [{ type: "flow_task", id: storedRowId(6) }], removedDeps: [],
     }));
 
-    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork", expect.any(String));
-    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", 70, expect.objectContaining({ title: "Stretch well" }));
-    expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
+    expect(setFlowItemCycles).toHaveBeenCalledWith(storedRowId(3), "flow_task", storedRowId(7), [], "fork", expect.any(String));
+    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", storedRowId(70), expect.objectContaining({ title: "Stretch well" }));
+    expect(addFlowDependency).toHaveBeenCalledWith(storedRowId(9), "flow_task", storedRowId(70), "flow_task", storedRowId(60));
   });
 });
 
 describe("useNodeEditor — archiving a Domain from its editor", () => {
   const domainNode: MindmapNode = {
-    id: "domain-8", rowId: 8, kind: "domain", title: "Old hobby", tagIds: [], position: 0, children: [],
+    id: "domain-8", rowId: storedRowId(8), kind: "domain", title: "Old hobby", tagIds: [], position: 0, children: [],
   };
 
   function openDomain(node: MindmapNode) {
@@ -334,20 +335,20 @@ describe("useNodeEditor — archiving a Domain from its editor", () => {
     const result = openDomain(domainNode);
     await act(() => result.current.onSimpleSave("Old hobby", false, true));
     await settleLane();
-    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "archived" });
+    expect(updateDomain).toHaveBeenCalledWith(storedRowId(8), { title: "Old hobby", is_private: false, status: "archived" });
   });
 
   it("unarchives back to Active", async () => {
     const result = openDomain({ ...domainNode, status: "archived" });
     await act(() => result.current.onSimpleSave("Old hobby", false, false));
     await settleLane();
-    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "active" });
+    expect(updateDomain).toHaveBeenCalledWith(storedRowId(8), { title: "Old hobby", is_private: false, status: "active" });
   });
 
   it("sends no status when the switch was left as it was", async () => {
     const result = openDomain(domainNode);
     await act(() => result.current.onSimpleSave("Renamed", false, false));
     await settleLane();
-    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Renamed", is_private: false });
+    expect(updateDomain).toHaveBeenCalledWith(storedRowId(8), { title: "Renamed", is_private: false });
   });
 });

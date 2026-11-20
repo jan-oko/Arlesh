@@ -580,6 +580,8 @@ settings; `docker login ghcr.io` with a token that can read packages until then.
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.
+It became 2 when ids became UUIDs (ADR 0017): every id on the wire is a string, so an older app and a
+newer server, or the reverse, cannot read each other's rows.
 On a mismatch the app goes read-only and says which side to update. `/health` is checked when the app
 starts following the server and on every reconnect of the change stream, so a server upgraded
 underneath a running app is noticed. A route the server lacks answers 404 with `details.reason =

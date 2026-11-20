@@ -7,6 +7,7 @@ import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { invalidateTagNames } from "@/hooks/use-tag-names";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("react-i18next", () => ({
@@ -17,8 +18,8 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
-function wait(id: string, rowId: number, agentWaiting: NonNullable<MindmapNode["agentWaiting"]>): MindmapNode {
-  return { id, rowId, kind: "expectation", title: id, position: 0, tagIds: [], children: [], agentWaiting };
+function wait(id: string, rowNumber: number, agentWaiting: NonNullable<MindmapNode["agentWaiting"]>): MindmapNode {
+  return { id, rowId: storedRowId(rowNumber), kind: "expectation", title: id, position: 0, tagIds: [], children: [], agentWaiting };
 }
 
 function renderRow(n: MindmapNode) {
@@ -46,9 +47,9 @@ describe("StatusIconRow", () => {
       const { container } = render(<svg><StatusIconRow node={n} indicators={deriveStatusIndicators(n)} top={36} /></svg>);
       return container.querySelector("[data-glyph^='delegated']")?.getAttribute("data-glyph");
     };
-    expect(renderRow(node("task", { status: "todo", delegate: { kind: "person", id: 4 }, delegateName: "Tuli" })))
+    expect(renderRow(node("task", { status: "todo", delegate: { kind: "person", id: storedRowId(4) }, delegateName: "Tuli" })))
       .toEqual(["delegatedPerson"]);
-    expect(glyph(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toBe("delegated");
+    expect(glyph(node("task", { status: "todo", delegate: { kind: "person", id: storedRowId(4) } }))).toBe("delegated");
   });
 
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
@@ -95,8 +96,8 @@ describe("StatusIconRow", () => {
   it("says an agent has a question open on the Task, and a review in another voice", () => {
     const question = wait("expectation-1", 1, { note: "Red or blue?", question: true, answer: null });
     const review = wait("expectation-2", 2, { note: "Done", question: true, answer: null, review: { links: [], hand_tests: [] } });
-    const withQuestion = node("task", { agentWaits: [question], openQuestionIds: [1] });
-    const withReview = node("task", { agentWaits: [review], openQuestionIds: [2] });
+    const withQuestion = node("task", { agentWaits: [question], openQuestionIds: [storedRowId(1)] });
+    const withReview = node("task", { agentWaits: [review], openQuestionIds: [storedRowId(2)] });
     expect(renderRow(withQuestion)).toEqual(["openQuestion"]);
     expect(renderRow(withReview)).toEqual(["openReview"]);
     expect(deriveStatusIndicators(withQuestion).map((indicator) => indicator.type)).not.toEqual(
@@ -110,8 +111,8 @@ describe("StatusIconRow", () => {
     ).container.innerHTML;
     const question = wait("expectation-1", 1, { note: null, question: true, answer: null });
     const review = wait("expectation-2", 2, { note: null, question: true, answer: null, review: { links: [], hand_tests: [] } });
-    expect(iconOf(node("task", { agentWaits: [question], openQuestionIds: [1] })))
-      .not.toEqual(iconOf(node("task", { agentWaits: [review], openQuestionIds: [2] })));
+    expect(iconOf(node("task", { agentWaits: [question], openQuestionIds: [storedRowId(1)] })))
+      .not.toEqual(iconOf(node("task", { agentWaits: [review], openQuestionIds: [storedRowId(2)] })));
   });
 
   it("says nothing of a wait that is not open", () => {

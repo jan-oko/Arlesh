@@ -11,6 +11,7 @@ import { applyBoardChanges, indexBoard } from "@/utils/board-changes";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -36,7 +37,7 @@ vi.mock("@/hooks/use-scope-labels", () => ({ useScopeLabels: () => SCOPE_LABELS 
 // One Aspect, a Goal and a Task to rename.
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
-    id: 1, title: "Domain", description: null, subtype: "aspect",
+    id: storedRowId(1), title: "Domain", description: null, subtype: "aspect",
     parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
@@ -44,7 +45,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
-    id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Goal", parent_type: "domain", parent_id: storedRowId(1),
     status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -52,16 +53,16 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 1, title: "Task", parent_type: "goal", parent_id: 1,
+    id: storedRowId(1), title: "Task", parent_type: "goal", parent_id: storedRowId(1),
     status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
 
 const ROWS = {
-  domains: [mkDomain({ id: 1, subtype: "aspect", title: "Work" })],
-  goals: [mkGoal({ id: 1, parent_type: "domain", parent_id: 1 })],
-  tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code" })],
+  domains: [mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" })],
+  goals: [mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) })],
+  tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: "Write code" })],
 };
 
 
@@ -72,7 +73,7 @@ const EPOCH = "run1";
 function board(title: string): MindmapLoad {
   return {
     ...ROWS,
-    tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })],
+    tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title })],
     commitments: [], expectations: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_commitments: [], flow_expectations: [], flow_cycles: [],
     flow_dependencies: [], block_reasons: [], task_dependencies: [], flow_instance_nodes: [],
@@ -82,7 +83,7 @@ function board(title: string): MindmapLoad {
 
 /** What the server says when the Task is renamed: publication `seq`, at `revision`, with the hash it carries. */
 function renamed(title: string, seq: number, revision: number): BoardChange {
-  const changes = { tasks: { set: [["task-1", mkTask({ id: 1, parent_type: "goal", parent_id: 1, title })] as const], del: [] } };
+  const changes = { tasks: { set: [[`task-${storedRowId(1)}`, mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title })] as const], del: [] } };
   const after = applyBoardChanges(indexBoard(board("Write code")), changes);
   return { epoch: EPOCH, seq, revision, now: "2026-11-13T12:00:00", hash: after.digests.total, changes };
 }
@@ -115,7 +116,7 @@ function heldSend() {
 
 function enqueueRename(title: string, send: () => ReturnType<ReturnType<typeof heldSend>["send"]>) {
   store().enqueue({
-    nodeId: "task-1", label: "rename", patch: { kind: "fields", fields: { title } },
+    nodeId: `task-${storedRowId(1)}`, label: "rename", patch: { kind: "fields", fields: { title } },
     send, showToast: vi.fn(), unreachableMessage: "unreachable",
   });
 }
@@ -145,10 +146,10 @@ async function mounted() {
   const seen: Array<string | undefined> = [];
   const hook = renderHook(() => {
     const data = useMindmapData();
-    seen.push(find(data.tree, "task-1")?.title);
+    seen.push(find(data.tree, `task-${storedRowId(1)}`)?.title);
     return data;
   });
-  await waitFor(() => expect(find(hook.result.current.tree, "task-1")).toBeDefined());
+  await waitFor(() => expect(find(hook.result.current.tree, `task-${storedRowId(1)}`)).toBeDefined());
   return { ...hook, seen };
 }
 
@@ -157,11 +158,11 @@ describe("useMindmapData with pending writes", () => {
     const { result } = await mounted();
     const held = heldSend();
     act(() => enqueueRename("Renamed", held.send));
-    expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed", pending: true });
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)).toMatchObject({ title: "Renamed", pending: true });
 
     fence = { epoch: EPOCH, revision: 5 };
     await act(() => result.current.settle());
-    expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed", pending: true });
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)).toMatchObject({ title: "Renamed", pending: true });
   });
 
   it("makes no second load for a write: the event brings the server's value and the patch goes in the same update", async () => {
@@ -171,7 +172,7 @@ describe("useMindmapData with pending writes", () => {
     const before = fetches;
     fence = { epoch: EPOCH, revision: 6 };
     await act(async () => held.answer({ epoch: null, revision: null }));
-    expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed" });
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)).toMatchObject({ title: "Renamed" });
     expect(store().writes).toHaveLength(1);
 
     seen.length = 0;
@@ -179,8 +180,8 @@ describe("useMindmapData with pending writes", () => {
 
     expect(store().writes).toHaveLength(0);
     expect(fetches).toBe(before);
-    expect(find(result.current.tree, "task-1")).toMatchObject({ title: "Renamed" });
-    expect(find(result.current.tree, "task-1")?.pending).toBeUndefined();
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)).toMatchObject({ title: "Renamed" });
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)?.pending).toBeUndefined();
     // No flicker: the board never drew the old title between the patch and the server's value.
     expect(seen.every((title) => title === "Renamed")).toBe(true);
   });
@@ -212,7 +213,7 @@ describe("useMindmapData with pending writes", () => {
     await act(async () => held.answer({ epoch: null, revision: null }));
     await waitFor(() => expect(store().writes).toHaveLength(0));
     expect(fetches).toBe(before);
-    expect(find(result.current.tree, "task-1")?.title).toBe("Write code");
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)?.title).toBe("Write code");
   });
 
   it("keeps the patches of two answered writes until the board reaches each one's revision", async () => {
@@ -231,7 +232,7 @@ describe("useMindmapData with pending writes", () => {
     act(() => emit(withoutHash(renamed("Two", 3, 7))));
 
     expect(store().writes).toHaveLength(0);
-    expect(find(result.current.tree, "task-1")?.title).toBe("Two");
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)?.title).toBe("Two");
   });
 
   it("never lets an older read land after a newer one: a settle asked during a read waits for it", async () => {
@@ -255,6 +256,6 @@ describe("useMindmapData with pending writes", () => {
     served = () => board("Newer");
     act(() => { newer = result.current.settle(); });
     await act(async () => { release(board("Older")); await Promise.all([older, newer]); });
-    expect(find(result.current.tree, "task-1")?.title).toBe("Newer");
+    expect(find(result.current.tree, `task-${storedRowId(1)}`)?.title).toBe("Newer");
   });
 });

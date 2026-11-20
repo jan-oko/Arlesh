@@ -2,17 +2,18 @@
 
 pub mod model;
 
+use crate::nodes::id::RowId;
 use model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest};
 
 use crate::nodes::rules::parenting::stored_reference;
 
 #[derive(sqlx::FromRow)]
 struct InfoRow {
-    id: i64,
+    id: RowId,
     body: String,
     details: Option<String>,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
     is_private: bool,
 }
@@ -20,7 +21,7 @@ struct InfoRow {
 /// The stored row a note's parent names. A Habit occurrence is resolved to its host before a
 /// note is written — the attachment is what makes the occurrence its parent — so a derived id
 /// reaching here is a caller's mistake, refused as an invalid argument.
-fn stored_parent(parent: &crate::nodes::id::NodeId) -> Result<i64, sqlx::Error> {
+fn stored_parent(parent: &crate::nodes::id::NodeId) -> Result<RowId, sqlx::Error> {
     parent
         .require_stored()
         .map_err(|error| sqlx::Error::InvalidArgument(error.to_string()))
@@ -59,9 +60,10 @@ impl<'session> InfoOperator<'session> {
     #[tracing::instrument(skip(self))]
     pub async fn create(&mut self, req: CreateInfoRequest) -> Result<Info, sqlx::Error> {
         let row: InfoRow = sqlx::query_as(
-            "INSERT INTO infos (body, details, parent_type, parent_id, position) VALUES (?, ?, ?, ?, ?) \
+            "INSERT INTO infos (id, body, details, parent_type, parent_id, position) VALUES (?, ?, ?, ?, ?, ?) \
              RETURNING id, body, details, parent_type, parent_id, position, is_private",
         )
+        .bind(req.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&req.body)
         .bind(&req.details)
         .bind(stored_reference(&req.parent_type))
@@ -104,8 +106,8 @@ impl<'session> InfoOperator<'session> {
     pub async fn child_ids(
         &mut self,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, sqlx::Error> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, sqlx::Error> {
         sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = ? AND parent_id = ?")
             .bind(stored_reference(parent_type))
             .bind(parent_id)
@@ -124,8 +126,9 @@ impl<'session> InfoOperator<'session> {
     /// # use arlesh_core::database::session::SessionFactory;
     /// # use arlesh_core::infos::model::{InfoId, UpdateInfoRequest};
     /// # async fn update(factory: &SessionFactory) -> Result<(), sqlx::Error> {
+    /// # let existing = arlesh_core::nodes::id::nil_row_id();
     /// let mut db = factory.begin().await?;
-    /// db.infos().update(InfoId(1), UpdateInfoRequest {
+    /// db.infos().update(InfoId(existing), UpdateInfoRequest {
     ///     body: Some("Updated".to_string()),
     ///     ..Default::default()
     /// }).await?;

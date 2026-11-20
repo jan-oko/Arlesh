@@ -1,5 +1,6 @@
 //! The mindmap load envelope: every payload one mindmap render needs, in one value.
 
+use crate::nodes::id::RowId;
 use serde::Serialize;
 
 use crate::{
@@ -43,7 +44,8 @@ pub enum FlowHabitResult {
 #[derive(Debug, Clone, PartialEq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowHabitEntry {
     /// The flow this entry describes.
-    pub flow_id: i64,
+    #[schemars(with = "String")]
+    pub flow_id: RowId,
     /// The flow's title, so a failure notice can name it without a second lookup.
     pub flow_title: String,
     /// The payload, or the failure that replaced it.

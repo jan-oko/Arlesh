@@ -4,6 +4,7 @@
 //! Pure: [`derive_board`] is a function of the [`BoardSources`] [`super::load_within`] gathers, `now`,
 //! the horizon and the capacity lock (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -46,7 +47,7 @@ use super::{
 /// failures so the frontend can say so rather than draw an empty Habit.
 fn derive_habits(
     flows: &[Flow],
-    mut habits: HashMap<i64, Result<HabitSource, FlowError>>,
+    mut habits: HashMap<RowId, Result<HabitSource, FlowError>>,
     (stored, agentic): (&StoredBoard, &AgenticIndex),
     now: NaiveDateTime,
     horizon: Horizon,
@@ -62,7 +63,7 @@ fn derive_habits(
         match derived {
             Ok(derived) => rows.extend(derived),
             Err(error) => {
-                tracing::warn!(flow_id = flow.id, error = %error, "habit derivation failed");
+                tracing::warn!(flow_id = %flow.id, error = %error, "habit derivation failed");
                 failures.push(HabitFailure {
                     flow_id: flow.id,
                     message: error.to_string(),
@@ -77,7 +78,7 @@ fn derive_habits(
 /// Habit whose span cannot be worked out is left out here; its derivation reports the failure.
 fn habit_edges(
     flows: &[Flow],
-    habits: &HashMap<i64, Result<HabitSource, FlowError>>,
+    habits: &HashMap<RowId, Result<HabitSource, FlowError>>,
 ) -> Vec<plans::HabitEdge> {
     let mut edges = Vec::new();
     for flow in flows.iter().filter(|flow| flow.is_habit) {
@@ -92,7 +93,7 @@ fn habit_edges(
                 span,
             }),
             Some(Err(error)) => {
-                tracing::warn!(flow_id = flow.id, error = %error, "habit span failed");
+                tracing::warn!(flow_id = %flow.id, error = %error, "habit span failed");
             }
             None => {}
         }

@@ -9,6 +9,9 @@ import pytest
 from arlesh import errors
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 EXPECTED_STATUS = {
     "not_found": 404,
     "invalid_request": 400,
@@ -85,7 +88,7 @@ def test_an_unexpected_crash_answers_500_internal_without_its_trace(start: Start
 
 
 def test_a_missing_node_is_404_not_found(server: TestClient) -> None:
-    response = server.get("/tasks/9999")
+    response = server.get("/tasks/5b0d3c2e-8f4a-4c1e-9a7b-2d6e1f0a3b4c")
 
     assert response.status_code == 404
     assert response.json()["kind"] == "not_found"
@@ -108,7 +111,7 @@ def test_a_wrong_method_is_405_invalid_request(server: TestClient) -> None:
 
 
 def test_a_malformed_body_is_400_invalid_request_naming_the_field(
-    server: TestClient, domain: int
+    server: TestClient, domain: str
 ) -> None:
     response = server.post("/tasks", json={"parent_type": "domain", "parent_id": domain})
 
@@ -120,7 +123,7 @@ def test_a_malformed_body_is_400_invalid_request_naming_the_field(
 
 
 def test_a_dependency_cycle_is_400_invalid_request(
-    server: TestClient, domain: int, new_task: Callable[..., int]
+    server: TestClient, domain: str, new_task: Callable[..., str]
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     server.post(f"/tasks/{first}/dependencies", json={"type": "task", "id": second})
@@ -133,8 +136,8 @@ def test_a_dependency_cycle_is_400_invalid_request(
 
 def test_a_child_window_outside_its_parents_is_409_containment_violated(
     server: TestClient,
-    domain: int,
-    new_task: Callable[..., int],
+    domain: str,
+    new_task: Callable[..., str],
     one_day: Callable[[str], dict[str, Any]],
 ) -> None:
     parent = new_task(domain, "Parent", time_scope=one_day("2026-06-10"))
@@ -154,7 +157,7 @@ def test_a_child_window_outside_its_parents_is_409_containment_violated(
 
 
 def test_an_unscoped_commitment_is_422_needs_time_scope_until_sent_with_one(
-    server: TestClient, domain: int, one_day: Callable[[str], dict[str, Any]]
+    server: TestClient, domain: str, one_day: Callable[[str], dict[str, Any]]
 ) -> None:
     body = {"title": "Run", "parent_type": "domain", "parent_id": domain}
 
@@ -168,7 +171,7 @@ def test_an_unscoped_commitment_is_422_needs_time_scope_until_sent_with_one(
 
 def test_a_database_failure_is_500_database(server: TestClient) -> None:
     response = server.post(
-        "/tasks", json={"title": "Loose", "parent_type": "nowhere", "parent_id": 1}
+        "/tasks", json={"title": "Loose", "parent_type": "nowhere", "parent_id": ROOT_ASPECT}
     )
 
     assert response.status_code == 500

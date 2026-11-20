@@ -3,6 +3,7 @@ use crate::access::model::NodeTable;
 use crate::database::open::{open, OpenMode};
 use crate::flows::model::{CreateFlowItemRequest, CreateFlowRequest, InstanceType};
 use crate::infos::model::CreateInfoRequest;
+use crate::nodes::id::NodeId;
 use crate::scopes::key::test_key;
 use crate::tasks::model::TimeScope;
 use crate::tasks::model::{
@@ -34,9 +35,19 @@ async fn session() -> (crate::database::session::SessionFactory, Db<Transactiona
     (factory, db)
 }
 
-async fn project_under(db: &mut Db<Transactional>, title: &str, parent: i64) -> i64 {
+/// The id of the first seeded aspect, which a real database mints at random.
+async fn first_aspect(db: &mut Db<Transactional>) -> RowId {
+    db.domains()
+        .list(Some(DomainSubtype::Aspect))
+        .await
+        .unwrap()[0]
+        .id
+}
+
+async fn project_under(db: &mut Db<Transactional>, title: &str, parent: RowId) -> RowId {
     db.domains()
         .create(CreateDomainRequest {
+            id: None,
             title: title.to_string(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -49,12 +60,12 @@ async fn project_under(db: &mut Db<Transactional>, title: &str, parent: i64) -> 
         .id
 }
 
-async fn project(db: &mut Db<Transactional>, title: &str, parent: i64) -> i64 {
+async fn project(db: &mut Db<Transactional>, title: &str, parent: RowId) -> RowId {
     project_under(db, title, parent).await
 }
 
 /// Fills a Project with one of everything it can hold.
-async fn fill(db: &mut Db<Transactional>, project: i64) {
+async fn fill(db: &mut Db<Transactional>, project: RowId) {
     let goal = crate::tasks::create_goal(
         db,
         CreateGoalRequest {
@@ -66,16 +77,16 @@ async fn fill(db: &mut Db<Transactional>, project: i64) {
     )
     .await
     .unwrap();
-    let task = |title: &str, parent_type: &str, parent_id: i64| CreateTaskRequest {
+    let task = |title: &str, parent_type: &str, parent_id: NodeId| CreateTaskRequest {
         title: title.into(),
         parent_type: parent_type.into(),
-        parent_id: parent_id.into(),
+        parent_id,
         ..Default::default()
     };
-    let first = crate::tasks::create_task(db, task("First", "goal", goal.id.stored().unwrap()))
+    let first = crate::tasks::create_task(db, task("First", "goal", goal.id.clone()))
         .await
         .unwrap();
-    let second = crate::tasks::create_task(db, task("Second", "project", project))
+    let second = crate::tasks::create_task(db, task("Second", "project", project.into()))
         .await
         .unwrap();
     crate::tasks::create_commitment(
@@ -107,6 +118,7 @@ async fn fill(db: &mut Db<Transactional>, project: i64) {
     .unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Info".into(),
             details: None,
             parent_type: "project".into(),
@@ -129,6 +141,7 @@ async fn fill(db: &mut Db<Transactional>, project: i64) {
         .unwrap();
     db.flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Step".into(),
             parent_type: "flow".into(),
@@ -141,9 +154,10 @@ async fn fill(db: &mut Db<Transactional>, project: i64) {
 #[tokio::test]
 async fn a_duplicated_project_with_content_is_deleted_like_any_other() {
     let (_factory, mut db) = session().await;
-    let original = project(&mut db, "Original", 1).await;
+    let aspect = first_aspect(&mut db).await;
+    let original = project(&mut db, "Original", aspect).await;
     fill(&mut db, original).await;
-    let copy = duplicate_subtree(&mut db, DuplicableKind::Domain, original, "", 1, 5)
+    let copy = duplicate_subtree(&mut db, DuplicableKind::Domain, original, "", aspect, 5)
         .await
         .unwrap()
         .root_id;
@@ -166,7 +180,8 @@ async fn a_duplicated_project_with_content_is_deleted_like_any_other() {
 #[tokio::test]
 async fn a_project_with_content_is_deleted_without_having_been_duplicated() {
     let (_factory, mut db) = session().await;
-    let original = project(&mut db, "Original", 1).await;
+    let aspect = first_aspect(&mut db).await;
+    let original = project(&mut db, "Original", aspect).await;
     fill(&mut db, original).await;
 
     crate::domains::delete_subtree(&mut db, DomainId(original))
@@ -179,14 +194,15 @@ async fn a_project_with_content_is_deleted_without_having_been_duplicated() {
 #[tokio::test]
 async fn an_aspect_is_refused_and_nothing_is_deleted() {
     let (_factory, mut db) = session().await;
-    assert!(crate::domains::delete_subtree(&mut db, DomainId(1))
+    let aspect = first_aspect(&mut db).await;
+    assert!(crate::domains::delete_subtree(&mut db, DomainId(aspect))
         .await
         .is_err());
-    assert!(db.domains().get(DomainId(1)).await.is_ok());
+    assert!(db.domains().get(DomainId(aspect)).await.is_ok());
 }
 
 /// The Project, its sub-Project and every kind of content that hung under it are gone.
-async fn assert_nothing_left_under(db: &mut Db<Transactional>, project: i64) {
+async fn assert_nothing_left_under(db: &mut Db<Transactional>, project: RowId) {
     assert!(db.domains().get(DomainId(project)).await.is_err());
     assert!(db
         .domains()

@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `domains` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     domains::model::{CreateDomainRequest, Domain, DomainSubtype, UpdateDomainRequest},
     duplicate::DuplicatedSubtree,
@@ -18,7 +19,7 @@ impl DomainsPort for HttpBackend {
             .await
     }
 
-    async fn get_domain(&self, id: i64) -> Result<Domain, WireError> {
+    async fn get_domain(&self, id: RowId) -> Result<Domain, WireError> {
         self.read(Call::new(Method::GET, format!("/domains/{}", segment(&id))))
             .await
     }
@@ -32,14 +33,14 @@ impl DomainsPort for HttpBackend {
 
     async fn update_domain(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateDomainRequest,
     ) -> Result<Domain, WireError> {
         self.write(Call::new(Method::PATCH, format!("/domains/{}", segment(&id))).json(&request))
             .await
     }
 
-    async fn delete_domain(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_domain(&self, id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/domains/{}", segment(&id)),
@@ -49,8 +50,8 @@ impl DomainsPort for HttpBackend {
 
     async fn duplicate_domain(
         &self,
-        id: i64,
-        target_id: i64,
+        id: RowId,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Domain>, WireError> {
         self.write(

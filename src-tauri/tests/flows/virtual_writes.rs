@@ -6,6 +6,8 @@
 //! name is the one open then rather than whatever the wall clock says.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
@@ -43,14 +45,14 @@ fn day() -> chrono::NaiveDate {
 }
 
 /// A daily task Habit under the root aspect from 2026-01-05, with one item "Stretch".
-async fn habit(app: &App) -> (i64, i64) {
+async fn habit(app: &App) -> (RowId, RowId) {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Morning".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("day".into()),
             ..Default::default()
@@ -61,6 +63,7 @@ async fn habit(app: &App) -> (i64, i64) {
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -89,12 +92,12 @@ async fn habit(app: &App) -> (i64, i64) {
     (flow.id, item)
 }
 
-fn occurrence(item_type: TemplateKind, item_id: i64) -> NodeId {
+fn occurrence(item_type: TemplateKind, item_id: RowId) -> NodeId {
     NodeId::Derived(
         OccurrenceKey {
             item: TemplateItem { item_type, item_id },
             iteration: ScopeKey::day(day()),
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     )
@@ -180,6 +183,7 @@ async fn children_of_every_kind_its_kind_takes_hang_on_an_occurrence() {
     let note = write::create_info(
         &mut db,
         CreateInfoRequest {
+            id: None,
             body: "the blue one".into(),
             details: None,
             parent_type: "task".into(),
@@ -240,7 +244,7 @@ async fn a_stored_task_moved_onto_an_occurrence_hangs_on_it() {
         CreateTaskRequest {
             title: "Warm up".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
         at(NOW),
@@ -282,14 +286,14 @@ async fn an_occurrence_takes_tags_block_reasons_and_dependencies_of_its_own() {
         CreateTaskRequest {
             title: "Buy a mat".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
         at(NOW),
     )
     .await
     .unwrap();
-    write::set_tag(&mut db, "task", &stretch, 1, true, at(NOW))
+    write::set_tag(&mut db, "task", &stretch, helpers::seeded(1), true, at(NOW))
         .await
         .unwrap();
     write::set_block_reasons(&mut db, "task", &stretch, &["sore".into()], at(NOW))
@@ -309,7 +313,7 @@ async fn an_occurrence_takes_tags_block_reasons_and_dependencies_of_its_own() {
 
     let load = board(&pool).await;
     let row = load.tasks.iter().find(|row| row.id == stretch).unwrap();
-    assert_eq!(row.tag_ids, vec![1]);
+    assert_eq!(row.tag_ids, vec![helpers::seeded(1)]);
     assert!(load
         .block_reasons
         .iter()
@@ -320,9 +324,16 @@ async fn an_occurrence_takes_tags_block_reasons_and_dependencies_of_its_own() {
         .any(|edge| edge.task_id == stretch && edge.dependency_id == other.id));
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    write::set_tag(&mut db, "task", &stretch, 1, false, at(NOW))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "task",
+        &stretch,
+        helpers::seeded(1),
+        false,
+        at(NOW),
+    )
+    .await
+    .unwrap();
     write::set_block_reasons(&mut db, "task", &stretch, &[], at(NOW))
         .await
         .unwrap();
@@ -356,7 +367,7 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
         item,
         UpdateFlowItemRequest {
             template: TemplateUpdate {
-                tag_ids: Some(vec![1]),
+                tag_ids: Some(vec![helpers::seeded(1)]),
                 block_reasons: Some(vec!["needs a mat".into()]),
                 asynchronous: Some(true),
                 ..Default::default()
@@ -369,7 +380,7 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
     let stretch = occurrence(TemplateKind::FlowTask, item);
     let load = served(&pool).await;
     let row = load.tasks.iter().find(|row| row.id == stretch).unwrap();
-    assert_eq!(row.tag_ids, vec![1]);
+    assert_eq!(row.tag_ids, vec![helpers::seeded(1)]);
     assert!(row.asynchronous);
     assert!(load
         .block_reasons
@@ -378,9 +389,16 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
 
     // Taking the template's tag off this one occurrence is a difference, not a template edit.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    write::set_tag(&mut db, "task", &stretch, 1, false, at(NOW))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "task",
+        &stretch,
+        helpers::seeded(1),
+        false,
+        at(NOW),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
     let load = board(&pool).await;
     assert!(load
@@ -392,13 +410,14 @@ async fn a_template_items_fields_reach_every_occurrence_until_one_says_otherwise
         .is_empty());
 
     // A copy of the Habit is a Habit with the same template fields.
-    let copy = flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), 1, 9)
-        .await
-        .unwrap();
+    let copy =
+        flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), helpers::seeded(1), 9)
+            .await
+            .unwrap();
     let items = flow_commands::list_flow_tasks(app.state(), copy.id)
         .await
         .unwrap();
-    assert_eq!(items[0].template.tag_ids, vec![1]);
+    assert_eq!(items[0].template.tag_ids, vec![helpers::seeded(1)]);
 }
 
 #[tokio::test]
@@ -483,14 +502,14 @@ async fn a_cycle_edit_that_would_orphan_a_recorded_edit_asks_first() {
 }
 
 /// A plain (non-recurring) flow whose one task item carries a tag and a block reason of its own.
-async fn plain_flow_with_template(app: &App) -> (i64, i64) {
+async fn plain_flow_with_template(app: &App) -> (RowId, RowId) {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Release".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             ..Default::default()
         },
     )
@@ -499,6 +518,7 @@ async fn plain_flow_with_template(app: &App) -> (i64, i64) {
     let item = flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Tag the build".into(),
             parent_type: "flow".into(),
@@ -513,7 +533,7 @@ async fn plain_flow_with_template(app: &App) -> (i64, i64) {
         item,
         UpdateFlowItemRequest {
             template: TemplateUpdate {
-                tag_ids: Some(vec![1]),
+                tag_ids: Some(vec![helpers::seeded(1)]),
                 block_reasons: Some(vec!["waits on CI".into()]),
                 ..Default::default()
             },
@@ -536,7 +556,7 @@ async fn starting_a_flow_gives_its_copies_the_template_fields() {
         arlesh_lib::flows::model::StartFlowRequest {
             title: "Ship it".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: helpers::seeded(1),
             anchor_date: day(),
         },
     )
@@ -548,7 +568,7 @@ async fn starting_a_flow_gives_its_copies_the_template_fields() {
         .iter()
         .find(|task| task.title == "Tag the build")
         .expect("the item was started as a Task");
-    assert_eq!(copy.tag_ids, vec![1]);
+    assert_eq!(copy.tag_ids, vec![helpers::seeded(1)]);
     assert!(load
         .block_reasons
         .iter()
@@ -574,8 +594,10 @@ async fn a_copied_flow_item_keeps_its_template_fields_and_a_deleted_one_leaves_n
         .await
         .unwrap();
     assert_eq!(items.len(), 2);
-    assert!(items.iter().all(|item| item.template.tag_ids == vec![1]
-        && item.template.block_reasons == vec!["waits on CI".to_string()]));
+    assert!(items
+        .iter()
+        .all(|item| item.template.tag_ids == vec![helpers::seeded(1)]
+            && item.template.block_reasons == vec!["waits on CI".to_string()]));
 
     for item in &items {
         flow_commands::delete_flow_item(app.state(), FlowItemType::FlowTask, item.id)
@@ -605,7 +627,7 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
             asynchronous: Some(true),
             async_template: Some(Some(arlesh_lib::tasks::model::AsyncTemplate {
                 title: "Coach replies".into(),
-                tag_ids: vec![1],
+                tag_ids: vec![helpers::seeded(1)],
                 time_scope: None,
                 check_every: Some(arlesh_lib::tasks::model::DurationSpec {
                     n: 1,
@@ -651,7 +673,7 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
         .expect("the done occurrence spawned its wait")
         .clone();
     assert_eq!(wait.title, "Coach replies");
-    assert_eq!(wait.tag_ids, vec![1]);
+    assert_eq!(wait.tag_ids, vec![helpers::seeded(1)]);
     let check = load
         .tasks
         .iter()
@@ -714,9 +736,16 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
     )
     .await
     .unwrap();
-    write::set_tag(&mut db, "expectation", &wait.id, 1, false, at(later))
-        .await
-        .unwrap();
+    write::set_tag(
+        &mut db,
+        "expectation",
+        &wait.id,
+        helpers::seeded(1),
+        false,
+        at(later),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
     assert_eq!(retitled.title, "Coach finally replies");
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -739,8 +768,8 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
         .expect("the occurrence is on the board");
     let template = occurrence.async_template.as_ref().expect("its template");
     assert_eq!(template.title, "Coach replies");
-    assert_eq!(template.tag_ids, vec![1]);
-    let overlaid: Option<i64> = sqlx::query_scalar(
+    assert_eq!(template.tag_ids, vec![helpers::seeded(1)]);
+    let overlaid: Option<RowId> = sqlx::query_scalar(
         "SELECT flow_id FROM expectation_overlays WHERE occurrence_key IS NOT NULL",
     )
     .fetch_optional(&pool)

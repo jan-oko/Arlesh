@@ -1,3 +1,5 @@
+use crate::nodes::id::tid;
+use crate::nodes::key::no_cycle;
 use chrono::NaiveDate;
 
 use super::*;
@@ -22,14 +24,14 @@ fn slot(index: i64, day: u32) -> SlotWindow {
 fn root(flow_id: i64) -> TemplateItem {
     TemplateItem {
         item_type: TemplateKind::FlowRoot,
-        item_id: flow_id,
+        item_id: tid(flow_id),
     }
 }
 
 fn item(item_id: i64) -> TemplateItem {
     TemplateItem {
         item_type: TemplateKind::FlowTask,
-        item_id,
+        item_id: tid(item_id),
     }
 }
 
@@ -45,14 +47,14 @@ fn key_on(template: TemplateItem, day: u32, cycle: i64) -> String {
     OccurrenceKey {
         item: template,
         iteration: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, day).unwrap()),
-        cycle,
+        cycle: if cycle == 0 { no_cycle() } else { tid(cycle) },
     }
     .node_key()
 }
 
 #[test]
 fn an_iteration_resolves_only_when_every_instance_is_done() {
-    let keys = vec![(root(1), NO_CYCLE), (item(5), 7), (item(5), 8)];
+    let keys = vec![(root(1), no_cycle()), (item(5), tid(7)), (item(5), tid(8))];
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(root(1), 20, 0), done_task(10));
     overlays.tasks.insert(key_on(item(5), 20, 7), done_task(30));
@@ -78,7 +80,7 @@ fn an_iteration_resolves_only_when_every_instance_is_done() {
 
 #[test]
 fn a_missed_or_in_progress_instance_does_not_count_as_done() {
-    let keys = vec![(root(1), NO_CYCLE)];
+    let keys = vec![(root(1), no_cycle())];
     let mut overlays = HabitOverlays::default();
     let mut missed = done_task(1);
     missed.tombstone = Some("missed".into());
@@ -109,15 +111,15 @@ fn archived() -> TaskOverlay {
 /// Stretch (5) with a morning (7) and an evening (8) pair; Cool down (6) nested under Stretch.
 fn nested() -> (Vec<InstanceKey>, HashMap<InstanceKey, InstanceKey>) {
     let keys = vec![
-        (root(1), NO_CYCLE),
-        (item(5), 7),
-        (item(5), 8),
-        (item(6), NO_CYCLE),
+        (root(1), no_cycle()),
+        (item(5), tid(7)),
+        (item(5), tid(8)),
+        (item(6), no_cycle()),
     ];
     let parents = HashMap::from([
-        ((item(5), 7), (root(1), NO_CYCLE)),
-        ((item(5), 8), (root(1), NO_CYCLE)),
-        ((item(6), NO_CYCLE), (item(5), 7)),
+        ((item(5), tid(7)), (root(1), no_cycle())),
+        ((item(5), tid(8)), (root(1), no_cycle())),
+        ((item(6), no_cycle()), (item(5), tid(7))),
     ]);
     (keys, parents)
 }
@@ -131,7 +133,7 @@ fn nothing_archived_sets_nothing_aside() {
 #[test]
 fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() {
     let (keys, parents) = nested();
-    let aside = set_aside(&keys, &HashSet::from([(root(1), NO_CYCLE)]), &parents);
+    let aside = set_aside(&keys, &HashSet::from([(root(1), no_cycle())]), &parents);
     assert_eq!(aside.len(), 4);
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(root(1), 20, 0), archived());
@@ -151,8 +153,11 @@ fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() 
 #[test]
 fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
     let (keys, parents) = nested();
-    let aside = set_aside(&keys, &HashSet::from([(item(5), 7)]), &parents);
-    assert_eq!(aside, HashSet::from([(item(5), 7), (item(6), NO_CYCLE)]));
+    let aside = set_aside(&keys, &HashSet::from([(item(5), tid(7))]), &parents);
+    assert_eq!(
+        aside,
+        HashSet::from([(item(5), tid(7)), (item(6), no_cycle())])
+    );
     // The evening occurrence and the root still have to be done.
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(item(5), 20, 7), archived());
@@ -179,7 +184,7 @@ fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
 
 #[test]
 fn an_achieved_goal_counts_and_a_missing_instant_falls_back_to_the_window_end() {
-    let keys = vec![(root(1), NO_CYCLE)];
+    let keys = vec![(root(1), no_cycle())];
     let mut overlays = HabitOverlays::default();
     overlays.goals.insert(
         key_on(root(1), 20, 0),
@@ -199,7 +204,7 @@ fn an_achieved_goal_counts_and_a_missing_instant_falls_back_to_the_window_end() 
 
 #[test]
 fn a_lapsed_occurrence_archives_as_completed_or_missed() {
-    let id = NodeId::Stored(1);
+    let id = NodeId::Stored(tid(1));
     let done = work_lifecycle(
         "task",
         id.clone(),
@@ -231,7 +236,7 @@ fn a_lapsed_occurrence_archives_as_completed_or_missed() {
 
 #[test]
 fn an_open_or_unopened_occurrence_has_no_resolution() {
-    let id = NodeId::Stored(1);
+    let id = NodeId::Stored(tid(1));
     let pending = work_lifecycle(
         "goal",
         id.clone(),
@@ -276,7 +281,7 @@ fn an_open_or_unopened_occurrence_has_no_resolution() {
 fn an_expired_iteration_archives_its_steps_without_a_resolution() {
     let expired = work_lifecycle(
         "task",
-        NodeId::Stored(1),
+        NodeId::Stored(tid(1)),
         InstanceTiming::Active,
         false,
         true,
@@ -299,7 +304,7 @@ fn day_after(clock: Clock, done: bool, closes_when_done: bool) -> ItemLifecycle 
     );
     work_lifecycle(
         "task",
-        NodeId::Stored(1),
+        NodeId::Stored(tid(1)),
         settled_timing(timing, done, closes_when_done),
         done,
         false,
@@ -413,11 +418,11 @@ fn an_unfinished_occurrence_past_its_due_is_overdue_until_it_is_done_or_archived
 
 fn flow(instance_type: &str) -> Flow {
     Flow {
-        id: 1,
+        id: tid(1),
         title: "Habit".into(),
         instance_type: instance_type.into(),
         parent_type: "project".into(),
-        parent_id: 2,
+        parent_id: tid(2),
         target_type: None,
         target_id: None,
         flow_duration_n: Some(1),
@@ -463,11 +468,11 @@ fn an_occurrence_is_its_template_items_kind_and_a_root_its_instance_type() {
 
 fn flow_task(id: i64, parent_type: &str, parent_id: i64) -> FlowTask {
     FlowTask {
-        id,
-        flow_id: 1,
+        id: tid(id),
+        flow_id: tid(1),
         title: format!("step {id}"),
         parent_type: parent_type.into(),
-        parent_id,
+        parent_id: tid(parent_id),
         position: id,
         is_private: false,
         template: TemplateFields::default(),
@@ -476,10 +481,10 @@ fn flow_task(id: i64, parent_type: &str, parent_id: i64) -> FlowTask {
 
 fn pair(id: i64, item_id: i64, position: i64) -> FlowItemCycle {
     FlowItemCycle {
-        id,
-        flow_id: 1,
+        id: tid(id),
+        flow_id: tid(1),
         item_type: "flow_task".into(),
-        item_id,
+        item_id: tid(item_id),
         scope_kind: Some("part_of_day".into()),
         scope_index: Some(position + 1),
         plan_kind: None,
@@ -504,7 +509,7 @@ fn children_nest_under_their_parents_first_occurrence() {
         .map(|task| (task.id, task))
         .collect(),
         cycles: [(
-            ("flow_task".to_string(), 1),
+            ("flow_task".to_string(), tid(1)),
             vec![pair(11, 1, 0), pair(12, 1, 1)],
         )]
         .into_iter()
@@ -518,17 +523,26 @@ fn children_nest_under_their_parents_first_occurrence() {
         "an unknown parent falls back to the root"
     );
     assert_eq!(template.parent_of(root(1)), None);
-    assert_eq!(template.first_cycle(TemplateKind::FlowTask, 1), 11);
-    assert_eq!(template.first_cycle(TemplateKind::FlowTask, 2), NO_CYCLE);
+    assert_eq!(
+        template.first_cycle(TemplateKind::FlowTask, tid(1)),
+        tid(11)
+    );
+    assert_eq!(
+        template.first_cycle(TemplateKind::FlowTask, tid(2)),
+        no_cycle()
+    );
 }
 
 #[test]
 fn an_occurrences_tags_are_its_templates_with_its_own_differences() {
-    assert_eq!(effective_tags(&[3, 1], None), vec![1, 3]);
-    let differences = vec![(3, false), (7, true), (1, true)];
     assert_eq!(
-        effective_tags(&[3, 1], Some(&differences)),
-        vec![1, 7],
+        effective_tags(&[tid(3), tid(1)], None),
+        vec![tid(1), tid(3)]
+    );
+    let differences = vec![(tid(3), false), (tid(7), true), (tid(1), true)];
+    assert_eq!(
+        effective_tags(&[tid(3), tid(1)], Some(&differences)),
+        vec![tid(1), tid(7)],
         "a removed template tag goes, an added one comes, and a repeat is not doubled"
     );
 }
@@ -536,7 +550,7 @@ fn an_occurrences_tags_are_its_templates_with_its_own_differences() {
 #[test]
 fn block_reasons_travel_in_order_under_their_owner() {
     let mut out = Vec::new();
-    let id = NodeId::Stored(9);
+    let id = NodeId::Stored(tid(9));
     push_reasons(&mut out, "task", &id, vec!["a".into(), "b".into()]);
     assert_eq!(out.len(), 2);
     assert_eq!(out[1].position, 1);
@@ -546,7 +560,7 @@ fn block_reasons_travel_in_order_under_their_owner() {
 
 #[test]
 fn a_compound_occurrence_counts_by_its_derived_status() {
-    let keys = vec![(root(1), NO_CYCLE), (item(5), NO_CYCLE)];
+    let keys = vec![(root(1), no_cycle()), (item(5), no_cycle())];
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(root(1), 20, 0), done_task(10));
     let compound = HashSet::from([item(5)]);

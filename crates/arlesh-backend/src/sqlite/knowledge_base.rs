@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `knowledge_base` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     knowledge_base::model::{
@@ -25,7 +26,7 @@ impl KnowledgeBasePort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn get_person(&self, id: i64) -> Result<Person, WireError> {
+    async fn get_person(&self, id: RowId) -> Result<Person, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -48,7 +49,7 @@ impl KnowledgeBasePort for SqliteBackend {
 
     async fn update_person(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdatePersonRequest,
     ) -> Result<Person, WireError> {
         let mut db = self
@@ -62,7 +63,7 @@ impl KnowledgeBasePort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn delete_person(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_person(&self, id: RowId) -> Result<(), WireError> {
         let mut db = self
             .factory
             .connect()

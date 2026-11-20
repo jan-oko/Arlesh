@@ -17,8 +17,11 @@ from arlesh.server.ports.push.push_store import PushEvent
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 Start = Callable[..., Any]
 
 PHONE_TOKEN = "fcm-token-of-the-phone"
@@ -72,12 +75,14 @@ def set_capacity(client: TestClient, database: Any, at_capacity: bool) -> None:
     """Puts an agent holding the root Aspect at capacity, or back in room: the account's lock."""
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT OR IGNORE INTO mcp_roots (node_kind, node_id) VALUES ('domain', 1)"
+            "INSERT OR IGNORE INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)",
+            (ROOT_ASPECT,),
         )
         connection.execute(
             "INSERT OR IGNORE INTO agents (name, account, session_uuid, token_sha256, claim_kind, "
             "claim_id, claimed_at, created_at) VALUES ('agent', 'work', 's', 'digest', "
-            "'domain', 1, '2026-11-04T09:00:00', '2026-11-04T09:00:00')"
+            "'domain', ?, '2026-11-04T09:00:00', '2026-11-04T09:00:00')",
+            (ROOT_ASPECT,),
         )
     locked = client.put("/agent-accounts/lock", json={"label": "work", "locked": at_capacity})
     assert locked.status_code == 204, locked.text
@@ -93,14 +98,16 @@ def register(client: TestClient, phone: dict[str, str], token: str = PHONE_TOKEN
     return client.put("/devices/current/push", json={"fcm_token": token}, headers=phone)
 
 
-def domain_of(client: TestClient) -> int:
+def domain_of(client: TestClient) -> str:
     """A Domain under the root Aspect."""
-    created = client.post("/domains", json={"title": "Home", "subtype": "domain", "parent_id": 1})
+    created = client.post(
+        "/domains", json={"title": "Home", "subtype": "domain", "parent_id": ROOT_ASPECT}
+    )
     assert created.status_code == 201, created.text
-    return int(created.json()["id"])
+    return str(created.json()["id"])
 
 
-def ask(client: TestClient, parent: int, title: str = "Which one?") -> int:
+def ask(client: TestClient, parent: str, title: str = "Which one?") -> str:
     """An agent's Task under ``parent``, with a question open on it."""
     task = client.post(
         "/tasks",
@@ -124,7 +131,7 @@ def ask(client: TestClient, parent: int, title: str = "Which one?") -> int:
         },
     )
     assert wait.status_code == 201, wait.text
-    return int(task.json()["id"])
+    return str(task.json()["id"])
 
 
 def test_the_server_says_whether_it_can_push(server: TestClient) -> None:
@@ -170,7 +177,7 @@ def test_without_credentials_the_server_takes_registrations_and_sends_nothing(
 
 
 def test_each_of_the_five_events_is_one_notification_on_its_own_channel(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int, server_db: Any
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str, server_db: Any
 ) -> None:
     register(server, phone)
 
@@ -235,7 +242,7 @@ def test_an_agent_at_capacity_is_told_when_it_starts_and_when_it_ends(
 
 
 def test_a_generated_task_is_told_when_a_check_falls_due(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     register(server, phone)
     task = server.post(
@@ -259,7 +266,7 @@ def test_a_generated_task_is_told_when_a_check_falls_due(
 
 
 def test_what_was_sent_is_not_sent_again(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     register(server, phone)
     ask(server, domain)
@@ -292,7 +299,7 @@ def test_a_restart_does_not_send_again(
 
 
 def test_a_device_that_registers_hears_nothing_of_what_was_already_so(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     ask(server, domain)
 

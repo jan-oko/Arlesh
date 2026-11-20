@@ -5,6 +5,7 @@
 //! This is a gather and nothing else. The derivations that read it — a Habit's compound readings
 //! today, the board load as it moves over — are pure functions of what it holds (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -36,7 +37,7 @@ pub struct StoredBoard {
     /// Every stored node hung on a Habit occurrence.
     pub children: Vec<HabitInstanceChild>,
     /// Every added child's attachment, as `(child_type, child_id, attachment)`.
-    pub attachments: Vec<(String, i64, ChildAttachment)>,
+    pub attachments: Vec<(String, RowId, ChildAttachment)>,
     /// Every stored scoped row's ancestry link, and every added child's occurrence.
     pub ancestry: AncestryIndex,
     /// What every wait is drawn from.

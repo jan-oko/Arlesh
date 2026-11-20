@@ -9,6 +9,7 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { MindmapNode } from "@/utils/tree-layout";
 import { TASK_AGENTIC } from "@/api/tasks";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 // Nothing under `@/api` is mocked here, on purpose. The question these tests answer is what the
 // editor actually puts *on the wire* when a field is emptied: `Option<Option<T>>` on the Rust side
@@ -49,11 +50,11 @@ afterEach(() => {
 const scope = { start_id: testKey(1), end_id: testKey(1) };
 
 const taskNode: MindmapNode = {
-  id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],
+  id: "task-5", rowId: storedRowId(5), kind: "task", title: "Task", tagIds: [], position: 0, children: [],
   timeScope: scope, onScopeExit: "keep", status: "todo", blockReasons: [],
 };
 const commitmentNode: MindmapNode = {
-  id: "commitment-7", rowId: 7, kind: "commitment", title: "Asleep by 23:00", tagIds: [], position: 0,
+  id: "commitment-7", rowId: storedRowId(7), kind: "commitment", title: "Asleep by 23:00", tagIds: [], position: 0,
   children: [], timeScope: scope, verdictWindow: { n: 2, kind: "day" },
 };
 const root: MindmapNode = {

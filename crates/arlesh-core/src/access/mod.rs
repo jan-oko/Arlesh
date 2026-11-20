@@ -14,6 +14,7 @@ pub mod error;
 pub mod model;
 pub mod resolve;
 
+use crate::nodes::id::RowId;
 use error::AccessError;
 use model::{CatalogueNode, KnowledgeBaseReference, NodeKey, NodeTable};
 use resolve::AccessMap;
@@ -26,17 +27,17 @@ use crate::nodes::key::OccurrenceKey;
 #[derive(sqlx::FromRow)]
 struct RootRow {
     node_kind: String,
-    node_id: i64,
+    node_id: RowId,
 }
 
 #[derive(sqlx::FromRow)]
 struct CatalogueRow {
     node_kind: String,
-    node_id: i64,
+    node_id: RowId,
     subtype: Option<String>,
     title: String,
     parent_type: Option<String>,
-    parent_id: Option<i64>,
+    parent_id: Option<RowId>,
     is_private: bool,
     agentic: Option<bool>,
 }
@@ -70,9 +71,9 @@ impl TryFrom<CatalogueRow> for CatalogueNode {
 #[derive(sqlx::FromRow)]
 struct ReferenceRow {
     owner_kind: String,
-    owner_id: i64,
+    owner_id: RowId,
     entity_type: String,
-    entity_id: i64,
+    entity_id: RowId,
 }
 
 /// Every stored node with where it hangs, in one pass over the nine node tables.
@@ -229,7 +230,7 @@ impl<'session> AccessOperator<'session> {
     /// Every stored row hung on a Habit occurrence, with the occurrence's canonical key.
     #[tracing::instrument(skip(self))]
     pub async fn hung_on_occurrences(&mut self) -> Result<Vec<(NodeKey, String)>, AccessError> {
-        let rows: Vec<(String, i64, String)> =
+        let rows: Vec<(String, RowId, String)> =
             sqlx::query_as("SELECT child_type, child_id, parent_key FROM derived_children")
                 .fetch_all(&mut *self.connection)
                 .await?;
@@ -246,9 +247,9 @@ impl<'session> AccessOperator<'session> {
     pub async fn flow_of_instance_node(
         &mut self,
         node_type: &str,
-        node_id: i64,
-    ) -> Result<Option<i64>, AccessError> {
-        let flow: Option<i64> = sqlx::query_scalar(
+        node_id: RowId,
+    ) -> Result<Option<RowId>, AccessError> {
+        let flow: Option<RowId> = sqlx::query_scalar(
             "SELECT i.flow_id FROM flow_instance_nodes n \
              JOIN flow_instances i ON i.id = n.flow_instance_id \
              WHERE n.node_type = ? AND n.node_id = ? LIMIT 1",

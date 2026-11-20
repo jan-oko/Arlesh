@@ -24,7 +24,7 @@ export interface ExpectationSaveData {
   /** When the first check falls due, `YYYY-MM-DD`; `null` leaves it to start now. */
   checkStartingDate: string | null;
   timeScope: TimeScope | null;
-  tagIds: number[];
+  tagIds: string[];
   archived: boolean;
   isPrivate: boolean;
 }
@@ -45,7 +45,7 @@ interface Props {
   /** The tags to pick from. Omitted — as on the paths that create a wait for a Task — the tag
    * picker is not drawn, and the wait starts with none. */
   allTags?: Domain[];
-  domainNames?: Map<number, string>;
+  domainNames?: Map<string, string>;
 }
 
 /**
@@ -70,7 +70,7 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, re
     draft ? draft.checkStartingDate : node.checkStarting?.slice(0, 10) ?? null,
   );
   const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
-  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [tagIds, setTagIds] = useState<string[]>(draft?.tagIds ?? node.tagIds);
   const [archived, setArchived] = useState(draft?.archived ?? node.archived === true);
   const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);

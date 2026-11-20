@@ -7,9 +7,10 @@ import {
 import type { ListFilterState, ListRowKind } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
+  return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: storedRowId(1), ...over };
 }
 
 const root = n("root", "domain", {

@@ -1,3 +1,4 @@
+import { NO_CYCLE } from "@/api/flows";
 import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -18,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { testKey } from "@/test/scope-key";
 import { occurrenceRow } from "@/test/occurrence";
+import { storedRowId } from "@/test/stored-id";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,20 +32,20 @@ beforeEach(() => {
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "task-5",
-    rowId: 5,
+    rowId: storedRowId(5),
     kind: "task",
     title: "Write tests",
     status: "todo",
     blockReasons: [],
     position: 0,
-    tagIds: [2],
+    tagIds: [storedRowId(2)],
     children: [],
     ...overrides,
   };
 }
 
 function mkTag(id: number, title: string): Domain {
-  return { id, title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
+  return { id: storedRowId(id), title, description: null, subtype: "tag", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false };
 }
 
 const TAG_A = mkTag(1, "backend");
@@ -52,18 +54,18 @@ const TAG_B = mkTag(2, "urgent");
 const defaultProps = {
   node: mkNode(),
   allTags: [TAG_A, TAG_B],
-  domainNames: new Map<number, string>(),
+  domainNames: new Map<string, string>(),
   availableForDep: [] as MindmapNode[],
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
 
 describe("TaskEditorModal — virtual blockers from dependencies", () => {
-  const GOAL_DEP: MindmapNode = { id: "goal-9", rowId: 9, kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
+  const GOAL_DEP: MindmapNode = { id: `goal-${storedRowId(9)}`, rowId: storedRowId(9), kind: "goal", title: "Milestone", status: "active", position: 0, tagIds: [], children: [] };
 
   function withDep() {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: 9 }]);
+      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: storedRowId(9) }]);
       return Promise.resolve(null);
     });
     return render(<TaskEditorModal {...defaultProps} availableForDep={[GOAL_DEP]} />);
@@ -71,7 +73,7 @@ describe("TaskEditorModal — virtual blockers from dependencies", () => {
 
   it("names the dependency by its short id", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
-      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: 9 }]);
+      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: storedRowId(9) }]);
       return Promise.resolve(null);
     });
     render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, shortId: "6f3" }]} />);
@@ -80,19 +82,19 @@ describe("TaskEditorModal — virtual blockers from dependencies", () => {
 
   it("shows an unmet dependency as a virtual block reason", async () => {
     withDep();
-    await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(`Blocked by goal ${storedRowId(9)} (Milestone)`)).toBeInTheDocument());
   });
 
   it("drops the virtual block reason when its dependency is removed", async () => {
     withDep();
-    await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(`Blocked by goal ${storedRowId(9)} (Milestone)`)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "removeDependency" }));
-    expect(screen.queryByText("Blocked by goal 9 (Milestone)")).not.toBeInTheDocument();
+    expect(screen.queryByText(`Blocked by goal ${storedRowId(9)} (Milestone)`)).not.toBeInTheDocument();
   });
 
   it("does not show a virtual blocker for a dependency the board says is met", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "list_task_dependencies" ? [{ type: "goal", id: 9 }] : null),
+      Promise.resolve(cmd === "list_task_dependencies" ? [{ type: "goal", id: storedRowId(9) }] : null),
     );
     render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, status: "achieved", met: true }]} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
@@ -119,7 +121,7 @@ describe("TaskEditorModal — initial state", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ tagIds: expect.arrayContaining([1, 2]) }),
+        expect.objectContaining({ tagIds: expect.arrayContaining([storedRowId(1), storedRowId(2)]) }),
       ),
     );
   });
@@ -132,7 +134,7 @@ describe("TaskEditorModal — save", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Write tests", tagIds: [2], addedDeps: [], removedDeps: [] }),
+        expect.objectContaining({ title: "Write tests", tagIds: [storedRowId(2)], addedDeps: [], removedDeps: [] }),
       ),
     );
   });
@@ -200,7 +202,7 @@ describe("TaskEditorModal — scope clamp guard", () => {
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(onCheckScopeClamp).toHaveBeenCalledWith("task", 5, { start_id: testKey(1), end_id: testKey(1) }));
+    await waitFor(() => expect(onCheckScopeClamp).toHaveBeenCalledWith("task", storedRowId(5), { start_id: testKey(1), end_id: testKey(1) }));
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -590,12 +592,12 @@ describe("TaskEditorModal — the Agentic status model", () => {
 
   it("shows Review read-only while the agent's question is open, with the question to answer", async () => {
     const question: MindmapNode = {
-      id: "expectation-9", rowId: 9, kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
+      id: "expectation-9", rowId: storedRowId(9), kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
       agentWaiting: { note: "CI is green.", question: true, answer: null },
     };
     const onAnswer = vi.fn().mockResolvedValue(true);
     // The board names the open question (the load's `open_question` fact); the editor draws it.
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [9] })} onAnswer={onAnswer} />);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [storedRowId(9)] })} onAnswer={onAnswer} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
@@ -838,7 +840,7 @@ describe("TaskEditorModal — the Due field", () => {
       rowId: "0b3f0f9e-7a52-5a4e-9d3c-1c2b3a4d5e6f",
       timeScope: JULY_WEEK,
       origin: {
-        kind: "habit", habit_id: 3, item_type: "flow_task", item_id: 4, cycle_id: 0,
+        kind: "habit", habit_id: storedRowId(3), item_type: "flow_task", item_id: storedRowId(4), cycle_id: NO_CYCLE,
         iteration_scope: {
           index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
           scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
@@ -963,7 +965,7 @@ describe("TaskEditorModal — reopened after a refused Save", () => {
   it("holds what the user typed, saves it again, and shows the reason on its error line", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const draft = {
-      title: "Typed title", status: { kind: "ordinary", status: "in_progress" }, blockReasons: [], tagIds: [1],
+      title: "Typed title", status: { kind: "ordinary", status: "in_progress" }, blockReasons: [], tagIds: [storedRowId(1)],
       addedDeps: [], removedDeps: [], timeScope: null, onScopeExit: null, plan: null, archival: "live",
       agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
     } satisfies import("./TaskEditorModal").TaskSaveData;
@@ -974,7 +976,7 @@ describe("TaskEditorModal — reopened after a refused Save", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Typed title", tagIds: [1], status: { kind: "ordinary", status: "in_progress" },
+      title: "Typed title", tagIds: [storedRowId(1)], status: { kind: "ordinary", status: "in_progress" },
     })));
   });
 });

@@ -1,5 +1,6 @@
 //! Knowledge-base tools — the resources the snapshot does not carry.
 
+use crate::nodes::id::RowId;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, ErrorData},
@@ -35,7 +36,7 @@ impl ArleshMcp {
         let map = attempt!(self.caller_map(&mut db).await);
         let references = attempt!(db.access().knowledge_base_references().await);
         let visible = access::visible_knowledge_base(&references, &map);
-        let sees = |entity: &str, id: i64| visible.contains(&(entity.to_string(), id));
+        let sees = |entity: &str, id: RowId| visible.contains(&(entity.to_string(), id));
 
         match operation {
             KbOperation::ListPeople => match db.people().list().await {

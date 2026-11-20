@@ -60,31 +60,31 @@ class FlowItemsRouter(BoardRouter):
         """Creates a wait item in a Flow."""
         return await (await self._writer()).create_flow_wait(request)
 
-    async def _update_goal(self, id: int, request: UpdateFlowItemRequest) -> FlowGoal:
+    async def _update_goal(self, id: str, request: UpdateFlowItemRequest) -> FlowGoal:
         """Updates a Flow's Goal item."""
         return await (await self._writer()).update_flow_goal(id, request)
 
-    async def _update_task(self, id: int, request: UpdateFlowItemRequest) -> FlowTask:
+    async def _update_task(self, id: str, request: UpdateFlowItemRequest) -> FlowTask:
         """Updates a Flow's Task item."""
         return await (await self._writer()).update_flow_task(id, request)
 
-    async def _update_commitment(self, id: int, request: UpdateFlowItemRequest) -> FlowCommitment:
+    async def _update_commitment(self, id: str, request: UpdateFlowItemRequest) -> FlowCommitment:
         """Updates a Flow's Commitment item."""
         return await (await self._writer()).update_flow_commitment(id, request)
 
-    async def _update_wait(self, id: int, request: UpdateFlowItemRequest) -> FlowExpectation:
+    async def _update_wait(self, id: str, request: UpdateFlowItemRequest) -> FlowExpectation:
         """Updates a Flow's wait item."""
         return await (await self._writer()).update_flow_wait(id, request)
 
-    async def _delete(self, item_type: FlowItemType, id: int) -> None:
+    async def _delete(self, item_type: FlowItemType, id: str) -> None:
         """Deletes a Flow item."""
         await (await self._writer()).delete_flow_item(item_type, id)
 
     async def _set_cycles(
         self,
         item_type: FlowItemType,
-        id: int,
-        flow_id: int,
+        id: str,
+        flow_id: str,
         cycles: list[FlowCycleInput],
         reconcile: Reconcile | None = None,
         now: datetime | None = None,
@@ -98,9 +98,9 @@ class FlowItemsRouter(BoardRouter):
     async def _remove_dependency(
         self,
         item_type: FlowItemType,
-        id: int,
+        id: str,
         depends_on_type: FlowItemType,
-        depends_on_id: int,
+        depends_on_id: str,
     ) -> None:
         """Removes a dependency between Flow items."""
         await (await self._writer()).remove_flow_dependency(
@@ -108,8 +108,8 @@ class FlowItemsRouter(BoardRouter):
         )
 
     async def _duplicate(
-        self, item_type: FlowItemType, id: int, parent_type: str, parent_id: int, position: int
-    ) -> int:
+        self, item_type: FlowItemType, id: str, parent_type: str, parent_id: str, position: int
+    ) -> str:
         """Copies a Flow item under a new parent in its Flow, and answers the copy's id."""
         return await (await self._writer()).duplicate_flow_item(
             item_type, id, parent_type, parent_id, position

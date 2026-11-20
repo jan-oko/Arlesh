@@ -19,7 +19,7 @@ import uvicorn
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
-ROOT_ASPECT = 1
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 Start = Callable[..., ArleshServer]
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
@@ -70,7 +70,7 @@ class Agent:
         self._headers["Mcp-Session-Id"] = initialised.headers["mcp-session-id"]
         self._post({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
-    def attach(self, pin: str, domain: int) -> None:
+    def attach(self, pin: str, domain: str) -> None:
         """Attaches the session as an agent claiming ``domain``, keeping its agent token."""
         attached = self.call(
             "arlesh_agents",
@@ -189,9 +189,11 @@ def test_a_released_wait_is_a_typed_change_with_ids(live: str, agent_board: dict
     assert created["changes"][0]["wait_id"] == asked["full_id"]
     assert change["change"] == "released"
     assert change["wait_id"] == asked["full_id"]
-    assert change["short_id"] == asked["short_id"]
+    # A short id is the shortest prefix unique at the moment it is read, and ids minted in the same
+    # millisecond share a long prefix, so two reads can differ in length: compare as prefixes.
+    assert asked["full_id"].replace("-", "").startswith(change["short_id"])
     assert change["task_id"] == task["full_id"]
-    assert change["task_short_id"] == task["short_id"]
+    assert task["full_id"].replace("-", "").startswith(change["task_short_id"])
     assert (change["status"], change["archived"], change["deleted"]) == ("released", False, False)
     assert change["revision"] > 0 and change["epoch"]
 

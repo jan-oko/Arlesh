@@ -23,10 +23,10 @@ class McpAccessRouter(BoardRouter):
         """The roots, every stored node that could be one, and which may be added now."""
         return await self._reader.mcp_access_catalogue()
 
-    async def _add_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def _add_root(self, node_kind: NodeTable, node_id: str) -> None:
         """Makes a stored node an MCP root."""
         await (await self._writer()).add_mcp_root(node_kind, node_id)
 
-    async def _remove_root(self, node_kind: NodeTable, node_id: int) -> None:
+    async def _remove_root(self, node_kind: NodeTable, node_id: str) -> None:
         """Stops a node being an MCP root."""
         await (await self._writer()).remove_mcp_root(node_kind, node_id)

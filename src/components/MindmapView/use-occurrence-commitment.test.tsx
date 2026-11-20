@@ -1,3 +1,4 @@
+import { NO_CYCLE } from "@/api/flows";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useCallback, useState } from "react";
 import { render, screen, fireEvent, waitFor, renderHook, act } from "@testing-library/react";
@@ -10,6 +11,7 @@ import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { testKey } from "@/test/scope-key";
 import { currentBoard } from "@/test/current-board";
+import { storedRowId } from "@/test/stored-id";
 
 // Nothing under `@/api` is mocked here, on purpose. The question is what Shift+C on a Habit
 // occurrence actually puts *on the wire*: the occurrence is a row with a UUID id (ADR 0008), and
@@ -41,7 +43,7 @@ declare global {
   }
 }
 
-const FLOW_ID = 3;
+const FLOW_ID = storedRowId(3);
 /** The occurrence's row id: a derived row's UUID. */
 const OCCURRENCE_ROW = "6f1c2d4e-0000-5000-8000-000000000003";
 /** The node id the board builds for it, as for any Task row. */
@@ -54,20 +56,20 @@ const WINDOW = { start_id: testKey(7), end_id: testKey(9) };
 function envelope(): MindmapLoad {
   return {
     domains: [{
-      id: 1, title: "Work", description: null, subtype: "aspect", parent_id: null, color: null,
+      id: storedRowId(1), title: "Work", description: null, subtype: "aspect", parent_id: null, color: null,
       status: null, knowledge_base_directory: null, position: 0, is_private: false,
     }],
     goals: [{
-      id: 1, title: "Sleep well", parent_type: "domain", parent_id: 1, status: "active",
+      id: storedRowId(1), title: "Sleep well", parent_type: "domain", parent_id: storedRowId(1), status: "active",
       time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     }],
     tasks: [{
-      id: OCCURRENCE_ROW, title: "Evening routine", parent_type: "goal", parent_id: 1,
+      id: OCCURRENCE_ROW, title: "Evening routine", parent_type: "goal", parent_id: storedRowId(1),
       status: { kind: "ordinary", status: "todo" }, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
       is_private: false, delegate_to: null, agentic: null, asynchronous: false,
       archival: "live",
       origin: {
-        kind: "habit", habit_id: FLOW_ID, item_type: "flow_root", item_id: FLOW_ID, cycle_id: 0,
+        kind: "habit", habit_id: FLOW_ID, item_type: "flow_root", item_id: FLOW_ID, cycle_id: NO_CYCLE,
         iteration_scope: {
           index: 0, start_date: "2026-01-05", window_end: "2099-01-01T00:00:00",
           scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
@@ -77,7 +79,7 @@ function envelope(): MindmapLoad {
     commitments: [], expectations: [], infos: [],
     flows: [{
       id: FLOW_ID, title: "Evening routine", instance_type: "task",
-      parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,
+      parent_type: "domain", parent_id: storedRowId(1), target_type: "goal", target_id: storedRowId(1),
       flow_duration_n: 1, flow_duration_kind: "day",
       flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
       is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
@@ -212,7 +214,7 @@ describe("a Commitment created under a Habit occurrence", () => {
   const save: CommitmentSaveData = {
     title: "Asleep by 23:00",
     verdict: "kept",
-    tagIds: [5],
+    tagIds: [storedRowId(5)],
     timeScope: WINDOW,
     verdictWindow: { n: 2, kind: "day" },
     isPrivate: true,
@@ -240,7 +242,7 @@ describe("a Commitment created under a Habit occurrence", () => {
       },
     });
     expect(wireArgs("update_commitment")).toEqual({ id: NEW_COMMITMENT_ID, request: { is_private: true } });
-    expect(wireArgs("add_tag_to_commitment")).toEqual({ commitmentId: NEW_COMMITMENT_ID, tagId: 5 });
+    expect(wireArgs("add_tag_to_commitment")).toEqual({ commitmentId: NEW_COMMITMENT_ID, tagId: storedRowId(5) });
   });
 
   it("finishes configuring the row before the board reloads, so it never appears half-made", async () => {

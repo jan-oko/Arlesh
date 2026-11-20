@@ -5,9 +5,10 @@ import type { ComponentProps } from "react";
 import TaskRow from "./TaskRow";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map([[7, "urgent"]]) }));
+vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map([[storedRowId(7), "urgent"]]) }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -16,9 +17,9 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 
 function row(over: Partial<TaskListRow> = {}): TaskListRow {
   return {
-    node: n("task-1", "task", { status: "todo" }),
-    ancestors: [n("goal-1", "goal", { title: "Ship it" })],
-    goalRef: "goal-1",
+    node: n(`task-${storedRowId(1)}`, "task", { status: "todo" }),
+    ancestors: [n(`goal-${storedRowId(1)}`, "goal", { title: "Ship it" })],
+    goalRef: `goal-${storedRowId(1)}`,
     goalStatus: "active",
     projectRef: null,
     projectStatus: null,
@@ -58,20 +59,20 @@ describe("TaskRow — status icon", () => {
     const icon = screen.getByRole("button", { name: "cycleStatus" });
     fireEvent.click(icon);
     fireEvent.doubleClick(icon);
-    expect(props.onCycleStatus).toHaveBeenCalledWith("task-1");
-    expect(props.onSelect).toHaveBeenCalledWith("task-1");
+    expect(props.onCycleStatus).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
+    expect(props.onSelect).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
     expect(props.onOpenEditor).not.toHaveBeenCalled();
   });
 });
 
 describe("TaskRow — Agentic badge", () => {
   it("badges an agentic task in the list, as the canvas does", () => {
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", agentic: true }) }) })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", agentic: true }) }) })} />);
     expect(screen.getByTitle("agentic")).toBeInTheDocument();
   });
 
   it("badges a task that inherited the flag", () => {
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", inheritedAgentic: true }) }) })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", inheritedAgentic: true }) }) })} />);
     expect(screen.getByTitle("agentic")).toBeInTheDocument();
   });
 
@@ -83,7 +84,7 @@ describe("TaskRow — Agentic badge", () => {
 
 describe("TaskRow — Asynchronous badge", () => {
   it("badges a task whose doing starts a wait", () => {
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", asynchronous: true }) }) })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", asynchronous: true }) }) })} />);
     expect(screen.getByTitle("asynchronous")).toBeInTheDocument();
   });
 
@@ -98,7 +99,7 @@ describe("TaskRow", () => {
     const onCycleStatus = vi.fn();
     render(<TaskRow {...baseProps({ onCycleStatus })} />);
     fireEvent.click(screen.getByLabelText("cycleStatus"));
-    expect(onCycleStatus).toHaveBeenCalledWith("task-1");
+    expect(onCycleStatus).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
   });
 
   it("disables the status control while the task is blocked", () => {
@@ -108,7 +109,7 @@ describe("TaskRow", () => {
 
   it("gates a blocked Habit occurrence's status exactly as a blocked Task's", () => {
     const habitRow = row({
-      node: n("task-1", "task", { status: "todo", ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }) }),
+      node: n(`task-${storedRowId(1)}`, "task", { status: "todo", ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }) }),
       isBlocked: true,
     });
     render(<TaskRow {...baseProps({ row: habitRow })} />);
@@ -118,8 +119,8 @@ describe("TaskRow", () => {
   it("clicking the title opens the editor", () => {
     const onOpenEditor = vi.fn();
     render(<TaskRow {...baseProps({ onOpenEditor })} />);
-    fireEvent.click(screen.getByText("task-1"));
-    expect(onOpenEditor).toHaveBeenCalledWith("task-1");
+    fireEvent.click(screen.getByText(`task-${storedRowId(1)}`));
+    expect(onOpenEditor).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
   });
 
   it("double-clicking the card opens the editor", () => {
@@ -128,7 +129,7 @@ describe("TaskRow", () => {
     const card = container.querySelector("[class*='card']");
     expect(card).not.toBeNull();
     if (card !== null) fireEvent.doubleClick(card);
-    expect(onOpenEditor).toHaveBeenCalledWith("task-1");
+    expect(onOpenEditor).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
   });
 
   it("clicking anywhere on the card selects it", () => {
@@ -137,7 +138,7 @@ describe("TaskRow", () => {
     const card = container.querySelector("[class*='card']");
     expect(card).not.toBeNull();
     if (card !== null) fireEvent.click(card);
-    expect(onSelect).toHaveBeenCalledWith("task-1");
+    expect(onSelect).toHaveBeenCalledWith(`task-${storedRowId(1)}`);
   });
 
   it("shows a selected style when isSelected is true", () => {
@@ -171,7 +172,7 @@ describe("TaskRow", () => {
     });
 
     it("indents the same way whatever the title's script: one class, never a side chosen by the text", () => {
-      const hebrew = row({ node: n("task-1", "task", { status: "todo", title: "\u05DE\u05E9\u05D9\u05DE\u05D4" }) });
+      const hebrew = row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", title: "\u05DE\u05E9\u05D9\u05DE\u05D4" }) });
       const latin = render(<TaskRow {...baseProps({ visibleDepth: 1 })} />);
       const rtl = render(<TaskRow {...baseProps({ row: hebrew, visibleDepth: 1 })} />);
       expect(card(rtl.container).className).toBe(card(latin.container).className);
@@ -189,16 +190,16 @@ describe("TaskRow", () => {
 
   it("clicking a tag pill adds a tag filter, resolving the tag's name", () => {
     const onAddTagFilter = vi.fn();
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", tagIds: [7] }) }), onAddTagFilter })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", tagIds: [storedRowId(7)] }) }), onAddTagFilter })} />);
     fireEvent.click(screen.getByText("urgent"));
-    expect(onAddTagFilter).toHaveBeenCalledWith(7);
+    expect(onAddTagFilter).toHaveBeenCalledWith(storedRowId(7));
   });
 
   describe("inline rename", () => {
     it("shows an input with the current title when isEditingTitle is true", () => {
       render(<TaskRow {...baseProps({ isEditingTitle: true })} />);
-      expect(screen.getByRole("textbox")).toHaveValue("task-1");
-      expect(screen.queryByText("task-1")).not.toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toHaveValue(`task-${storedRowId(1)}`);
+      expect(screen.queryByText(`task-${storedRowId(1)}`)).not.toBeInTheDocument();
     });
 
     it("Enter commits the new title", () => {
@@ -207,7 +208,7 @@ describe("TaskRow", () => {
       const input = screen.getByRole("textbox");
       fireEvent.change(input, { target: { value: "New title" } });
       fireEvent.keyDown(input, { key: "Enter" });
-      expect(onCommitTitle).toHaveBeenCalledWith("task-1", "New title");
+      expect(onCommitTitle).toHaveBeenCalledWith(`task-${storedRowId(1)}`, "New title");
     });
 
     it("blur commits the new title", () => {
@@ -216,7 +217,7 @@ describe("TaskRow", () => {
       const input = screen.getByRole("textbox");
       fireEvent.change(input, { target: { value: "Blurred title" } });
       fireEvent.blur(input);
-      expect(onCommitTitle).toHaveBeenCalledWith("task-1", "Blurred title");
+      expect(onCommitTitle).toHaveBeenCalledWith(`task-${storedRowId(1)}`, "Blurred title");
     });
 
     it("Escape cancels without committing", () => {
@@ -245,14 +246,14 @@ describe("TaskRow — its colour", () => {
   }
 
   it("is its aspect's, whatever depth the row sits at", () => {
-    const shallow = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { color: "#27ae60" }) }) })} />);
+    const shallow = render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { color: "#27ae60" }) }) })} />);
     expect(cardOf(shallow.container).style.getPropertyValue("--card-aspect")).toBe("#27ae60");
     shallow.unmount();
 
     const deep = render(<TaskRow {...baseProps({
       visibleDepth: 4,
       row: row({
-        node: n("task-9", "task", { color: "#27ae60" }),
+        node: n(`task-${storedRowId(9)}`, "task", { color: "#27ae60" }),
         ancestors: [n("p", "project"), n("d", "domain"), n("g", "goal"), n("t1", "task"), n("t2", "task")],
       }),
     })} />);
@@ -260,9 +261,9 @@ describe("TaskRow — its colour", () => {
   });
 
   it.each([
-    ["done", row({ node: n("task-1", "task", { status: "done", color: "#e74c3c" }) })],
-    ["blocked", row({ isBlocked: true, node: n("task-1", "task", { status: "todo", color: "#e74c3c", virtualBlockers: ["Spec"] }) })],
-    ["archived", row({ node: n("task-1", "task", { status: "todo", color: "#e74c3c", archived: true }) })],
+    ["done", row({ node: n(`task-${storedRowId(1)}`, "task", { status: "done", color: "#e74c3c" }) })],
+    ["blocked", row({ isBlocked: true, node: n(`task-${storedRowId(1)}`, "task", { status: "todo", color: "#e74c3c", virtualBlockers: ["Spec"] }) })],
+    ["archived", row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", color: "#e74c3c", archived: true }) })],
   ])("says nothing about state: a %s row takes the same colour as an open one", (_state, taskRow) => {
     const { container } = render(<TaskRow {...baseProps({ row: taskRow })} />);
     expect(cardOf(container).style.getPropertyValue("--card-aspect")).toBe("#e74c3c");
@@ -276,7 +277,7 @@ describe("TaskRow — its colour", () => {
 
 describe("TaskRow — Private badge", () => {
   it("badges a task marked Private itself", () => {
-    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", isPrivate: true }) }) })} />);
+    render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", isPrivate: true }) }) })} />);
     expect(screen.getByTitle("private")).toBeInTheDocument();
   });
 
@@ -294,7 +295,7 @@ describe("TaskRow — Overdue", () => {
   }
 
   it("draws the amber border and says Overdue in its description", () => {
-    const { container } = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
+    const { container } = render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", overdue: true }) }) })} />);
     expect(rowCard(container).className).toMatch(/cardOverdue/);
     expect(rowCard(container)).toHaveAccessibleDescription("overdue");
   });
@@ -302,7 +303,7 @@ describe("TaskRow — Overdue", () => {
   it("with the List setting off, draws no amber border but still says Overdue", () => {
     const { container } = render(<TaskRow {...baseProps({
       showOverdueBorder: false,
-      row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }),
+      row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", overdue: true }) }),
     })} />);
     expect(rowCard(container).className).not.toMatch(/cardOverdue/);
     expect(rowCard(container)).toHaveAccessibleDescription("overdue");
@@ -317,7 +318,7 @@ describe("TaskRow — Overdue", () => {
 
 describe("TaskRow — selected and Overdue", () => {
   it("carries both classes, so its selection takes the selected-and-Overdue colour", () => {
-    const { container } = render(<TaskRow {...baseProps({ isSelected: true, row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
+    const { container } = render(<TaskRow {...baseProps({ isSelected: true, row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", overdue: true }) }) })} />);
     const element = container.querySelector<HTMLElement>("[data-row-id]");
     expect(element?.className).toMatch(/cardOverdue/);
     expect(element?.className).toMatch(/cardSelected/);
@@ -326,7 +327,7 @@ describe("TaskRow — selected and Overdue", () => {
 
 describe("TaskRow — pending write", () => {
   it("carries data-pending while its write is unanswered, and loses it on the answer", () => {
-    const { container, rerender } = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", pending: true }) }) })} />);
+    const { container, rerender } = render(<TaskRow {...baseProps({ row: row({ node: n(`task-${storedRowId(1)}`, "task", { status: "todo", pending: true }) }) })} />);
     expect(container.querySelector("[data-row-id]")).toHaveAttribute("data-pending");
     rerender(<TaskRow {...baseProps()} />);
     expect(container.querySelector("[data-row-id]")).not.toHaveAttribute("data-pending");

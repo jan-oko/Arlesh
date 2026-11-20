@@ -4,6 +4,7 @@ import { useFilterDisplay } from "./use-filter-display";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/MindmapView/use-mindmap-data");
@@ -23,12 +24,12 @@ const TREE: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
   children: [
     {
-      id: "domain-1", rowId: 1, kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
+      id: `domain-${storedRowId(1)}`, rowId: storedRowId(1), kind: "aspect", title: "Red", color: "#e74c3c", position: 0, tagIds: [],
       children: [
-        { id: "domain-2", rowId: 2, kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-        { id: "project-1", rowId: 1, kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
-          { id: "goal-1", rowId: 1, kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
-          { id: "task-1", rowId: 1, kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: `domain-${storedRowId(2)}`, rowId: storedRowId(2), kind: "tag", title: "urgent", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+        { id: "project-1", rowId: storedRowId(1), kind: "project", title: "Rocket", color: "#e74c3c", position: 0, tagIds: [], children: [
+          { id: `goal-${storedRowId(1)}`, rowId: storedRowId(1), kind: "goal", title: "Launch", status: "active", color: "#e74c3c", position: 0, tagIds: [], children: [] },
+          { id: `task-${storedRowId(1)}`, rowId: storedRowId(1), kind: "task", title: "Fuel up", status: "todo", color: "#e74c3c", position: 0, tagIds: [], children: [] },
         ] },
       ],
     },
@@ -39,14 +40,14 @@ describe("useFilterDisplay", () => {
   it("resolves a tag's name and inherited aspect color", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.tagName(2)).toBe("urgent");
-    expect(result.current.tagColor(2)).toBe("#e74c3c");
+    expect(result.current.tagName(storedRowId(2))).toBe("urgent");
+    expect(result.current.tagColor(storedRowId(2))).toBe("#e74c3c");
   });
 
   it("falls back to #<id> for an unknown tag", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.tagName(999)).toBe("#999");
+    expect(result.current.tagName(storedRowId(999))).toBe(`#${storedRowId(999)}`);
   });
 
   it("resolves any tree node's label and color by ref, for parent/dependency chips", () => {
@@ -54,29 +55,29 @@ describe("useFilterDisplay", () => {
     const { result } = renderHook(() => useFilterDisplay());
     expect(result.current.nodeLabel("project-1")).toBe("Rocket");
     expect(result.current.nodeColor("project-1")).toBe("#e74c3c");
-    expect(result.current.nodeLabel("goal-1")).toBe("Launch");
+    expect(result.current.nodeLabel(`goal-${storedRowId(1)}`)).toBe("Launch");
   });
 
   it("falls back to the raw ref when the node is unknown", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
-    expect(result.current.nodeLabel("task-999")).toBe("task-999");
-    expect(result.current.nodeColor("task-999")).toBeNull();
+    expect(result.current.nodeLabel(`task-${storedRowId(999)}`)).toBe(`task-${storedRowId(999)}`);
+    expect(result.current.nodeColor(`task-${storedRowId(999)}`)).toBeNull();
   });
 
   it("builds the antecedent pool from Aspect/Domain/Project/Goal/Task kinds, excluding tags", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
     const ids = result.current.antecedentPool.map((o) => o.id);
-    expect(ids).toEqual(expect.arrayContaining(["domain-1", "project-1", "goal-1", "task-1"]));
-    expect(ids).not.toContain("domain-2"); // the tag
+    expect(ids).toEqual(expect.arrayContaining([`domain-${storedRowId(1)}`, "project-1", `goal-${storedRowId(1)}`, `task-${storedRowId(1)}`]));
+    expect(ids).not.toContain(`domain-${storedRowId(2)}`); // the tag
   });
 
   it("builds the dependency pool from Task/Goal kinds only", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
     const ids = result.current.dependencyPool.map((o) => o.id);
-    expect(ids).toEqual(["goal-1", "task-1"]);
+    expect(ids).toEqual([`goal-${storedRowId(1)}`, `task-${storedRowId(1)}`]);
   });
 
   it("resolves enum display labels through the status/listView namespaces", () => {
@@ -99,11 +100,11 @@ describe("useFilterDisplay", () => {
     const ARCHIVED_TREE: MindmapNode = {
       id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
       children: [
-        { id: "project-1", rowId: 1, kind: "project", title: "Live", position: 0, tagIds: [], children: [] },
-        { id: "project-2", rowId: 2, kind: "project", title: "Shelved", status: "archived", position: 1, tagIds: [], children: [
-          { id: "task-5", rowId: 5, kind: "task", title: "Inside", status: "todo", position: 0, tagIds: [], children: [] },
+        { id: "project-1", rowId: storedRowId(1), kind: "project", title: "Live", position: 0, tagIds: [], children: [] },
+        { id: "project-2", rowId: storedRowId(2), kind: "project", title: "Shelved", status: "archived", position: 1, tagIds: [], children: [
+          { id: `task-${storedRowId(5)}`, rowId: storedRowId(5), kind: "task", title: "Inside", status: "todo", position: 0, tagIds: [], children: [] },
         ] },
-        { id: "task-6", rowId: 6, kind: "task", title: "Lapsed", status: "todo", archived: true, position: 2, tagIds: [], children: [] },
+        { id: `task-${storedRowId(6)}`, rowId: storedRowId(6), kind: "task", title: "Lapsed", status: "todo", archived: true, position: 2, tagIds: [], children: [] },
       ],
     };
 
@@ -113,7 +114,7 @@ describe("useFilterDisplay", () => {
       const { result } = renderHook(() => useFilterDisplay());
       expect(result.current.antecedentPool.map((o) => o.label)).toEqual(["Live", "Inside"]);
       expect(result.current.dependencyPool.map((o) => o.label)).toEqual(["Inside"]);
-      expect(result.current.nodeLabel("task-5")).toBe("Inside");
+      expect(result.current.nodeLabel(`task-${storedRowId(5)}`)).toBe("Inside");
     });
 
     it("offers them when the setting includes archived nodes", () => {

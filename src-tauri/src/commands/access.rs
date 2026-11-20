@@ -4,6 +4,7 @@
 //! Root changes are ordinary board writes on the journal's ambient source, so the frontend's
 //! per-command Gesture makes each one an undo step like any other edit.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 pub use crate::backend::access::McpAccessCatalogue;
@@ -45,7 +46,7 @@ pub async fn list_mcp_access(
 pub async fn add_mcp_root(
     backend: State<'_, AppBackend>,
     node_kind: NodeTable,
-    node_id: i64,
+    node_id: RowId,
 ) -> Result<(), WireError> {
     backend.add_mcp_root(node_kind, node_id).await
 }
@@ -55,7 +56,7 @@ pub async fn add_mcp_root(
 pub async fn remove_mcp_root(
     backend: State<'_, AppBackend>,
     node_kind: NodeTable,
-    node_id: i64,
+    node_id: RowId,
 ) -> Result<(), WireError> {
     backend.remove_mcp_root(node_kind, node_id).await
 }

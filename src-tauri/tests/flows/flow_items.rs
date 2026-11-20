@@ -6,6 +6,9 @@
 //! wait is first checked, and what starting or copying a Flow makes of them.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
@@ -48,14 +51,14 @@ fn days(n: i64) -> DurationSpec {
 }
 
 /// A Flow under the root aspect whose window is one `kind`, of `instance_type`.
-async fn flow(app: &App, kind: &str, instance_type: InstanceType) -> i64 {
+async fn flow(app: &App, kind: &str, instance_type: InstanceType) -> RowId {
     flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Routine".into(),
             instance_type: Some(instance_type),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some(kind.into()),
             ..Default::default()
@@ -67,7 +70,7 @@ async fn flow(app: &App, kind: &str, instance_type: InstanceType) -> i64 {
 }
 
 /// Makes `flow` a Window + Owed Habit starting on the `kind` scope holding `start`.
-async fn recur(app: &App, flow: i64, kind: ScopeKind, start: chrono::NaiveDate) {
+async fn recur(app: &App, flow: RowId, kind: ScopeKind, start: chrono::NaiveDate) {
     flow_commands::set_flow_recurrence(
         app.state(),
         flow,
@@ -86,8 +89,9 @@ async fn recur(app: &App, flow: i64, kind: ScopeKind, start: chrono::NaiveDate) 
     .unwrap();
 }
 
-fn under(flow: i64, title: &str, parent: (&str, i64)) -> CreateFlowItemRequest {
+fn under(flow: RowId, title: &str, parent: (&str, RowId)) -> CreateFlowItemRequest {
     CreateFlowItemRequest {
+        id: None,
         flow_id: flow,
         title: title.into(),
         parent_type: parent.0.into(),
@@ -95,33 +99,33 @@ fn under(flow: i64, title: &str, parent: (&str, i64)) -> CreateFlowItemRequest {
     }
 }
 
-async fn commitment_item(app: &App, flow: i64, parent: (&str, i64)) -> i64 {
+async fn commitment_item(app: &App, flow: RowId, parent: (&str, RowId)) -> RowId {
     flow_commands::create_flow_commitment(app.state(), under(flow, "Asleep by 23:00", parent))
         .await
         .unwrap()
         .id
 }
 
-async fn wait_item(app: &App, flow: i64, parent: (&str, i64)) -> i64 {
+async fn wait_item(app: &App, flow: RowId, parent: (&str, RowId)) -> RowId {
     flow_commands::create_flow_expectation(app.state(), under(flow, "Coach replies", parent))
         .await
         .unwrap()
         .id
 }
 
-async fn task_item(app: &App, flow: i64, parent: (&str, i64)) -> i64 {
+async fn task_item(app: &App, flow: RowId, parent: (&str, RowId)) -> RowId {
     flow_commands::create_flow_task(app.state(), under(flow, "Stretch", parent))
         .await
         .unwrap()
         .id
 }
 
-fn occurrence(item_type: TemplateKind, item_id: i64, iteration: ScopeKey) -> NodeId {
+fn occurrence(item_type: TemplateKind, item_id: RowId, iteration: ScopeKey) -> NodeId {
     NodeId::Derived(
         OccurrenceKey {
             item: TemplateItem { item_type, item_id },
             iteration,
-            cycle: 0,
+            cycle: no_cycle(),
         }
         .id(),
     )
@@ -528,7 +532,7 @@ async fn starting_a_plain_flow_stores_its_commitment_and_wait_items() {
         StartFlowRequest {
             title: "This week".into(),
             target_type: "aspect".into(),
-            target_id: 1,
+            target_id: tid(1),
             anchor_date: ymd(2026, 1, 4),
         },
     )
@@ -598,7 +602,7 @@ async fn copying_a_flow_copies_its_commitment_and_wait_items() {
     .await
     .unwrap();
 
-    let copy = flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), 1, 9)
+    let copy = flow_commands::duplicate_flow(app.state(), flow, "aspect".into(), tid(1), 9)
         .await
         .unwrap();
     let board = load(&app, "2026-01-05T09:00:00").await;
@@ -636,7 +640,7 @@ async fn converting_a_subtree_turns_its_commitments_and_waits_into_items() {
         CreateTaskRequest {
             title: "Launch".into(),
             parent_type: "project".into(),
-            parent_id: Id::Stored(1),
+            parent_id: Id::Stored(tid(1)),
             ..Default::default()
         },
     )
@@ -761,6 +765,7 @@ async fn a_note_hangs_on_a_wait_occurrence_and_a_release_is_listed() {
     let note = write::create_info(
         &mut db,
         arlesh_lib::infos::model::CreateInfoRequest {
+            id: None,
             body: "Sent Monday".into(),
             details: None,
             parent_type: "expectation".into(),
@@ -831,7 +836,7 @@ async fn a_task_under_a_commitment_item_inherits_the_roots_plan_through_it() {
             title: "Weekly".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("week".into()),
             root_plan_kind: Some("day".into()),

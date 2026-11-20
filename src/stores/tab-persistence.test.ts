@@ -1,3 +1,5 @@
+import { legacyStoredId } from "@/utils/legacy-row-id";
+import { storedRowId } from "@/test/stored-id";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   forgetPersistedTabs, parsePersistedTab, parseTabState, persistedWindowLabels, readPersistedTabs,
@@ -85,7 +87,7 @@ describe("reading one tab's stored state", () => {
       listFilter: {
         preset: "all",
         pills: {
-          parent: [{ value: "goal-1", mode: "any" }], dependency: [],
+          parent: [{ value: `goal-${storedRowId(1)}`, mode: "any" }], dependency: [],
           taskStatus: [], goalStatus: [], projectStatus: [], scopeState: [], blocked: [],
         },
       },
@@ -102,7 +104,7 @@ describe("reading one tab's stored state", () => {
         preset: "unblock",
         pills: {
           antecedent: [{ value: "aspect-1", mode: "any" }],
-          parent: [{ value: "goal-1", mode: "any" }],
+          parent: [{ value: `goal-${storedRowId(1)}`, mode: "any" }],
         },
       },
     });
@@ -165,14 +167,14 @@ describe("a session saved before tabs existed", () => {
     localStorage.clear();
     writeLegacy("arlesh-view", { view: "list", mindmapOrientation: "vertical", pathHeaderIcons: false });
     writeLegacy("arlesh-filter", {
-      filter: { statusMode: "start", modeIncludeFlows: true, tagFilters: [{ tagId: 5, mode: "any" }], showInfo: true, showFlow: false, privateMode: true },
+      filter: { statusMode: "start", modeIncludeFlows: true, tagFilters: [{ tagId: storedRowId(5), mode: "any" }], showInfo: true, showFlow: false, privateMode: true },
     });
     writeLegacy("arlesh-list-filter", {
       filter: {
         preset: "unblock",
         // A retired dimension beside a live one, as a real pre-tabs blob would carry it.
         pills: {
-          parent: [{ value: "goal-1", mode: "all" }],
+          parent: [{ value: `goal-${storedRowId(1)}`, mode: "all" }],
           antecedent: [{ value: "project-1", mode: "all" }],
         },
       },
@@ -192,7 +194,7 @@ describe("a session saved before tabs existed", () => {
   it("brings back the mindmap filter, including a field the old blob never had", () => {
     const filter = useTabsStore.getState().tabs[0]?.stores.filter.getState().filter;
     expect(filter?.statusMode).toBe("start");
-    expect(filter?.tagFilters).toEqual([{ tagId: 5, mode: "any" }]);
+    expect(filter?.tagFilters).toEqual([{ tagId: storedRowId(5), mode: "any" }]);
     expect(filter?.privateMode).toBe(true);
     expect(filter?.archivedMode).toBe("inactive");
   });
@@ -241,8 +243,8 @@ describe("a strip written by this build", () => {
 
   it("does not bring back the selection, collapsed nodes or canvas position", () => {
     const tab = useTabsStore.getState().tabs[0];
-    tab?.stores.mindmap.getState().selectNode("task-1");
-    tab?.stores.mindmap.getState().toggleCollapsed("goal-2");
+    tab?.stores.mindmap.getState().selectNode(`task-${storedRowId(1)}`);
+    tab?.stores.mindmap.getState().toggleCollapsed(`goal-${storedRowId(2)}`);
     tab?.stores.panZoom.getState().setTransform({ x: 300, y: 50, scale: 2 });
     // A change that *is* persisted, so the strip is written down with the working state live.
     tab?.stores.view.getState().setView("list");
@@ -321,9 +323,9 @@ describe("a tab's name in storage", () => {
 
 describe("an opened habit history", () => {
   it("comes back open", () => {
-    const state = parseTabState({ expandedHabitGroupIds: ["habitrun-7-virtual", "habitrun-9-virtual"] });
+    const state = parseTabState({ expandedHabitGroupIds: [`habitrun-${storedRowId(7)}-virtual`, `habitrun-${storedRowId(9)}-virtual`] });
 
-    expect(state.expandedHabitGroupIds).toEqual(["habitrun-7-virtual", "habitrun-9-virtual"]);
+    expect(state.expandedHabitGroupIds).toEqual([`habitrun-${storedRowId(7)}-virtual`, `habitrun-${storedRowId(9)}-virtual`]);
   });
 
   it("reads as none for a tab written before histories could be opened", () => {
@@ -333,30 +335,30 @@ describe("an opened habit history", () => {
   });
 
   it("drops anything stored under the key that is not a node id", () => {
-    const state = parseTabState({ expandedHabitGroupIds: ["habitrun-7-virtual", 4, null] });
+    const state = parseTabState({ expandedHabitGroupIds: [`habitrun-${storedRowId(7)}-virtual`, 4, null] });
 
-    expect(state.expandedHabitGroupIds).toEqual(["habitrun-7-virtual"]);
+    expect(state.expandedHabitGroupIds).toEqual([`habitrun-${storedRowId(7)}-virtual`]);
   });
 
   it("survives a reload of the whole strip", () => {
     localStorage.setItem(windowTabsKey(BOOTSTRAP_WINDOW_LABEL), JSON.stringify({
       activeTabId: "tab-1",
-      tabs: [{ id: "tab-1", title: null, customTitle: null, state: { expandedHabitGroupIds: ["habitrun-7-virtual"] } }],
+      tabs: [{ id: "tab-1", title: null, customTitle: null, state: { expandedHabitGroupIds: [`habitrun-${storedRowId(7)}-virtual`] } }],
     }));
 
     reloadTabs();
 
     expect(useTabsStore.getState().tabs[0]?.stores.mindmap.getState().expandedHabitGroupIds)
-      .toEqual(new Set(["habitrun-7-virtual"]));
+      .toEqual(new Set([`habitrun-${storedRowId(7)}-virtual`]));
   });
 
   it("is written down as soon as it is opened", () => {
     reloadTabs();
     const tab = useTabsStore.getState().tabs[0];
 
-    tab?.stores.mindmap.getState().toggleGroupExpanded("habitrun-7-virtual");
+    tab?.stores.mindmap.getState().toggleGroupExpanded(`habitrun-${storedRowId(7)}-virtual`);
 
-    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.tabs[0]?.state.expandedHabitGroupIds).toEqual(["habitrun-7-virtual"]);
+    expect(readPersistedTabs(BOOTSTRAP_WINDOW_LABEL)?.tabs[0]?.state.expandedHabitGroupIds).toEqual([`habitrun-${storedRowId(7)}-virtual`]);
   });
 });
 
@@ -467,5 +469,23 @@ describe("a tab handed over by another window", () => {
     const { tabs, activeTabId } = useTabsStore.getState();
     expect(tabs).toHaveLength(1);
     expect(activeTabId).toBe(existing?.id);
+  });
+});
+
+describe("a strip saved before row ids were UUIDs", () => {
+  it("carries a subtree root, an opened habit run and a tag filter over to the ids the rows have now", () => {
+    const state = parseTabState({
+      subtreeRootId: "task-12",
+      expandedHabitGroupIds: ["habitrun-7-virtual"],
+      filter: { tagFilters: [{ tagId: 5, mode: "any" }] },
+    });
+    expect(state.subtreeRootId).toBe(`task-${legacyStoredId("task", 12)}`);
+    expect(state.expandedHabitGroupIds).toEqual([`habitrun-${legacyStoredId("flow", 7)}-virtual`]);
+    expect(state.filter.tagFilters).toEqual([{ tagId: legacyStoredId("domain", 5), mode: "any" }]);
+  });
+
+  it("leaves a key that is already a UUID key alone", () => {
+    const key = `goal-${storedRowId(2)}`;
+    expect(parseTabState({ subtreeRootId: key }).subtreeRootId).toBe(key);
   });
 });

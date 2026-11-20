@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `expectations` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
@@ -62,7 +63,7 @@ impl WaitsPort for SqliteBackend {
         Ok(expectation)
     }
 
-    async fn complete_expectation_check(&self, id: i64) -> Result<Expectation, WireError> {
+    async fn complete_expectation_check(&self, id: RowId) -> Result<Expectation, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         let expectation = arlesh_core::tasks::complete_expectation_check(
             &mut db,
@@ -77,7 +78,7 @@ impl WaitsPort for SqliteBackend {
 
     async fn update_spawned_wait(
         &self,
-        task_id: i64,
+        task_id: RowId,
         request: UpdateSpawnedWaitRequest,
     ) -> Result<SpawnedWait, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -89,7 +90,7 @@ impl WaitsPort for SqliteBackend {
         Ok(wait)
     }
 
-    async fn complete_spawned_wait_check(&self, task_id: i64) -> Result<(), WireError> {
+    async fn complete_spawned_wait_check(&self, task_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         arlesh_core::tasks::waits::complete_spawned_check(
             &mut db,
@@ -104,7 +105,7 @@ impl WaitsPort for SqliteBackend {
     async fn add_tag_to_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         arlesh_core::nodes::write::set_tag(
@@ -123,7 +124,7 @@ impl WaitsPort for SqliteBackend {
     async fn remove_tag_from_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         arlesh_core::nodes::write::set_tag(
@@ -154,7 +155,7 @@ impl WaitsPort for SqliteBackend {
 
     async fn reopen_expectation_check(
         &self,
-        id: i64,
+        id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<Expectation, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -168,7 +169,7 @@ impl WaitsPort for SqliteBackend {
 
     async fn reopen_spawned_wait_check(
         &self,
-        task_id: i64,
+        task_id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -13,9 +14,12 @@ use crate::{
 
 fn occurrence(item_type: TemplateKind, item_id: i64) -> OccurrenceKey {
     OccurrenceKey {
-        item: TemplateItem { item_type, item_id },
+        item: TemplateItem {
+            item_type,
+            item_id: tid(item_id),
+        },
         iteration: crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
-        cycle: 0,
+        cycle: tid(0),
     }
 }
 
@@ -79,7 +83,7 @@ fn commitment(id: i64) -> Commitment {
 
 fn info(id: i64) -> Info {
     Info {
-        id,
+        id: tid(id),
         body: "i".into(),
         details: None,
         parent_type: "project".into(),
@@ -115,11 +119,11 @@ fn expectation(id: i64) -> Expectation {
 
 fn child(parent: &OccurrenceKey, child_type: &str, child_id: i64) -> HabitInstanceChild {
     HabitInstanceChild {
-        flow_id: 4,
+        flow_id: tid(4),
         parent_kind: "task".into(),
         parent_key: parent.node_key(),
         child_type: child_type.into(),
-        child_id,
+        child_id: tid(child_id),
     }
 }
 
@@ -163,7 +167,7 @@ fn a_stored_child_of_a_derived_occurrence_reads_the_occurrence_as_its_parent() {
     );
     assert_eq!(
         tasks[1].parent_id,
-        NodeId::Stored(1),
+        NodeId::Stored(tid(1)),
         "an unattached row keeps its parent"
     );
     assert_eq!(goals[0].parent_id, parent);
@@ -188,7 +192,7 @@ fn a_child_of_an_occurrence_not_derived_keeps_its_stored_parent() {
         },
     );
     assert_eq!(tasks[0].parent_type, "project");
-    assert_eq!(tasks[0].parent_id, NodeId::Stored(1));
+    assert_eq!(tasks[0].parent_id, NodeId::Stored(tid(1)));
 }
 
 #[test]

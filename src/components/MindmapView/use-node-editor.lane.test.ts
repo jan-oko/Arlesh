@@ -11,6 +11,7 @@ import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -37,17 +38,17 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 }));
 
 const taskNode: MindmapNode = {
-  id: "task-5", rowId: 5, kind: "task", title: "Old title", tagIds: [], position: 0, children: [],
+  id: `task-${storedRowId(5)}`, rowId: storedRowId(5), kind: "task", title: "Old title", tagIds: [], position: 0, children: [],
   status: "todo", taskStatus: { kind: "ordinary", status: "todo" },
 };
 const goalNode: MindmapNode = {
-  id: "goal-2", rowId: 2, kind: "goal", title: "Goal", status: "active", tagIds: [], position: 0, children: [],
+  id: `goal-${storedRowId(2)}`, rowId: storedRowId(2), kind: "goal", title: "Goal", status: "active", tagIds: [], position: 0, children: [],
 };
 const infoNode: MindmapNode = {
-  id: "info-3", rowId: 3, kind: "info", title: "Body", tagIds: [], position: 0, children: [],
+  id: `info-${storedRowId(3)}`, rowId: storedRowId(3), kind: "info", title: "Body", tagIds: [], position: 0, children: [],
 };
 const tagNode: MindmapNode = {
-  id: "domain-4", rowId: 4, kind: "tag", title: "Tag", tagIds: [], position: 0, children: [],
+  id: `domain-${storedRowId(4)}`, rowId: storedRowId(4), kind: "tag", title: "Tag", tagIds: [], position: 0, children: [],
 };
 const root: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", tagIds: [], position: 0, children: [taskNode, goalNode, infoNode, tagNode],
@@ -106,10 +107,10 @@ describe("useNodeEditor — a Save through the lane", () => {
 
     expect(lane()).toEqual([]);
     expect(useMindmapStore.getState().pendingToast).toMatchObject({
-      nodeId: "task-5", message: "saveFailed: Plan must sit inside the Time Scope",
+      nodeId: `task-${storedRowId(5)}`, message: "saveFailed: Plan must sit inside the Time Scope",
     });
     expect(result.current.editorModal).toMatchObject({
-      nodeId: "task-5",
+      nodeId: `task-${storedRowId(5)}`,
       reopened: { kind: "task", draft: taskSave, error: "Plan must sit inside the Time Scope" },
     });
   });
@@ -124,14 +125,14 @@ describe("useNodeEditor — a Save through the lane", () => {
     held.reject(new Error("refused"));
     await settleLane();
 
-    expect(result.current.editorModal?.nodeId).toBe("goal-2");
+    expect(result.current.editorModal?.nodeId).toBe(`goal-${storedRowId(2)}`);
     expect(result.current.editorModal?.reopened).toBeUndefined();
   });
 
   it("sends a Save queued behind a pending write on the same node after it", async () => {
     const first = deferred<{ outcome: "written"; response: { epoch: null; revision: null; fields: null; createdId: null } }>();
     usePendingWritesStore.getState().enqueue({
-      nodeId: "task-5", label: "status change", patch: { kind: "fields", fields: { status: "started" } },
+      nodeId: `task-${storedRowId(5)}`, label: "status change", patch: { kind: "fields", fields: { status: "started" } },
       send: () => first.promise, showToast: vi.fn(), unreachableMessage: "unreachable",
     });
     vi.mocked(runGesture).mockResolvedValue([]);
@@ -149,7 +150,7 @@ describe("useNodeEditor — a Save through the lane", () => {
   it("leaves a Save queued behind a refused write unsent, and reopens its editor too", async () => {
     const first = deferred<never>();
     usePendingWritesStore.getState().enqueue({
-      nodeId: "task-5", label: "status change", patch: { kind: "fields", fields: { status: "started" } },
+      nodeId: `task-${storedRowId(5)}`, label: "status change", patch: { kind: "fields", fields: { status: "started" } },
       send: () => first.promise, showToast: vi.fn(), unreachableMessage: "unreachable",
     });
     const { result } = setup(taskNode);
@@ -171,7 +172,7 @@ describe("useNodeEditor — a Save through the lane", () => {
 
     await expect(act(async () => { await result.current.onTaskSave(taskSave); })).rejects.toThrow("banner.server_unreachable");
 
-    expect(result.current.editorModal?.nodeId).toBe("task-5");
+    expect(result.current.editorModal?.nodeId).toBe(`task-${storedRowId(5)}`);
     expect(lane()).toEqual([]);
     expect(runGesture).not.toHaveBeenCalled();
   });
@@ -193,12 +194,12 @@ describe("useNodeEditor — a Save through the lane", () => {
     await act(async () => { await info.result.current.onInfoSave({ body: "New body", details: "trace", isPrivate: false }); });
     expect(info.result.current.editorModal).toBeNull();
     await settleLane();
-    expect(updateInfo).toHaveBeenCalledWith(3, { body: "New body", details: "trace", is_private: false });
+    expect(updateInfo).toHaveBeenCalledWith(storedRowId(3), { body: "New body", details: "trace", is_private: false });
 
     const tag = setup(tagNode);
     await act(async () => { await tag.result.current.onSimpleSave("Renamed tag", false, undefined); });
     expect(tag.result.current.editorModal).toBeNull();
     await settleLane();
-    expect(updateDomain).toHaveBeenCalledWith(4, { title: "Renamed tag", is_private: false });
+    expect(updateDomain).toHaveBeenCalledWith(storedRowId(4), { title: "Renamed tag", is_private: false });
   });
 });

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect } from "vitest";
 import {
   collapsedWithFoldedGroups,
@@ -19,13 +20,13 @@ const LABELS: HabitCollapseLabels = {
   span: (start, end) => `${start}..${end}`,
 };
 
-const FLOW = 7;
+const FLOW = storedRowId(7);
 
 /** One day-long iteration anchored on `date`, whose window closed at 02:00 the next morning. */
 function dayIteration(
   date: string,
   options: {
-    done?: boolean; passed?: boolean; owed?: boolean; flowId?: number; flowTitle?: string; index?: number;
+    done?: boolean; passed?: boolean; owed?: boolean; flowId?: string; flowTitle?: string; index?: number;
   } = {},
 ): MindmapNode {
   const next = new Date(`${date}T00:00:00Z`);
@@ -209,8 +210,8 @@ describe("foldHabitRuns", () => {
       dayIteration("2026-09-14", { index: 0 }),
       dayIteration("2026-09-15", { index: 1 }),
       dayIteration("2026-09-16", { index: 2 }),
-      dayIteration("2026-09-14", { index: 0, flowId: 9 }),
-      dayIteration("2026-09-15", { index: 1, flowId: 9 }),
+      dayIteration("2026-09-14", { index: 0, flowId: storedRowId(9) }),
+      dayIteration("2026-09-15", { index: 1, flowId: storedRowId(9) }),
     ]);
 
     const folded = foldHabitRuns(tree, 3, LABELS);

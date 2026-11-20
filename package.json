@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "box": "uv run --script scripts/box.py",
+    "cargo": "uv run --script scripts/box.py cargo",
     "wasm": "bash scripts/build-rules-wasm.sh"
   },
   "dependencies": {

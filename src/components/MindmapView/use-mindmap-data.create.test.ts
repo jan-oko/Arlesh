@@ -13,6 +13,7 @@ import { settleLane } from "@/test/lane-helpers";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
 import { currentBoard } from "@/test/current-board";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -38,7 +39,7 @@ vi.mock("@/hooks/use-scope-labels", () => ({ useScopeLabels: () => SCOPE_LABELS 
 // One Aspect, a Goal and a Task to rename.
 function mkDomain(overrides: Partial<Domain> = {}): Domain {
   return {
-    id: 1, title: "Domain", description: null, subtype: "aspect",
+    id: storedRowId(1), title: "Domain", description: null, subtype: "aspect",
     parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false,
     ...overrides,
   };
@@ -46,7 +47,7 @@ function mkDomain(overrides: Partial<Domain> = {}): Domain {
 
 function mkGoal(overrides: Partial<Goal> = {}): Goal {
   return {
-    id: 1, title: "Goal", parent_type: "domain", parent_id: 1,
+    id: storedRowId(1), title: "Goal", parent_type: "domain", parent_id: storedRowId(1),
     status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
@@ -54,16 +55,16 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 1, title: "Task", parent_type: "goal", parent_id: 1,
+    id: storedRowId(1), title: "Task", parent_type: "goal", parent_id: storedRowId(1),
     status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
 
 const ROWS = {
-  domains: [mkDomain({ id: 1, subtype: "aspect", title: "Work" })],
-  goals: [mkGoal({ id: 1, parent_type: "domain", parent_id: 1 })],
-  tasks: [mkTask({ id: 1, parent_type: "goal", parent_id: 1, title: "Write code" })],
+  domains: [mkDomain({ id: storedRowId(1), subtype: "aspect", title: "Work" })],
+  goals: [mkGoal({ id: storedRowId(1), parent_type: "domain", parent_id: storedRowId(1) })],
+  tasks: [mkTask({ id: storedRowId(1), parent_type: "goal", parent_id: storedRowId(1), title: "Write code" })],
 };
 
 
@@ -127,14 +128,14 @@ beforeEach(() => {
     if (["create_task", "update_task", "step_task_status"].includes(command)) { revision += 1; seq += 1; }
     if (command === "create_task") return (gate ?? Promise.resolve()).then(() => createTask(args));
     if (command === "step_task_status") {
-      const { id } = args as { id: number };
+      const { id } = args as { id: string };
       const task = serverTasks.find((t) => t.id === id);
       if (task === undefined) return Promise.reject({ kind: "not_found", message: "no such task" });
       task.status = { kind: "ordinary", status: "in_progress" };
       return Promise.resolve({ outcome: "written", task, backlog_cleared: null });
     }
     if (command === "update_task") {
-      const { id, request } = args as { id: number; request: { title: string } };
+      const { id, request } = args as { id: string; request: { title: string } };
       const task = serverTasks.find((t) => t.id === id);
       if (task !== undefined) task.title = request.title;
       return Promise.resolve(task ?? mkTask({ id }));
@@ -145,16 +146,16 @@ beforeEach(() => {
 
 function createTask(args: unknown): Promise<Task> {
   if (refuseCreate !== null) return Promise.reject({ kind: "invalid", message: refuseCreate });
-  const request = (args as { request: { title: string; parent_type: string; parent_id: number } }).request;
+  const request = (args as { request: { title: string; parent_type: string; parent_id: string } }).request;
   nextId += 1;
-  const task = mkTask({ id: nextId, title: request.title, parent_type: request.parent_type as Task["parent_type"], parent_id: request.parent_id });
+  const task = mkTask({ id: storedRowId(nextId), title: request.title, parent_type: request.parent_type as Task["parent_type"], parent_id: request.parent_id });
   serverTasks.push(task);
   return Promise.resolve(task);
 }
 
 async function mounted() {
   const hook = renderHook(() => useMindmapData());
-  await waitFor(() => expect(find(hook.result.current.tree, "task-1")).toBeDefined());
+  await waitFor(() => expect(find(hook.result.current.tree, `task-${storedRowId(1)}`)).toBeDefined());
   return hook;
 }
 
@@ -168,7 +169,7 @@ describe("creating through the lane", () => {
     let first: MindmapNode | undefined;
     let second: MindmapNode | undefined;
     await act(async () => {
-      first = await result.current.createNode("goal-1", "goal", "task", "");
+      first = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
       await result.current.renameNode(first.id, "task", "Buy milk");
       second = await result.current.createNode(first.id, "task", "task", "");
     });
@@ -185,13 +186,13 @@ describe("creating through the lane", () => {
     await waitFor(() => expect(store().writes).toHaveLength(0));
 
     expect(calls.filter(([command]) => command.endsWith("_task"))).toEqual([
-      ["create_task", { request: { title: "", parent_type: "goal", parent_id: 1 } }],
-      ["update_task", { id: 11, request: { title: "Buy milk" } }],
-      ["create_task", { request: { title: "", parent_type: "task", parent_id: 11 } }],
+      ["create_task", { request: { title: "", parent_type: "goal", parent_id: storedRowId(1) } }],
+      ["update_task", { id: storedRowId(11), request: { title: "Buy milk" } }],
+      ["create_task", { request: { title: "", parent_type: "task", parent_id: storedRowId(11) } }],
     ]);
     const board = result.current.tree;
-    expect(find(board, "task-11")?.children.map((c) => c.id)).toEqual(["task-12"]);
-    expect(find(board, "task-11")?.title).toBe("Buy milk");
+    expect(find(board, `task-${storedRowId(11)}`)?.children.map((c) => c.id)).toEqual([`task-${storedRowId(12)}`]);
+    expect(find(board, `task-${storedRowId(11)}`)?.title).toBe("Buy milk");
     // No duplicate: the placeholders are gone, the real nodes are the only ones.
     expect(find(board, first.id)).toBeUndefined();
     expect(find(board, second.id)).toBeUndefined();
@@ -201,21 +202,21 @@ describe("creating through the lane", () => {
     const { result } = await mounted();
     let placeholder: MindmapNode | undefined;
     await act(async () => {
-      placeholder = await result.current.createNode("goal-1", "goal", "task", "");
+      placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
       useMindmapStore.getState().selectNode(placeholder.id);
       useMindmapStore.getState().toggleCollapsed(placeholder.id);
     });
     await settleLane();
-    expect(useMindmapStore.getState().selectedNodeId).toBe("task-11");
-    expect([...useMindmapStore.getState().selectedNodeIds]).toEqual(["task-11"]);
-    expect([...useMindmapStore.getState().collapsedNodeIds]).toEqual(["task-11"]);
+    expect(useMindmapStore.getState().selectedNodeId).toBe(`task-${storedRowId(11)}`);
+    expect([...useMindmapStore.getState().selectedNodeIds]).toEqual([`task-${storedRowId(11)}`]);
+    expect([...useMindmapStore.getState().collapsedNodeIds]).toEqual([`task-${storedRowId(11)}`]);
   });
 
   it("a refused create removes the placeholder and what hangs under it, sends nothing more, and toasts once", async () => {
     const { result } = await mounted();
     refuseCreate = "No window above";
     await act(async () => {
-      const first = await result.current.createNode("goal-1", "goal", "task", "");
+      const first = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
       await result.current.renameNode(first.id, "task", "Lost");
       await result.current.createNode(first.id, "task", "task", "");
     });
@@ -223,22 +224,22 @@ describe("creating through the lane", () => {
 
     expect(names()).toEqual(["create_task"]);
     expect(store().writes).toHaveLength(0);
-    expect(find(result.current.tree, "goal-1")?.children.map((c) => c.id)).toEqual(["task-1"]);
-    expect(useMindmapStore.getState().pendingToast).toMatchObject({ nodeId: "goal-1" });
+    expect(find(result.current.tree, `goal-${storedRowId(1)}`)?.children.map((c) => c.id)).toEqual([`task-${storedRowId(1)}`]);
+    expect(useMindmapStore.getState().pendingToast).toMatchObject({ nodeId: `goal-${storedRowId(1)}` });
   });
 
   it("an undo of a still-queued create takes the placeholder off and calls nothing", async () => {
     const { result } = await mounted();
     let release: () => void = () => undefined;
     store().enqueue({
-      nodeId: "task-1", label: "rename", patch: { kind: "fields", fields: { title: "Held" } },
+      nodeId: `task-${storedRowId(1)}`, label: "rename", patch: { kind: "fields", fields: { title: "Held" } },
       send: () => new Promise((resolve) => {
         release = () => resolve({ outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } });
       }),
       showToast: vi.fn(), unreachableMessage: "unreachable",
     });
     let placeholder: MindmapNode | undefined;
-    await act(async () => { placeholder = await result.current.createNode("goal-1", "goal", "task", ""); });
+    await act(async () => { placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", ""); });
     if (placeholder === undefined) throw new Error("no placeholder");
     expect(find(result.current.tree, placeholder.id)).toBeDefined();
 
@@ -250,7 +251,7 @@ describe("creating through the lane", () => {
 
   it("refuses a kind the parent may not hold before any patch", async () => {
     const { result } = await mounted();
-    await expect(result.current.createNode("task-1", "task", "domain", "x")).rejects.toThrow();
+    await expect(result.current.createNode(`task-${storedRowId(1)}`, "task", "domain", "x")).rejects.toThrow();
     expect(store().writes).toHaveLength(0);
     expect(names()).toEqual([]);
   });
@@ -260,7 +261,7 @@ describe("creating through the lane", () => {
     let open: () => void = () => undefined;
     gate = new Promise<void>((resolve) => { open = resolve; });
     let placeholder: MindmapNode | undefined;
-    await act(async () => { placeholder = await result.current.createNode("goal-1", "goal", "task", ""); });
+    await act(async () => { placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", ""); });
     if (placeholder === undefined) throw new Error("no placeholder");
     const id = placeholder.id;
     const cycle = renderHook(() => useStatusCycle({ findNode: (nodeId) => find(result.current.tree, nodeId), showToast: vi.fn() }));
@@ -272,8 +273,8 @@ describe("creating through the lane", () => {
     await published();
     await waitFor(() => expect(store().writes).toHaveLength(0));
     expect(calls.filter(([command]) => command === "step_task_status")).toEqual([
-      ["step_task_status", { id: 11, step: "advance", confirmed: undefined }],
+      ["step_task_status", { id: storedRowId(11), step: "advance", confirmed: undefined }],
     ]);
-    expect(find(result.current.tree, "task-11")?.taskStatus).toEqual({ kind: "ordinary", status: "in_progress" });
+    expect(find(result.current.tree, `task-${storedRowId(11)}`)?.taskStatus).toEqual({ kind: "ordinary", status: "in_progress" });
   });
 });

@@ -86,3 +86,5 @@ tauri = { version = "2", features = ["test"] }
 # The same crate sqlx links, named so the test helpers can copy a migrated template database into a
 # test's own with SQLite's backup API (`tests/helpers/mod.rs`). Keep it on sqlx's version.
 libsqlite3-sys = "0.30"
+# Switches on `tid`, `tkey` and `From<i64> for NodeId`, the helpers the integration tests write ids with.
+arlesh-rules = { path = "../crates/arlesh-rules", features = ["test-support"] }

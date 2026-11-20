@@ -10,7 +10,7 @@ from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from tests.server.integration.live_stream import follow
 from tests.server.integration.test_server_wait_events import Agent
 
-ROOT_ASPECT = 1
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 
 
 def test_an_agents_write_through_mcp_reaches_the_change_stream_as_changed_nodes(

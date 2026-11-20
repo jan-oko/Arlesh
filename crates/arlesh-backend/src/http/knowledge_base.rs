@@ -2,6 +2,7 @@
 //! scope (`docs/spec/client-mode.md`): the server has no routes for them, so every call is refused
 //! as not available in Client mode, and the windows hide them.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     knowledge_base::model::{
@@ -22,7 +23,7 @@ impl KnowledgeBasePort for HttpBackend {
         Err(not_in_client_mode(KNOWLEDGE_BASE))
     }
 
-    async fn get_person(&self, _id: i64) -> Result<Person, WireError> {
+    async fn get_person(&self, _id: RowId) -> Result<Person, WireError> {
         Err(not_in_client_mode(KNOWLEDGE_BASE))
     }
 
@@ -32,13 +33,13 @@ impl KnowledgeBasePort for HttpBackend {
 
     async fn update_person(
         &self,
-        _id: i64,
+        _id: RowId,
         _request: UpdatePersonRequest,
     ) -> Result<Person, WireError> {
         Err(not_in_client_mode(KNOWLEDGE_BASE))
     }
 
-    async fn delete_person(&self, _id: i64) -> Result<(), WireError> {
+    async fn delete_person(&self, _id: RowId) -> Result<(), WireError> {
         Err(not_in_client_mode(KNOWLEDGE_BASE))
     }
 

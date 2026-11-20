@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import ReviewAnswer from "./ReviewAnswer";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -9,7 +10,7 @@ vi.mock("react-i18next", () => ({
 
 function review(links: { label: string; url: string }[] = []): MindmapNode {
   return {
-    id: "expectation-5", rowId: 5, kind: "expectation", title: "Review #12", status: "pending", position: 0, tagIds: [], children: [],
+    id: "expectation-5", rowId: storedRowId(5), kind: "expectation", title: "Review #12", status: "pending", position: 0, tagIds: [], children: [],
     agentWaiting: {
       note: "Adds the thing", question: true, answer: null,
       review: { links, hand_tests: ["Open the board", "Press Enter"] },

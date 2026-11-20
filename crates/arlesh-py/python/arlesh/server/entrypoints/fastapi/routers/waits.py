@@ -31,11 +31,11 @@ class WaitsRouter(BoardRouter):
         """Deletes a stored wait. A derived one is refused: it goes with its Task."""
         await (await self._writer()).delete_wait(node_id(id))
 
-    async def _complete_check(self, id: int) -> Expectation:
+    async def _complete_check(self, id: str) -> Expectation:
         """Marks a stored wait's check done."""
         return await (await self._writer()).complete_wait_check(id)
 
-    async def _reopen_check(self, id: int, due_at: datetime) -> Expectation:
+    async def _reopen_check(self, id: str, due_at: datetime) -> Expectation:
         """Reopens a stored wait's check, due again at ``due_at``."""
         return await (await self._writer()).reopen_wait_check(id, due_at)
 

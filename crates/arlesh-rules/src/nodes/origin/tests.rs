@@ -1,9 +1,11 @@
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::key::no_cycle;
 use crate::scopes::key::ScopeKey;
 
 fn habit() -> Origin {
     Origin::Habit(HabitOrigin {
-        habit_id: 3,
+        habit_id: tid(3),
         iteration_scope: IterationScope {
             index: 2,
             start_date: NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
@@ -18,8 +20,8 @@ fn habit() -> Origin {
             owed: false,
         },
         item_type: TemplateKind::FlowRoot,
-        item_id: 3,
-        cycle_id: 0,
+        item_id: tid(3),
+        cycle_id: no_cycle(),
     })
 }
 
@@ -38,7 +40,7 @@ fn a_habit_origin_names_its_habit_and_iteration() {
     let origin = habit();
     let json = serde_json::to_value(&origin).unwrap();
     assert_eq!(json["kind"], "habit");
-    assert_eq!(json["habit_id"], 3);
+    assert_eq!(json["habit_id"], tid(3).to_string());
     assert_eq!(json["item_type"], "flow_root");
     assert_eq!(json["iteration_scope"]["start_date"], "2026-09-20");
     assert_eq!(json["iteration_scope"]["window_end"], "2026-09-21T02:00:00");

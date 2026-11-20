@@ -3,7 +3,7 @@ import type { DuplicatedSubtree } from "@/api/duplicate";
 import type { RowId } from "@/api/node-id";
 
 export interface Info {
-  id: number;
+  id: string;
   body: string;
   details: string | null;
   parent_type: string;
@@ -38,18 +38,18 @@ export async function createInfo(request: CreateInfoRequest): Promise<Info> {
   return invoke<Info>("create_info", { request });
 }
 
-export async function updateInfo(id: number, request: UpdateInfoRequest): Promise<Info> {
+export async function updateInfo(id: string, request: UpdateInfoRequest): Promise<Info> {
   return invoke<Info>("update_info", { id, request });
 }
 
-export async function deleteInfo(id: number): Promise<void> {
+export async function deleteInfo(id: string): Promise<void> {
   return invoke<void>("delete_info", { id });
 }
 
 export async function duplicateInfo(
-  id: number,
+  id: string,
   targetType: string,
-  targetId: number,
+  targetId: string,
   position: number,
 ): Promise<DuplicatedSubtree<Info>> {
   return invoke<DuplicatedSubtree<Info>>("duplicate_info", { id, targetType, targetId, position });

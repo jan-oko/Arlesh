@@ -5,6 +5,7 @@
 //! commits — and each of those has a command-level test in `tests/flows_commands.rs`, because a
 //! deleted `commit()` still compiles and rolls back silently. See ADR-0004.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -32,7 +33,7 @@ pub async fn create_flow(
 
 /// Fetches a flow by id.
 #[tauri::command]
-pub async fn get_flow(backend: State<'_, AppBackend>, id: i64) -> Result<Flow, WireError> {
+pub async fn get_flow(backend: State<'_, AppBackend>, id: RowId) -> Result<Flow, WireError> {
     backend.get_flow(id).await
 }
 
@@ -46,7 +47,7 @@ pub async fn list_flows(backend: State<'_, AppBackend>) -> Result<Vec<Flow>, Wir
 #[tauri::command]
 pub async fn update_flow(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowRequest,
 ) -> Result<Flow, WireError> {
     backend.update_flow(id, request).await
@@ -54,7 +55,7 @@ pub async fn update_flow(
 
 /// Deletes a flow (and its items).
 #[tauri::command]
-pub async fn delete_flow(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+pub async fn delete_flow(backend: State<'_, AppBackend>, id: RowId) -> Result<(), WireError> {
     backend.delete_flow(id).await
 }
 
@@ -98,7 +99,7 @@ pub async fn create_flow_expectation(
 #[tauri::command]
 pub async fn update_flow_commitment(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowCommitment, WireError> {
     backend.update_flow_commitment(id, request).await
@@ -108,7 +109,7 @@ pub async fn update_flow_commitment(
 #[tauri::command]
 pub async fn update_flow_expectation(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowExpectation, WireError> {
     backend.update_flow_expectation(id, request).await
@@ -118,7 +119,7 @@ pub async fn update_flow_expectation(
 #[tauri::command]
 pub async fn list_flow_goals(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<Vec<FlowGoal>, WireError> {
     backend.list_flow_goals(flow_id).await
 }
@@ -127,7 +128,7 @@ pub async fn list_flow_goals(
 #[tauri::command]
 pub async fn list_flow_tasks(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<Vec<FlowTask>, WireError> {
     backend.list_flow_tasks(flow_id).await
 }
@@ -152,7 +153,7 @@ pub async fn list_all_flow_tasks(
 #[tauri::command]
 pub async fn update_flow_goal(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowGoal, WireError> {
     backend.update_flow_goal(id, request).await
@@ -162,7 +163,7 @@ pub async fn update_flow_goal(
 #[tauri::command]
 pub async fn update_flow_task(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowTask, WireError> {
     backend.update_flow_task(id, request).await
@@ -172,7 +173,7 @@ pub async fn update_flow_task(
 #[tauri::command]
 pub async fn start_flow(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     request: StartFlowRequest,
 ) -> Result<MaterializedFlow, WireError> {
     backend.start_flow(flow_id, request).await
@@ -198,7 +199,7 @@ pub async fn scope_valid_flow_targets(
 #[tauri::command]
 pub async fn set_flow_recurrence(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     request: SetRecurrenceRequest,
 ) -> Result<FlowRecurrence, WireError> {
     backend.set_flow_recurrence(flow_id, request).await
@@ -208,7 +209,7 @@ pub async fn set_flow_recurrence(
 #[tauri::command]
 pub async fn get_flow_recurrence(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<Option<FlowRecurrence>, WireError> {
     backend.get_flow_recurrence(flow_id).await
 }
@@ -217,7 +218,7 @@ pub async fn get_flow_recurrence(
 #[tauri::command]
 pub async fn delete_flow_recurrence(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<(), WireError> {
     backend.delete_flow_recurrence(flow_id).await
 }
@@ -244,7 +245,7 @@ pub async fn list_flow_instance_nodes(
 pub async fn delete_flow_item(
     backend: State<'_, AppBackend>,
     item_type: FlowItemType,
-    id: i64,
+    id: RowId,
 ) -> Result<(), WireError> {
     backend.delete_flow_item(item_type, id).await
 }
@@ -258,9 +259,9 @@ pub async fn delete_flow_item(
 #[tauri::command]
 pub async fn set_flow_item_cycles(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     cycles: Vec<FlowCycleInput>,
     reconcile: Option<flows::cycles::Reconcile>,
     now: Option<chrono::NaiveDateTime>,
@@ -282,11 +283,11 @@ pub async fn list_all_flow_cycles(
 #[tauri::command]
 pub async fn add_flow_dependency(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     dependent_type: FlowItemType,
-    dependent_id: i64,
+    dependent_id: RowId,
     depends_on_type: FlowItemType,
-    depends_on_id: i64,
+    depends_on_id: RowId,
 ) -> Result<(), WireError> {
     backend
         .add_flow_dependency(
@@ -304,9 +305,9 @@ pub async fn add_flow_dependency(
 pub async fn remove_flow_dependency(
     backend: State<'_, AppBackend>,
     dependent_type: FlowItemType,
-    dependent_id: i64,
+    dependent_id: RowId,
     depends_on_type: FlowItemType,
-    depends_on_id: i64,
+    depends_on_id: RowId,
 ) -> Result<(), WireError> {
     backend
         .remove_flow_dependency(dependent_type, dependent_id, depends_on_type, depends_on_id)
@@ -325,7 +326,7 @@ pub async fn list_all_flow_dependencies(
 #[tauri::command]
 pub async fn habit_completion_count(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<i64, WireError> {
     backend.habit_completion_count(flow_id).await
 }
@@ -334,7 +335,7 @@ pub async fn habit_completion_count(
 #[tauri::command]
 pub async fn clear_habit_modifications(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
 ) -> Result<(), WireError> {
     backend.clear_habit_modifications(flow_id).await
 }
@@ -345,7 +346,7 @@ pub async fn clear_habit_modifications(
 #[tauri::command]
 pub async fn fork_flow(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     now: chrono::NaiveDateTime,
 ) -> Result<Flow, WireError> {
     backend.fork_flow(flow_id, now).await
@@ -358,9 +359,9 @@ pub async fn fork_flow(
 #[tauri::command]
 pub async fn duplicate_flow(
     backend: State<'_, AppBackend>,
-    flow_id: i64,
+    flow_id: RowId,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
 ) -> Result<Flow, WireError> {
     backend
@@ -376,11 +377,11 @@ pub async fn duplicate_flow(
 pub async fn duplicate_flow_item(
     backend: State<'_, AppBackend>,
     item_type: FlowItemType,
-    item_id: i64,
+    item_id: RowId,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
-) -> Result<i64, WireError> {
+) -> Result<RowId, WireError> {
     backend
         .duplicate_flow_item(item_type, item_id, parent_type, parent_id, position)
         .await
@@ -391,7 +392,7 @@ pub async fn duplicate_flow_item(
 pub async fn convert_to_flow(
     backend: State<'_, AppBackend>,
     node_type: String,
-    node_id: i64,
+    node_id: RowId,
     keep_dependencies: bool,
     map_scopes: bool,
 ) -> Result<Flow, WireError> {

@@ -1,5 +1,6 @@
 //! Tauri commands for knowledge-base entity operations.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -25,7 +26,7 @@ pub async fn create_person(
 
 /// Fetches a person by id.
 #[tauri::command]
-pub async fn get_person(backend: State<'_, AppBackend>, id: i64) -> Result<Person, WireError> {
+pub async fn get_person(backend: State<'_, AppBackend>, id: RowId) -> Result<Person, WireError> {
     backend.get_person(id).await
 }
 
@@ -41,7 +42,7 @@ pub async fn list_people(backend: State<'_, AppBackend>) -> Result<Vec<Person>, 
 #[tauri::command]
 pub async fn update_person(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdatePersonRequest,
 ) -> Result<Person, WireError> {
     backend.update_person(id, request).await
@@ -51,7 +52,7 @@ pub async fn update_person(
 ///
 /// A single `DELETE` (once the read work is done), so it runs on a pooled session.
 #[tauri::command]
-pub async fn delete_person(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+pub async fn delete_person(backend: State<'_, AppBackend>, id: RowId) -> Result<(), WireError> {
     backend.delete_person(id).await
 }
 

@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `infos` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::DuplicatedSubtree,
     error::WireError,
@@ -22,12 +23,12 @@ impl InfosPort for HttpBackend {
         self.read(Call::new(Method::GET, "/infos".to_owned())).await
     }
 
-    async fn update_info(&self, id: i64, request: UpdateInfoRequest) -> Result<Info, WireError> {
+    async fn update_info(&self, id: RowId, request: UpdateInfoRequest) -> Result<Info, WireError> {
         self.write(Call::new(Method::PATCH, format!("/infos/{}", segment(&id))).json(&request))
             .await
     }
 
-    async fn delete_info(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_info(&self, id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!("/infos/{}", segment(&id)),
@@ -37,9 +38,9 @@ impl InfosPort for HttpBackend {
 
     async fn duplicate_info(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Info>, WireError> {
         self.write(

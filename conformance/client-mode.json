@@ -28,7 +28,7 @@
     "pairing.rs` calls each by the name it is listed under. The server's test replays them with",
     "the `routes`."
   ],
-  "api_version": 1,
+  "api_version": 2,
   "streams": {
     "changes": "GET /events/changes",
     "expectations": "GET /events/expectations"

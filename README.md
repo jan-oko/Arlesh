@@ -134,6 +134,15 @@ builds a dirty or diverged one anyway), and a worktree folder name (`qa-2026-11-
 branch. A phone is found among already-connected adb transports, then by `adb mdns`/`avahi-browse`;
 `devices add --serial <hardware serial>` matches a tailnet-named phone by serial, and `--ssh
 <host>[:port]` (Termux sshd) installs over `scp` + `termux-open` when adb cannot reach it.
+`npm run cargo -- <cargo arguments>` (for example `npm run cargo -- test -p arlesh-core -j 3`) runs cargo
+in the current worktree into the box's shared target, so the worktree needs no `src-tauri/target` of its
+own (2.5 to 6 GB each). It uses the same per-branch guard as `box run`, so a build never reuses another
+branch's workspace crates, and builds into that target take turns (a second one prints that it is waiting).
+A plain `cargo` still builds into the checkout's own target. With [sccache](https://github.com/mozilla/sccache) installed
+(`cargo install sccache --locked`) these builds, and every `box run` build, also use a compiler cache under
+`~/.cache/arlesh/sccache` (10 GB cap): going back to a branch built before takes seconds, and incremental
+compilation is off while it is in use.
+
 `npm run box -- list` shows every open PR's branch with its worktree, builds, installs and server (needs
 an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune` prints which worktrees
 without an open PR it would remove (never `dev`, `master`, the current one, or any with uncommitted or

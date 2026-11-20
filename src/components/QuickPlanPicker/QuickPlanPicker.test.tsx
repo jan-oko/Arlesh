@@ -7,6 +7,7 @@ import type { TimeScope } from "@/api/time-scope";
 import type { QuickPlanTarget } from "@/hooks/use-quick-plan";
 import { keyStartDate } from "@/utils/scope-key";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -29,7 +30,7 @@ function scopeOf(id: ScopeKey): Scope {
 }
 
 function task(extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id: "task-5", rowId: 5, kind: "task", title: "Ship it", position: 0, tagIds: [], children: [], ...extra };
+  return { id: "task-5", rowId: storedRowId(5), kind: "task", title: "Ship it", position: 0, tagIds: [], children: [], ...extra };
 }
 
 function target(extra: Partial<QuickPlanTarget> = {}): QuickPlanTarget {

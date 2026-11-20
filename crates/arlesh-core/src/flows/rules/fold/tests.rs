@@ -2,6 +2,7 @@
 //! fold is pinned by `conformance/habit-fold.json`; these name its parts.
 
 use super::*;
+use crate::nodes::id::tid;
 
 fn date(iso: &str) -> NaiveDate {
     NaiveDate::parse_from_str(iso, "%Y-%m-%d").unwrap_or_default()
@@ -9,7 +10,7 @@ fn date(iso: &str) -> NaiveDate {
 
 fn day(iso: &str) -> Iteration {
     Iteration {
-        flow_id: 1,
+        flow_id: tid(1),
         scope_kind: Some(ScopeKind::Day),
         anchor_date: date(iso),
         passed: true,
@@ -127,7 +128,15 @@ fn a_run_folds_at_the_threshold_and_owed_work_is_drawn_after_it() {
         Child::Other("note"),
     ];
     let folded = fold(children, 3);
-    assert_eq!(ids(&folded), ["habitrun-1-virtual", "owed", "open", "note"]);
+    assert_eq!(
+        ids(&folded),
+        [
+            format!("habitrun-{}-virtual", tid(1)).as_str(),
+            "owed",
+            "open",
+            "note"
+        ]
+    );
     let Some(Folded::Group(run)) = folded.first() else {
         panic!("the run folded");
     };

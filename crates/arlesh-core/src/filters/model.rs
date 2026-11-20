@@ -1,5 +1,6 @@
 //! The values a filter is expressed in, and the facts it reads off a node.
 
+use crate::nodes::id::RowId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -81,7 +82,8 @@ pub enum TagMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TagFilter {
     /// The tag's domain id.
-    pub tag_id: i64,
+    #[schemars(with = "String")]
+    pub tag_id: RowId,
     /// How it combines with the others.
     pub mode: TagMode,
 }
@@ -401,7 +403,8 @@ pub struct NodeFacts {
     pub is_habit_occurrence: bool,
     /// The tag domain ids attached to the node.
     #[serde(default)]
-    pub tag_ids: Vec<i64>,
+    #[schemars(with = "Vec<String>")]
+    pub tag_ids: Vec<RowId>,
     /// The node's **own** Time Scope, for the kinds that carry one. `None` inherits: what an
     /// ancestor's window says is not a fact of this node, and the filter walk carries it down
     /// (see [`super::rules::is_outside_plan_scope`]).

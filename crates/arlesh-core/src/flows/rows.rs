@@ -3,6 +3,7 @@
 //! The domain types in [`super::model`] know nothing of the database (ADR 0010, decision 8). Each
 //! row here mirrors one, reads its scope keys through [`DbScopeKey`], and converts into it.
 
+use crate::nodes::id::RowId;
 use crate::scopes::db::DbScopeKey;
 
 use super::rules::instance_copies::InstanceNode;
@@ -21,11 +22,11 @@ fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
 /// A [`FlowCommitment`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowCommitmentRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
     is_private: bool,
     verdict_window_n: Option<i64>,
@@ -51,11 +52,11 @@ impl From<FlowCommitmentRow> for FlowCommitment {
 /// A [`FlowExpectation`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowExpectationRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
     is_private: bool,
     check_every_n: Option<i64>,
@@ -87,7 +88,7 @@ impl From<FlowExpectationRow> for FlowExpectation {
 /// A [`FlowRecurrence`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowRecurrenceRow {
-    flow_id: i64,
+    flow_id: RowId,
     start_scope_id: DbScopeKey,
     gap_n: Option<i64>,
     gap_kind: Option<String>,
@@ -118,9 +119,9 @@ impl From<FlowRecurrenceRow> for FlowRecurrence {
 #[derive(sqlx::FromRow)]
 pub(crate) struct HabitItemStatusRow {
     item_type: String,
-    item_id: i64,
+    item_id: RowId,
     iteration_scope_id: DbScopeKey,
-    cycle_id: i64,
+    cycle_id: RowId,
     status: String,
 }
 
@@ -139,13 +140,13 @@ impl From<HabitItemStatusRow> for HabitItemStatus {
 /// A [`Flow`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowRow {
-    id: i64,
+    id: RowId,
     title: String,
     instance_type: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     target_type: Option<String>,
-    target_id: Option<i64>,
+    target_id: Option<RowId>,
     flow_duration_n: Option<i64>,
     flow_duration_kind: Option<String>,
     flow_window_part: Option<String>,
@@ -193,11 +194,11 @@ impl From<FlowRow> for Flow {
 /// A [`FlowGoal`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowGoalRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
     is_private: bool,
 }
@@ -220,11 +221,11 @@ impl From<FlowGoalRow> for FlowGoal {
 /// A [`FlowTask`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowTaskRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
     is_private: bool,
 }
@@ -247,10 +248,10 @@ impl From<FlowTaskRow> for FlowTask {
 /// A [`FlowItemCycle`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowItemCycleRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     item_type: String,
-    item_id: i64,
+    item_id: RowId,
     scope_kind: Option<String>,
     scope_index: Option<i64>,
     plan_kind: Option<String>,
@@ -280,7 +281,7 @@ impl From<FlowItemCycleRow> for FlowItemCycle {
 #[derive(sqlx::FromRow)]
 pub(crate) struct TargetRefRow {
     node_type: String,
-    node_id: i64,
+    node_id: RowId,
 }
 
 impl From<TargetRefRow> for TargetRef {
@@ -295,12 +296,12 @@ impl From<TargetRefRow> for TargetRef {
 /// A [`FlowDependency`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct FlowDependencyRow {
-    id: i64,
-    flow_id: i64,
+    id: RowId,
+    flow_id: RowId,
     dependent_type: String,
-    dependent_id: i64,
+    dependent_id: RowId,
     depends_on_type: String,
-    depends_on_id: i64,
+    depends_on_id: RowId,
 }
 
 impl From<FlowDependencyRow> for FlowDependency {
@@ -319,11 +320,11 @@ impl From<FlowDependencyRow> for FlowDependency {
 /// A [`HabitInstanceChild`] as its table holds it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct HabitInstanceChildRow {
-    flow_id: i64,
+    flow_id: RowId,
     parent_kind: String,
     parent_key: String,
     child_type: String,
-    child_id: i64,
+    child_id: RowId,
 }
 
 impl From<HabitInstanceChildRow> for HabitInstanceChild {
@@ -342,17 +343,17 @@ impl From<HabitInstanceChildRow> for HabitInstanceChild {
 /// [`super::copy_instance_links`] reads it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct InstanceNodeRow {
-    flow_instance_id: i64,
-    flow_id: Option<i64>,
+    flow_instance_id: RowId,
+    flow_id: Option<RowId>,
     root_type: String,
-    root_id: i64,
+    root_id: RowId,
     started_at: i64,
     node_type: String,
-    node_id: i64,
+    node_id: RowId,
     source_item_type: String,
-    source_item_id: i64,
+    source_item_id: RowId,
     original_parent_type: String,
-    original_parent_id: i64,
+    original_parent_id: RowId,
 }
 
 impl InstanceNodeRow {

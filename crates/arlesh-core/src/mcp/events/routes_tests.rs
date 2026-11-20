@@ -53,7 +53,7 @@ async fn side(directory: &Path) -> sqlx::SqliteConnection {
 }
 
 /// Roots every Aspect and puts one agentic wait under the first, then returns the wait's id.
-async fn raise_a_wait(directory: &Path) -> i64 {
+async fn raise_a_wait(directory: &Path) -> crate::nodes::id::RowId {
     let mut db = side(directory).await;
     sqlx::query(
         "INSERT INTO mcp_roots (node_kind, node_id) \
@@ -77,7 +77,7 @@ async fn raise_a_wait(directory: &Path) -> i64 {
         .unwrap()
 }
 
-async fn release(directory: &Path, id: i64) {
+async fn release(directory: &Path, id: crate::nodes::id::RowId) {
     let mut db = side(directory).await;
     sqlx::query("UPDATE expectations SET status = 'released' WHERE id = ?")
         .bind(id)

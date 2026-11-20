@@ -7,7 +7,7 @@ import os
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-API_VERSION = 1
+API_VERSION = 2
 """The HTTP API's version: an integer bumped **only** on a breaking change. The app refuses to
 write to a server whose ``api_version`` differs from its own, and says which side to update.
 Pinned to the app's by ``conformance/client-mode.json``."""

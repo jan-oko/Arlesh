@@ -7,6 +7,7 @@ use super::{
     model::{Agent, AgentId, Claim, ClaimStatus, UsageWindow},
 };
 use crate::access::model::NodeKey;
+use crate::nodes::id::RowId;
 
 /// A row of `agents`.
 #[derive(sqlx::FromRow)]
@@ -16,7 +17,7 @@ pub(super) struct AgentRow {
     pub account: String,
     pub session_uuid: String,
     pub claim_kind: Option<String>,
-    pub claim_id: Option<i64>,
+    pub claim_id: Option<RowId>,
     pub claim_paused: bool,
     pub claimed_at: Option<String>,
     pub locked: bool,

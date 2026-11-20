@@ -14,7 +14,7 @@ import styles from "@/components/EditorModal/EditorModal.module.css";
 export interface StartFlowData {
   title: string;
   targetType: string;
-  targetId: number;
+  targetId: string;
   anchorDate: string;
 }
 
@@ -23,9 +23,9 @@ function isNodeKind(value: string): value is NodeKind {
   return NODE_KINDS.some((kind) => kind === value);
 }
 
-interface TargetSelection { kind: NodeKind; id: number; title: string; }
+interface TargetSelection { kind: NodeKind; id: string; title: string; }
 
-function initialTarget(defaultTargetType: string | null, defaultTargetId: number | null, candidates: MindmapNode[]): TargetSelection | null {
+function initialTarget(defaultTargetType: string | null, defaultTargetId: string | null, candidates: MindmapNode[]): TargetSelection | null {
   if (defaultTargetType === null || defaultTargetId === null) return null;
   const lookupId = entityNodeId(defaultTargetType, defaultTargetId);
   const match = candidates.find((c) => c.id === lookupId);
@@ -48,7 +48,7 @@ interface Props {
   durationN: number | null;
   durationKind: string | null;
   defaultTargetType: string | null;
-  defaultTargetId: number | null;
+  defaultTargetId: string | null;
   availableTargets: MindmapNode[];
   onStart: (data: StartFlowData) => Promise<void>;
   onClose: () => void;

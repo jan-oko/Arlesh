@@ -21,7 +21,10 @@ from arlesh.models import (
 )
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
-ROOT_ASPECT = 1
+MISSING = "5b0d3c2e-8f4a-4c1e-9a7b-2d6e1f0a3b4c"
+"""A well-formed id no row has."""
+
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 
 
 @pytest.fixture
@@ -32,7 +35,7 @@ async def board(live: str, tokens: DatabaseTokenStore) -> AsyncIterator[arlesh.A
         yield opened
 
 
-async def _domain(board: arlesh.Arlesh) -> int:
+async def _domain(board: arlesh.Arlesh) -> str:
     domain = await board.create_domain(
         CreateDomainRequest(title="Home", subtype=DomainSubtype.domain, parent_id=ROOT_ASPECT)
     )
@@ -47,7 +50,7 @@ async def test_a_task_is_created_updated_and_read_over_http(board: arlesh.Arlesh
         CreateTaskRequest(title="Write it", parent_type="domain", parent_id=parent)
     )
     updated = await board.update_task(task.id, UpdateTaskRequest(title="Wrote it"))
-    assert isinstance(task.id, int)
+    assert isinstance(task.id, str) and len(task.id) == 36
     read = await board.get_task(task.id)
 
     assert updated.title == "Wrote it"
@@ -73,7 +76,7 @@ async def test_the_board_is_stamped_with_the_servers_revision(board: arlesh.Arle
 
 async def test_a_refusal_is_the_same_class_as_over_sqlite(board: arlesh.Arlesh) -> None:
     with pytest.raises(arlesh.NotFound):
-        await board.get_task(424242)
+        await board.get_task(MISSING)
 
 
 async def test_operations_only_sqlite_has_are_refused_in_client_mode(board: arlesh.Arlesh) -> None:

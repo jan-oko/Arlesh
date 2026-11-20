@@ -56,7 +56,7 @@ async fn rig() -> Rig {
 
 fn task(title: &str) -> arlesh_core::tasks::model::CreateTaskRequest {
     serde_json::from_value(serde_json::json!({
-        "title": title, "parent_type": "domain", "parent_id": 1
+        "title": title, "parent_type": "domain", "parent_id": arlesh_core::database::row_ids::new_id("domain", 1)
     }))
     .expect("a request")
 }

@@ -48,6 +48,7 @@
 //! ADR 0004 — so a failure part-way leaves the tree exactly as it was, rather than half a subtree.
 //! It also makes the paste, Flows included, a single undo step: one command, one Gesture.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashSet, VecDeque};
 
 use serde::Serialize;
@@ -109,7 +110,7 @@ impl DuplicableKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubtreeCopy {
     /// The new root's id.
-    pub root_id: i64,
+    pub root_id: RowId,
     /// The rows hung on Habit occurrences that the copy could not carry — see the module docs.
     pub left_behind: Vec<LeftBehindChild>,
 }
@@ -120,7 +121,8 @@ pub struct LeftBehindChild {
     /// Which table the row lives in: `task`, `goal`, `commitment`, `expectation` or `info`.
     pub child_type: String,
     /// The row's id.
-    pub child_id: i64,
+    #[schemars(with = "String")]
+    pub child_id: RowId,
     /// Its display title (an Info's body).
     pub title: String,
 }
@@ -138,11 +140,11 @@ pub struct DuplicatedSubtree<T> {
 /// A Flow found under a copied node, waiting for the node walk to finish before it is copied.
 struct PendingFlow {
     /// The original Flow.
-    old_id: i64,
+    old_id: RowId,
     /// The copied parent's `parent_type` spelling, as the `flows` table takes it.
     new_parent_kind: String,
     /// The copied parent's id.
-    new_parent_id: i64,
+    new_parent_id: RowId,
 }
 
 /// What one node holds that the walk must still visit.
@@ -159,12 +161,12 @@ struct PendingClone {
     /// Which table the source row lives in.
     kind: DuplicableKind,
     /// The source row's id.
-    old_id: i64,
+    old_id: RowId,
     /// The new parent's own kind spelling (`aspect`/`project`/`domain`/`tag`/`goal`/`task`/
     /// `info`). Each table collapses this to whatever its own `parent_type` column accepts.
     new_parent_kind: String,
     /// The new parent's id.
-    new_parent_id: i64,
+    new_parent_id: RowId,
     /// Set only for the root of the duplicated subtree, which lands where the paste put it.
     /// Descendants keep the position they had under the original, so the copy has the same shape.
     forced_position: Option<i64>,
@@ -173,7 +175,7 @@ struct PendingClone {
 /// A freshly written clone: its new id, and the kind spelling its own children must name it by.
 struct ClonedNode {
     /// The new row's id.
-    new_id: i64,
+    new_id: RowId,
     /// This node's kind as a `parent_type`/`subtype` column spells it.
     kind: String,
 }
@@ -196,9 +198,9 @@ struct ClonedNode {
 pub async fn duplicate_subtree(
     db: &mut Db<Transactional>,
     kind: DuplicableKind,
-    id: i64,
+    id: RowId,
     target_kind: &str,
-    target_id: i64,
+    target_id: RowId,
     position: i64,
 ) -> Result<SubtreeCopy, AppError> {
     let mut walk = Walk {
@@ -246,7 +248,7 @@ pub async fn duplicate_subtree(
 /// The breadth-first walk's state: what it has copied, and what it has still to visit.
 struct Walk {
     /// Every row hung on a Habit occurrence, which the walk skips.
-    attached: HashSet<(String, i64)>,
+    attached: HashSet<(String, RowId)>,
     /// Every node copied so far, original against copy.
     copies: CopiedNodes,
     /// Nodes whose parents are copied and which are not yet copied themselves.
@@ -261,7 +263,7 @@ impl Walk {
         &mut self,
         db: &mut Db<Transactional>,
         item: PendingClone,
-    ) -> Result<i64, AppError> {
+    ) -> Result<RowId, AppError> {
         let cloned = clone_node(db, &item).await?;
         self.copies
             .record(item.kind.table(), item.old_id, cloned.new_id);
@@ -274,7 +276,9 @@ impl Walk {
 
 /// Every stored row hung on a Habit occurrence, by `(child_type, child_id)` — the rows the walk
 /// must not clone as plain children of their host.
-async fn attached_children(db: &mut Db<Transactional>) -> Result<HashSet<(String, i64)>, AppError> {
+async fn attached_children(
+    db: &mut Db<Transactional>,
+) -> Result<HashSet<(String, RowId)>, AppError> {
     Ok(db
         .flows()
         .child_attachments()
@@ -290,7 +294,7 @@ async fn attached_children(db: &mut Db<Transactional>) -> Result<HashSet<(String
 async fn left_behind(
     db: &mut Db<Transactional>,
     copies: &CopiedNodes,
-    copied_flows: &HashSet<i64>,
+    copied_flows: &HashSet<RowId>,
 ) -> Result<Vec<LeftBehindChild>, AppError> {
     let mut left = Vec::new();
     for child in db.flows().list_all_instance_children().await? {
@@ -315,7 +319,7 @@ struct OccurrenceChildRow {
     /// The host's `parent_type` spelling.
     host_type: String,
     /// The host's id, when the row's parent is a stored one.
-    host_id: Option<i64>,
+    host_id: Option<RowId>,
     /// The display title (an Info's body).
     title: String,
 }
@@ -324,7 +328,7 @@ struct OccurrenceChildRow {
 async fn occurrence_child_row(
     db: &mut Db<Transactional>,
     child_type: &str,
-    child_id: i64,
+    child_id: RowId,
 ) -> Result<OccurrenceChildRow, AppError> {
     let (host_type, host_id, title) = match child_type {
         "task" => {
@@ -382,10 +386,10 @@ async fn children_of(
     db: &mut Db<Transactional>,
     item: &PendingClone,
     cloned: &ClonedNode,
-    attached: &HashSet<(String, i64)>,
+    attached: &HashSet<(String, RowId)>,
 ) -> Result<Children, AppError> {
     let old_id = item.old_id;
-    let mut children: Vec<(DuplicableKind, i64)> = Vec::new();
+    let mut children: Vec<(DuplicableKind, RowId)> = Vec::new();
     if item.kind == DuplicableKind::Domain {
         // The `domains` table names its parent by `parent_id` alone, so no spelling applies.
         let ids = child_ids(db, DuplicableKind::Domain, "", old_id).await?;
@@ -443,8 +447,8 @@ async fn child_ids(
     db: &mut Db<Transactional>,
     kind: DuplicableKind,
     parent_type: &str,
-    parent_id: i64,
-) -> Result<Vec<i64>, AppError> {
+    parent_id: RowId,
+) -> Result<Vec<RowId>, AppError> {
     Ok(match kind {
         DuplicableKind::Domain => db.domains().child_ids(DomainId(parent_id)).await?,
         DuplicableKind::Goal => db.goals().child_ids(parent_type, parent_id).await?,
@@ -456,7 +460,7 @@ async fn child_ids(
 }
 
 /// Tags each id in `ids` with its kind and appends them to `children`.
-fn extend(children: &mut Vec<(DuplicableKind, i64)>, kind: DuplicableKind, ids: Vec<i64>) {
+fn extend(children: &mut Vec<(DuplicableKind, RowId)>, kind: DuplicableKind, ids: Vec<RowId>) {
     children.extend(ids.into_iter().map(|id| (kind, id)));
 }
 
@@ -472,6 +476,7 @@ async fn clone_domain(
     let created = db
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: original.title.clone(),
             description: original.description.clone(),
             subtype,
@@ -505,6 +510,7 @@ async fn clone_goal(
     let created = crate::tasks::create_goal(
         db,
         CreateGoalRequest {
+            id: None,
             title: original.title.clone(),
             parent_type: stored_reference(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
@@ -544,6 +550,7 @@ async fn clone_task(
     let created = crate::tasks::create_task(
         db,
         CreateTaskRequest {
+            id: None,
             title: original.title.clone(),
             parent_type: stored_reference(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
@@ -651,6 +658,7 @@ async fn clone_info(
     let created = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: original.body.clone(),
             details: original.details.clone(),
             parent_type: stored_reference(&item.new_parent_kind).to_string(),
@@ -679,8 +687,8 @@ async fn clone_info(
 async fn carry_block_reasons(
     db: &mut Db<Transactional>,
     owner_type: &str,
-    old_id: i64,
-    new_id: i64,
+    old_id: RowId,
+    new_id: RowId,
 ) -> Result<(), AppError> {
     let reasons = db.block_reasons().list_for(owner_type, old_id).await?;
     if reasons.is_empty() {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { subtreeToggle } from "./subtree-toggle";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "task", title: id, position: 0, tagIds: [], children };
@@ -11,7 +12,7 @@ function group(id: string, children: MindmapNode[] = []): MindmapNode {
   return {
     id, kind: "habit_group", title: id, virtual: true, position: 0, tagIds: [], children,
     habitGroup: {
-      flowId: 7, level: "run", passed: 2, done: 1, missed: 1,
+      flowId: storedRowId(7), level: "run", passed: 2, done: 1, missed: 1,
       spanStart: "2026-09-08", spanEnd: "2026-09-16", spanLabel: "8–16 Sep",
     },
   };

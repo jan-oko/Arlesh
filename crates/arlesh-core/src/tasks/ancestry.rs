@@ -17,6 +17,7 @@
 //! its own policy to the second — see [`Search::or_unconstrained`] and [`Search::or_reject`].
 
 use crate::database::session::{Db, SessionMode};
+use crate::nodes::id::RowId;
 
 use super::error::TaskError;
 use super::model::{CommitmentId, GoalId, TaskId};
@@ -30,7 +31,7 @@ pub(super) use super::rules::ancestry::*;
 pub(super) async fn occurrence_of<M: SessionMode>(
     db: &mut Db<M>,
     kind: NodeKind,
-    id: i64,
+    id: RowId,
 ) -> Result<Option<AncestryLink>, TaskError> {
     let attachment = db.flows().child_attachment(kind.as_db(), id).await?;
     Ok(attachment.map(occurrence_link))
@@ -52,7 +53,7 @@ pub(super) async fn occurrence_of<M: SessionMode>(
 pub(super) async fn climb<M: SessionMode>(
     db: &mut Db<M>,
     start_type: &str,
-    start_id: i64,
+    start_id: RowId,
 ) -> Result<AncestryChain, TaskError> {
     let mut climb = Climb::new(start_type, start_id);
     loop {

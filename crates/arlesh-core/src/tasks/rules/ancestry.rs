@@ -4,6 +4,7 @@
 //! The climb that reads the chain from the database lives in [`crate::tasks::ancestry`], which
 //! re-exports these names (ADR 0010).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::flows::model::ChildAttachment;
@@ -27,7 +28,7 @@ pub(in crate::tasks) struct NodeRef {
     /// `"task"`, `"goal"`, `"commitment"`, `"domain"`, …
     pub(in crate::tasks) node_type: String,
     /// The referenced row's id.
-    pub(in crate::tasks) node_id: i64,
+    pub(in crate::tasks) node_id: RowId,
 }
 
 /// One node on the chain, carrying only the six fields any ancestry question asks about.
@@ -40,7 +41,7 @@ pub(in crate::tasks) struct AncestryLink {
     /// Which table this link came from.
     pub(in crate::tasks) kind: NodeKind,
     /// The link's own id.
-    pub(in crate::tasks) id: i64,
+    pub(in crate::tasks) id: RowId,
     /// Where the climb went next.
     pub(in crate::tasks) parent: NodeRef,
     /// The link's explicit Time Scope, if it has one.
@@ -81,7 +82,7 @@ pub(in crate::tasks) enum ChainEnd {
         /// Which table the reference it stopped on pointed into.
         kind: NodeKind,
         /// The id it pointed at.
-        id: i64,
+        id: RowId,
         /// What was wrong with it.
         cause: BreakCause,
     },
@@ -118,7 +119,7 @@ pub(in crate::tasks) enum Search<T> {
         /// Which table the reference the climb stopped on pointed into.
         kind: NodeKind,
         /// The id it pointed at.
-        id: i64,
+        id: RowId,
         /// What was wrong with it.
         cause: BreakCause,
     },
@@ -182,7 +183,7 @@ impl NodeKind {
 
 impl NodeRef {
     /// A reference to `node_id` in the table `node_type` names.
-    pub(in crate::tasks) fn new(node_type: impl Into<String>, node_id: i64) -> Self {
+    pub(in crate::tasks) fn new(node_type: impl Into<String>, node_id: RowId) -> Self {
         Self {
             node_type: node_type.into(),
             node_id,
@@ -203,7 +204,7 @@ impl<T> Search<T> {
             Self::Undetermined { kind, id, cause } => {
                 tracing::warn!(
                     node_kind = ?kind,
-                    node_id = id,
+                    node_id = %id,
                     cause = ?cause,
                     "ancestor chain is broken; treating the item as unconstrained"
                 );
@@ -325,14 +326,14 @@ impl AncestryChain {
 /// from the database, and [`climb_in`] from an [`AncestryIndex`] of rows already loaded.
 pub(in crate::tasks) struct Climb {
     links: Vec<AncestryLink>,
-    visited: HashSet<(NodeKind, i64)>,
+    visited: HashSet<(NodeKind, RowId)>,
     next: NodeRef,
 }
 
 /// What a climb needs next.
 pub(in crate::tasks) enum ClimbStep {
     /// The link of this node, and the occurrence it hangs on, if any.
-    Read(NodeKind, i64),
+    Read(NodeKind, RowId),
     /// The climb is over.
     Done(AncestryChain),
 }
@@ -343,7 +344,7 @@ pub(in crate::tasks) type LinkRead = Option<(AncestryLink, Option<AncestryLink>)
 
 impl Climb {
     /// A climb starting at `(start_type, start_id)`, which is itself the first link.
-    pub(in crate::tasks) fn new(start_type: &str, start_id: i64) -> Self {
+    pub(in crate::tasks) fn new(start_type: &str, start_id: RowId) -> Self {
         Self {
             links: Vec::new(),
             visited: HashSet::new(),
@@ -380,7 +381,7 @@ impl Climb {
     pub(in crate::tasks) fn read(
         &mut self,
         kind: NodeKind,
-        id: i64,
+        id: RowId,
         read: LinkRead,
     ) -> Option<AncestryChain> {
         match read {
@@ -414,8 +415,8 @@ impl Climb {
 /// that each node's chain is climbed in memory rather than by a query per step.
 #[derive(Debug, Clone, Default)]
 pub struct AncestryIndex {
-    links: HashMap<(NodeKind, i64), AncestryLink>,
-    occurrences: HashMap<(NodeKind, i64), AncestryLink>,
+    links: HashMap<(NodeKind, RowId), AncestryLink>,
+    occurrences: HashMap<(NodeKind, RowId), AncestryLink>,
 }
 
 impl AncestryIndex {
@@ -428,7 +429,7 @@ impl AncestryIndex {
     pub(in crate::tasks) fn attach(
         &mut self,
         kind: NodeKind,
-        id: i64,
+        id: RowId,
         attachment: ChildAttachment,
     ) {
         self.occurrences
@@ -441,7 +442,7 @@ impl AncestryIndex {
 pub(in crate::tasks) fn climb_in(
     index: &AncestryIndex,
     start_type: &str,
-    start_id: i64,
+    start_id: RowId,
 ) -> AncestryChain {
     let mut climb = Climb::new(start_type, start_id);
     loop {
@@ -470,7 +471,7 @@ impl AncestryIndex {
         tasks: &[Task],
         goals: &[Goal],
         commitments: &[Commitment],
-        attachments: Vec<(String, i64, ChildAttachment)>,
+        attachments: Vec<(String, RowId, ChildAttachment)>,
     ) -> Self {
         let mut index = Self::default();
         for task in tasks {

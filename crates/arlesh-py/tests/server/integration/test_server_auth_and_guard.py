@@ -14,9 +14,12 @@ from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 from loguru import logger
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Start = Callable[..., Any]
 Hold = Callable[[], AbstractContextManager[None]]
-DOMAIN = {"title": "From a client", "subtype": "domain", "parent_id": 1}
+DOMAIN = {"title": "From a client", "subtype": "domain", "parent_id": ROOT_ASPECT}
 
 
 @pytest.fixture
@@ -162,4 +165,4 @@ def test_a_missing_database_is_created_and_migrated_at_startup(
         )
 
     assert response.status_code == 200
-    assert response.json()[0]["id"] == 1
+    assert response.json()[0]["id"] == ROOT_ASPECT

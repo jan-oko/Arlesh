@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 
 #[test]
 fn verdict_as_str_covers_all_variants() {
@@ -37,8 +38,8 @@ fn only_kept_and_broken_count_as_having_said_something() {
 
 #[test]
 fn commitment_id_roundtrip() {
-    let id = CommitmentId::from(21_i64);
-    assert_eq!(i64::from(id), 21);
+    let id = CommitmentId::from(tid(21));
+    assert_eq!(id.0, tid(21));
 }
 
 #[test]

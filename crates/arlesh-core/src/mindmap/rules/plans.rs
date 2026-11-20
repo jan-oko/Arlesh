@@ -4,6 +4,7 @@
 //! Pure: a function of the board's rows and lifecycles. Keyed as the app keys a node (`task-12`,
 //! `expectation-3`, `domain-4`).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDateTime;
@@ -27,7 +28,7 @@ use super::facts::content_parent;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HabitEdge {
     /// The Habit's Flow id.
-    pub flow_id: i64,
+    pub flow_id: RowId,
     /// Its title.
     pub title: String,
     /// The key of the node its iteration roots hang under — its target.
@@ -117,7 +118,7 @@ impl PlanAudit {
 /// The rows a board's Plans are read over.
 pub struct PlanRows<'a> {
     /// Every Domain, Project, Aspect and Tag, as `(id, parent id)`.
-    pub domains: Vec<(i64, Option<i64>)>,
+    pub domains: Vec<(RowId, Option<RowId>)>,
     /// Every Goal.
     pub goals: &'a [Goal],
     /// Every Task.

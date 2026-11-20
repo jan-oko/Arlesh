@@ -1,5 +1,6 @@
 //! Tauri commands for domain operations.
 
+use arlesh_core::nodes::id::RowId;
 use tauri::State;
 
 use crate::backend::AppBackend;
@@ -24,7 +25,7 @@ pub async fn create_domain(
 
 /// Fetches a domain by id.
 #[tauri::command]
-pub async fn get_domain(backend: State<'_, AppBackend>, id: i64) -> Result<Domain, WireError> {
+pub async fn get_domain(backend: State<'_, AppBackend>, id: RowId) -> Result<Domain, WireError> {
     backend.get_domain(id).await
 }
 
@@ -44,7 +45,7 @@ pub async fn list_domains(
 #[tauri::command]
 pub async fn update_domain(
     backend: State<'_, AppBackend>,
-    id: i64,
+    id: RowId,
     request: UpdateDomainRequest,
 ) -> Result<Domain, WireError> {
     backend.update_domain(id, request).await
@@ -55,7 +56,7 @@ pub async fn update_domain(
 /// A single-statement delete (once the read/validate work is done), so it runs on a pooled
 /// session.
 #[tauri::command]
-pub async fn delete_domain(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+pub async fn delete_domain(backend: State<'_, AppBackend>, id: RowId) -> Result<(), WireError> {
     backend.delete_domain(id).await
 }
 
@@ -70,8 +71,8 @@ pub async fn delete_domain(backend: State<'_, AppBackend>, id: i64) -> Result<()
 #[tauri::command]
 pub async fn duplicate_domain(
     backend: State<'_, AppBackend>,
-    id: i64,
-    target_id: i64,
+    id: RowId,
+    target_id: RowId,
     position: i64,
 ) -> Result<DuplicatedSubtree<Domain>, WireError> {
     backend.duplicate_domain(id, target_id, position).await

@@ -2,19 +2,20 @@
 
 use super::*;
 use crate::access::model::NodeTable;
+use crate::nodes::id::tid;
 
 fn node(node_type: &str, node_id: i64) -> TargetRef {
     TargetRef {
         node_type: node_type.to_string(),
-        node_id,
+        node_id: tid(node_id),
     }
 }
 
 /// Run 1 of flow 7, rooted at goal 10 under project 3, holding goal 10 and task 11.
 fn run() -> Vec<InstanceNode> {
     let row = |materialised: TargetRef, source: TargetRef, parent: TargetRef| InstanceNode {
-        instance_id: 1,
-        flow_id: Some(7),
+        instance_id: tid(1),
+        flow_id: Some(tid(7)),
         root: node("goal", 10),
         started_at: 500,
         node: materialised,
@@ -30,12 +31,12 @@ fn run() -> Vec<InstanceNode> {
 #[test]
 fn a_copied_run_keeps_the_original_flow_and_start_and_points_at_the_copies() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Goal, 10, 20);
-    copies.record(NodeTable::Task, 11, 21);
+    copies.record(NodeTable::Goal, tid(10), tid(20));
+    copies.record(NodeTable::Task, tid(11), tid(21));
     assert_eq!(
         copied_instances(&run(), &copies),
         vec![InstanceCopy {
-            flow_id: Some(7),
+            flow_id: Some(tid(7)),
             root: node("goal", 20),
             started_at: 500,
             nodes: vec![
@@ -59,7 +60,7 @@ fn a_copied_run_keeps_the_original_flow_and_start_and_points_at_the_copies() {
 #[test]
 fn a_run_reached_below_its_root_is_rooted_at_its_first_copied_node() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Task, 11, 21);
+    copies.record(NodeTable::Task, tid(11), tid(21));
     let [copy] = copied_instances(&run(), &copies).try_into().unwrap();
     assert_eq!(copy.root, node("task", 21));
     assert_eq!(copy.nodes.len(), 1);
@@ -69,6 +70,6 @@ fn a_run_reached_below_its_root_is_rooted_at_its_first_copied_node() {
 #[test]
 fn a_run_the_copy_did_not_reach_is_left_alone() {
     let mut copies = CopiedNodes::default();
-    copies.record(NodeTable::Task, 99, 100);
+    copies.record(NodeTable::Task, tid(99), tid(100));
     assert!(copied_instances(&run(), &copies).is_empty());
 }

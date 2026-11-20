@@ -4,6 +4,7 @@ import { filterTree, filterTreeWithFocus, DEFAULT_FILTER } from "./filter-tree";
 import { focusExemptPath } from "./focus-exemption";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -298,25 +299,25 @@ describe("filterTree — type visibility", () => {
 describe("filterTree — tag filters (Any/All/Exclude)", () => {
   const t = () =>
     n("root", "domain", {}, [
-      n("t-ab", "task", { status: "todo", tagIds: [1, 2] }),
-      n("t-a", "task", { status: "todo", tagIds: [1] }),
+      n("t-ab", "task", { status: "todo", tagIds: [storedRowId(1), storedRowId(2)] }),
+      n("t-a", "task", { status: "todo", tagIds: [storedRowId(1)] }),
       n("t-none", "task", { status: "todo", tagIds: [] }),
     ]);
 
   it("Any keeps tasks with at least one of the any-tags", () => {
-    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: 1, mode: "any" }] })));
+    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: storedRowId(1), mode: "any" }] })));
     expect(kept).toEqual(expect.arrayContaining(["t-ab", "t-a"]));
     expect(kept).not.toContain("t-none");
   });
 
   it("All requires every all-tag", () => {
-    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: 1, mode: "all" }, { tagId: 2, mode: "all" }] })));
+    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: storedRowId(1), mode: "all" }, { tagId: storedRowId(2), mode: "all" }] })));
     expect(kept).toContain("t-ab");
     expect(kept).not.toContain("t-a");
   });
 
   it("Exclude drops tasks carrying an excluded tag", () => {
-    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: 2, mode: "exclude" }] })));
+    const kept = ids(filterTree(t(), f({ tagFilters: [{ tagId: storedRowId(2), mode: "exclude" }] })));
     expect(kept).not.toContain("t-ab");
     expect(kept).toContain("t-a");
     expect(kept).toContain("t-none");

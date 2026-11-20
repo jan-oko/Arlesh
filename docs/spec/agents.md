@@ -103,7 +103,7 @@ falls back to claiming for itself. Registering again with a `subtree` rotates th
 as well. The arlesh-notify mod uses it when the orchestrator names the Task in the Agent call with a
 marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
 
-- The marker is `[arlesh:` + an id of 3 to 40 letters, digits or hyphens (a row id, a short id or a
+- The marker is `[arlesh:` + an id of 3 to 40 letters, digits or hyphens (a short id or a
   full id) + `]`, case-sensitive. **Exactly one** in the `description` and `prompt` together counts;
   a repeated one, or anything that starts `[arlesh:` and is not a whole marker, is treated as none
   and noted in the debug log.

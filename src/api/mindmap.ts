@@ -109,7 +109,7 @@ export type FlowHabitResult =
  * as `MindmapLoad.flows`; `flow_id` is carried anyway so a consumer can key by it.
  */
 export interface FlowHabitEntry {
-  flow_id: number;
+  flow_id: string;
   flow_title: string;
   result: FlowHabitResult;
 }

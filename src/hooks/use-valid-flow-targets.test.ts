@@ -7,13 +7,14 @@ vi.mock("@/api/flows", () => ({ scopeValidFlowTargets: vi.fn() }));
 import { scopeValidFlowTargets } from "@/api/flows";
 import { useValidFlowTargets } from "./use-valid-flow-targets";
 import { fixtureRowId } from "@/test/node-fixture";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, kind: MindmapNode["kind"]): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, status: "active", position: 0, tagIds: [], children: [] };
 }
 
 // Aspect/project/domain/tag nodes are keyed `domain-<id>` in the tree, though their kind is the subtype.
-const CANDIDATES = [node("goal-7", "goal"), node("domain-1", "aspect")];
+const CANDIDATES = [node(`goal-${storedRowId(7)}`, "goal"), node(`domain-${storedRowId(1)}`, "aspect")];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -21,29 +22,29 @@ beforeEach(() => {
 
 describe("useValidFlowTargets", () => {
   it("asks the backend for an unscoped flow too, which still keeps only the kinds that hold instances", async () => {
-    vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "goal", node_id: 7 }]);
+    vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "goal", node_id: storedRowId(7) }]);
     const { result } = renderHook(() => useValidFlowTargets(CANDIDATES, null, null, null));
     await waitFor(() => expect(result.current).not.toBeNull());
     expect(scopeValidFlowTargets).toHaveBeenCalledWith(null, null, null, [
-      { node_type: "goal", node_id: 7 },
-      { node_type: "aspect", node_id: 1 },
+      { node_type: "goal", node_id: storedRowId(7) },
+      { node_type: "aspect", node_id: storedRowId(1) },
     ]);
-    expect(result.current?.has("goal-7")).toBe(true);
+    expect(result.current?.has(`goal-${storedRowId(7)}`)).toBe(true);
   });
 
   it("queries with mapped refs and returns the valid id set for a scoped flow", async () => {
-    vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "aspect", node_id: 1 }]);
+    vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "aspect", node_id: storedRowId(1) }]);
     const { result } = renderHook(() =>
       useValidFlowTargets(CANDIDATES, 2, "week", "2026-07-01"),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
     expect(scopeValidFlowTargets).toHaveBeenCalledWith(2, "week", "2026-07-01", [
-      { node_type: "goal", node_id: 7 },
-      { node_type: "aspect", node_id: 1 },
+      { node_type: "goal", node_id: storedRowId(7) },
+      { node_type: "aspect", node_id: storedRowId(1) },
     ]);
     // The set is keyed by tree node id, so a domain-table target resolves as `domain-<id>` and the
     // consumers' `validIds.has(node.id)` check matches (the previous `aspect-1` key never did).
-    expect(result.current?.has("domain-1")).toBe(true);
-    expect(result.current?.has("goal-7")).toBe(false);
+    expect(result.current?.has(`domain-${storedRowId(1)}`)).toBe(true);
+    expect(result.current?.has(`goal-${storedRowId(7)}`)).toBe(false);
   });
 });

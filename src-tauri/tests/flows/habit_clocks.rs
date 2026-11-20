@@ -5,6 +5,8 @@
 //! what its occurrences read as there: their window, their due, and whether they are Overdue.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
+use arlesh_lib::nodes::key::no_cycle;
 
 use arlesh_lib::commands::{flows as flow_commands, tasks as task_commands};
 use arlesh_lib::flows::model::{
@@ -40,14 +42,14 @@ async fn habit(
     clock: ClockKind,
     policy: Option<MissPolicy>,
     gap: Option<(i64, &str)>,
-) -> i64 {
+) -> RowId {
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
             title: "Water the plants".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: kind.map(|_| 1),
             flow_duration_kind: kind.map(str::to_string),
             ..Default::default()
@@ -74,14 +76,14 @@ async fn habit(
     flow.id
 }
 
-fn root_key(flow_id: i64, iteration: ScopeKey) -> OccurrenceKey {
+fn root_key(flow_id: RowId, iteration: ScopeKey) -> OccurrenceKey {
     OccurrenceKey {
         item: TemplateItem {
             item_type: TemplateKind::FlowRoot,
             item_id: flow_id,
         },
         iteration,
-        cycle: 0,
+        cycle: no_cycle(),
     }
 }
 
@@ -116,7 +118,7 @@ fn lifecycle(board: &MindmapLoad, key: &OccurrenceKey) -> ItemLifecycle {
 }
 
 /// The roots of this Habit's iterations on the board, by the iteration they key on.
-fn roots(board: &MindmapLoad, flow_id: i64) -> Vec<ScopeKey> {
+fn roots(board: &MindmapLoad, flow_id: RowId) -> Vec<ScopeKey> {
     board
         .tasks
         .iter()
@@ -137,7 +139,7 @@ fn assert_same(actual: Vec<ScopeKey>, expected: Vec<ScopeKey>) {
 }
 
 /// Marks a whole iteration done as if at `instant`, the completion an Interval clock reads.
-async fn complete_at(pool: &sqlx::SqlitePool, flow_id: i64, iteration: ScopeKey, instant: &str) {
+async fn complete_at(pool: &sqlx::SqlitePool, flow_id: RowId, iteration: ScopeKey, instant: &str) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     arlesh_lib::flows::set_iteration_done(
         &mut db,
