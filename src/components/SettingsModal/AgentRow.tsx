@@ -4,7 +4,7 @@ import type { AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
 import type { AgentAction } from "@/api/agents";
 import type { McpCatalogueNode } from "@/api/mcp-access";
 import { agentRowId } from "@/utils/agent-anchors";
-import { capitalised, controlsFor, relativeTime, shortAge } from "@/utils/agents";
+import { controlsFor, relativeTime, shortAge } from "@/utils/agents";
 import { describeRoots } from "@/utils/mcp-roots";
 import styles from "./SettingsModal.module.css";
 import own from "./AgentsSection.module.css";
@@ -61,9 +61,6 @@ export default function AgentRow({ summary, nodes, onAct, children }: Props) {
           <span key="standing" className={own.badge} title={standingNotes[standing]}>
             {standingNames[standing]}
           </span>,
-          ...(agent.parent_id === null
-            ? [<span key="account" className={own.meta}>{capitalised(agent.account)}</span>]
-            : []),
           <span key="seen" className={own.meta}>
             {agent.last_seen_at === null
               ? t("settings:mcp.agents.neverSeen")

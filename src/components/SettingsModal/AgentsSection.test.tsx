@@ -88,11 +88,11 @@ describe("AgentsSection", () => {
     expect(within(list).getByText(/Ship/)).toBeInTheDocument();
   });
 
-  it("separates the top line with dots, shows the account as a name and the claim as a path", async () => {
+  it("separates the top line with dots, shows the claim as a path, without the account name", async () => {
     render(<AgentsSection />);
     const list = await screen.findByRole("list", { name: "mcp.agents.list" });
-    expect(within(list).getAllByText("mcp.agents.separator")).toHaveLength(3);
-    expect(within(list).getByText("Work")).toBeInTheDocument();
+    expect(within(list).getAllByText("mcp.agents.separator")).toHaveLength(2);
+    expect(within(list).queryByText("Work")).toBeNull();
     expect(within(list).getByText("Ship")).toBeInTheDocument();
     expect(within(list).queryByText(/·/)).toBeNull();
   });
