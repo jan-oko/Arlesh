@@ -35,17 +35,12 @@ workspace-members = ["arlesh-rules"]
 # server's module compile it. Its own dependencies go the same way: a crate only `src-tauri` reaches
 # is compiled once however it is built, so naming it here would only make the server's module
 # compile it too. (`schemars` 0.8 and `phf_shared` are `tauri-utils`' and the tray's; `core` and
-# `py` use `schemars` 1.x. `syn`, `quote` and `proc-macro2` are the codegen `tauri-utils` runs on the
-# target side; everywhere else they are proc-macro dependencies, which Cargo builds for the host and
-# unifies by itself. Left in the hack, they made it a different unit in each build.)
+# `py` use `schemars` 1.x.)
 [final-excludes]
 third-party = [
     { name = "tauri" },
     { name = "tauri-utils" },
     { name = "tauri-build" },
-    { name = "syn", version = "2" },
-    { name = "proc-macro2" },
-    { name = "quote" },
     { name = "schemars", version = "0.8" },
     { name = "phf_shared" },
     { name = "regex-automata" },
