@@ -217,6 +217,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
               type="button"
               data-gesture-skip=""
               role="radio"
+              data-verdict={option}
               className={styles.option}
               aria-checked={verdict === option}
               tabIndex={verdict === option || (verdict === null && option === VERDICTS[0]) ? 0 : -1}

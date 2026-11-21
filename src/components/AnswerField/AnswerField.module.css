@@ -322,22 +322,69 @@
   margin-inline-start: auto;
 }
 
+/* Four round icon buttons, 38 px visible. Each one's tap area is stretched to 44 px by a pseudo-element
+   reaching 3 px out; the 8 px gaps keep neighbouring areas from overlapping. The verdict pair is two
+   separate circles, not a joined bar: a chosen one fills with its own colour, so two circles with a
+   gap read as a two-way choice at a glance. */
 .touch .send,
 .touch .secondary,
 .touch .option {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  min-width: 44px;
-  min-height: 44px;
+  width: 38px;
+  height: 38px;
+  min-width: 0;
+  min-height: 0;
   padding: 0;
   flex: none;
+  border-radius: 50%;
+}
+
+.touch .send::before,
+.touch .secondary::before,
+.touch .option::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
 }
 
 .touch .send svg,
 .touch .secondary svg,
 .touch .option svg {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+}
+
+.touch .switch {
+  gap: var(--space-2);
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.touch .option,
+.touch .option + .option {
+  border: 1px solid var(--text-secondary);
+}
+
+.touch .actions {
+  gap: var(--space-2);
+}
+
+/* The chosen verdict: filled in its own colour with a white icon (approve green, changes red, the
+   theme's own tokens). The unchosen stay outlined and quiet. */
+.touch .option[aria-checked="true"] {
+  color: white;
+  border-color: transparent;
+}
+
+.touch .option[data-verdict="approved"][aria-checked="true"] {
+  background: var(--color-aspect-green);
+}
+
+.touch .option[data-verdict="changes_requested"][aria-checked="true"] {
+  background: var(--danger);
 }

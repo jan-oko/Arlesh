@@ -70,6 +70,12 @@ describe("The answer and review fields on the touch layout", () => {
     expect(screen.getByRole("button", { name: "answerStage" })).toBeEnabled();
   });
 
+  it("each verdict carries its own marker for its selected colour", () => {
+    render(<ReviewAnswer review={review} staged={false} actions={answerActions()} />);
+    expect(screen.getByRole("radio", { name: "reviewApprove" })).toHaveAttribute("data-verdict", "approved");
+    expect(screen.getByRole("radio", { name: "reviewRequestChanges" })).toHaveAttribute("data-verdict", "changes_requested");
+  });
+
   it("a question's Stage and Send are icon buttons, and Send fires", () => {
     const actions = answerActions();
     render(<AnswerField question={question} staged={false} actions={actions} />);
