@@ -36,6 +36,7 @@ class FakeStore(PushStore):
         self.told: set[str] = set()
         self.registered = True
         self.failing = False
+        self.failures = 0
         self.looks = 0
         self.succeeded = 0
         self.origins: list[ChangeOrigin] = []
@@ -55,6 +56,9 @@ class FakeStore(PushStore):
     ) -> list[DevicePlan]:
         self.looks += 1
         self.origins.append(origin)
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError("the database blinked")
         if self.failing:
             raise RuntimeError("the database is away")
         self.succeeded += 1
@@ -238,12 +242,10 @@ async def test_a_look_that_failed_still_knows_who_wrote_what_it_missed() -> None
     pushes.start()
     try:
         await until(lambda: store.looks == 1)
-        store.failing = True
+        store.failures = 1
         await board.write()
-        await until(lambda: store.looks >= 3)
-        store.failing = False
-        await until(lambda: store.succeeded >= 1)
+        await until(lambda: store.succeeded >= 2)
     finally:
         await pushes.stop()
 
-    assert set(store.origins[1:]) == {ChangeOrigin.user}
+    assert store.origins == [ChangeOrigin.time, ChangeOrigin.user, ChangeOrigin.user]
