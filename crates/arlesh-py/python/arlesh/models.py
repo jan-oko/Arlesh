@@ -107,6 +107,10 @@ class AgentActivity(BaseModel):
     """
     Agentic Tasks that read Review: On Agent, with the agent's question open for the user.
     """
+    staged: Annotated[int | None, Field(ge=0)] = None
+    """
+    Open questions and reviews on the whole board with a staged answer: what one Send sends.
+    """
     waits: Annotated[int, Field(ge=0)]
     """
     Pending, live agentic waits on something other than the user — CI, say.
@@ -1564,6 +1568,33 @@ class ScopeKind(StrEnum):
     """
 
 
+class SendRequest(BaseModel):
+    """
+    A request to send the staged answers.
+    """
+
+    shown: list[str] | None = []
+    """
+    The waits the caller's screen showed as staged: one that has no draft any more is reported
+    as skipped rather than passed over in silence.
+    """
+
+
+class SentDraft(BaseModel):
+    """
+    A draft that was sent: its wait is released.
+    """
+
+    task_id: str
+    """
+    The Task it hangs under.
+    """
+    wait_id: str
+    """
+    The wait released.
+    """
+
+
 class SetRecurrenceRequest(BaseModel):
     """
     Request to set (create or replace) a flow's Recurrence, making it a Habit.
@@ -1617,6 +1648,48 @@ class SetRecurrenceRequest(BaseModel):
     )
     """
     The scope the recurrence starts on (of the flow's Duration kind).
+    """
+
+
+class SkipReason(StrEnum):
+    """
+    Why a staged answer was not sent.
+    """
+
+    released = "released"
+    """
+    The wait was already released.
+    """
+    gone = "gone"
+    """
+    The wait no longer exists, is archived, or is no longer an agentic question.
+    """
+    unstaged = "unstaged"
+    """
+    The wait is still open, but its draft was cleared on another device.
+    """
+
+
+class SkippedDraft(BaseModel):
+    """
+    A staged answer that was not sent, named so the client can say so.
+    """
+
+    reason: SkipReason
+    """
+    Why it was skipped.
+    """
+    task_id: str | None
+    """
+    The Task it hangs under, when the wait is still known.
+    """
+    title: str | None
+    """
+    The wait's title, when the wait is still known.
+    """
+    wait_id: str
+    """
+    The wait.
     """
 
 
@@ -2516,6 +2589,29 @@ class AgenticBrief(BaseModel):
     """
 
 
+class AnswerDraft(BaseModel):
+    """
+    An answer written but not yet sent. Its existence means the wait is **staged**.
+    """
+
+    answer: str | None
+    """
+    A question's answer, or a review's note (optional there).
+    """
+    saved_at: datetime
+    """
+    When the last save landed.
+    """
+    verdict: ReviewVerdict | None
+    """
+    A review's verdict; `None` on a question.
+    """
+    wait_id: str
+    """
+    The wait it answers: a stored or a derived wait's id.
+    """
+
+
 class AsyncTemplate(BaseModel):
     """
     A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
@@ -2993,6 +3089,21 @@ class DerivedState(BaseModel):
     timing: Timing
     """
     Window position.
+    """
+
+
+class DraftRequest(BaseModel):
+    """
+    The content of a draft to save, as the user gave it.
+    """
+
+    answer: str | None = None
+    """
+    A question's answer, or a review's note.
+    """
+    verdict: ReviewVerdict | None = None
+    """
+    A review's verdict.
     """
 
 
@@ -4008,6 +4119,21 @@ class Scope(BaseModel):
     start_datetime: str | None
     """
     Explicit start datetime, ISO 8601 minute precision (Exact scopes only).
+    """
+
+
+class SendOutcome(BaseModel):
+    """
+    What a send did.
+    """
+
+    sent: list[SentDraft]
+    """
+    The waits released.
+    """
+    skipped: list[SkippedDraft]
+    """
+    The staged answers not sent.
     """
 
 
@@ -5536,6 +5662,11 @@ class NodeFacts(BaseModel):
     """
     [`Self::plan_source`]'s short id, when the board has one for it.
     """
+    staged_questions: list[str] | None = None
+    """
+    The open questions beneath a Task that are **staged**: an answer is written and not yet
+    sent. A subset of [`Self::open_questions`]; the wait still reads Review.
+    """
     sub_items: SubItems | None = None
     """
     What a Task's sub-items say about it — the floor they derive and how many are open — when
@@ -5879,6 +6010,12 @@ class MindmapLoad(BaseModel):
     agent_activity: AgentActivity | None = None
     """
     What the agents are doing on the whole board. Filled by the app's load only.
+    """
+    answer_drafts: list[AnswerDraft] | None = None
+    """
+    Every staged answer: the drafts of waits the user has answered but not sent. Filled by the
+    app's board only (`mindmap::board`); never by `load_blocked`, so the MCP's board, the
+    snapshot and the wait stream carry none and an agent never sees a draft.
     """
     block_reasons: list[BlockReason]
     """
