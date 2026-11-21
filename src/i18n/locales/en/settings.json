@@ -91,6 +91,7 @@
       "removeCancel": "Cancel",
       "forAgent": "{{action}} {{name}}",
       "accountLock": "Lock account {{label}}",
+      "accountLockSingle": "Lock account",
       "noUsage": "No usage reported",
       "windowName": {
         "five_hour": "Five Hours",

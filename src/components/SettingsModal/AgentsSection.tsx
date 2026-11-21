@@ -49,8 +49,8 @@ export default function AgentsSection() {
   const childrenOf = (id: number) => overview.agents.filter(({ agent }) => agent.parent_id === id);
   const accountLabels = [...new Set(topLevel.map(({ agent }) => agent.account))];
   const accountNamed = (label: string) => overview.accounts.find((account) => account.label === label);
-  const lockControls = (account: Account) => (
-    <AccountControls account={account} onLock={(locked) => { void lockAccount(account.label, locked); }} />
+  const lockControls = (account: Account, named: boolean) => (
+    <AccountControls account={account} named={named} onLock={(locked) => { void lockAccount(account.label, locked); }} />
   );
   const rowsOf = (summaries: typeof topLevel) => summaries.map((summary) => (
     <AgentRow
@@ -90,7 +90,7 @@ export default function AgentsSection() {
         <h3 className={styles.heading}>{t("mcp.agents.heading")}</h3>
         <HelpTip text={t("mcp.agents.intro")} label={t("mcp.agents.help")} />
         {single !== undefined && (
-          <span id={accountRowId(single.label)} className={own.groupHeader}>{lockControls(single)}</span>
+          <span id={accountRowId(single.label)} className={own.groupHeader}>{lockControls(single, false)}</span>
         )}
       </div>
       <div className={own.pinRow}>
@@ -132,7 +132,7 @@ export default function AgentsSection() {
               >
                 <div className={own.groupHeader}>
                   <span id={`${accountRowId(label)}-name`} className={own.groupName}>{capitalised(label)}</span>
-                  {account !== undefined && lockControls(account)}
+                  {account !== undefined && lockControls(account, true)}
                 </div>
                 <ul className={own.list} aria-label={t("mcp.agents.list")}>{rowsOf(topLevel.filter(({ agent }) => agent.account === label))}</ul>
               </div>

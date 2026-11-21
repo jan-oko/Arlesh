@@ -13,10 +13,12 @@ function isKnownKind(kind: string): kind is (typeof KNOWN_KINDS)[number] {
 interface Props {
   account: Account;
   onLock: (locked: boolean) => void;
+  /** Whether other accounts are in use too, so the switch must say which account it locks. */
+  named: boolean;
 }
 
 /** An account's lock switch and its limits line ("Five Hours: 8% (4h left) · Week: 20% (2d left)"). */
-export default function AccountControls({ account, onLock }: Props) {
+export default function AccountControls({ account, onLock, named }: Props) {
   const { t } = useTranslation("settings");
   const kinds = {
     five_hour: t("mcp.agents.windowName.five_hour"),
@@ -33,7 +35,7 @@ export default function AccountControls({ account, onLock }: Props) {
       <Switch
         checked={account.locked}
         onChange={onLock}
-        label={t("mcp.agents.accountLock", { label: account.label })}
+        label={named ? t("mcp.agents.accountLock", { label: account.label }) : t("mcp.agents.accountLockSingle")}
       />
       <span className={own.limits}>{limits === "" ? t("mcp.agents.noUsage") : limits}</span>
     </>

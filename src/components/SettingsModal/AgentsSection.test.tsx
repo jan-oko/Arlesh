@@ -207,11 +207,13 @@ describe("AgentsSection", () => {
         { ...WORK, windows: [{ kind: "five_hour", percent_used: 8, resets_at: inHours(4) }] },
       ]));
       render(<AgentsSection />);
-      const lock = await screen.findByRole("checkbox", { name: /mcp\.agents\.accountLock/ });
+      const lock = await screen.findByRole("checkbox", { name: "mcp.agents.accountLockSingle" });
       const title = screen.getByRole("heading", { name: "mcp.agents.heading" });
       expect(title.parentElement).toContainElement(lock);
       expect(title.parentElement).toHaveTextContent(/mcp\.agents\.limit/);
       expect(screen.queryByRole("group")).toBeNull();
+      expect(title.parentElement).not.toHaveTextContent(/work/i);
+      expect(screen.queryByRole("checkbox", { name: /"label"/ })).toBeNull();
     });
 
     it("gives each account its own header with its switch and limits, and agents under their own", async () => {
