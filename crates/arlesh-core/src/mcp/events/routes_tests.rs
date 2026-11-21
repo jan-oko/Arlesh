@@ -349,3 +349,184 @@ async fn a_scoped_wait_stream_answers_no_one_without_an_agent_token() {
     assert!(unknown.starts_with("HTTP/1.1 401"), "{unknown}");
     let _ = std::fs::remove_dir_all(directory);
 }
+
+// ---- staged answers (ADR 0021): an agent hears nothing until the batch is sent ----
+
+/// Three open questions under one agentic Task in the first Aspect's first Project, opened to the
+/// MCP. Returns the questions' ids.
+async fn three_questions(
+    factory: &SessionFactory,
+    directory: &Path,
+) -> Vec<crate::nodes::id::NodeId> {
+    use crate::domains::model::{CreateDomainRequest, DomainSubtype};
+    use crate::tasks::model::{CreateExpectationRequest, CreateTaskRequest, TaskAgentic};
+    let mut db = factory.begin().await.unwrap();
+    let aspect = db
+        .domains()
+        .list(Some(DomainSubtype::Aspect))
+        .await
+        .unwrap()[0]
+        .id;
+    let project = db
+        .domains()
+        .create(CreateDomainRequest {
+            id: None,
+            title: "Agents".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let task = crate::tasks::create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Work".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            agentic: Some(TaskAgentic::Yes),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    let mut asked = Vec::new();
+    for title in ["One?", "Two?", "Three?"] {
+        let wait = crate::tasks::create_expectation(
+            &mut db,
+            CreateExpectationRequest {
+                title: title.into(),
+                parent_type: "task".into(),
+                parent_id: task.clone(),
+                agentic: true,
+                agentic_note: Some("Which?".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        asked.push(wait.id);
+    }
+    db.commit().await.unwrap();
+    let mut side = side(directory).await;
+    sqlx::query(
+        "INSERT INTO mcp_roots (node_kind, node_id) \
+         SELECT 'domain', id FROM domains WHERE parent_id IS NULL \
+         ON CONFLICT (node_kind, node_id) DO NOTHING",
+    )
+    .execute(&mut side)
+    .await
+    .unwrap();
+    asked
+}
+
+/// Writes as the user does: inside one Gesture, closed on the Undo Stack.
+async fn as_a_gesture<T>(
+    factory: &SessionFactory,
+    stacks: &crate::undo::stacks::UndoStacks,
+    write: impl for<'a> FnOnce(
+        &'a mut crate::database::session::Db<crate::database::session::Transactional>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = T> + 'a>>,
+) -> T {
+    let mut db = factory.begin().await.unwrap();
+    db.undo().open_gesture().await.unwrap();
+    let written = write(&mut db).await;
+    db.commit().await.unwrap();
+    crate::undo::close_gesture(factory, stacks).await.unwrap();
+    written
+}
+
+async fn poll_after(
+    address: std::net::SocketAddr,
+    feed: &ChangeFeed,
+    after: u64,
+) -> serde_json::Value {
+    let epoch = feed.epoch().to_owned();
+    feed.bump();
+    body(
+        &answer(
+            address,
+            &format!("/events/expectations?agentic=true&after={after}&epoch={epoch}&wait=1"),
+        )
+        .await,
+    )
+}
+
+#[tokio::test]
+async fn a_staged_answer_is_no_change_and_a_send_is_one_revision_with_a_release_each() {
+    use crate::tasks::answer_drafts::{save_draft, send_drafts, DraftRequest, SendRequest};
+    let (factory, directory) = scratch().await;
+    let asked = three_questions(&factory, &directory).await;
+    let stacks = crate::undo::stacks::UndoStacks::new();
+    let feed = ChangeFeed::new();
+    feed.bump();
+    let address = serve(
+        factory.clone(),
+        EventStreams {
+            feed: feed.clone(),
+            ..EventStreams::default()
+        },
+    )
+    .await;
+    let baseline = body(&answer(address, "/events/expectations?agentic=true&wait=0").await);
+    let start = baseline["revision"].as_u64().unwrap();
+
+    // Staging: the agent's stream says nothing.
+    for wait in asked.clone() {
+        as_a_gesture(&factory, &stacks, move |db| {
+            Box::pin(async move {
+                let request = DraftRequest {
+                    answer: Some("blue".into()),
+                    verdict: None,
+                };
+                save_draft(db, &wait, request, crate::clock::now())
+                    .await
+                    .unwrap();
+            })
+        })
+        .await;
+    }
+    let staged = poll_after(address, &feed, start).await;
+    assert_eq!(staged["changes"], serde_json::json!([]), "{staged}");
+
+    // Sending: one answer, one revision, three releases.
+    as_a_gesture(&factory, &stacks, |db| {
+        Box::pin(async move {
+            send_drafts(db, SendRequest::default(), crate::clock::now())
+                .await
+                .unwrap();
+        })
+    })
+    .await;
+    let sent = poll_after(address, &feed, start).await;
+    let changes = sent["changes"].as_array().unwrap();
+    assert_eq!(changes.len(), 3, "{sent}");
+    assert!(changes.iter().all(|change| change["change"] == "released"));
+    let revisions: std::collections::HashSet<u64> = changes
+        .iter()
+        .map(|change| change["revision"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        revisions.len(),
+        1,
+        "one revision for the whole batch: {sent}"
+    );
+    let sent_at = *revisions.iter().next().unwrap();
+
+    // Undoing the send: three reopenings at one revision.
+    crate::undo::undo(&factory, &stacks).await.unwrap().unwrap();
+    let undone = poll_after(address, &feed, sent_at).await;
+    let changes = undone["changes"].as_array().unwrap();
+    assert_eq!(changes.len(), 3, "{undone}");
+    assert!(changes.iter().all(|change| change["change"] == "reopened"));
+    let revisions: std::collections::HashSet<u64> = changes
+        .iter()
+        .map(|change| change["revision"].as_u64().unwrap())
+        .collect();
+    assert_eq!(revisions.len(), 1, "{undone}");
+    let _ = std::fs::remove_dir_all(directory);
+}
