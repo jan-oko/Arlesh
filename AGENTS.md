@@ -66,7 +66,10 @@ jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh` from a checkout):
   `arlesh_waits.watch`.
 - On "Arlesh notification: wait W on Task T changed (…)": read the wait with `arlesh_waits.get` and
   its Task, then act on the answer as the user's input to that question, within the usual rules.
-  Anything ambiguous means you ask again.
+  Anything ambiguous means you ask again. A notification may name **several** waits ("Arlesh
+  notification: 3 waits changed: wait W on Task T (released), …; read them with
+  `arlesh_waits.get_many`"): the user sent a batch of staged answers at once (ADR 0021). Read them
+  all with `arlesh_waits.get_many` and act on the whole set together, as one message to you.
 
   | The wait is | You |
   | --- | --- |

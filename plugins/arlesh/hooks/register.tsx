@@ -24,6 +24,7 @@ import {
   forget,
   MAX_ATTEMPTS,
   owedBy,
+  owedHeads,
   owing,
   prune,
   remember,
@@ -45,7 +46,17 @@ import {
 import { isRecord, parseJson, text } from './json'
 import { nextWait, parsePoll, pollUrl, WAIT_START_S, type Cursor } from './poll'
 import { currentFrom, waitsFrom, type Current } from './results'
-import { changeBetween, namesRaiser, notificationText, routeTo, type Change, type Delivery, type Via } from './rules'
+import {
+  changeBetween,
+  forSession,
+  messageFor,
+  planDeliveries,
+  type Addressed,
+  type Change,
+  type Delivery,
+  type Owed,
+  type Via,
+} from './rules'
 
 type Engine = EngineInterface
 type SpawnInput = AgentSpawnInput
@@ -500,10 +511,12 @@ let flushing = false
 let turnRunning = false
 
 /**
- * Tells the session of every change it is owed, oldest first, stopping at the first that does not
- * go through, or while a turn runs (it stays owed, and the next poll, the next idle turn or the next session start tries
- * again). One flush runs at a time, so a change in flight is never sent twice. It is not awaited by
- * the poll loop: a prompt may wait for the running turn to end.
+ * Tells the session of every change it is owed, stopping at the first group that does not go
+ * through, or while a turn runs (it stays owed, and the next poll, the next idle turn or the next
+ * session start tries again). Each round takes the head change of every wait and sends one message
+ * to each recipient, so a batch of answers wakes an agent once. One flush runs at a time, so a
+ * change in flight is never sent twice. It is not awaited by the poll loop: a prompt may wait for
+ * the running turn to end.
  */
 async function flush($: Engine): Promise<void> {
   if (flushing) return
@@ -513,16 +526,9 @@ async function flush($: Engine): Promise<void> {
       // Only an idle session is known to start a turn from a submit; mid-turn the prompt would be
       // queued, and lost if the turn is stopped. `turn.complete` flushes again.
       if (turnRunning) return
-      const next = await serially(async () => firstOwed(await loadBook($)))
-      if (next === undefined) return
-      const outcome = await deliver($, next.entry, next.change)
-      $.ui.log(
-        `notification for wait ${next.entry.shortId} (${next.change}), attempt ` +
-          `${(next.entry.attempts ?? 0) + 1}: ${outcome.delivered ? 'delivered' : `not delivered, ${outcome.reason}`}`,
-        { to: 'debug' },
-      )
-      await serially(() => settle($, next.entry.waitId, next.change, outcome))
-      if (!outcome.delivered) return
+      const heads = await serially(async () => owedHeads(await loadBook($)))
+      if (heads.length === 0) return
+      if (!(await deliverRound($, heads))) return
     }
   } catch (error) {
     $.ui.log(`could not deliver a notification: ${String(error)}`, { to: 'debug' })
@@ -531,12 +537,54 @@ async function flush($: Engine): Promise<void> {
   }
 }
 
-function firstOwed(book: Book): { entry: Entry; change: Change } | undefined {
-  for (const entry of Object.values(book)) {
-    const change = owedBy(entry)[0]
-    if (change !== undefined) return { entry, change }
+/** One round: a message for each recipient. False when one did not go through. */
+async function deliverRound($: Engine, heads: Array<{ entry: Entry; change: Change }>): Promise<boolean> {
+  const owed: Owed[] = heads.map(({ entry, change }) => ({
+    waitId: entry.waitId,
+    shortId: entry.shortId,
+    taskShortId: entry.taskShortId,
+    ...(entry.via === undefined ? {} : { via: entry.via }),
+    change,
+  }))
+  const agents = (await $.agent.list()).map((agent) => ({
+    id: agent.id,
+    status: agent.status,
+    ...(agent.parentId === undefined ? {} : { parentId: agent.parentId }),
+  }))
+  const plan = planDeliveries(owed, agents)
+  const toSession = [...plan.session]
+  for (const group of plan.agents) {
+    const sent = await sendToAgent($, group.agentId, messageFor(group.items))
+    if (sent.delivered) {
+      await settleGroup($, heads, group.items, sent)
+      continue
+    }
+    $.ui.log(`could not message the agent: ${sent.reason}`, { to: 'debug' })
+    toSession.push(...forSession(group.items))
   }
-  return undefined
+  if (toSession.length === 0) return true
+  const outcome = await submit($, messageFor(toSession))
+  await settleGroup($, heads, toSession, outcome)
+  return outcome.delivered
+}
+
+/** Records how one message went, on every change it carried. */
+async function settleGroup(
+  $: Engine,
+  heads: Array<{ entry: Entry; change: Change }>,
+  items: readonly Addressed[],
+  outcome: Delivery,
+): Promise<void> {
+  for (const { owed } of items) {
+    const head = heads.find(({ entry }) => entry.waitId === owed.waitId)
+    const attempt = (head?.entry.attempts ?? 0) + 1
+    $.ui.log(
+      `notification for wait ${owed.shortId} (${owed.change}), attempt ${attempt}: ` +
+        `${outcome.delivered ? 'delivered' : `not delivered, ${outcome.reason}`}`,
+      { to: 'debug' },
+    )
+    await serially(() => settle($, owed.waitId, owed.change, outcome))
+  }
 }
 
 /**
@@ -563,26 +611,6 @@ async function settle($: Engine, waitId: string, change: Change, outcome: Delive
     $,
     change === 'deleted' ? forget(book, waitId) : { ...book, [waitId]: settled(entry) },
   )
-}
-
-/**
- * Sends the pointer to the raising sub-agent if it runs, else to whoever spawned it. A sub-agent
- * that does not take it is not the end: the session gets it, naming the sub-agent.
- */
-async function deliver($: Engine, entry: Entry, change: Change): Promise<Delivery> {
-  const agents = (await $.agent.list()).map((agent) => ({
-    id: agent.id,
-    status: agent.status,
-    ...(agent.parentId === undefined ? {} : { parentId: agent.parentId }),
-  }))
-  const target = routeTo(entry.via, agents)
-  if (target.kind === 'agent') {
-    const message = notificationText(entry, change, entry.via, namesRaiser(target, entry.via))
-    const sent = await sendToAgent($, target.agentId, message)
-    if (sent.delivered) return sent
-    $.ui.log(`could not message the agent: ${sent.reason}`, { to: 'debug' })
-  }
-  return submit($, notificationText(entry, change, entry.via, entry.via !== undefined))
 }
 
 async function sendToAgent($: Engine, agentId: string, text: string): Promise<Delivery> {

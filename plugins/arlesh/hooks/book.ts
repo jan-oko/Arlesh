@@ -69,6 +69,16 @@ export function owedBy(entry: Entry): readonly Change[] {
   return entry.owed ?? []
 }
 
+/** The change at the head of every entry's `owed`: what the next flush tells, one per wait. */
+export function owedHeads(book: Book): Array<{ entry: Entry; change: Change }> {
+  const heads: Array<{ entry: Entry; change: Change }> = []
+  for (const entry of Object.values(book)) {
+    const change = owedBy(entry)[0]
+    if (change !== undefined) heads.push({ entry, change })
+  }
+  return heads
+}
+
 /** The entry owing one more `change`, after those it owes already. */
 export function owing(entry: Entry, change: Change): Entry {
   return { ...entry, owed: [...owedBy(entry), change] }

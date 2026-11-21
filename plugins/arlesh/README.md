@@ -3,7 +3,9 @@
 A Claude Code mod that makes a session an Arlesh **agent** and wakes it when an Arlesh wait it
 raised or watches changes: released (answered), reopened, archived or deleted. The message is a pointer only ("Arlesh notification:
 wait 7c0 on Task 9a1 changed (released); read it with `arlesh_waits.get`"), so the agent reads the
-wait itself.
+wait itself. When several waits changed at once (a batch of staged answers sent together), the
+agent gets **one** message naming them all ("Arlesh notification: 3 waits changed: wait 1ab on Task
+de1 (released), ...; read them with `arlesh_waits.get_many`"), so it wakes once for the batch.
 
 ## Install
 
@@ -139,6 +141,12 @@ environment variables:
   session start, never twice once it went in. A message a sub-agent does not take goes to the
   session. After 20 failed attempts the transcript says the notification was given up on. The debug
   log (`claude --debug`) has one line per attempt with its outcome and the drop reason.
+- Sends one message per recipient per flush: it takes the change at the head of every watched wait
+  and groups them by who gets them (the session, or one running sub-agent). A group of one wait reads
+  exactly as before; a group of several reads as the batch text above, each item naming the sub-agent
+  that raised it when the message goes to anyone else. A group counts as delivered, or failed, for
+  every wait in it. A wait that owes two changes (released, then reopened) tells them in two
+  flushes, because they are two events.
 - Wakes the session with the pointer message. A sub-agent that raised the wait gets it while it is
   running; once it has finished, the agent that spawned it does, else the session, with the
   sub-agent named either way. A sub-agent is also notified of a release it made itself.

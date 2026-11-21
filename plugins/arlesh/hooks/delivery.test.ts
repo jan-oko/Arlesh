@@ -128,15 +128,16 @@ test('a prompt that is rejected is retried the same way', async ($, on) => {
   expect(s.prompts).toHaveLength(1)
 })
 
-test('two waits released in one busy turn are both told once the session takes a prompt, each once', async ($, on) => {
+test('two waits released together are one message, and a dropped one is sent again whole', async ($, on) => {
   const s = session(on, ['w1', 'w2'], { 'w1-full': watched('w1'), 'w2-full': watched('w2') }, ['drop', 'enter'])
 
   await start($, s.clock)
   await pollRounds(s.clock, 3)
 
-  expect(s.prompts).toHaveLength(2)
-  expect(s.prompts.join('\n')).toContain('wait w1')
-  expect(s.prompts.join('\n')).toContain('wait w2')
+  expect(s.prompts).toEqual([
+    'Arlesh notification: 2 waits changed: wait w1 on Task 9a1 (released), wait w2 on Task 9a1 (released); ' +
+      'read them with `arlesh_waits.get_many`.',
+  ])
 })
 
 test('a delivered change is never sent again', async ($, on) => {
@@ -225,16 +226,93 @@ test('a wait released while a turn runs is not submitted into it, and goes in on
   expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
 })
 
-test('two waits released in one busy turn are told one after the other, each in a turn of its own', async ($, on) => {
-  const s = session(on, ['w1', 'w2'], { 'w1-full': watched('w1'), 'w2-full': watched('w2') }, ['enter'], [], true)
+test('a batch released in one busy turn waits for the turn to end and goes in as one message', async ($, on) => {
+  const s = session(on, ['w1', 'w2', 'w3'], { 'w1-full': watched('w1'), 'w2-full': watched('w2'), 'w3-full': watched('w3') }, ['enter'])
   await $.turn.start({ turnId: 't' })
 
   await start($, s.clock)
+  expect(s.prompts).toEqual([])
   await $.turn.complete(turnOver)
   await s.clock.settle()
-  expect(s.prompts).toHaveLength(1)
 
-  await $.turn.complete({ ...turnOver, turnId: 't2' })
-  await s.clock.settle()
+  expect(s.prompts).toHaveLength(1)
+  expect(s.prompts[0]).toContain('3 waits changed')
+  expect(bookOf(s.stored)['w1-full']?.owed).toBeUndefined()
+})
+
+test('an entry that owes two changes tells them in two flushes, as they are two events', async ($, on) => {
+  const s = session(
+    on,
+    ['w1', 'w2'],
+    { 'w1-full': watched('w1', { status: 'released', owed: ['released', 'reopened'] }), 'w2-full': watched('w2', { status: 'released', owed: ['released'] }) },
+    ['enter'],
+  )
+
+  await start($, s.clock)
+
   expect(s.prompts).toHaveLength(2)
+  expect(s.prompts[0]).toContain('2 waits changed: wait w1 on Task 9a1 (released), wait w2 on Task 9a1 (released)')
+  expect(s.prompts[1]).toBe('Arlesh notification: wait w1 on Task 9a1 changed (reopened); read it with `arlesh_waits.get`.')
+})
+
+test('a failed message counts one attempt on each wait it carried', async ($, on) => {
+  const s = session(on, ['w1', 'w2'], { 'w1-full': watched('w1'), 'w2-full': watched('w2') }, ['drop'])
+
+  await start($, s.clock)
+
+  expect(bookOf(s.stored)['w1-full']?.attempts).toBe(1)
+  expect(bookOf(s.stored)['w2-full']?.attempts).toBe(1)
+  expect(s.attempts()).toBe(1)
+})
+
+const via = (agentId: string) => ({ agentId, description: `Task of ${agentId}` })
+const running = (id: string) => ({ id, description: `Task of ${id}`, type: 'general-purpose', status: 'running' })
+
+test('the waits of two running sub-agents are one message each, to that sub-agent', async ($, on) => {
+  const s = session(
+    on,
+    ['w1', 'w2', 'w3'],
+    {
+      'w1-full': watched('w1', { via: via('a1') }),
+      'w2-full': watched('w2', { via: via('a1') }),
+      'w3-full': watched('w3', { via: via('a2') }),
+    },
+    ['enter'],
+    [running('a1'), running('a2')],
+  )
+  const sent: Array<{ to: unknown; text: string }> = []
+  on('session.send', (_, e) => {
+    sent.push({ to: e.to, text: e.text })
+    return { isDelivered: true }
+  })
+
+  await start($, s.clock)
+
+  expect(s.prompts).toEqual([])
+  expect(sent.map((message) => message.to)).toEqual(['a1', 'a2'])
+  expect(sent[0]?.text).toContain('2 waits changed: wait w1 on Task 9a1 (released), wait w2 on Task 9a1 (released)')
+  expect(sent[1]?.text).toBe('Arlesh notification: wait w3 on Task 9a1 changed (released); read it with `arlesh_waits.get`.')
+})
+
+test('the entries of a sub-agent that does not take its message go to the session in the same flush, naming it', async ($, on) => {
+  const s = session(
+    on,
+    ['w1', 'w2', 'w3'],
+    {
+      'w1-full': watched('w1', { via: via('a1') }),
+      'w2-full': watched('w2', { via: via('a1') }),
+      'w3-full': watched('w3'),
+    },
+    ['enter'],
+    [running('a1')],
+  )
+  on('session.send', () => ({ isDelivered: false, reason: 'the recipient is gone' }))
+
+  await start($, s.clock)
+
+  expect(s.prompts).toHaveLength(1)
+  expect(s.prompts[0]).toContain('3 waits changed')
+  expect(s.prompts[0]).toContain('wait w1 on Task 9a1 (released — raised by the sub-agent "Task of a1")')
+  expect(s.prompts[0]).toContain('wait w3 on Task 9a1 (released)')
+  expect(s.prompts[0]).not.toContain('wait w3 on Task 9a1 (released — raised')
 })
