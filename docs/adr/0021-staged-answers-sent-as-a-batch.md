@@ -1,9 +1,9 @@
 # ADR 0021: staged answers, sent as one batch
 
-Status: proposed 2026-11-21 (Task `de16`). The behaviour was ruled by the user on 2026-11-20 and is
-not reopened here (*Ruled*, below). This ADR settles how it is built. The points the rulings leave
-open are listed at the end (*Open questions*). Nothing that depends on them is designed here; the
-places that wait on them say so.
+Status: accepted 2026-11-21 (Task `de16`). The behaviour was ruled by the user on 2026-11-20 and is
+not reopened here (*Ruled*, below). This ADR settles how it is built. The four points the rulings
+left open were answered by the user on 2026-11-21 (*Open questions*, below, now *Decided*) and are
+built in slices 8 to 10.
 
 ## Context
 
@@ -87,7 +87,8 @@ agents by construction. It also covers derived waits, which have no `expectation
     (`tasks::rules::review::is_open_question`: agentic, question, pending, live). A draft on any
     other wait is **stale** and marks nothing;
   - `NodeFacts.staged_questions: Vec<NodeId>`: the Task's `open_questions` that are staged. The
-    Task's own mark is read from it (decision 7; how the Task is marked is open question 3);
+    Task's own mark is read from it (decision 7; the Task is marked only when all its open questions
+    and reviews are staged);
   - `AgentActivity.staged: usize`: how many staged waits the whole board holds. The top bar's send
     button reads it.
 - **Review is unchanged.** A staged wait is still pending, so its Task still reads Review, and the
@@ -254,16 +255,17 @@ The answer controls are shared by the Zen card, the List row and the Task editor
 runs the same React components. So the change is made once:
 
 - `src/components/AnswerField/AnswerField.tsx`: a question's field.
-- `src/components/AnswerField/ReviewAnswer.tsx`: a review's controls. **Staging a review waits on
-  open question 2**, because the review's controls are verdict buttons, not one Send.
+- `src/components/AnswerField/ReviewAnswer.tsx`: a review's controls. The verdict buttons only
+  **select** a verdict; the same **Stage** and **Send** as a question follow (decided, question 2).
 - `src/components/AnswerField/OpenWaits.tsx`: the list of a Task's open waits. It passes each wait
   its draft and the board-wide staged count.
 - `src/components/TopBar/AgentStatus.tsx`: the top bar's agent status. The send button sits here,
   next to the agent items. The desktop top bar (`TopBar.tsx`) and the phone's (`PhoneTopBar.tsx`)
   both render `AgentStatus`, so both get the button.
-- The Task's staged mark is drawn by the views that draw Review: `ListView/TaskRow.tsx`,
-  `ZenView/ZenTaskCard.tsx`, `TaskEditorModal/TaskEditorModal.tsx` (its agentic section), and the
-  Mindmap node's hover. What the mark is waits on open question 3.
+- The Task's staged mark is drawn where its answer controls are, which every view that draws Review
+  uses: `OpenWaits` heads its list with it (the List row, the Zen card and the Task editor's agentic
+  section), and the Mindmap node's hover says it. It shows only when **every** open question and
+  review of the Task is staged (decided, question 3); each wait carries its own Staged mark either way.
 
 **The question's field.** Its states:
 
@@ -271,7 +273,7 @@ runs the same React components. So the change is made once:
 | --- | --- | --- | --- |
 | Not staged, empty | editable | disabled | enabled only if something else on the board is staged |
 | Not staged, with text | editable | enabled | enabled: stages this answer (one call), then sends the batch (a second call) |
-| Staged | shows the draft's text, with a **Staged** mark on the field and its title. Whether it can be edited waits on open question 1 | pressed (`aria-pressed="true"`); a press unstages and keeps the text in the field | enabled: sends the batch |
+| Staged | shows the draft's text, **locked** (read only), with a **Staged** mark on the field and its title (decided, question 1) | pressed (`aria-pressed="true"`); a press unstages and keeps the text in the field, to edit and stage again | enabled: sends the batch |
 | Sending | as it was | disabled | disabled |
 
 - **Keyboard.** In a field that is not staged, `Ctrl+Enter` stages when there is text and does
@@ -289,9 +291,10 @@ runs the same React components. So the change is made once:
 
 **The top bar's send button** is drawn while `agent_activity.staged > 0`, inside `AgentStatus`, next
 to the head. A press sends the batch, with `shown` set to the waits the board shows as staged. Its
-tooltip says how many answers it sends ("Send 3 staged answers"). Whether it carries a count,
-whether it shows while the "Show agent status in the top bar" setting is off, and whether Send gets
-a command-palette entry or hotkey all wait on open question 4.
+tooltip says how many answers it sends ("Send 3 staged answers"). It carries the number staged, and
+it is drawn **whether or not** the "Show agent status in the top bar" setting is on. Sending the
+batch also has a **command-palette entry**, and no hotkey beyond `Ctrl+Enter` in the field (decided,
+question 4). The palette is the touch sheet, so on the desktop the top-bar button is the entry.
 
 **Toasts.** A send that skipped anything raises one anchored toast, at the first skipped wait's
 Task, naming each skipped wait by title and reason ("already answered", "gone", "unstaged on
@@ -389,28 +392,30 @@ CI is the gate.
    the skipped toast); `src/utils/agent-activity.ts` (`staged`). *Tests:* `npx vitest run
    src/utils/board-changes src/hooks/use-answer-drafts src/utils/agent-activity`.
 8. **The question's field and the top bar.** `AnswerField.tsx` and its CSS module, `OpenWaits.tsx`,
-   `AgentStatus.tsx` and its CSS module, and i18n strings. This waits on open questions 1 and 4.
+   `AgentStatus.tsx` and its CSS module, the palette entry, and i18n strings.
    *Tests:* `AnswerField.test.tsx` (the state table and the chord), `AgentStatus.test.tsx` (the
    button shows only while something is staged and sends the shown ids).
 9. **The review's controls and the Task's mark.** `ReviewAnswer.tsx` (+ test), and the mark in
-   `TaskRow.tsx`, `ZenTaskCard.tsx`, `TaskEditorModal.tsx` and the Mindmap hover. This waits on
-   open questions 2 and 3.
+   `OpenWaits.tsx` (which the List row, the Zen card and the Task editor share) and the Mindmap hover.
 10. **Docs and changelog.** The model map (decision 8), and one `changelog.d/added/<NNNN>-staged-
     answers.md` fragment.
 
-## Open questions (for the user)
+## Open questions: decided by the user, 2026-11-21
 
-1. **Can a staged answer be edited?** (a) The staged field is locked: Stage again unstages it, then
-   it can be edited and staged again. (b) It stays editable, and each edit saves the draft again
-   (debounced). With (b) every save is its own undo step, and two devices editing one draft
-   overwrite each other's typing. (a) is simpler; (b) makes "last save wins" the everyday case.
-2. **How is a review staged?** Its controls are **Approve** (or "Approve & merge") and **Request
-   changes**, each of which sends today, and `Ctrl+Enter` in its note sends Request changes. Which
-   control stages, which one sends, and what does `Ctrl+Enter` stage: a verdict chosen first and
-   then Stage/Send, or a Stage and a Send for each verdict?
-3. **The Task's staged mark when only some of its waits are staged.** Is the Task marked staged
-   while any of its open waits is, or only when all are (so the mark means "nothing left for you
-   but Send")? Each wait is marked on its own either way.
-4. **The top bar's send button.** Does it show a count? Does it show while the "Show agent status in
-   the top bar" setting is off? Should sending the batch also have a command-palette entry or a
-   hotkey? The ruling names none.
+1. **Can a staged answer be edited?** **No: it is locked.** Stage toggles: pressing it again
+   unstages, which keeps the text in the field to edit, and Stage again stages the new text. There is
+   no re-save on edit, so an edit is not an undo step of its own, and two devices cannot overwrite
+   each other's typing in a staged field.
+2. **How is a review staged?** The verdict buttons (**Approve**, or **Approve and merge** when the
+   review has a PR link, and **Request changes**) only **select** a verdict; they no longer send. The
+   same **Stage** and **Send** as a question follow. `Ctrl+Enter` in the note stages the selected
+   verdict with its note; a second `Ctrl+Enter` in the staged note sends the batch. With no verdict
+   selected, Stage and Send are disabled and `Ctrl+Enter` does nothing. **Approve and merge** is a
+   selectable verdict like the others and keeps its meaning on send: the user's word to merge the PR.
+   This changes what the verdict buttons did before (they sent at once).
+3. **The Task's staged mark.** The Task is marked staged **only when all** of its open question and
+   review waits are staged, so the mark means "nothing left for you but Send". Each wait is marked on
+   its own either way.
+4. **The top bar's send button.** It is drawn **only while something is staged**, **shows the number
+   staged**, and is drawn **even when "Show agent status in the top bar" is off**. Sending the batch
+   also has a **command-palette entry**. There is **no hotkey** beyond `Ctrl+Enter` in the field.

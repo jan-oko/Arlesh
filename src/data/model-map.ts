@@ -86,6 +86,13 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
         without: "Touching an occurrence would freeze a full copy, cut off from later template edits.",
         lives: "task_/goal_/commitment_/expectation_overlays; nodes/overlay.rs",
       },
+      {
+        title: "Answer draft",
+        is: "An answer to an agent's question, or a review's verdict with its note, written down and not yet sent. One row per wait, stored on the server and synced to every device; the last save wins. Send releases every staged wait in one write and deletes the drafts.",
+        why: "So an answer can wait for the others, and every agent wakes once for the whole batch.",
+        without: "Each answer goes out as it is written, and agents act on half a set of answers.",
+        lives: "tasks/answer_drafts.rs · tasks/rules/answer_drafts.rs · migrations/0110_answer_drafts.sql · src/hooks/use-answer-drafts.ts",
+      },
     ],
   },
   {
@@ -116,7 +123,7 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "Review",
-        is: "Never set: a To Do or On Agent Task with an open agent question or review beneath it (a To Do one is a question asked before claiming). Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent, or To Do if it was never claimed.",
+        is: "Never set: a To Do or On Agent Task with an open agent question or review beneath it (a To Do one is a question asked before claiming). Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent, or To Do if it was never claimed. An answer can be staged (an answer draft) and sent with the others as one batch: the wait still reads Review, and agents never see a draft. A Task is marked staged only when every open question and review on it is.",
         why: "It is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait itself: the Task shows it and is where you answer.",
         without: "Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.",
         lives: "tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts",

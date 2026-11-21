@@ -25,6 +25,7 @@ const releasedAnswer = (ids: string[]) => ({
 /**
  * A session attached to a server that, on its first poll, says the given waits were released, and
  * holds every poll after it. `submits` answers each `prompt.submit` in turn; the last answer stays.
+ * `enterTurn` starts the main loop's turn when a prompt enters, as the host does.
  */
 function session(
   on: Hooks,
@@ -32,7 +33,7 @@ function session(
   waits: Record<string, unknown>,
   submits: Array<'enter' | 'drop' | 'reject'>,
   agents: unknown[] = [],
-  entersTurn = false,
+  enterTurn?: (turnId: string) => Promise<unknown>,
 ) {
   const clock = mock.clock(on)
   const stored: Record<string, unknown> = { 'watch:s1': waits, 'agent:s1': { token: 't' } }
@@ -73,13 +74,14 @@ function session(
       },
     }
   })
-  on('prompt.submit', async ($, e) => {
+  on('prompt.submit', async (_, e) => {
     const how = submits[Math.min(attempts, submits.length - 1)]
     attempts += 1
     if (how === 'reject') throw new Error('not now')
     if (how === 'drop') return { drop: 'a Stop stands' }
     prompts.push(e.text)
-    if (entersTurn) await $.turn.start({ turnId: `t${attempts}` })
+    // The host starts a turn from a prompt that enters; the test's own `$` drives it, as the hook's has no `turn`.
+    if (enterTurn !== undefined) await enterTurn(`t${attempts}`)
     return { text: e.text }
   })
   on('ui.log', (_, e) => {
@@ -246,12 +248,18 @@ test('an entry that owes two changes tells them in two flushes, as they are two 
     ['w1', 'w2'],
     { 'w1-full': watched('w1', { status: 'released', owed: ['released', 'reopened'] }), 'w2-full': watched('w2', { status: 'released', owed: ['released'] }) },
     ['enter'],
+    [],
+    (turnId) => $.turn.start({ turnId }),
   )
 
   await start($, s.clock)
+  expect(s.prompts).toHaveLength(1)
+  expect(s.prompts[0]).toContain('2 waits changed: wait w1 on Task 9a1 (released), wait w2 on Task 9a1 (released)')
+
+  await $.turn.complete(turnOver)
+  await s.clock.settle()
 
   expect(s.prompts).toHaveLength(2)
-  expect(s.prompts[0]).toContain('2 waits changed: wait w1 on Task 9a1 (released), wait w2 on Task 9a1 (released)')
   expect(s.prompts[1]).toBe('Arlesh notification: wait w1 on Task 9a1 changed (reopened); read it with `arlesh_waits.get`.')
 })
 

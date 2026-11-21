@@ -58,6 +58,7 @@ never stored.
 | **Parent status** | own status, Agentic (own), sub-items' statuses, verdicts and waits; Archived *(of another node)* | An ordinary Task that is not Compound and has sub-items reads its own status raised to what they say, by Compound's counting: In Progress if any is, else Started if any is Started or Done. Never Done by itself, never lowered, and a Done Task stays Done. An Agentic Task is not derived. | `rs:tasks/rules/compound.rs::parent_reading`, `rs:tasks/rules/compound.rs::derive` |
 | **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. A Child Agent is at capacity exactly when its parent is. | `rs:agents/rules/usage.rs::cause` |
 | **Review** | Agentic, status, agent waits (questions and reviews) | To Do or On Agent with a pending, live agentic question or review beneath it. | `rs:tasks/rules/review.rs::derive` |
+| **Staged** | answer draft, Review's open questions (agentic, question, pending, live) | A wait with a draft that is an open question or review; a Task's staged waits are its open questions with a draft, and the Task is marked staged only when every one of its open questions and reviews is; a draft on any other wait is stale and marks nothing. | `rs:tasks/rules/answer_drafts.rs`, `rs:mindmap/rules/facts.rs` (`staged_questions`, `AgentActivity.staged`), `ts:utils/open-question.ts` |
 | **Capacity block** | Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and lies inside the active Claim of an Agent at capacity. There is no app-wide lock. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
@@ -125,6 +126,16 @@ How the presets read them:
   - Code: `rs:nodes/overlay.rs`, `rs:nodes/wait_overlay.rs` and `rs:flows/occurrence_edit.rs`.
 - **Spec:** [Derived nodes § Overlays](spec/virtual-nodes.md#overlays).
 
+### Answer draft
+- **Is:** an answer to an agent's question, or a review's verdict with its note, written down and not yet sent. One row per wait (`answer_drafts`, keyed by the wait's id, stored or derived), stored on the server and synced to every device; the last save wins. A row means staged. Send releases every staged wait in one write and deletes the rows.
+- **Why:** so an answer can wait for the others, and every agent wakes once for the whole batch.
+- **Without:** each answer goes out as it is written, and agents act on half a set of answers.
+- **Lives:**
+  - Storage and operations: `rs:tasks/answer_drafts.rs`, `migrations/0110_answer_drafts.sql`; the rules in `rs:tasks/rules/answer_drafts.rs`.
+  - The board carries the drafts as its own collection (`answer_drafts`) and the facts say which open questions are staged; agents read neither (`rs:mindmap/`, `rs:mcp/`).
+  - Frontend: `ts:hooks/use-answer-drafts.ts`, `ts:components/AnswerField/`.
+- **Spec:** [Resources § Staged answers](spec/resources.md#staged-answers), [ADR 0021](adr/0021-staged-answers-sent-as-a-batch.md).
+
 ## 2. What's derived
 
 ### Derived nodes
@@ -168,6 +179,7 @@ How the presets read them:
 
 ### Review
 - **Is:** never set. A Task reads Review when it is To Do or On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it; a To Do one is a question asked before claiming (a Task with no Spec cannot be claimed), and its row stays To Do. Answering, which releases the wait, returns it to what its row holds (On Agent or To Do), whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: a question mark; a review: a checked page).
+- An answer can be **staged** (an answer draft) and sent with the others as one batch; the wait still reads Review, and agents never see a draft. See [Resources § Staged answers](spec/resources.md#staged-answers) and [ADR 0021](adr/0021-staged-answers-sent-as-a-batch.md).
 - **Why:** it is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait of its own: the Task shows it, and is where it is answered.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
@@ -450,6 +462,7 @@ How the presets read them:
 
 ### The undo journal
 - **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's, and another client's writes as that client's; neither is undoable from the app.
+- `answer_drafts` is journaled, and one `Ctrl+Z` undoes a whole sent batch: the drafts come back and the waits read Review again.
 - **Why:** a trigger can't be forgotten by a command that doesn't know it exists.
 - **Without:** an inverse to write for every one of eighty-odd commands, with the next one missing it.
 - **Lives:**
