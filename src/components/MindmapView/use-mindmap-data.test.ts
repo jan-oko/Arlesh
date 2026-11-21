@@ -359,6 +359,25 @@ describe("buildTree", () => {
     expect(node?.openQuestionIds).toEqual([storedRowId(9)]);
   });
 
+  it("draws a staged answer on its wait and the staged questions on the Task, off the load", () => {
+    const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
+    const task = mkTask({ id: storedRowId(3), title: "Agent work", parent_type: "project", parent_id: storedRowId(1) });
+    const question: Expectation = {
+      id: storedRowId(9), title: "Colour?", parent_type: "task", parent_id: storedRowId(3), status: "pending", archival: "live",
+      time_scope: null, tag_ids: [], position: 0, is_private: false, agentic: true, question: true,
+    };
+    const draft = { wait_id: storedRowId(9), answer: "blue", verdict: null, saved_at: "2026-11-21T09:00:00" };
+    const root = buildTree(
+      [aspect], [], [task], [], [], [], [], [], [], [], [], [], [], [question],
+      (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
+      { [`task-${storedRowId(3)}`]: { open_questions: [storedRowId(9)], staged_questions: [storedRowId(9)] } },
+      [], [], [draft],
+    );
+    const node = root.children[0]?.children.find((c) => c.id === `task-${storedRowId(3)}`);
+    expect(node?.stagedQuestionIds).toEqual([storedRowId(9)]);
+    expect(node?.agentWaits?.[0]?.agentWaiting?.draft).toEqual({ answer: "blue", verdict: null });
+  });
+
   it("stores task tag_ids on the node", () => {
     const aspect = mkDomain({ id: storedRowId(1), subtype: "aspect" });
     const task = mkTask({ id: storedRowId(1), tag_ids: [storedRowId(3), storedRowId(7)], parent_type: "project", parent_id: storedRowId(1) });
@@ -545,7 +564,7 @@ describe("useMindmapData", () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(useAgentActivityStore.getState().activity).toEqual({ review: 1, waits: 2, onAgent: 3 });
+    expect(useAgentActivityStore.getState().activity).toEqual({ review: 1, waits: 2, onAgent: 3, staged: 0 });
   });
 
   it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {

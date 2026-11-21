@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AgentActivity } from "@/utils/agent-activity";
 import { NO_AGENT_ACTIVITY } from "@/utils/agent-activity";
+import type { RowId } from "@/api/node-id";
 
 /**
  * The agents' activity on the whole board, as the latest load counted it (`agent-activity`).
@@ -12,9 +13,18 @@ import { NO_AGENT_ACTIVITY } from "@/utils/agent-activity";
 interface AgentActivityStore {
   activity: AgentActivity;
   receive: (activity: AgentActivity) => void;
+  /** The waits with a staged answer on the whole board (ADR 0021): what one Send sends. */
+  stagedWaitIds: readonly RowId[];
+  receiveStaged: (ids: readonly RowId[]) => void;
 }
 
 export const useAgentActivityStore = create<AgentActivityStore>()((set) => ({
   activity: NO_AGENT_ACTIVITY,
   receive: (activity) => set({ activity }),
+  stagedWaitIds: [],
+  receiveStaged: (ids) => set((state) => (sameIds(state.stagedWaitIds, ids) ? state : { stagedWaitIds: ids })),
 }));
+
+function sameIds(a: readonly RowId[], b: readonly RowId[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}

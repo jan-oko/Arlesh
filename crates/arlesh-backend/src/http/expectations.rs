@@ -5,6 +5,7 @@ use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
+    tasks::answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
     tasks::model::{
         CreateExpectationRequest, Expectation, SpawnedWait, UpdateExpectationRequest,
         UpdateSpawnedWaitRequest,
@@ -141,5 +142,29 @@ impl WaitsPort for HttpBackend {
             .query("due_at", &due_at),
         )
         .await
+    }
+
+    async fn save_answer_draft(
+        &self,
+        wait_id: NodeId,
+        request: DraftRequest,
+    ) -> Result<AnswerDraft, WireError> {
+        self.write(
+            Call::new(Method::PUT, format!("/waits/{}/draft", segment(&wait_id))).json(&request),
+        )
+        .await
+    }
+
+    async fn clear_answer_draft(&self, wait_id: NodeId) -> Result<(), WireError> {
+        self.write(Call::new(
+            Method::DELETE,
+            format!("/waits/{}/draft", segment(&wait_id)),
+        ))
+        .await
+    }
+
+    async fn send_answer_drafts(&self, request: SendRequest) -> Result<SendOutcome, WireError> {
+        self.write(Call::new(Method::POST, "/drafts/send".to_owned()).json(&request))
+            .await
     }
 }

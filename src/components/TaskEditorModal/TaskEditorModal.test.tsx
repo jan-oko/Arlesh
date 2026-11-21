@@ -1,3 +1,4 @@
+import { answerActions } from "@/test/answer-actions";
 import { NO_CYCLE } from "@/api/flows";
 import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -595,15 +596,15 @@ describe("TaskEditorModal — the Agentic status model", () => {
       id: "expectation-9", rowId: storedRowId(9), kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
       agentWaiting: { note: "CI is green.", question: true, answer: null },
     };
-    const onAnswer = vi.fn().mockResolvedValue(true);
+    const answers = answerActions();
     // The board names the open question (the load's `open_question` fact); the editor draws it.
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [storedRowId(9)] })} onAnswer={onAnswer} />);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { agentWaits: [question], openQuestionIds: [storedRowId(9)] })} answers={answers} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "agentAnswer" }), { target: { value: "Yes, merge." } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "agentAnswer" }), { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, { answer: "Yes, merge." }));
+    await waitFor(() => expect(answers.stage).toHaveBeenCalledWith(question, { answer: "Yes, merge." }));
   });
 
   it("converts the status shown when the flag changes the model", async () => {

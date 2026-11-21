@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { KEEP_MS, forget, prune, remember, revive, type Entry } from './book'
+import { KEEP_MS, forget, owedHeads, prune, remember, revive, type Entry } from './book'
 import {
   agentName,
   attachArguments,
@@ -20,7 +20,17 @@ import {
 import { expandVariables, mainCheckoutOf, originOf, pickServer, projectServers } from './config'
 import { nextWait, parsePoll, pollUrl } from './poll'
 import { currentFrom, currentFromChange, waitsFrom } from './results'
-import { changeBetween, namesRaiser, notificationText, routeTo } from './rules'
+import {
+  batchNotificationText,
+  changeBetween,
+  forSession,
+  messageFor,
+  namesRaiser,
+  notificationText,
+  planDeliveries,
+  routeTo,
+  type Owed,
+} from './rules'
 
 const pending = { status: 'pending', archived: false } as const
 const released = { status: 'released', archived: false } as const
@@ -343,4 +353,115 @@ test('the context block says whether the session is attached and how a claim wor
   const waiting = contextBlock({ kind: 'unattached', reason: 'no PIN door answered' })
   expect(waiting).toContain('Settings → Agents')
   expect(waiting).toContain('arlesh_agents.attach')
+})
+
+test('a review raised with raise_review is a wait to watch, read as the server answers it', () => {
+  const reviewed = {
+    full_id: '24a2ff72-dada',
+    short_id: '24a',
+    task_id: '1a0d197b-20f9',
+    task_short_id: '1a0',
+    status: 'pending',
+    archival: 'live',
+    question: true,
+    review: { links: [], hand_tests: [] },
+  }
+
+  expect(waitsFrom('raise_review', JSON.stringify(reviewed), 'ignored-label')).toEqual([
+    { waitId: '24a2ff72-dada', shortId: '24a', taskShortId: '1a0', status: 'pending', archived: false },
+  ])
+  expect(waitsFrom('raise_review', { structuredContent: reviewed }, '1a0')).toHaveLength(1)
+})
+
+const owedChange = (shortId: string, task: string, change: Owed['change'], via?: Owed['via']): Owed => ({
+  waitId: `${shortId}-full`,
+  shortId,
+  taskShortId: task,
+  change,
+  ...(via === undefined ? {} : { via }),
+})
+
+test('a batch names every wait, never the answers', () => {
+  const items = [
+    { owed: owedChange('1ab', 'de1', 'released'), named: false },
+    { owed: owedChange('2cd', 'de1', 'released'), named: false },
+    { owed: owedChange('9f0', '77a', 'deleted'), named: false },
+  ]
+
+  expect(batchNotificationText(items)).toBe(
+    'Arlesh notification: 3 waits changed: wait 1ab on Task de1 (released), wait 2cd on Task de1 (released), ' +
+      'wait 9f0 on Task 77a (gone); read them with `arlesh_waits.get_many`.',
+  )
+})
+
+test('a batch names the sub-agent on the items that go to anyone else than it', () => {
+  const raiser = { agentId: 'a1', description: 'Fix CI' }
+  const items = [
+    { owed: owedChange('1ab', 'de1', 'released', raiser), named: true },
+    { owed: owedChange('2cd', 'de1', 'released', raiser), named: false },
+  ]
+
+  const text = batchNotificationText(items)
+
+  expect(text).toContain('wait 1ab on Task de1 (released — raised by the sub-agent "Fix CI")')
+  expect(text).toContain('wait 2cd on Task de1 (released);')
+})
+
+test('one wait keeps the exact text it always had, and several read as a batch', () => {
+  const one = { owed: owedChange('1ab', 'de1', 'released'), named: false }
+
+  expect(messageFor([one])).toBe(notificationText(one.owed, 'released', undefined, false))
+  expect(messageFor([one, { owed: owedChange('2cd', 'de1', 'reopened'), named: false }])).toContain('2 waits changed')
+})
+
+test('what is owed is grouped by recipient: the session, or one running sub-agent', () => {
+  const running = (id: string) => ({ id, status: 'running' })
+  const owed = [
+    owedChange('1ab', 'de1', 'released'),
+    owedChange('2cd', 'de1', 'released', { agentId: 'a1', description: 'One' }),
+    owedChange('3ef', 'de1', 'released', { agentId: 'a2', description: 'Two' }),
+    owedChange('4gh', 'de1', 'released', { agentId: 'a1', description: 'One' }),
+    owedChange('5ij', 'de1', 'released', { agentId: 'gone', description: 'Lost' }),
+  ]
+
+  const plan = planDeliveries(owed, [running('a1'), running('a2')])
+
+  expect(plan.agents.map((group) => [group.agentId, group.items.map((item) => item.owed.shortId)])).toEqual([
+    ['a1', ['2cd', '4gh']],
+    ['a2', ['3ef']],
+  ])
+  expect(plan.session.map((item) => [item.owed.shortId, item.named])).toEqual([
+    ['1ab', false],
+    ['5ij', true],
+  ])
+})
+
+test('what a sub-agent did not take goes to the session, each naming its raiser', () => {
+  const raiser = { agentId: 'a1', description: 'One' }
+
+  const moved = forSession([{ owed: owedChange('2cd', 'de1', 'released', raiser), named: false }])
+
+  expect(moved.map((item) => item.named)).toEqual([true])
+})
+
+test('the head of every entry is what the next flush tells, one per wait', () => {
+  const entry = (id: string, owed: Entry['owed']): Entry => ({
+    waitId: `${id}-full`,
+    shortId: id,
+    taskShortId: '9a1',
+    status: 'released',
+    archived: false,
+    seenAt: 0,
+    ...(owed === undefined ? {} : { owed }),
+  })
+  const book = {
+    'w1-full': entry('w1', ['released', 'reopened']),
+    'w2-full': entry('w2', undefined),
+    'w3-full': entry('w3', ['deleted']),
+  }
+
+  expect(owedHeads(book).map(({ entry: head, change }) => [head.shortId, change])).toEqual([
+    ['w1', 'released'],
+    ['w3', 'deleted'],
+  ])
 })

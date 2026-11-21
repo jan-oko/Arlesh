@@ -96,7 +96,10 @@ fn base() -> Value {
         "habits": [{"flow_id": tid(7), "flow_title": "Flow", "result": {"outcome": "loaded"}}],
         "short_ids": {(tkey("task", 10)): "a1", (tkey("task", 11)): "a2", (tkey("goal", 3)): "b1"},
         "facts": {(tkey("task", 11)): {"dependency_blocks": [{"kind": "task", "id": tid(10), "short_id": "a1", "title": "Step one"}]}},
-        "agent_activity": {"review": 0, "waits": 0, "on_agent": 1}
+        "agent_activity": {"review": 0, "waits": 0, "on_agent": 1},
+        "answer_drafts": [
+            {"wait_id": tid(30), "answer": "blue", "verdict": null, "saved_at": "2026-11-21T09:00:00"}
+        ]
     })
 }
 
@@ -257,6 +260,38 @@ fn cases() -> Vec<(&'static str, Value, Value)> {
             before.clone(),
             edited(&|b| {
                 b.as_object_mut().unwrap().remove("agent_activity");
+            }),
+        ),
+        (
+            "a draft saved on another device",
+            before.clone(),
+            edited(&|b| {
+                b["answer_drafts"].as_array_mut().unwrap().push(
+                    json!({"wait_id": tid(31), "answer": null, "verdict": "approved",
+                           "saved_at": "2026-11-21T09:05:00"}),
+                );
+            }),
+        ),
+        (
+            "a draft edited, the last save winning",
+            before.clone(),
+            edited(&|b| {
+                b["answer_drafts"][0]["answer"] = json!("red");
+                b["answer_drafts"][0]["saved_at"] = json!("2026-11-21T09:10:00");
+            }),
+        ),
+        (
+            "a draft cleared or sent",
+            before.clone(),
+            edited(&|b| {
+                b["answer_drafts"] = json!([]);
+            }),
+        ),
+        (
+            "the staged count appearing in the agent activity",
+            before.clone(),
+            edited(&|b| {
+                b["agent_activity"]["staged"] = json!(1);
             }),
         ),
     ]
@@ -447,6 +482,7 @@ fn written_back(collection: Collection, json: &str) -> String {
         Collection::ShortIds => through::<String>(json),
         Collection::Facts => through::<NodeFacts>(json),
         Collection::AgentActivity => through::<AgentActivity>(json),
+        Collection::AnswerDrafts => through::<AnswerDraft>(json),
     }
 }
 

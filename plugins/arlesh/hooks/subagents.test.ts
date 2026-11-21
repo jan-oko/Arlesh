@@ -198,7 +198,7 @@ test('the subagent\'s Agent row gets a line naming its Task and whether its clai
   await $.agent.spawn({ tool_use_id: 'tu1', prompt: 'p', description: 'Fix CI', subagentType: 'general-purpose' } as never)
   await $.classic.SubagentStart({ agent_id: 'a1', agent_type: 'general-purpose' })
   await $.tool.call({ tool: 'mcp__arlesh__arlesh_agents', operation: 'claim', agentId: 'a1', sub_token: 'q3H' })
-  const row = { plugin: 'arlesh-notify', component: 'ToolUse', requestId: 'tu1', surface: 'terminal' } as const
+  const row = { plugin: 'arlesh', component: 'ToolUse', requestId: 'tu1', surface: 'terminal' } as const
   const props = { tool: 'Agent', tool_use_id: 'tu1', input: {}, isRunning: false, isErrored: false, isInterrupted: false }
 
   const active = await $.ui.mount({ ...row, props })
@@ -437,7 +437,7 @@ test('on the terminal the line is indented to the text of the result below it, o
   const props = { tool: 'Agent', tool_use_id: 'tu1', input: {}, isRunning: false, isErrored: false, isInterrupted: false }
 
   for (const [surface, indent] of [['terminal', 5], ['desktop', 0]] as const) {
-    const ui = await $.ui.mount({ plugin: 'arlesh-notify', component: 'ToolUse', requestId: 'tu1', surface, props })
+    const ui = await $.ui.mount({ plugin: 'arlesh', component: 'ToolUse', requestId: 'tu1', surface, props })
     const row = await ui.find({ type: 'Box', text: /Arlesh/ })
     expect(JSON.stringify(row), surface).toContain(`"paddingLeft":${indent}`)
     expect((await ui.find({ type: 'Text', text: /Arlesh/ }))?.props).toEqual({ dimColor: true })

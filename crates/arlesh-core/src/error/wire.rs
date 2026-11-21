@@ -324,6 +324,8 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         | TaskError::AgenticAnswerMissing
         | TaskError::AgenticVerdictMissing
         | TaskError::Review(_)
+        | TaskError::AnswerDraft(_)
+        | TaskError::DraftSendRefused { .. }
         | TaskError::VerdictOnNonReview => WireErrorKind::InvalidRequest,
         // Change the sub-items, finish or archive what is open, or switch compound off; an iteration root or a check task
         // carries no flag.

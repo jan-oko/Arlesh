@@ -1,4 +1,4 @@
-import type { AgentSummary } from "@/api/agents";
+import type { AgentSummary, UsageWindow } from "@/api/agents";
 
 /** Which of pause / resume the standing allows, and whether a Claim can be released. */
 export interface AgentControls {
@@ -38,13 +38,46 @@ export function capitalised(text: string): string {
   return text.charAt(0).toLocaleUpperCase() + text.slice(1);
 }
 
-/** How long ago `iso` was, judged against `now`, in the shortest form ("2h", "5m", "3d"). */
-export function shortAge(iso: string, now: Date, locale?: string): string {
-  const seconds = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+/** `seconds` in the shortest unit that fits ("2h", "5m", "3d"), never negative. */
+function shortSpan(seconds: number, locale?: string): string {
+  const whole = Math.max(0, Math.round(seconds));
   const steps: Array<[Intl.NumberFormatOptions["unit"], number]> = [
     ["day", 86400], ["hour", 3600], ["minute", 60],
   ];
-  const [unit, size] = steps.find(([, step]) => seconds >= step) ?? ["second", 1];
+  const [unit, size] = steps.find(([, step]) => whole >= step) ?? ["second", 1];
   return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" })
-    .format(Math.floor(seconds / size));
+    .format(Math.floor(whole / size));
+}
+
+/** How long ago `iso` was, judged against `now`, in the shortest form ("2h", "5m", "3d"). */
+export function shortAge(iso: string, now: Date, locale?: string): string {
+  return shortSpan((now.getTime() - new Date(iso).getTime()) / 1000, locale);
+}
+
+/** How long until `iso`, judged against `now`, in the shortest form ("4h", "2d"). */
+export function shortRemaining(iso: string, now: Date, locale?: string): string {
+  return shortSpan((new Date(iso).getTime() - now.getTime()) / 1000, locale);
+}
+
+/** The words an account's limits line is written with. */
+export interface LimitsWords {
+  name: (kind: string) => string;
+  limit: (name: string, percent: number, left: string) => string;
+  separator: string;
+}
+
+/** An account's limits as one line: "Five Hours: 8% (4h left) · Week: 20% (2d left)". */
+export function limitsText(
+  windows: readonly UsageWindow[],
+  now: Date,
+  words: LimitsWords,
+  locale?: string,
+): string {
+  return windows
+    .map((window) => words.limit(
+      words.name(window.kind),
+      Math.round(window.percent_used),
+      shortRemaining(window.resets_at, now, locale),
+    ))
+    .join(words.separator);
 }

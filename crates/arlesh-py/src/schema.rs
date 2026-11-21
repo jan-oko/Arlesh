@@ -61,6 +61,7 @@ use arlesh_core::{
         model::{PartOfDay, ScopeKind},
     },
     tasks::{
+        answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
         model::{
             CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
             CreateTaskRequest, DescendantPlans, DurationSpec, ExpectationStatus, OnScopeExit,
@@ -92,6 +93,8 @@ fn inputs(generator: &mut SchemaGenerator) {
     add::<CreateExpectationRequest>(generator);
     add::<UpdateExpectationRequest>(generator);
     add::<UpdateSpawnedWaitRequest>(generator);
+    add::<DraftRequest>(generator);
+    add::<SendRequest>(generator);
     add::<CreateInfoRequest>(generator);
     add::<UpdateInfoRequest>(generator);
     add::<CreateDomainRequest>(generator);
@@ -140,6 +143,8 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<Commitment>(generator);
     add::<Expectation>(generator);
     add::<SpawnedWait>(generator);
+    add::<AnswerDraft>(generator);
+    add::<SendOutcome>(generator);
     add::<Info>(generator);
     add::<Domain>(generator);
     add::<Flow>(generator);

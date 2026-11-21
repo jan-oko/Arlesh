@@ -3,6 +3,6 @@ export type RowLines = Record<string, string>
 
 declare module 'claude-code' {
   interface PluginState {
-    'arlesh-notify': { rows: RowLines }
+    'arlesh': { rows: RowLines }
   }
 }

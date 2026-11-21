@@ -366,6 +366,7 @@ pub fn derive_board(
         short_ids: std::collections::HashMap::new(),
         facts: std::collections::HashMap::new(),
         agent_activity: None,
+        answer_drafts: Vec::new(),
         plans,
         derived_in_progress,
     })

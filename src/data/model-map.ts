@@ -86,6 +86,13 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
         without: "Touching an occurrence would freeze a full copy, cut off from later template edits.",
         lives: "task_/goal_/commitment_/expectation_overlays; nodes/overlay.rs",
       },
+      {
+        title: "Answer draft",
+        is: "An answer to an agent's question, or a review's verdict with its note, written down and not yet sent. One row per wait, stored on the server and synced to every device; the last save wins. Send releases every staged wait in one write and deletes the drafts.",
+        why: "So an answer can wait for the others, and every agent wakes once for the whole batch.",
+        without: "Each answer goes out as it is written, and agents act on half a set of answers.",
+        lives: "tasks/answer_drafts.rs · tasks/rules/answer_drafts.rs · migrations/0110_answer_drafts.sql · src/hooks/use-answer-drafts.ts",
+      },
     ],
   },
   {
@@ -116,7 +123,7 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
       },
       {
         title: "Review",
-        is: "Never set: a To Do or On Agent Task with an open agent question or review beneath it (a To Do one is a question asked before claiming). Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent, or To Do if it was never claimed.",
+        is: "Never set: a To Do or On Agent Task with an open agent question or review beneath it (a To Do one is a question asked before claiming). Answering it (a review: with a verdict, approved or changes requested) puts it back On Agent, or To Do if it was never claimed. An answer can be staged (an answer draft) and sent with the others as one batch: the wait still reads Review, and agents never see a draft. A Task is marked staged only when every open question and review on it is.",
         why: "It is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait itself: the Task shows it and is where you answer.",
         without: "Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.",
         lives: "tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts",
@@ -315,7 +322,7 @@ export const MODEL_MAP_GROUPS: readonly ModelMapGroup[] = [
         is: "An MCP session starts unattached and sees nothing. A one-time PIN, or the agent token it was given, makes it an Agent, bound for the connection. An Agent holds one Claim, a subtree inside your roots that is its whole view; only one active Claim covers a node, and a paused one frees the subtree. Agents declare an Account, usage is kept per account, and an Agent is at capacity while a window of its account is full before its reset. A subagent is a Child Agent of the session's Agent, told apart by the sub-token on its calls: its sub-Claim lies inside the parent's Claim and is no overlap with it, its standing and capacity follow the parent, and it goes when its parent goes, its Task is set Done, or its subagent stops holding nothing open.",
         why: "Several agents can work one board without overlapping, each in a bounded context, and one agent reaching its plan limit blocks only its own work.",
         without: "Every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one.",
-        lives: "agents/ · mcp/agents.rs · mcp/mod.rs call_tool (sub_token) · migrations 0101, 0102, 0105, 0106 · plugins/arlesh-notify · ADR 0018, 0019",
+        lives: "agents/ · mcp/agents.rs · mcp/mod.rs call_tool (sub_token) · migrations 0101, 0102, 0105, 0106 · plugins/arlesh · ADR 0018, 0019",
       },
       {
         title: "The server",

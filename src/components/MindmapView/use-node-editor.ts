@@ -33,8 +33,8 @@ import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { isBegun, storedStatus } from "@/utils/status-mapping";
-import { useAnswerQuestion } from "@/hooks/use-answer-question";
-import type { WaitReply } from "@/hooks/use-answer-question";
+import { useAnswerActions } from "@/hooks/use-answer-drafts";
+import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 import { awaitLane } from "@/stores/use-pending-writes-store";
 import { usePendingWrite } from "@/hooks/use-pending-write";
@@ -118,7 +118,7 @@ export interface NodeEditorHandles {
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
   /** Answers an agent's open question from the Task editor: stores the answer, releases the wait. */
-  onAnswer: (wait: MindmapNode, reply: WaitReply) => Promise<boolean>;
+  answers: AnswerActions;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
   onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
@@ -290,11 +290,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
     [editorModal, saveThroughLane, tUndo, showToast, t],
   );
 
-  const answerQuestion = useAnswerQuestion({ settle, showToast });
-  const onAnswer = useCallback(
-    (wait: MindmapNode, reply: WaitReply) => answerQuestion(wait.id, rowIdOf(wait), reply),
-    [answerQuestion],
-  );
+  const answers = useAnswerActions({ settle, showToast });
 
   const onGoalSave = useCallback(
     async (data: GoalSaveData) => {
@@ -563,7 +559,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
 
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onAnswer, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, answers, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp,
   };

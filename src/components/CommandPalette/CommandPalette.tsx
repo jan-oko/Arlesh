@@ -9,6 +9,7 @@ import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { useCommandLabel } from "@/hooks/use-command-label";
+import { useStagedSender } from "@/hooks/use-answer-drafts";
 import { paletteEntries } from "@/utils/touch/palette";
 import { formatChord } from "@/utils/hotkeys/chord";
 import CommandList from "./CommandList";
@@ -32,6 +33,8 @@ export default function CommandPalette({ showTabs }: Props) {
   const readOnly = useBoardReadOnly() !== null;
   const labelOf = useCommandLabel();
   const [query, setQuery] = useState("");
+  // Sending the staged answers (ADR 0021): an entry with no key of its own beyond Ctrl+Enter in the field.
+  const staged = useStagedSender();
   // The Select toggle, where the view can hold several: taps then build the selection.
   const multiSelect = useSelectionSurfaceStore((s) => s.multiSelect);
   const selecting = useSelectModeStore((s) => s.active);
@@ -75,6 +78,11 @@ export default function CommandPalette({ showTabs }: Props) {
         >
           <span>{t("paletteSelect")}</span>
           <span className={styles.toggleHint}>{t("paletteSelectHint")}</span>
+        </button>
+      )}
+      {staged.count > 0 && (
+        <button type="button" className={styles.toggle} onClick={() => { close(); void staged.send(); }}>
+          <span>{t("paletteSendStaged", { count: staged.count })}</span>
         </button>
       )}
       {shown.length === 0

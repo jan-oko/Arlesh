@@ -13,6 +13,7 @@ ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 """The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
 
 NewTask = Callable[..., str]
+Create = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
 def _exists(server: TestClient, task: str) -> bool:
@@ -179,3 +180,37 @@ def test_archive_nodes_refuses_a_delete_before_anything_is_written(
 
     assert refused.status_code == 400
     assert _exists(server, task)
+
+
+def test_undoing_a_send_stages_every_answer_again(
+    server: TestClient, create: Create, domain: str, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+    server.post(f"/tasks/{task}/agentic/toggle")
+    waits = [
+        create(
+            "/waits",
+            {
+                "title": title,
+                "parent_type": "task",
+                "parent_id": task,
+                "agentic": True,
+                "agentic_note": "Which?",
+            },
+        )["id"]
+        for title in ("One?", "Two?")
+    ]
+    for wait in waits:
+        server.put(f"/waits/{wait}/draft", json={"answer": "yes"})
+    server.post("/drafts/send", json={"shown": waits})
+
+    undone = server.post("/undo")
+    board = server.get("/board").json()
+    redone = server.post("/redo")
+
+    assert undone.json() is not None
+    assert {e["id"]: e["status"] for e in board["expectations"] if e["id"] in waits} == {
+        wait: "pending" for wait in waits
+    }
+    assert sorted(draft["wait_id"] for draft in board.get("answer_drafts", [])) == sorted(waits)
+    assert redone.json() is not None

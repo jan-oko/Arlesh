@@ -365,7 +365,7 @@ pub async fn poll_answer(
         Instant::now() + Duration::from_secs(query.wait.unwrap_or(DEFAULT_WAIT).min(MAX_WAIT));
     let cursor = query
         .after
-        .filter(|after| *after > 0 && query.epoch.as_deref() == Some(epoch));
+        .filter(|_| query.epoch.as_deref() == Some(epoch));
     let mut seen = feed.revision();
     loop {
         let reading = log

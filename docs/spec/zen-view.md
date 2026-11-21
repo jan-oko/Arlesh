@@ -125,7 +125,9 @@ its **On Agent** pill is on. A
 its status with **Started's glyph** (the ring with a hollow centre; ruled by the user, 2026-10-02)
 whether or not badges are shown, and draws the agent's open question — its title, its note on hover — with
 an **answer field**: **Send**, or `Ctrl+Enter` in the field, stores the answer and releases the
-question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on). An On
+question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on).
+The field can also **Stage** the answer and send it later with the others ([Resources § Staged
+answers](resources.md#staged-answers)). A staged card stays in the grid, as Review. An On
 Agent card says its status with the **On Agent glyph** (a small bot head inside the ring).
 
 **The Review pill** (Task ac8, ruled by the user, 2026-10-09). The Zen View's Filter menu carries a

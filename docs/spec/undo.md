@@ -205,6 +205,28 @@ overlapping when another agent claimed the subtree meanwhile. The Claim rules al
 the older Claim keeps its place and the younger is shadowed until the overlap goes
 ([Agents](agents.md)), so undo needs no check of its own.
 
+## Sending staged answers
+
+*Task `de16`, [ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md), decision 6.* Answers to
+agents can be staged as drafts (`answer_drafts`, migration 0110, a journaled table) and sent
+together ([Resources § Staged answers](resources.md#staged-answers)). **Sending is one Gesture**:
+one command in Standalone, one request in Client mode. Its entries are the releases of the waits it
+sent and the deletes of the drafts it read. **One `Ctrl+Z`** replays them in reverse: each draft is
+re-inserted from its before image, so the answers are **staged again**, and each wait goes back to
+pending with no answer, so its Task reads Review again, marked staged. **Redo** sends the batch
+again. Nothing in the engine is new for it.
+
+- **Staging and unstaging are Gestures of their own**, as every command is. The field's Send on text
+  that was not staged yet is **two** Gestures, stage then send. That way the first `Ctrl+Z` returns
+  the current answer to staged with the rest, and does not take it out.
+- **Per device.** The device that sent the batch holds the step, even for drafts staged elsewhere.
+- **Agents are told.** Undoing the send reopens every wait in one transaction. Each agent that raised
+  one gets **one** "reopened" notification for all of its waits, as it got one for the send
+  ([MCP § Being told a wait resolved](mcp-server.md#being-told-a-wait-resolved)).
+- **Stale drafts** (their wait already released or gone) were deleted by the send too, so the undo
+  brings them back. They mark nothing, and the next send skips them and names them again.
+- The toast reads **"Undid: send 3 answers"**, from the name the frontend gave the Gesture.
+
 ## Sources, and not undoing undo
 
 Every entry carries the **source** of its write. An MCP write is journaled but never enters the

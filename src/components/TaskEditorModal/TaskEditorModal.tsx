@@ -44,7 +44,7 @@ import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
 } from "@/utils/status-mapping";
 import { openWaits } from "@/utils/open-question";
-import type { WaitReply } from "@/hooks/use-answer-question";
+import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import OpenWaits from "@/components/AnswerField/OpenWaits";
 import { isOverdue } from "@/utils/overdue";
 import { blockedByText } from "@/utils/blocked-by";
@@ -150,13 +150,13 @@ interface Props {
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: string, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
-  onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
+  answers?: AnswerActions | undefined;
   /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
   openAtTemplate?: boolean;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, reopened, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, reopened, onCheckScopeClamp, answers, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "expectation"]);
   // A reopened editor (a Save the server refused) holds what the user had typed.
@@ -558,9 +558,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           inherited={node.inheritedAgentic === true}
           onChange={setAgentic}
         />
-        {hasOpenWaits && onAnswer !== undefined && (
+        {hasOpenWaits && answers !== undefined && (
           <div role="group" aria-label={t("agenticQuestionSection")}>
-            <OpenWaits task={node} onAnswer={onAnswer} />
+            <OpenWaits task={node} actions={answers} />
           </div>
         )}
         {readsAgentic && (

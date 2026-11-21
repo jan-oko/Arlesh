@@ -243,6 +243,64 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     assert_eq!(activity.review, 0);
 }
 
+fn draft(wait: i64) -> crate::tasks::answer_drafts::AnswerDraft {
+    crate::tasks::answer_drafts::AnswerDraft {
+        wait_id: wait.into(),
+        answer: Some("blue".to_string()),
+        verdict: None,
+        saved_at: chrono::NaiveDate::from_ymd_opt(2026, 11, 21)
+            .and_then(|day| day.and_hms_opt(9, 0, 0))
+            .unwrap_or_default(),
+    }
+}
+
+#[test]
+fn an_open_question_with_a_draft_is_staged_and_counted() {
+    let mut load = board();
+    load.expectations = vec![
+        wait_row(1, 11, 5, true, true),
+        wait_row(2, 11, 3, true, true),
+    ];
+    load.answer_drafts = vec![draft(1)];
+    let (facts, activity) = derive(&load, None);
+    assert_eq!(
+        facts[&tkey("task", 11)].staged_questions,
+        vec![NodeId::from(1)],
+        "only the staged one of the open questions"
+    );
+    assert_eq!(
+        facts[&tkey("task", 11)].open_questions.len(),
+        2,
+        "a staged wait is still open, and its Task still reads Review"
+    );
+    assert_eq!(activity.staged, 1);
+}
+
+#[test]
+fn a_draft_on_a_wait_that_is_not_an_open_question_marks_nothing() {
+    let mut load = board();
+    let mut released = wait_row(1, 11, 5, true, true);
+    released.status = ExpectationStatus::Released;
+    let mut archived = wait_row(2, 11, 4, true, true);
+    archived.archival = ExpectationArchival::Archived;
+    load.expectations = vec![released, archived, wait_row(3, 11, 3, true, false)];
+    load.answer_drafts = vec![draft(1), draft(2), draft(3), draft(99)];
+    let (facts, activity) = derive(&load, None);
+    assert!(facts
+        .get(&tkey("task", 11))
+        .is_none_or(|fact| fact.staged_questions.is_empty()));
+    assert_eq!(activity.staged, 0);
+}
+
+#[test]
+fn nothing_is_staged_without_drafts() {
+    let mut load = board();
+    load.expectations = vec![wait_row(1, 11, 5, true, true)];
+    let (facts, activity) = derive(&load, None);
+    assert!(facts[&tkey("task", 11)].staged_questions.is_empty());
+    assert_eq!(activity.staged, 0);
+}
+
 #[test]
 fn a_commitment_expires_unresolved_and_archived() {
     let mut load = board();

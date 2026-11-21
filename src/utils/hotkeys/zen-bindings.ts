@@ -13,6 +13,7 @@ import { LIST_PLAN_BINDINGS, type ListPlanContext } from "./list/plan";
 import { LIST_RENAME_BINDINGS, type ListRenameContext } from "./list/rename";
 import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
+import { LIST_WAITING_BINDINGS, type ListWaitingContext } from "./list/waiting";
 import { asZenBindings } from "./zen/from-list";
 import { ZEN_NAVIGATE_BINDINGS, type ZenNavigateContext } from "./zen/navigate";
 import { ZEN_STATUS_PRESET_BINDINGS, type ZenStatusPresetContext } from "./zen/status-presets";
@@ -40,6 +41,7 @@ export interface ZenContext extends
   ListRenameContext,
   ListScrollContext,
   ListStatusContext,
+  ListWaitingContext,
   ZenNavigateContext,
   ZenStatusPresetContext {}
 
@@ -82,5 +84,6 @@ export const ZEN_BINDINGS: readonly Binding<ZenContext>[] = [
   ...asZenBindings(LIST_PLAN_BINDINGS),
   ...asZenBindings(LIST_DEPENDENCY_BINDINGS),
   ...asZenBindings(LIST_DESELECT_BINDINGS),
+  ...asZenBindings(LIST_WAITING_BINDINGS, { "listView.jumpToWaitingAnswer": "jumpToWaitingAnswerCard", "listView.jumpToStagedAnswer": "jumpToStagedAnswerCard" }),
   ...asZenBindings(LIST_HISTORY_BINDINGS),
 ];

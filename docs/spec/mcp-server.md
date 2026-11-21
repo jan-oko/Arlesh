@@ -683,11 +683,21 @@ wait** — not in the Mindmap, List, Start, Do or Zen — so it exists for agent
 snapshot keeps an agentic wait whenever it keeps the Task it hangs under. A wait blocks nothing
 unless a Task depends on it.
 
+**Staged answers are invisible to agents** (Task `de16`, [ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md);
+the user's side is [Resources § Staged answers](resources.md#staged-answers)). The user may stage
+an answer or a verdict as a **draft** and send several at once. A draft is a row of
+`answer_drafts`, which only the app's board (`mindmap::board`) loads. Every MCP read (the snapshot,
+`get`, `get_many`, `list`, `watch`) and the wait stream read the board through `load_blocked`,
+which never loads drafts. So a wait with a draft reads `pending`, with no answer and no verdict,
+until the batch is sent. Staging, editing or clearing a draft is no change on
+`/events/expectations`. **Sending** releases every staged wait in **one transaction**, through the
+same write a single answer makes, so the agent reads the answer the usual way.
+
 ## Being told a wait resolved
 
 An agent that raised a wait is **told** when it changes, instead of polling `get`. The decision and
 its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md); this is the
-server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
+server's side. The notifier itself is the `arlesh` Claude Code mod (`plugins/arlesh/`),
 which an agent's session may or may not have.
 
 **Two event routes**, on the MCP endpoint's own origin (beside `/mcp` in Standalone) or behind the
@@ -722,6 +732,17 @@ on 2026-11-06, Task `688`: only its own tests followed it, the mod long-polls).
 
 The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
 writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.
+
+**A batch is one change per wait, at one revision** (Task `de16`, [ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)).
+Sending staged answers releases all of them in one transaction. The log diffs whole readings, and
+a reading sees a transaction whole, so the batch's `released` changes all carry the same `revision`
+and arrive in one poll answer. Undoing the send brings them back the same way, as `reopened`. The
+change shape has no batch field. A client that knows nothing of batches sees one change per wait,
+as before. The `arlesh` plugin delivers **one message per recipient per flush**: it groups every
+change it owes by the agent it routes to (the raising sub-agent if it runs, else whoever spawned
+it, else the session), so each agent is woken once for the batch. A message about one wait keeps
+today's text; one about several lists them ("Arlesh notification: 3 waits changed: wait 1ab on Task
+de1 (released), …; read them with `arlesh_waits.get_many`.").
 
 **Two operations on `arlesh_waits`:**
 

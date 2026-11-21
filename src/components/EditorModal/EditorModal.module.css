@@ -9,6 +9,8 @@
 }
 
 .modal {
+  /* Focusable so an answer field's Escape can return here, leaving Escape to close the editor. */
+  outline: none;
   background: var(--surface-raised);
   border: 1px solid var(--node-border);
   border-radius: 8px;

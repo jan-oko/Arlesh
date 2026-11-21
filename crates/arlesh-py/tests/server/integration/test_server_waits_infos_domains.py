@@ -59,6 +59,58 @@ def test_a_deleted_wait_is_off_the_board(
     assert wait["id"] not in [e["id"] for e in server.get("/board").json()["expectations"]]
 
 
+def _question(
+    server: TestClient, create: Create, domain: str, new_task: NewTask, title: str = "Colour?"
+) -> str:
+    """An open agentic question under an agentic Task."""
+    task = new_task(domain)
+    assert server.post(f"/tasks/{task}/agentic/toggle").json()["agentic"] is True
+    return str(_wait(create, task, title=title, agentic=True, agentic_note="Which?")["id"])
+
+
+def test_an_answer_is_staged_and_unstaged_without_releasing_the_wait(
+    server: TestClient, create: Create, domain: str, new_task: NewTask
+) -> None:
+    wait = _question(server, create, domain, new_task)
+
+    staged = server.put(f"/waits/{wait}/draft", json={"answer": " blue "})
+    still_pending = next(e for e in server.get("/board").json()["expectations"] if e["id"] == wait)
+    cleared = server.delete(f"/waits/{wait}/draft")
+    cleared_again = server.delete(f"/waits/{wait}/draft")
+
+    assert staged.status_code == 200, staged.text
+    assert staged.json()["answer"] == "blue"
+    assert still_pending["status"] == "pending"
+    assert cleared.status_code == 204 and cleared_again.status_code == 204
+
+
+def test_a_blank_answer_cannot_be_staged(
+    server: TestClient, create: Create, domain: str, new_task: NewTask
+) -> None:
+    wait = _question(server, create, domain, new_task)
+
+    refused = server.put(f"/waits/{wait}/draft", json={"answer": "  "})
+
+    assert refused.status_code == 422 or refused.status_code == 400, refused.text
+
+
+def test_sending_releases_every_staged_wait_and_names_the_skipped(
+    server: TestClient, create: Create, domain: str, new_task: NewTask
+) -> None:
+    staged = _question(server, create, domain, new_task, "Colour?")
+    unstaged = _question(server, create, domain, new_task, "Shape?")
+    server.put(f"/waits/{staged}/draft", json={"answer": "blue"})
+
+    sent = server.post("/drafts/send", json={"shown": [staged, unstaged]})
+
+    assert sent.status_code == 200, sent.text
+    assert [entry["wait_id"] for entry in sent.json()["sent"]] == [staged]
+    assert [(e["wait_id"], e["reason"]) for e in sent.json()["skipped"]] == [(unstaged, "unstaged")]
+    waits = {e["id"]: e for e in server.get("/board").json()["expectations"]}
+    assert waits[staged]["status"] == "released" and waits[staged]["answer"] == "blue"
+    assert waits[unstaged]["status"] == "pending"
+
+
 def test_an_info_is_created_read_updated_duplicated_and_deleted(
     server: TestClient, create: Create, domain: str
 ) -> None:

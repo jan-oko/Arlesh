@@ -4,10 +4,10 @@ import { MODEL_MAP_CARDS, MODEL_MAP_GROUPS } from "@/data/model-map";
 
 describe("the model map content", () => {
   // The counts of the page this replaced (`docs/model-map.html`), written out so a lost group or card fails here.
-  it("has the 8 groups and 38 concept cards the HTML page had", () => {
+  it("has the 8 groups and 39 concept cards (the HTML page's 38, and the answer draft)", () => {
     expect(MODEL_MAP_GROUPS).toHaveLength(8);
-    expect(MODEL_MAP_GROUPS.flatMap((group) => group.cards)).toHaveLength(38);
-    expect(MODEL_MAP_CARDS.size).toBe(38);
+    expect(MODEL_MAP_GROUPS.flatMap((group) => group.cards)).toHaveLength(39);
+    expect(MODEL_MAP_CARDS.size).toBe(39);
   });
 
   it("numbers its groups 1 to 8 in order", () => {
