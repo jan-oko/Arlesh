@@ -148,7 +148,10 @@ an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune`
 without an open PR it would remove (never `dev`, `master`, the current one, or any with uncommitted or
 unpushed work) and asks before removing them with their test apps (`-y` skips the question, `--dry-run`
 only prints); a local branch is deleted only
-once it is merged, and remote branches never.
+once it is merged, and remote branches never. It also removes the data box kept for merged branches (server and app instance directories, build
+stamps, cached CI APKs), for those worktrees and for branches pruned earlier, listed with sizes in the same
+plan, and none while `gh` is unavailable; unmerged branches keep theirs unless `--all-data` is given;
+`clean` keeps that data.
 A branch's databases are seeded from the production server, not the stale local copy: run
 `npm run box -- seed set <server url>` once (it reads the server's `ARLESH_BACKUP_TOKEN` from stdin
 or a prompt), `--local-seed` falls back to the local copy, and `npm run box -- reseed <branch>`

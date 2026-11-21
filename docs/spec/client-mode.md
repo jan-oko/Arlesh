@@ -854,7 +854,36 @@ More of the tool, for trying pairing and the phone build:
   or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
   so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
   gone are listed in the plan and pruned too. Without `gh`, box cannot know which PRs are open,
-  so it skips the worktree part and prunes only those apps.
+  so it skips the worktree part and the data below, and prunes only those apps.
+- **`prune` removes the data box keeps per branch; `clean` does not.** Per branch box keeps: the
+  server's directory `<instances>/.servers/<branch>/` (database, logs, port, pid, host), the app
+  instance's directory `<instances>/<branch>/` (data, config, logs, port, pids, the kept binary and
+  APK), its entries in `state.json` (build stamps, install and provisioning records, the token
+  holders of its server) and its cached CI APKs in `$XDG_STATE_HOME/arlesh/box/ci/`. `prune` deletes
+  all of it for each worktree it removes, once `git worktree remove` has succeeded, and for the
+  leftovers of branches pruned earlier: any such directory, entry or APK whose branch has no
+  worktree (anywhere, the main checkout included) and no open PR. **Only for merged branches**: the
+  branch is merged into `origin/dev` or `origin/master`, or its PR was merged (the test that decides
+  "local branch: delete"). A leftover's branch is found from the local and origin refs whose name
+  maps to its folder name, else the name is looked up as a PR head; a closed unmerged PR or none is
+  "not merged". An unmerged branch keeps its data ("kept: not merged"); `prune --all-data` also
+  takes those, each marked "(unmerged)" in the plan, and a cached CI APK whose branch is unknown.
+  The plan lists each path with its size and the total, under the same prompt, `-y` and `--dry-run`.
+  A worktree that stays (open PR, `dev`, `master`, dirty, unpushed, current directory, or one
+  `git worktree remove` refused) keeps its data. Data goes only after the branch's server and app
+  stopped: a server or app still alive (its pid, or any holder of its database lock) is not deleted
+  under, a failed kill keeps the pid file, and a leftover whose app is running is listed as kept.
+  Just before each deletion prune re-reads the open PRs and the worktrees and keeps the data of a
+  branch that has gained either. No data is removed when `gh` fails, answers with something that is
+  not a list of PRs, or with a list as long as its limit (200: it may be cut), or when `state.json`
+  cannot be read (it is never replaced by an empty one). A directory is box's only if it holds the
+  integer `port` file box writes into each instance and server directory; anything else under the
+  instances directory is never listed or removed, whatever `ARLESH_INSTANCES` points at. Each path
+  is built from the branch's name alone, must be a plain child of the instances or state directory
+  and not a symlink, or it is refused. A deletion that fails partway prints "partly removed" with
+  what is left, keeps that branch's `state.json` entries and makes prune exit non-zero. `clean`
+  removes only the binary, APK, CI APKs and build stamps and keeps the data. Shared caches (the
+  cargo target, sccache, `box.env`, the keystore, the device registry) are never touched.
 
 ## Not in phase 1
 
