@@ -11,6 +11,7 @@ import { useTabClaims, useTabDropTarget, claimDropped } from "@/hooks/use-tab-dr
 import { carriesTab, encodeTabDrag, TAB_DRAG_TYPE } from "@/utils/tab-drag";
 import { useTabTearOff } from "@/hooks/use-tab-tear-off";
 import { currentWindowLabel } from "@/api/window-label";
+import { boxInstanceName } from "@/api/box-instance";
 import TabContextMenu from "@/components/TabContextMenu/TabContextMenu";
 import { useTouchLayout } from "@/hooks/use-media-query";
 import styles from "./TabStrip.module.css";
@@ -133,6 +134,7 @@ export default function TabStrip() {
   }
 
   const wholeTree = t("common:tabWholeTree");
+  const boxName = boxInstanceName();
 
   // The phone layout shows one tab and no strip (docs/spec/touch.md); the tab chords still work
   // from a keyboard.
@@ -196,6 +198,11 @@ export default function TabStrip() {
       <button type="button" className={styles.add} aria-label={t("common:newTab")} onClick={openTab}>
         <span aria-hidden="true">{ADD_ICON}</span>
       </button>
+      {boxName !== null && (
+        <span className={styles.box} title={boxName} data-testid="box-branch">
+          {boxName}
+        </span>
+      )}
       {menuAt !== null && createPortal(
         <TabContextMenu
           x={menuAt.x}

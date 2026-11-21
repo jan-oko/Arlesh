@@ -3539,6 +3539,24 @@ class EnvFileTests(IsolatedEnv):
         self.assertEqual(seen, ["from-file"])
 
 
+class StartVite(IsolatedEnv):
+    def test_the_vite_server_is_told_which_instance_it_serves(self) -> None:
+        spawned: list[dict[str, str] | None] = []
+
+        def spawn(cmd, pidfile, logfile, cwd, env=None):  # type: ignore[no-untyped-def]
+            spawned.append(env)
+            return 1
+
+        with (
+            mock.patch.object(box, "spawn_detached", spawn),
+            mock.patch.object(box, "http_up", side_effect=[False, True]),
+            mock.patch.object(box, "instance_dir", return_value=self.tmp),
+            mock.patch.object(box.time, "sleep"),
+        ):
+            box.start_vite("978-box-branch-name", self.tmp)
+        self.assertEqual(spawned, [{"VITE_ARLESH_BOX": "978-box-branch-name"}])
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -2078,6 +2078,10 @@ def build_desktop(name: str, wt: Path) -> None:
     print(f"=== {name}: ready ({size:.0f}M, port {port}, {free_gb()}G free) ===")
 
 
+# Read by the frontend (`src/api/box-instance.ts`) to show the branch at the tabs bar's right end.
+VITE_BOX_ENV = "VITE_ARLESH_BOX"
+
+
 def start_vite(name: str, wt: Path) -> None:
     """Start the instance's own Vite server and wait for it: a debug build loads over HTTP."""
     port = port_for(name)
@@ -2091,6 +2095,7 @@ def start_vite(name: str, wt: Path) -> None:
         inst / "vite.pid",
         inst / "vite.log",
         wt,
+        {VITE_BOX_ENV: name},
     )
     for _ in range(60):
         if http_up(url):
