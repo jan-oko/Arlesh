@@ -24,6 +24,7 @@ pub mod mcp;
 pub mod mindmap;
 pub mod nodes;
 pub mod push;
+pub mod replication;
 pub mod scopes;
 pub mod server_pairing;
 pub mod server_tokens;

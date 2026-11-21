@@ -23,6 +23,7 @@ use crate::{
     database::session::SessionFactory,
     error::AppError,
     mcp::events::ChangeFeed,
+    replication::{self, rules::wire, SourceDelta, SourceHead, SourceTracker},
 };
 
 use super::{
@@ -41,6 +42,9 @@ pub const MAX_CHANGES_BYTES: usize = 256 * 1024;
 pub const RING_EVENTS: usize = 64;
 /// How many bytes of events the ring keeps.
 pub const RING_BYTES: usize = 4 * 1024 * 1024;
+/// How many bytes of `source` rows the ring keeps, beside [`RING_BYTES`] of events: the oldest
+/// events lose their `source` first, and a Replica that finds none fetches a snapshot.
+pub const RING_SOURCE_BYTES: usize = 4 * 1024 * 1024;
 
 /// What a host does with each change event: the server's stream pulls with
 /// [`BoardPublisher::after`] and passes a sink that does nothing; the desktop emits to its windows.
@@ -90,6 +94,12 @@ pub struct BoardHead {
     pub hash: u32,
     /// The sum of each collection's digests, for diagnosing a mismatch.
     pub sums: BTreeMap<String, u32>,
+    /// Where the replicated source rows stand: the change-log position and their hash
+    /// ([`crate::replication`]). `None` from a publisher that does not publish rows. A Replica
+    /// whose rows are at `source.upto` must hash to `source.hash`; another hash means a row changed
+    /// behind the feed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceHead>,
 }
 
 /// One publication: the derived board and what identifies it.
@@ -111,6 +121,8 @@ pub struct Publication {
     pub origin: ChangeOrigin,
     /// The derived board.
     pub load: MindmapLoad,
+    /// Where the replicated source rows stood at this publication, when the publisher publishes them.
+    pub source: Option<SourceHead>,
     json: OnceLock<Arc<str>>,
 }
 
@@ -136,6 +148,7 @@ impl Publication {
                 .iter()
                 .map(|(collection, sum)| (collection.as_str().to_string(), *sum))
                 .collect(),
+            source: self.source.clone(),
         }
     }
 }
@@ -145,9 +158,30 @@ impl Publication {
 pub struct ChangeEvent {
     /// The publication the event brings a device to.
     pub seq: u64,
-    /// The event's JSON: `{epoch, seq, revision, now, hash, changes}`, or `reload: true` in place
-    /// of `changes` when they were too large (ADR 0020, decision 16).
+    /// The event's JSON as apps before the Replica read it: `{epoch, seq, revision, now, hash, origin,
+    /// changes}`, or `reload: true` in place of `changes` when they were too large (ADR 0020,
+    /// decision 16). It never holds `source`.
     pub data: Arc<str>,
+    /// The `source` object: the changed replicated rows with their positions and hash
+    /// ([`crate::replication`]). `None` when the publisher publishes no rows, when the log fell
+    /// short of the database (a client must fetch a snapshot), when the rows were too large for one
+    /// event, and once the ring's budget for sources has moved past it.
+    pub source: Option<Arc<str>>,
+}
+
+impl ChangeEvent {
+    /// The event as a stream sends it: with `rows`, `data` plus its `source` (when it has one: a
+    /// Replica that finds none fetches a snapshot); without, exactly `data`, which is what every
+    /// app that predates the Replica reads.
+    pub fn wire(&self, rows: bool) -> std::borrow::Cow<'_, str> {
+        match (&self.source, rows) {
+            (Some(source), true) => {
+                let body = self.data.strip_suffix('}').unwrap_or(&self.data);
+                std::borrow::Cow::Owned(format!("{body},\"source\":{source}}}"))
+            }
+            _ => std::borrow::Cow::Borrowed(&self.data),
+        }
+    }
 }
 
 /// The newest write a publication is known to hold: what a writer settles on.
@@ -162,12 +196,21 @@ pub struct BoardFence {
 struct State {
     latest: Option<Arc<Publication>>,
     digests: BoardDigests,
+    /// The replicated rows' hash and position, when this publisher publishes them.
+    source: Option<SourceTracker>,
     ring: VecDeque<ChangeEvent>,
     ring_bytes: usize,
+    source_bytes: usize,
 }
 
 struct Inner {
     feed: ChangeFeed,
+    /// Whether this publisher publishes the replicated rows.
+    rows: bool,
+    /// Names this publisher's hold on the change-log capture.
+    owner: String,
+    /// Set once the capture is given up: no later turn takes it again.
+    stopped: std::sync::atomic::AtomicBool,
     state: Mutex<State>,
     seq: watch::Sender<u64>,
 }
@@ -186,6 +229,10 @@ enum Trigger {
 impl BoardPublisher {
     /// Starts publishing on `runtime`: derives the first publication at once, then again after
     /// each write `feed` counts and at each tick of `clock`, telling `sink` about every change.
+    ///
+    /// It publishes the derived board only and never touches the change log's capture, so the
+    /// triggers cost a host with no Replica to serve nothing, and it cannot take the capture from
+    /// a server that holds it.
     pub fn start(
         factory: SessionFactory,
         feed: ChangeFeed,
@@ -193,13 +240,48 @@ impl BoardPublisher {
         sink: Sink,
         runtime: &tokio::runtime::Handle,
     ) -> Self {
+        Self::spawn(factory, feed, clock, sink, runtime, false)
+    }
+
+    /// [`start`](Self::start), and each event also carries the replicated source rows it changed
+    /// (`source`), with their hash and position, for a client's Replica ([`crate::replication`]).
+    ///
+    /// On each turn it takes or renews a lease on the capture (refused while another publisher
+    /// holds a valid one), drains the log into the publication and deletes what it read, so nothing
+    /// accumulates, and compares the hash it keeps with the database's own, read in the same
+    /// transaction. A difference means a change the log never held (a writer that was not a
+    /// publisher, a lease that lapsed): it starts again from the rows and says so, and every
+    /// client fetches a snapshot.
+    pub fn start_with_rows(
+        factory: SessionFactory,
+        feed: ChangeFeed,
+        clock: Arc<dyn Clock>,
+        sink: Sink,
+        runtime: &tokio::runtime::Handle,
+    ) -> Self {
+        Self::spawn(factory, feed, clock, sink, runtime, true)
+    }
+
+    fn spawn(
+        factory: SessionFactory,
+        feed: ChangeFeed,
+        clock: Arc<dyn Clock>,
+        sink: Sink,
+        runtime: &tokio::runtime::Handle,
+        rows: bool,
+    ) -> Self {
         let inner = Arc::new(Inner {
             feed: feed.clone(),
+            rows,
+            owner: uuid::Uuid::now_v7().to_string(),
+            stopped: std::sync::atomic::AtomicBool::new(false),
             state: Mutex::new(State {
                 latest: None,
                 digests: BoardDigests::default(),
+                source: None,
                 ring: VecDeque::new(),
                 ring_bytes: 0,
+                source_bytes: 0,
             }),
             seq: watch::Sender::new(0),
         });
@@ -324,6 +406,7 @@ fn reload_event(publication: &Publication) -> ChangeEvent {
     ChangeEvent {
         seq: publication.seq,
         data: data.into(),
+        source: None,
     }
 }
 
@@ -385,10 +468,26 @@ async fn turn(
             return None;
         }
     };
+    // The log is read after the revision, for the same reason: every write the revision counts has
+    // committed its rows, so they are in what this takes (and perhaps those of a write the next
+    // revision will count, which the next event then carries empty). After the derive, so a derive
+    // that fails leaves the log for the next publication.
+    let delta = advance_source(inner, factory).await;
     let previous = lock(&inner.state).latest.clone();
     let published = match previous {
         None => seed(inner, load, revision, now),
-        Some(previous) => publish(inner, &previous, load, revision, now, trigger, sink),
+        Some(previous) => publish(
+            inner,
+            &previous,
+            Derived {
+                load,
+                revision,
+                now,
+            },
+            delta.as_ref(),
+            trigger,
+            sink,
+        ),
     };
     match published {
         Ok(()) => Some(revision),
@@ -397,6 +496,17 @@ async fn turn(
             None
         }
     }
+}
+
+/// One derive of the board: what it read, and when.
+struct Derived {
+    load: MindmapLoad,
+    revision: u64,
+    now: NaiveDateTime,
+}
+
+fn source_head(inner: &Inner) -> Option<SourceHead> {
+    lock(&inner.state).source.as_ref().map(SourceTracker::head)
 }
 
 fn seed(
@@ -415,6 +525,7 @@ fn seed(
         sums: digests.sums().clone(),
         origin: ChangeOrigin::Time,
         load,
+        source: source_head(inner),
         json: OnceLock::new(),
     });
     {
@@ -429,15 +540,20 @@ fn seed(
 fn publish(
     inner: &Inner,
     previous: &Publication,
-    load: MindmapLoad,
-    revision: u64,
-    now: NaiveDateTime,
+    derived: Derived,
+    delta: Option<&SourceDelta>,
     trigger: &Trigger,
     sink: &Sink,
 ) -> Result<(), serde_json::Error> {
+    let Derived {
+        load,
+        revision,
+        now,
+    } = derived;
     let changes = diff(&previous.load, &load)?;
     let quiet_tick = matches!(trigger, Trigger::Tick) && revision == previous.revision;
-    if quiet_tick && changes.is_empty() {
+    let no_rows = delta.is_none_or(|delta| delta.is_empty() && !delta.resynced);
+    if quiet_tick && changes.is_empty() && no_rows {
         return Ok(());
     }
     let mut digests = lock(&inner.state).digests.clone();
@@ -451,25 +567,51 @@ fn publish(
         sums: digests.sums().clone(),
         origin: inner.feed.origin_between(previous.revision, revision),
         load,
+        source: source_head(inner),
         json: OnceLock::new(),
     });
+    // Only the derived changes decide whether apps that predate the Replica get a `reload`: rows
+    // that are too large drop `source` from this event alone, which a Replica answers with a
+    // snapshot.
     let too_large = changes.wire_len() > MAX_CHANGES_BYTES;
     let data = event_json(&publication, (!too_large).then_some(&changes))?;
+    let source = match delta {
+        Some(delta)
+            if !too_large && !delta.resynced && wire::event_len(delta) <= MAX_CHANGES_BYTES =>
+        {
+            Some(Arc::<str>::from(wire::event_source(delta)?))
+        }
+        _ => None,
+    };
     let event = ChangeEvent {
         seq: publication.seq,
         data: data.into(),
+        source,
     };
     {
         let mut state = lock(&inner.state);
         state.digests = digests;
         state.latest = Some(Arc::clone(&publication));
         state.ring_bytes += event.data.len();
+        state.source_bytes += event.source.as_ref().map_or(0, |source| source.len());
         state.ring.push_back(event.clone());
         while state.ring.len() > RING_EVENTS || state.ring_bytes > RING_BYTES {
             let Some(dropped) = state.ring.pop_front() else {
                 break;
             };
             state.ring_bytes -= dropped.data.len();
+            state.source_bytes -= dropped.source.as_ref().map_or(0, |source| source.len());
+        }
+        let state = &mut *state;
+        let mut over = state.source_bytes.saturating_sub(RING_SOURCE_BYTES);
+        for old in state.ring.iter_mut() {
+            if over == 0 {
+                break;
+            }
+            if let Some(source) = old.source.take() {
+                over = over.saturating_sub(source.len());
+                state.source_bytes -= source.len();
+            }
         }
     }
     tracing::info!(
@@ -481,4 +623,86 @@ fn publish(
     sink(&event);
     inner.seq.send_replace(publication.seq);
     Ok(())
+}
+
+/// One turn of the publisher with the replicated rows: takes or renews the capture, drains the log
+/// into the hash it keeps, and checks that hash against the database's own, read in the same
+/// transaction. Answers the delta for the event, or `None` for an event with no `source`: this
+/// publisher publishes no rows, another holds the capture, or this turn started again from the
+/// rows (so every client must fetch a snapshot). When the log cannot be read it answers no change
+/// and leaves the log for the next turn.
+async fn advance_source(inner: &Inner, factory: &SessionFactory) -> Option<SourceDelta> {
+    if !inner.rows || inner.stopped.load(std::sync::atomic::Ordering::SeqCst) {
+        return None;
+    }
+    let turn = async {
+        let mut db = factory.begin().await?;
+        let turn = replication::take_turn(&mut db, &inner.owner).await?;
+        db.commit().await?;
+        Ok::<_, sqlx::Error>(turn)
+    }
+    .await;
+    let previous = lock(&inner.state).source.take();
+    match turn {
+        Err(error) => {
+            tracing::error!(error = %error, "the change log could not be read; keeping it for the next publication");
+            let mut tracker = previous?;
+            let delta = tracker.advance(Vec::new());
+            lock(&inner.state).source = Some(tracker);
+            Some(delta)
+        }
+        Ok(replication::Turn::Refused) => {
+            tracing::warn!(
+                "another publisher holds the change-log capture; publishing without source rows"
+            );
+            None
+        }
+        Ok(replication::Turn::Acquired(tracker)) => {
+            lock(&inner.state).source = Some(tracker);
+            None
+        }
+        Ok(replication::Turn::Renewed(drained)) => {
+            let mut tracker =
+                previous.unwrap_or_else(|| SourceTracker::seed(&drained.rows, drained.position));
+            let mut delta = tracker.advance(drained.entries.clone());
+            let resynced = delta.hash != drained.hash;
+            if resynced {
+                tracing::error!(
+                    feed = %delta.hash,
+                    database = %drained.hash,
+                    "the replicated rows changed behind the feed; starting again from the database"
+                );
+                tracker = SourceTracker::seed(&drained.rows, drained.position);
+                delta = SourceDelta {
+                    base: delta.base,
+                    upto: drained.position,
+                    hash: tracker.head().hash,
+                    rows: Vec::new(),
+                    resynced: true,
+                };
+            }
+            lock(&inner.state).source = Some(tracker);
+            Some(delta)
+        }
+    }
+}
+
+impl BoardPublisher {
+    /// Gives up the change-log capture, at a clean shutdown: the triggers stop logging, and this
+    /// publisher never takes it again. Anything that went wrong is logged, and the lease runs out
+    /// by itself.
+    pub async fn release_capture(&self, factory: &SessionFactory) {
+        self.inner
+            .stopped
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let released = async {
+            let mut db = factory.begin().await?;
+            replication::release_capture(&mut db, &self.inner.owner).await?;
+            db.commit().await
+        }
+        .await;
+        if let Err(error) = released {
+            tracing::warn!(error = %error, "the change-log capture could not be released; it lapses by itself");
+        }
+    }
 }

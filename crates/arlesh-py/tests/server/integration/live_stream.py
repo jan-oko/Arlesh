@@ -31,8 +31,10 @@ class Stream:
         return False
 
 
-def follow(base: str, token: str, last_event_id: str | None = None) -> Stream:
-    """Follows ``/events/changes`` as a device."""
+def follow(
+    base: str, token: str, last_event_id: str | None = None, *, rows: bool = False
+) -> Stream:
+    """Follows ``/events/changes`` as a device; with ``rows`` as a Replica's device would."""
     stream = Stream()
 
     def run() -> None:
@@ -40,12 +42,15 @@ def follow(base: str, token: str, last_event_id: str | None = None) -> Stream:
         if last_event_id is not None:
             headers["Last-Event-ID"] = last_event_id
         try:
-            _read(base, headers, stream)
+            _read(base, headers, stream, rows)
         except httpx.HTTPError:
             return  # the server shut down with the stream open
 
-    def _read(base: str, headers: dict[str, str], stream: Stream) -> None:
-        with httpx.stream("GET", f"{base}/events/changes", headers=headers, timeout=60) as response:
+    def _read(base: str, headers: dict[str, str], stream: Stream, rows: bool) -> None:
+        params = {"rows": "true"} if rows else {}
+        with httpx.stream(
+            "GET", f"{base}/events/changes", params=params, headers=headers, timeout=60
+        ) as response:
             name = ""
             for line in response.iter_lines():
                 if line.startswith(": connected"):

@@ -128,11 +128,13 @@ impl NativeDatabase {
 
     /// Starts the board publisher over this open's factory, once per database file: it derives
     /// the board after every committed write and every minute, and keeps the latest publication
-    /// and the last change events for `board_current` and `board_events_after`.
+    /// and the last change events for `board_current` and `board_events_after`. Each event also
+    /// carries the replicated source rows it changed, with their hash (`source`), for a client's
+    /// Replica: the server publishes them, so this turns the change log's capture on.
     fn start_publisher(&self) {
         let shared = shared::for_database(&self.path);
         shared.publisher.get_or_init(|| {
-            BoardPublisher::start(
+            BoardPublisher::start_with_rows(
                 self.factory.clone(),
                 shared.changes.clone(),
                 Arc::new(LocalClock),
@@ -156,11 +158,13 @@ impl NativeDatabase {
 
     /// The change events after publication `after`, each `(seq, JSON)`; waits up to `wait`
     /// seconds for the next one. One `reload` event when the ring no longer holds them all.
+    #[pyo3(signature = (after, wait, rows=false))]
     fn board_events_after<'py>(
         &self,
         py: Python<'py>,
         after: u64,
         wait: f64,
+        rows: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let publisher = self.publisher()?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -169,8 +173,35 @@ impl NativeDatabase {
                 .await;
             Ok(events
                 .into_iter()
-                .map(|event| (event.seq, event.data.to_string()))
+                .map(|event| (event.seq, event.wire(rows).into_owned()))
                 .collect::<Vec<_>>())
+        })
+    }
+
+    /// Gives up the change-log capture this process holds, at a clean shutdown.
+    fn stop_publisher<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let publisher = self.publisher()?;
+        let factory = self.factory.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            publisher.release_capture(&factory).await;
+            Ok(())
+        })
+    }
+
+    /// The device snapshot as JSON: every replicated row, the epoch and revision it is at, where
+    /// its rows stand in the change log, their hash and the schema version
+    /// (`arlesh_core::replication`). Read in one transaction.
+    fn board_snapshot<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let factory = self.factory.clone();
+        let shared = shared::for_database(&self.path);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            // Before the read: a write that lands during it makes the snapshot look older than it
+            // is, never newer.
+            let revision = shared.changes.revision();
+            let epoch = shared.changes.epoch().to_string();
+            arlesh_core::replication::device_snapshot(&factory, &epoch, revision)
+                .await
+                .map_err(|error| raise(arlesh_core::error::WireError::from(error)))
         })
     }
 

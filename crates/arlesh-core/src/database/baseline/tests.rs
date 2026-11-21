@@ -243,3 +243,22 @@ async fn rows_written_before_the_uuid_migration_keep_the_full_ids_they_were_show
     assert_eq!(row.0, crate::database::row_ids::new_id("task", 5));
     assert_eq!(row.1, crate::database::row_ids::new_id("domain", 1));
 }
+
+/// The bot's re-cut moves `version.txt` to the newest migration and renders again. Rendering past
+/// 0106 used to run the raw chain and fail on 0107 ("NOT NULL constraint failed: domains.id"),
+/// which failed the Bot workflow on every push to `dev` after #215. This is the re-cut's render, at
+/// the newest migration, without touching `version.txt`.
+#[tokio::test]
+async fn the_bots_recut_renders_at_the_newest_migration() {
+    let newest = MIGRATOR
+        .iter()
+        .map(|migration| migration.version)
+        .max()
+        .unwrap();
+
+    let text = super::generate::render_through(newest).await.unwrap();
+
+    assert!(text.contains(&format!("migrations 1 through {newest}")));
+    assert!(text.contains("CREATE TABLE change_log"));
+    assert!(text.contains("CREATE TRIGGER change_log_tasks_insert"));
+}
