@@ -1,4 +1,6 @@
 import { invokeOutsideGesture } from "./gesture";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { listenHere, unsubscribed } from "@/api/board";
 
 /** The events a notification can tell of; ids match the phone's channels (docs/spec/notifications.md). */
 export type NotificationChannel =
@@ -40,4 +42,19 @@ export async function notificationSwitches(): Promise<NotificationSwitch[]> {
 /** Switches one event on or off for this device. */
 export async function setNotificationEnabled(channel: NotificationChannel, enabled: boolean): Promise<void> {
   await invokeOutsideGesture<null>("set_notification_enabled", { channel, enabled });
+}
+
+/** The event the shell raises when the user clicks a desktop notification of an agent's question. */
+const OPEN_REVIEW = "arlesh-open-review";
+
+/**
+ * Calls `onOpen` with the board key of the Task a clicked notification is about, each time the
+ * shell says one was clicked (Linux only; see docs/spec/notifications.md). A payload with no Task
+ * is dropped.
+ */
+export async function onOpenReview(onOpen: (taskKey: string) => void): Promise<UnlistenFn> {
+  return listenHere<unknown>(OPEN_REVIEW, (event) => {
+    const task: unknown = typeof event.payload === "object" && event.payload !== null ? Reflect.get(event.payload, "task") : null;
+    if (typeof task === "string") onOpen(task);
+  }).catch(() => unsubscribed);
 }

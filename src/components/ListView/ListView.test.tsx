@@ -938,6 +938,22 @@ describe("ListView", () => {
       expect(container.querySelectorAll("[class*='card']")[1]?.className).toMatch(/cardSelected/);
     });
 
+    it("selects the row a notification asked for, and takes the request", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      const { container } = render(<ListViewInApp />);
+      act(() => { useMindmapStore.getState().requestSelection("task-b"); });
+      expect(container.querySelectorAll("[class*='card']")[1]?.className).toMatch(/cardSelected/);
+      expect(useMindmapStore.getState().requestedSelection).toBeNull();
+    });
+
+    it("selects the row a notification asked for before the list was mounted", () => {
+      mockUseListData.mockReturnValue(twoRows());
+      useMindmapStore.getState().requestSelection("task-b");
+      const { container } = render(<ListViewInApp />);
+      expect(container.querySelectorAll("[class*='card']")[1]?.className).toMatch(/cardSelected/);
+      expect(useMindmapStore.getState().requestedSelection).toBeNull();
+    });
+
     it("ArrowUp selects the last row when nothing is selected", () => {
       mockUseListData.mockReturnValue(twoRows());
       const { container } = render(<ListViewInApp />);

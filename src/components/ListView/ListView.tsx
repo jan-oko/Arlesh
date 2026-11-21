@@ -1,7 +1,8 @@
 import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
 import { useStableKeys } from "@/hooks/use-temporary-ids";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useTabStores } from "@/stores/tab-stores-context";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -112,7 +113,23 @@ export default function ListView() {
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  // A tapped or clicked notification asks this tab to select the Task of its question: a request
+  // already made when the view mounts seeds the selection, a later one arrives through the store.
+  // A row that is not drawn yet reads as no selection and shows once it is.
+  const { mindmap: mindmapStore } = useTabStores();
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(() => mindmapStore.getState().requestedSelection);
+  useEffect(() => {
+    const take = (): void => {
+      const requested = mindmapStore.getState().requestedSelection;
+      if (requested === null) return;
+      mindmapStore.getState().clearRequestedSelection();
+      setSelectedRowId(requested);
+    };
+    mindmapStore.getState().clearRequestedSelection();
+    return mindmapStore.subscribe((state, previous) => {
+      if (state.requestedSelection !== null && state.requestedSelection !== previous.requestedSelection) take();
+    });
+  }, [mindmapStore]);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const showToast = useMindmapStore((s) => s.showToast);

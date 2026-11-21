@@ -580,7 +580,7 @@ pub fn show_windows(app: &AppHandle) {
 /// Unminimised only when it **is** minimised. Windows restores a window with `SW_RESTORE`, which
 /// also takes a maximised window out of maximised, so asking unconditionally would shrink a window
 /// the user had maximised.
-fn show_window<R: Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
+pub(crate) fn show_window<R: Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
     window.show()?;
     if window.is_minimized().unwrap_or(false) {
         window.unminimize()?;

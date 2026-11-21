@@ -43,10 +43,20 @@ pub struct Notice {
     pub title: String,
     /// What happened, and to which Task.
     pub text: String,
-    /// The Task it is about, keyed as the board keys it (`task-12`), if it is about one. The
-    /// system's notification services Tauri reaches on the desktop report no click, so nothing
-    /// opens it yet; it is carried for the day one does.
+    /// The Task it is about, keyed as the board keys it (`task-12`), if it is about one.
     pub task: Option<String>,
+}
+
+impl Notice {
+    /// The Task to show in the Review list when this notice is clicked: only an agent's question
+    /// opens anything, and only when it names its Task. Every other notice does nothing on a click,
+    /// as before.
+    pub fn review_target(&self) -> Option<&str> {
+        match self.channel {
+            Channel::AgentQuestion => self.task.as_deref(),
+            _ => None,
+        }
+    }
 }
 
 /// The words of a notification: the phone's (`push_strings.xml`), in English.

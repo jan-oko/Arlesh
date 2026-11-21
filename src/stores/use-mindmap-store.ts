@@ -40,6 +40,12 @@ export interface MindmapStore {
    */
   expandedHabitGroupIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
+  /**
+   * A node some other part of the app asked this tab to select, not yet taken by the view: a
+   * tapped or clicked notification names the Task of its question here. The List View takes it
+   * (selects the row, which scrolls into view) and clears it. Working state, never persisted.
+   */
+  requestedSelection: string | null;
   subtreeNav: SubtreeNav | null;
   /**
    * Whether the node search is open. Per tab, and **not** persisted — it is working state.
@@ -52,6 +58,10 @@ export interface MindmapStore {
   searchOpen: boolean;
 
   selectNode: (id: string | null) => void;
+  /** Asks this tab's view to select `id` once it can; see {@link MindmapStore.requestedSelection}. */
+  requestSelection: (id: string) => void;
+  /** The view took the request. */
+  clearRequestedSelection: () => void;
   addToSelection: (id: string) => void;
   setSelection: (ids: ReadonlySet<string>, anchorId: string) => void;
   enterSubtree: (id: string) => void;
@@ -116,6 +126,7 @@ export function createMindmapStore(
     collapsedNodeIds: new Set(),
     expandedHabitGroupIds,
     pendingToast: null,
+    requestedSelection: null,
     subtreeNav: null,
     searchOpen: false,
 
@@ -219,6 +230,8 @@ export function createMindmapStore(
         };
       }),
 
+    requestSelection: (id) => set({ requestedSelection: id }),
+    clearRequestedSelection: () => set({ requestedSelection: null }),
     showToast: (toast) => set({ pendingToast: toast }),
     clearToast: () => set({ pendingToast: null }),
 

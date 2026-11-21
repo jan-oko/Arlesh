@@ -149,3 +149,35 @@ fn the_capacity_lock_has_words_without_a_task() {
     };
     assert_eq!(notice_for(&event).text, "Agent capacity lock set");
 }
+
+fn notice(channel: Channel, task: Option<&str>) -> Notice {
+    Notice {
+        channel,
+        title: "Arlesh".into(),
+        text: String::new(),
+        task: task.map(str::to_owned),
+    }
+}
+
+#[test]
+fn a_clicked_question_opens_the_review_list_at_its_task() {
+    let question = notice(Channel::AgentQuestion, Some("task-12"));
+    assert_eq!(question.review_target(), Some("task-12"));
+}
+
+#[test]
+fn a_question_naming_no_task_has_nothing_to_open() {
+    assert_eq!(notice(Channel::AgentQuestion, None).review_target(), None);
+}
+
+#[test]
+fn the_other_notices_open_nothing_on_a_click() {
+    for channel in [
+        Channel::TaskOverdue,
+        Channel::TaskGenerated,
+        Channel::CapacityLocked,
+        Channel::CapacityCleared,
+    ] {
+        assert_eq!(notice(channel, Some("task-12")).review_target(), None);
+    }
+}

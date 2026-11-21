@@ -5,7 +5,7 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use arlesh_core::push::model::Channel;
-use tauri::{Manager, Runtime, State};
+use tauri::{Emitter, Manager, Runtime, State};
 
 use crate::{
     backend::{revision::BoardChange, AppBackend},
@@ -16,11 +16,48 @@ use crate::{
 /// How long to wait before asking again for a board that could not be had.
 const RETRY: Duration = Duration::from_secs(10);
 
-/// Shows notices through Tauri's notification plugin.
+/// The event a click on an agent's question raises for the page: `{"task": "task-12"}`. The page
+/// shows a List tab on the Review preset with that Task selected (`src/api/notifications.ts`).
 #[cfg(desktop)]
+const OPEN_REVIEW_EVENT: &str = "arlesh-open-review";
+
+/// What [`OPEN_REVIEW_EVENT`] carries.
+#[cfg(desktop)]
+#[derive(Clone, serde::Serialize)]
+struct OpenReview {
+    task: String,
+}
+
+/// Raises the app's window and tells its page to show the Review list at `task`. The first
+/// window is the one that answers (a notification belongs to the app, not to a window), so several
+/// windows never open the tab twice; a window hidden in the tray is shown.
+#[cfg(desktop)]
+fn open_review<R: Runtime>(app: &tauri::AppHandle<R>, task: &str) {
+    let windows = app.webview_windows();
+    let window = windows
+        .get(crate::windows::BOOTSTRAP_LABEL)
+        .or_else(|| windows.values().next());
+    let Some(window) = window else {
+        tracing::warn!("a notification was clicked with no window to show");
+        return;
+    };
+    if let Err(error) = super::tray::show_window(window) {
+        tracing::warn!(error = %error, "could not raise the window for a clicked notification");
+    }
+    let payload = OpenReview {
+        task: task.to_owned(),
+    };
+    if let Err(error) = window.emit(OPEN_REVIEW_EVENT, payload) {
+        tracing::warn!(error = %error, "could not tell the window to open the Review list");
+    }
+}
+
+/// Shows notices through Tauri's notification plugin: no click is reported through it on the
+/// desktop, so a notice shown this way opens nothing (macOS and Windows).
+#[cfg(all(desktop, not(target_os = "linux")))]
 struct SystemNotices<R: Runtime>(tauri::AppHandle<R>);
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_os = "linux")))]
 impl<R: Runtime> Deliver for SystemNotices<R> {
     fn show(&self, notice: &Notice) {
         use tauri_plugin_notification::NotificationExt;
@@ -34,6 +71,52 @@ impl<R: Runtime> Deliver for SystemNotices<R> {
         {
             tracing::warn!(error = %error, channel = notice.channel.as_str(), "could not show a notification");
         }
+    }
+}
+
+/// The freedesktop notification action a daemon runs on a click on the notification itself.
+#[cfg(target_os = "linux")]
+const DEFAULT_ACTION: &str = "default";
+
+/// Shows notices over the freedesktop notification service directly (`notify-rust`, which the
+/// plugin wraps) because the plugin cannot report a click and the service can: a notice that opens
+/// something carries the `default` action, and a thread waits for the daemon to say it was invoked.
+/// A daemon that offers no actions shows the notice and never reports a click.
+#[cfg(target_os = "linux")]
+struct SystemNotices<R: Runtime>(tauri::AppHandle<R>);
+
+#[cfg(target_os = "linux")]
+impl<R: Runtime> Deliver for SystemNotices<R> {
+    fn show(&self, notice: &Notice) {
+        let target = notice.review_target().map(str::to_owned);
+        let mut shown = notify_rust::Notification::new();
+        shown
+            .appname(&notice.title)
+            .summary(&notice.title)
+            .body(&notice.text)
+            .icon(&self.0.config().identifier);
+        if target.is_some() {
+            shown.action(DEFAULT_ACTION, "Open");
+        }
+        let handle = match shown.show() {
+            Ok(handle) => handle,
+            Err(error) => {
+                tracing::warn!(error = %error, channel = notice.channel.as_str(), "could not show a notification");
+                return;
+            }
+        };
+        let Some(task) = target else {
+            return;
+        };
+        let app = self.0.clone();
+        // Blocks until the notification is closed or clicked, so it gets a thread of its own.
+        std::thread::spawn(move || {
+            handle.wait_for_action(|action| {
+                if action == DEFAULT_ACTION {
+                    open_review(&app, &task);
+                }
+            });
+        });
     }
 }
 
