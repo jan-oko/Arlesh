@@ -8,6 +8,7 @@ import AgentCapacityIcon from "./AgentCapacityIcon";
 import AgentQuestionIcon from "./AgentQuestionIcon";
 import AgentWaitIcon from "./AgentWaitIcon";
 import AgentOnAgentIcon from "./AgentOnAgentIcon";
+import AgentStagedIcon from "./AgentStagedIcon";
 import styles from "./AgentStatus.module.css";
 
 /**
@@ -18,9 +19,9 @@ import styles from "./AgentStatus.module.css";
  * tooltip spells each out with its count; a click opens a small menu with one line each — Open on
  * the padlock (Settings, on the Agents section), Show on the others.
  *
- * Beside it, while any answer is **staged** (ADR 0021), a Send button with the number staged: it sends
- * them all. It is drawn whether or not the status itself is, since a staged answer is the user's own
- * and waits on nothing but this press.
+ * While any answer is **staged** (ADR 0021) it also shows a staged icon, and its menu gains a line that
+ * **sends** them all. Like the rest it follows the "Show agent status in the top bar" setting: with it off,
+ * the field's Send and the command palette are the ways to send.
  */
 export default function AgentStatus() {
   const { t } = useTranslation("common");
@@ -36,21 +37,21 @@ export default function AgentStatus() {
   }, [open]);
 
   const sender = useStagedSender();
-  const showHead = shown && status.isActive;
-  if (!showHead && sender.count === 0) return null;
+  // Staged answers are one more status here (ADR 0021): the head is drawn for them too, with its icon.
+  if (!shown || !(status.isActive || sender.count > 0)) return null;
 
   const lines: string[] = [
     ...(status.atCapacity ? [t("agentStatus.capacity", { count: status.capacityCount })] : []),
     ...(status.review > 0 ? [t("agentStatus.review", { count: status.review })] : []),
     ...(status.waits > 0 ? [t("agentStatus.waits", { count: status.waits })] : []),
     ...(status.onAgent > 0 ? [t("agentStatus.onAgent", { count: status.onAgent })] : []),
+    ...(sender.count > 0 ? [t("agentStatus.staged", { count: sender.count })] : []),
   ];
   const label = [...lines, t("agentStatus.details")].join(" ");
   const act = (action: () => void) => () => { setOpen(false); action(); };
 
   return (
     <div className={styles.anchor}>
-      {showHead && (<>
       <button
         className={styles.agent}
         type="button"
@@ -66,6 +67,7 @@ export default function AgentStatus() {
           {status.review > 0 && <span className={styles.ask}><AgentQuestionIcon /></span>}
           {status.waits > 0 && <span className={styles.wait}><AgentWaitIcon /></span>}
           {status.onAgent > 0 && <span className={styles.progress}><AgentOnAgentIcon /></span>}
+          {sender.count > 0 && <span className={styles.staged}><AgentStagedIcon /></span>}
         </span>
       </button>
       {open && (
@@ -84,21 +86,11 @@ export default function AgentStatus() {
             {status.onAgent > 0 && (
               <Line text={t("agentStatus.onAgent", { count: status.onAgent })} action={t("agentStatus.show")} onAct={act(status.showOnAgent)} />
             )}
+            {sender.count > 0 && (
+              <Line text={t("agentStatus.staged", { count: sender.count })} action={t("agentStatus.send")} onAct={act(() => void sender.send())} />
+            )}
           </div>
         </>
-      )}
-      </>)}
-      {sender.count > 0 && (
-        <button
-          type="button"
-          className={styles.sendStaged}
-          aria-label={t("agentStatus.sendStaged", { count: sender.count })}
-          title={t("agentStatus.sendStaged", { count: sender.count })}
-          onClick={() => void sender.send()}
-        >
-          {t("agentStatus.send")}
-          <span className={styles.stagedCount} aria-hidden="true">{sender.count}</span>
-        </button>
       )}
     </div>
   );

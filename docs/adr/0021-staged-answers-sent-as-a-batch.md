@@ -18,8 +18,7 @@ writing the others. An agent that raised three waits is woken three times.
 - The answer field has two buttons, **Stage** and **Send**. Stage toggles. `Ctrl+Enter` stages;
   `Ctrl+Enter` again in a staged field sends.
 - **Send** sends every staged answer on the board, the current one included. Send is the field's
-  button, the second `Ctrl+Enter`, or a send button that appears next to the agent items in the top
-  bar.
+  button, the second `Ctrl+Enter`, or a Send option in the agent status's click menu in the top bar.
 - Question answers and review verdicts (a verdict with its note) can be staged.
 - Staging is stored on the server and syncs across devices. On a draft, the last save wins.
 - A staged wait still reads Review, and is marked staged. The agent sees nothing until the batch is
@@ -259,8 +258,8 @@ runs the same React components. So the change is made once:
   **select** a verdict; the same **Stage** and **Send** as a question follow (decided, question 2).
 - `src/components/AnswerField/OpenWaits.tsx`: the list of a Task's open waits. It passes each wait
   its draft and the board-wide staged count.
-- `src/components/TopBar/AgentStatus.tsx`: the top bar's agent status. The send button sits here,
-  next to the agent items. The desktop top bar (`TopBar.tsx`) and the phone's (`PhoneTopBar.tsx`)
+- `src/components/TopBar/AgentStatus.tsx`: the top bar's agent status. The Send menu line and the staged icon
+  sit here. The desktop top bar (`TopBar.tsx`) and the phone's (`PhoneTopBar.tsx`)
   both render `AgentStatus`, so both get the button.
 - The Task's staged mark is drawn where its answer controls are, which every view that draws Review
   uses: `OpenWaits` heads its list with it (the List row, the Zen card and the Task editor's agentic
@@ -289,12 +288,16 @@ runs the same React components. So the change is made once:
 - **Phone.** The same buttons, at the touch layout's target sizes (touch.md). There is no chord.
   Undo is the action bar's Undo button.
 
-**The top bar's send button** is drawn while `agent_activity.staged > 0`, inside `AgentStatus`, next
-to the head. A press sends the batch, with `shown` set to the waits the board shows as staged. Its
-tooltip says how many answers it sends ("Send 3 staged answers"). It carries the number staged, and
-it is drawn **whether or not** the "Show agent status in the top bar" setting is on. Sending the
-batch also has a **command-palette entry**, and no hotkey beyond `Ctrl+Enter` in the field (decided,
-question 4). The palette is the touch sheet, so on the desktop the top-bar button is the entry.
+**The top bar's send entry** is a line of the agent status's click menu (`AgentStatus`), present only
+while something is staged: "N staged answers, not sent yet" with a **Send** action. Choosing it sends
+the batch, with `shown` set to the waits the board shows as staged. While anything is staged the agent
+status also draws a **staged icon** in the row of its status icons (the head is drawn for it too), and
+the count is in its tooltip, as for the other icons. There is no standalone button (the user replaced
+the button of the first ruling, 2026-11-21). The status follows the "Show agent status in the top bar"
+setting, so with it off there is no icon and no menu; the field's Send and the command palette are the
+ways to send. Sending the batch also has a **command-palette entry**, and no hotkey beyond `Ctrl+Enter`
+in the field (decided, question 4). The palette is the touch sheet, so on the desktop the menu line is
+the board-wide entry.
 
 **Toasts.** A send that skipped anything raises one anchored toast, at the first skipped wait's
 Task, naming each skipped wait by title and reason ("already answered", "gone", "unstaged on
@@ -394,7 +397,7 @@ CI is the gate.
 8. **The question's field and the top bar.** `AnswerField.tsx` and its CSS module, `OpenWaits.tsx`,
    `AgentStatus.tsx` and its CSS module, the palette entry, and i18n strings.
    *Tests:* `AnswerField.test.tsx` (the state table and the chord), `AgentStatus.test.tsx` (the
-   button shows only while something is staged and sends the shown ids).
+   staged icon and the menu's Send line show only while something is staged, and it sends the shown ids).
 9. **The review's controls and the Task's mark.** `ReviewAnswer.tsx` (+ test), and the mark in
    `OpenWaits.tsx` (which the List row, the Zen card and the Task editor share) and the Mindmap hover.
 10. **Docs and changelog.** The model map (decision 8), and one `changelog.d/added/<NNNN>-staged-
@@ -416,6 +419,9 @@ CI is the gate.
 3. **The Task's staged mark.** The Task is marked staged **only when all** of its open question and
    review waits are staged, so the mark means "nothing left for you but Send". Each wait is marked on
    its own either way.
-4. **The top bar's send button.** It is drawn **only while something is staged**, **shows the number
-   staged**, and is drawn **even when "Show agent status in the top bar" is off**. Sending the batch
+4. **The top bar's send entry.** First ruled as a button shown only while something is staged, with
+   the number staged, even with the agent status off. **Replaced by the user, 2026-11-21:** it is an
+   **option in the agent status's click menu** ("Send staged answers", with the count), present only
+   while something is staged, and the agent status shows a **staged icon** while there are staged
+   answers. With "Show agent status in the top bar" off there is no icon and no menu. Sending the batch
    also has a **command-palette entry**. There is **no hotkey** beyond `Ctrl+Enter` in the field.

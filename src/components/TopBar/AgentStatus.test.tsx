@@ -210,51 +210,63 @@ describe("AgentStatus", () => {
     expect(glyphs()).toEqual([]);
   });
 
-  describe("the Send button for staged answers", () => {
+  describe("staged answers", () => {
     const staged = [storedRowId(3), storedRowId(4)];
-    const sendButton = () => screen.queryByRole("button", { name: /agentStatus\.sendStaged/ });
+    const sendLine = () => screen.queryByRole("menuitem", { name: /agentStatus\.send: agentStatus\.staged/ });
 
-    it("is not drawn while nothing is staged", async () => {
+    it("shows no staged icon and no Send line while nothing is staged", async () => {
       given(0, { review: 1 });
       render(<AgentStatus />);
       await flush();
 
-      expect(sendButton()).toBeNull();
-    });
-
-    it("is drawn beside the head while something is staged, with the number staged", async () => {
-      given(0, { review: 2, staged: 2 });
-      useAgentActivityStore.setState({ stagedWaitIds: staged });
-      render(<AgentStatus />);
-      await flush();
-
-      const button = sendButton();
-      expect(button?.getAttribute("aria-label")).toBe("agentStatus.sendStaged:2");
-      expect(button?.textContent).toContain("2");
       expect(glyphs()).toEqual(["head", "question"]);
+      fireEvent.click(screen.getByRole("button"));
+      expect(sendLine()).toBeNull();
     });
 
-    it("is drawn even with the agent status turned off, and then draws no head", async () => {
+    it("shows the staged icon while something is staged, with the count in its tooltip", async () => {
       given(0, { review: 2, staged: 2 });
       useAgentActivityStore.setState({ stagedWaitIds: staged });
-      useDisplayStore.setState({ showAgentStatus: false });
       render(<AgentStatus />);
       await flush();
 
-      expect(sendButton()).not.toBeNull();
-      expect(glyphs()).toEqual([]);
+      expect(glyphs()).toEqual(["head", "question", "staged"]);
+      expect(screen.getByRole("button").getAttribute("title")).toContain("agentStatus.staged:2");
     });
 
-    it("sends every staged wait the board shows", async () => {
+    it("draws the head for staged answers alone", async () => {
+      given(0);
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(glyphs()).toEqual(["head", "staged"]);
+    });
+
+    it("has a Send line in the menu, with the count, that sends every staged wait the board shows", async () => {
       vi.mocked(sendAnswerDrafts).mockResolvedValue({ sent: [], skipped: [] });
       given(0, { review: 2, staged: 2 });
       useAgentActivityStore.setState({ stagedWaitIds: staged });
       render(<AgentStatus />);
       await flush();
 
-      fireEvent.click(screen.getByRole("button", { name: /agentStatus\.sendStaged/ }));
+      fireEvent.click(screen.getByRole("button"));
+      expect(screen.getByText("agentStatus.staged:2")).toBeDefined();
+      fireEvent.click(screen.getByRole("menuitem", { name: /agentStatus\.send: agentStatus\.staged/ }));
 
       await vi.waitFor(() => expect(sendAnswerDrafts).toHaveBeenCalledWith({ shown: staged }));
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    it("draws nothing with the agent status turned off: the field and the palette are the ways to send", async () => {
+      given(0, { review: 2, staged: 2 });
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      useDisplayStore.setState({ showAgentStatus: false });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(glyphs()).toEqual([]);
     });
   });
 });

@@ -31,10 +31,16 @@ function Screen() {
   );
 }
 
+/** Opens the agent status menu and presses its Send line. */
+function sendFromMenu(): void {
+  fireEvent.click(screen.getByRole("button", { name: /Click for details/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Send: 2 staged answers/ }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   useMindmapStore.getState().clearToast();
-  useDisplayStore.setState({ showAgentStatus: false });
+  useDisplayStore.setState({ showAgentStatus: true });
   useAgentActivityStore.setState({ stagedWaitIds: [storedRowId(3), storedRowId(4)] });
   useBoardStore.setState({ settle: () => Promise.resolve() });
 });
@@ -50,7 +56,7 @@ describe("the toast of a send that skipped drafts", () => {
     });
     render(<Screen />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send 2 staged answers/ }));
+    sendFromMenu();
 
     await waitFor(() => expect(screen.getByText(/Not sent: Colour\? \(already answered\); an answer \(gone\)/)).toBeInTheDocument());
   });
@@ -59,7 +65,7 @@ describe("the toast of a send that skipped drafts", () => {
     vi.mocked(sendAnswerDrafts).mockResolvedValue({ sent: [], skipped: [] });
     render(<Screen />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send 2 staged answers/ }));
+    sendFromMenu();
 
     await waitFor(() => expect(sendAnswerDrafts).toHaveBeenCalled());
     expect(screen.queryByText(/Not sent/)).not.toBeInTheDocument();
@@ -69,7 +75,7 @@ describe("the toast of a send that skipped drafts", () => {
     vi.mocked(sendAnswerDrafts).mockRejectedValue(new Error("the wait is gone"));
     render(<Screen />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Send 2 staged answers/ }));
+    sendFromMenu();
 
     await waitFor(() => expect(screen.getByText(/Couldn't change the expectation/)).toBeInTheDocument());
   });

@@ -63,8 +63,8 @@
     "capacity_other": "{{count}} agents at capacity: their Agentic tasks are blocked.",
     "open": "Open",
     "send": "Send",
-    "sendStaged_one": "Send {{count}} staged answer",
-    "sendStaged_other": "Send {{count}} staged answers"
+    "staged_one": "{{count}} staged answer, not sent yet.",
+    "staged_other": "{{count}} staged answers, not sent yet."
   },
   "systemBars": "System bars",
   "systemBarsHelp": "How the app sits against the Android status and gesture bars. Standard: visible, opaque, the app below them. Edge-to-edge: visible but transparent, the app drawn under them with its controls kept clear. Immersive: hidden, swipe from the screen edge to show them briefly. Android only.",

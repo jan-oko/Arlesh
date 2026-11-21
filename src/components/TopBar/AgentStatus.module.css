@@ -53,6 +53,8 @@
 .capacity { color: var(--agent-capacity); }
 .ask { color: var(--ask); }
 .wait { color: var(--wait); }
+/* Staged answers wait on you to send them: the accent. */
+.staged { color: var(--accent); }
 /* In Progress keeps the bar's own icon colour, as the head does. */
 .progress { color: inherit; }
 
@@ -112,41 +114,4 @@
 .lineAction:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-
-/* Send, with the number of staged answers: beside the head, in the accent as the answer fields' Send. */
-.sendStaged {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  height: 26px;
-  margin-inline-start: var(--space-1);
-  padding: 0 var(--space-2);
-  border: none;
-  border-radius: 6px;
-  background: var(--accent);
-  color: white;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.sendStaged:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.stagedCount {
-  min-width: 1.2em;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
-  text-align: center;
-}
-
-@media (pointer: coarse) {
-  .sendStaged {
-    min-height: 44px;
-    min-width: 44px;
-  }
 }
