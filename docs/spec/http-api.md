@@ -303,6 +303,17 @@ Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. The
 compressor holds a stream back until it has enough to compress, and an event must arrive as it
 happens.
 
+## `X-Arlesh-Request-Id`: the seed of a write's ids
+
+A client that predicts a write (ADR 0017) sends it with `X-Arlesh-Request-Id: <a UUID>`. The server
+runs the call **under that seed**: the ids of the rows the write creates that the client did not
+name (a duplicate's copies, a Flow start, a paste, a fork) are UUIDv7s whose timestamp is the
+seed's and whose random bits are a hash of the seed and how many ids the call minted before. A
+client that ran the same code over the same rows under the same seed holds the same ids. Each route
+is one call to the core, so the count is per request. A header that is absent or not a UUID leaves
+the write unseeded (random ids), and a server that predates the header ignores it: the client then
+finds the ids differ and takes the server's rows, as it does for any write it mispredicted.
+
 ## Errors
 
 Every response that is not a success has the same body: the core's `kind`, a `message` and

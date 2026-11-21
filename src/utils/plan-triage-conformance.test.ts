@@ -8,18 +8,16 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
 import { keyForRef, keyStartDate, scopeKeyFrom, scopeKeyText } from "@/utils/scope-key";
-import { partitionForScope, planRefusal } from "@/utils/plan-triage";
-import { takeOutTarget } from "@/utils/plan-take-out";
 import { parentRefs } from "@/utils/plan-scope";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { Scope, ScopeKind as ApiScopeKind } from "@/api/scopes";
 import type { ScopeKeyText } from "@/utils/scope-key";
 
 /**
- * The Plan View's rules have two ends: `plan-triage.ts` and `plan-take-out.ts`, which now ask
- * `tasks::rules::plan` through the wasm module, and `parentRefs` and the section builder, which are
- * still TypeScript and run through the calendar. The bounds are the writer's own. `conformance/plan-triage.json` holds them together;
- * `src-tauri/tests/operations/plan_triage_conformance.rs` is this file's other half.
+ * The Plan View's triage, refusals and take-out table are Rust's: `src-tauri/src/commands/rules/tests.rs`
+ * replays `conformance/plan-triage.json` through the commands that serve them, and the frontend holds
+ * no copy. What is still TypeScript, `parentRefs` and the section builder, which run through the
+ * calendar, is replayed here.
  */
 
 function array(value: unknown, what: string): unknown[] {
@@ -101,30 +99,6 @@ function cellKey(ref: Parameters<typeof keyForRef>[0]): string {
 }
 
 describe("plan triage conformance corpus", () => {
-  for (const [index, value] of array(top.triage, "`triage`").entries()) {
-    const entry = record(value, `triage[${index}]`);
-    const name = str(entry.name, `triage[${index}].name`);
-    it(name, () => {
-      const rows = array(entry.rows, `${name}.rows`).map((r, i) => row(r, `${name}.rows[${i}]`));
-      const target = key(entry.target, `${name}.target`);
-      const parent = entry.parent === null ? null : key(entry.parent, `${name}.parent`);
-      const panes = partitionForScope(rows, target, parent);
-      expect(panes.unplanned.map((r) => r.node.id)).toEqual(ids(entry.unplanned, `${name}.unplanned`));
-      expect(panes.planned.map((r) => r.node.id)).toEqual(ids(entry.planned, `${name}.planned`));
-      expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(ids(entry.parentPlanned, `${name}.parentPlanned`));
-    });
-  }
-
-  for (const [index, value] of array(top.refusals, "`refusals`").entries()) {
-    const entry = record(value, `refusals[${index}]`);
-    const name = str(entry.name, `refusals[${index}].name`);
-    it(name, () => {
-      const subject = row(entry.row, `${name}.row`);
-      const target = key(entry.target, `${name}.target`);
-      expect(planRefusal(subject, target)).toBe(entry.refusal);
-    });
-  }
-
   for (const [index, value] of array(top.parents, "`parents`").entries()) {
     const entry = record(value, `parents[${index}]`);
     const child = key(entry.scope, `parents[${index}].scope`);
@@ -132,14 +106,6 @@ describe("plan triage conformance corpus", () => {
       const refs = parentRefs({ kind: child.kind, start_date: keyStartDate(child), end_date: keyStartDate(child) });
       const parents = refs.map((ref) => scopeKeyText(keyForRef(ref)));
       expect(parents).toEqual(entry.parent === null ? [] : [scopeKeyText(key(entry.parent, `parents[${index}].parent`))]);
-    });
-  }
-
-  for (const [index, value] of array(top.takeOut, "`takeOut`").entries()) {
-    const entry = record(value, `takeOut[${index}]`);
-    it(`work taken out with split=${String(entry.split)} and parent=${String(entry.hasParent)}`, () => {
-      const landed = takeOutTarget(entry.split === true, "filled", entry.hasParent === true ? "parent" : null);
-      expect(landed.kind === "clear" ? "clear" : landed.scope).toBe(entry.lands);
     });
   }
 

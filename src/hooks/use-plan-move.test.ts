@@ -25,6 +25,11 @@ vi.mock("@/api/gesture", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/gesture")>()),
   withAtomicGesture: (_name: string, run: () => Promise<unknown>) => run(),
 }));
+// Which bounds a move breaks is Rust's (`plan_refusals`, pinned by `plan-triage.json`): none here.
+vi.mock("@/api/rules", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/rules")>()),
+  fetchPlanRefusals: () => Promise.resolve({}),
+}));
 const conflicts = vi.fn();
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),

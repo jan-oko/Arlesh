@@ -37,8 +37,7 @@ import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { takesCompound } from "@/utils/compound";
-import { statusBlock } from "@/utils/task-gestures";
-import type { StatusBlock } from "@/utils/task-gestures";
+import type { StatusBlock } from "@/api/mindmap";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
@@ -111,6 +110,14 @@ const STATUS_BLOCK_HINT: Record<StatusBlock, "statusBlockCompound" | "statusBloc
   below_sub_items: "statusBlockBelowSubItems",
   open_sub_items: "statusBlockOpenSubItems",
 };
+
+/** Why `status` may not be chosen on the Task `node`, or `null` when it may. A Compound Task takes
+ * none; otherwise the board says it (`NodeFacts.status_blocks`). `compound` is the form's flag,
+ * which the user can flip before saving. */
+function statusBlockOf(node: MindmapNode, status: TaskStatus, compound: boolean): StatusBlock | null {
+  if (compound) return "compound";
+  return node.statusBlocks?.find((fact) => sameStatus(fact.status, status))?.block ?? null;
+}
 
 /** The pills each model offers, in order. Review is never picked: it shows, disabled, while the
  * agent's question is open. */
@@ -400,7 +407,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             status the task was showing. */}
         <div className={styles.statusPills}>
           {pills.map((s) => {
-            const block = statusBlock(s, isCompound, node.subItems);
+            const block = statusBlockOf(node, s, isCompound);
             return (
               <button key={s.status} type="button" disabled={block !== null} {...(block === null ? {} : { title: t(STATUS_BLOCK_HINT[block]) })} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
                 {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}

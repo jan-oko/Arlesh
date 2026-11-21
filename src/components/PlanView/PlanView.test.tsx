@@ -12,6 +12,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeKey } from "@/api/scopes";
+import type { PlanRowInput } from "@/api/rules";
 import { scopeKeyText } from "@/utils/scope-key";
 import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
@@ -126,6 +127,48 @@ vi.mock("@/api/scopes", async (importOriginal) => ({
   ),
   resolveScope: (id: ScopeKey) => resolveScope(id),
   getScope: (id: ScopeKey) => getScope(id),
+}));
+
+// The Plan View's triage and refusals are Rust's (`plan_triage`, `plan_refusals`; pinned by
+// `conformance/plan-triage.json` in `src-tauri/src/commands/rules/tests.rs`). This stands in for
+// them over the windows above, in the little this view's tests exercise: where a Plan sits against
+// the scope, and whether a move escapes the Task's own window.
+const windowOf = (key: ScopeKey) => WINDOWS[scopeKeyText(key)];
+function planWindow(plan: { start_id: ScopeKey; end_id: ScopeKey }) {
+  return { start: windowOf(plan.start_id)?.start ?? "", end: windowOf(plan.end_id)?.end ?? "" };
+}
+const inside = (inner: { start: string; end: string }, outer: { start: string; end: string }) =>
+  inner.start >= outer.start && inner.end <= outer.end;
+const overlaps = (a: { start: string; end: string }, b: { start: string; end: string }) =>
+  a.start < b.end && b.start < a.end;
+vi.mock("@/api/rules", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/rules")>()),
+  fetchPlanTriage: (target: ScopeKey, parent: ScopeKey | null, rows: PlanRowInput[]) => {
+    const targetWindow = windowOf(target);
+    const answer = { unplanned: [] as string[], planned: [] as string[], parentPlanned: [] as string[], refusals: {} };
+    for (const row of rows.filter((r) => !r.virtual)) {
+      const plan = row.plan ?? row.inheritedPlan;
+      if (plan !== null) {
+        if (parent !== null && scopeKeyText(plan.start_id) === scopeKeyText(plan.end_id) && scopeKeyText(plan.start_id) === scopeKeyText(parent)) answer.parentPlanned.push(row.id);
+        else if (targetWindow !== undefined && inside(planWindow(plan), targetWindow)) answer.planned.push(row.id);
+        continue;
+      }
+      if (row.emptyPlan) continue;
+      const scope = row.timeScope ?? [...row.ancestors].reverse().find((a) => a.timeScope !== null)?.timeScope ?? null;
+      if (scope === null || (targetWindow !== undefined && overlaps(planWindow(scope), targetWindow))) answer.unplanned.push(row.id);
+    }
+    return Promise.resolve(answer);
+  },
+  fetchPlanRefusals: (target: ScopeKey, rows: PlanRowInput[]) => {
+    const targetWindow = windowOf(target);
+    const refusals: Record<string, "own_time_scope" | "parent_plan"> = {};
+    for (const row of rows) {
+      if (targetWindow === undefined) continue;
+      if (row.timeScope !== null && !row.overdue && !inside(targetWindow, planWindow(row.timeScope))) refusals[row.id] = "own_time_scope";
+      else if (row.inheritedPlan !== null && !inside(targetWindow, planWindow(row.inheritedPlan))) refusals[row.id] = "parent_plan";
+    }
+    return Promise.resolve(refusals);
+  },
 }));
 
 const updateTask = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());

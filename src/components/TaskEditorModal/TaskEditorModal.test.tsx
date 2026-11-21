@@ -775,7 +775,14 @@ describe("TaskEditorModal — Compound", () => {
   });
 
   it("greys out the statuses its sub-items rule out, saying why", async () => {
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "started", subItems: { floor: "started", open: 1 } })} />);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({
+      status: "started",
+      subItems: { floor: "started", open: 1 },
+      statusBlocks: [
+        { status: { kind: "ordinary", status: "todo" }, block: "below_sub_items" },
+        { status: { kind: "ordinary", status: "done" }, block: "open_sub_items" },
+      ],
+    })} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
     expect(screen.getByRole("button", { name: "status:task.todo" })).toBeDisabled();

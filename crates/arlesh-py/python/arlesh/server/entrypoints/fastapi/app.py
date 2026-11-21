@@ -28,6 +28,7 @@ from arlesh.server.entrypoints.fastapi.logging.lifespan import lifespan
 from arlesh.server.entrypoints.fastapi.logging.log_middleware import RequestLoggingMiddleware
 from arlesh.server.entrypoints.fastapi.revision import (
     GzipExceptEventsMiddleware,
+    RequestSeedMiddleware,
     RevisionHeadersMiddleware,
 )
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
@@ -213,6 +214,7 @@ class ArleshServer(FastAPI):
             )
         )
         self.add_middleware(RequestLoggingMiddleware)
+        self.add_middleware(RequestSeedMiddleware)
         self.add_middleware(
             RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=lambda: board.epoch
         )

@@ -235,3 +235,32 @@ async fn assert_nothing_left_under(db: &mut Db<Transactional>, project: RowId) {
         .unwrap()
         .is_empty());
 }
+
+/// The copy's root and the ids of what it holds, once a duplicate of a filled Project ran under `seed`.
+async fn duplicate_under(seed: RowId) -> (RowId, Vec<RowId>, Vec<RowId>) {
+    let (_factory, mut db) = session().await;
+    let aspect = first_aspect(&mut db).await;
+    let original = project(&mut db, "Original", aspect).await;
+    fill(&mut db, original).await;
+    let copy = crate::nodes::new_id::with_seed(
+        seed,
+        duplicate_subtree(&mut db, DuplicableKind::Domain, original, "", aspect, 5),
+    )
+    .await
+    .unwrap()
+    .root_id;
+    let tasks = db.tasks().child_ids("project", copy).await.unwrap();
+    let infos = db.infos().child_ids("project", copy).await.unwrap();
+    (copy, tasks, infos)
+}
+
+#[tokio::test]
+async fn duplicate_task_under_one_seed_gives_both_databases_the_same_ids() {
+    let seed = uuid::Uuid::now_v7().hyphenated();
+
+    let first = duplicate_under(seed).await;
+    let second = duplicate_under(seed).await;
+
+    assert_eq!(first, second);
+    assert!(!first.1.is_empty() && !first.2.is_empty());
+}

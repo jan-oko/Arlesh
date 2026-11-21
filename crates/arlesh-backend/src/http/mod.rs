@@ -52,6 +52,11 @@ mod undo;
 /// `conformance/client-mode.json`.
 pub const API_VERSION: u32 = 2;
 
+/// The header a write carries when it runs under a seed (see `arlesh_core::nodes::new_id`): the
+/// server mints the ids of the rows it creates on its own from the seed, so they equal the ids the
+/// client predicted. A server that does not know the header ignores it.
+const REQUEST_ID_HEADER: &str = "X-Arlesh-Request-Id";
+
 /// How long a connection waits to be made before the attempt counts as a failure.
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -293,6 +298,9 @@ impl HttpBackend {
             .bearer_auth(&self.connection.token)
             .timeout(REQUEST_TIMEOUT)
             .query(&call.query);
+        if let Some(seed) = arlesh_core::nodes::new_id::current_seed() {
+            request = request.header(REQUEST_ID_HEADER, seed.to_string());
+        }
         if let Some(body) = call.body {
             request = request.json(&body);
         }

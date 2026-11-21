@@ -8,8 +8,8 @@ use crate::{
     domains::model::Domain,
     scopes::key::test_key,
     tasks::{
-        model::{Commitment, Goal, Task, TaskArchival, TaskDependencyEdge, TaskStatus},
-        rules::gestures::SubItems,
+        model::{Commitment, Goal, Status, Task, TaskArchival, TaskDependencyEdge, TaskStatus},
+        rules::gestures::{StatusBlock, SubItems},
     },
 };
 
@@ -395,4 +395,63 @@ fn a_derived_wait_says_what_it_may_not_be_done_to_and_a_row_made_by_hand_says_no
         None,
         "a row made by hand carries no limits"
     );
+}
+
+#[test]
+fn a_task_carries_the_statuses_its_sub_items_forbid_with_the_reason() {
+    let load = MindmapLoad {
+        domains: vec![domain_row(1, None), domain_row(2, Some(1))],
+        tasks: vec![
+            task_row(10, "project", 2, "todo", None),
+            task_row(11, "task", 10, "in_progress", None),
+            task_row(13, "project", 2, "todo", None),
+        ],
+        ..MindmapLoad::default()
+    };
+
+    let (facts, _) = derive(&load, None);
+
+    let blocks = |key: &str| facts.get(key).map(|node| node.status_blocks.clone());
+    let blocks_of_parent = blocks(&tkey("task", 10)).unwrap_or_default();
+    assert!(blocks_of_parent.contains(&StatusBlockFact {
+        status: Status::Ordinary(TaskStatus::Todo),
+        block: StatusBlock::BelowSubItems,
+    }));
+    assert!(blocks_of_parent.contains(&StatusBlockFact {
+        status: Status::Ordinary(TaskStatus::Done),
+        block: StatusBlock::OpenSubItems,
+    }));
+    assert_eq!(blocks(&tkey("task", 13)).unwrap_or_default(), vec![]);
+}
+
+/// The blocks a Task's facts carry are the corpus's `status_block` answers: every case of a Task
+/// that is not Compound, for the statuses an editor offers.
+#[test]
+fn the_status_blocks_in_the_facts_answer_the_gestures_corpus() {
+    const CORPUS: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../conformance/task-gestures.json"
+    ));
+    let corpus: serde_json::Value = serde_json::from_str(CORPUS).expect("the corpus parses");
+    let mut checked = 0;
+    for case in corpus["status_block"].as_array().expect("an array") {
+        if case["compound"] != serde_json::json!(false) {
+            continue;
+        }
+        let status: Status = serde_json::from_value(case["status"].clone()).expect("a status");
+        let items: SubItems = match case.get("sub_items") {
+            Some(items) => serde_json::from_value(items.clone()).expect("sub-items"),
+            None => SubItems::default(),
+        };
+        let expected: Option<StatusBlock> =
+            serde_json::from_value(case["block"].clone()).expect("a block");
+
+        let offered = status_blocks(items)
+            .into_iter()
+            .find(|f| f.status == status);
+
+        assert_eq!(offered.map(|fact| fact.block), expected, "{case}");
+        checked += 1;
+    }
+    assert!(checked > 0);
 }

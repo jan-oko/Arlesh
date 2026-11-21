@@ -11,17 +11,17 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     access::model::{EffectiveAccess, NodeKey, NodeTable},
-    mindmap::model::{AgentActivity, DependencyBlock, MindmapLoad, NodeFacts},
+    mindmap::model::{AgentActivity, DependencyBlock, MindmapLoad, NodeFacts, StatusBlockFact},
     nodes::{id::NodeId, origin::Origin, rules::capabilities},
     tasks::{
         lifecycle::{Archival, ItemLifecycle},
         model::{
-            AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, TimeScope,
-            Verdict,
+            AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, TaskStatus,
+            TimeScope, Verdict,
         },
         rules::{
             compound::{subtrees_of, Rows},
-            gestures::SubItems,
+            gestures::{status_block, SubItems},
             plan_inheritance::EffectivePlan,
             review::is_open_question,
         },
@@ -490,6 +490,30 @@ fn plan_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
     }
 }
 
+/// The statuses an editor offers on a Task: the four ordinary ones and the agentic ones a hand can
+/// set (Review is derived, never picked).
+const OFFERED: [Status; 8] = [
+    Status::Ordinary(TaskStatus::Todo),
+    Status::Ordinary(TaskStatus::InProgress),
+    Status::Ordinary(TaskStatus::Started),
+    Status::Ordinary(TaskStatus::Done),
+    Status::Agentic(AgenticStatus::Todo),
+    Status::Agentic(AgenticStatus::OnAgent),
+    Status::Agentic(AgenticStatus::Doing),
+    Status::Agentic(AgenticStatus::Done),
+];
+
+/// The offered statuses a Task with these sub-items may not be set to, by the editors' own rule
+/// ([`status_block`]) for a Task that is not Compound.
+pub(super) fn status_blocks(items: SubItems) -> Vec<StatusBlockFact> {
+    OFFERED
+        .into_iter()
+        .filter_map(|status| {
+            status_block(status, false, items).map(|block| StatusBlockFact { status, block })
+        })
+        .collect()
+}
+
 /// Each Task's [`SubItems`](crate::tasks::rules::gestures::SubItems), where its sub-items say
 /// anything: it reads at least Started, or has one open.
 fn sub_items_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
@@ -508,7 +532,9 @@ fn sub_items_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
     let ids: Vec<NodeId> = load.tasks.iter().map(|task| task.id.clone()).collect();
     for (id, items) in subtrees_of(&rows, &ids) {
         if items != SubItems::default() {
-            facts.entry(format!("task-{id}")).or_default().sub_items = Some(items);
+            let fact = facts.entry(format!("task-{id}")).or_default();
+            fact.sub_items = Some(items);
+            fact.status_blocks = status_blocks(items);
         }
     }
 }

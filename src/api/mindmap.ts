@@ -3,7 +3,7 @@ import type { SubItemsWire } from "@/wasm/rules";
 import type { BoardRevision } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
-import type { Task, TaskDependencyEdge } from "@/api/tasks";
+import type { Task, TaskDependencyEdge, TaskStatus } from "@/api/tasks";
 import type { Commitment } from "@/api/commitments";
 import type { Expectation } from "@/api/expectations";
 import type { AnswerDraft } from "@/api/answer-drafts";
@@ -15,6 +15,17 @@ import type {
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { RowId } from "@/api/node-id";
 import type { TimeScope } from "@/api/time-scope";
+
+/** Why a status cannot be chosen on a Task: it is below the floor its sub-items derive, or Done is
+ * chosen while a sub-item is open. A Compound Task takes no status at all, which its own flag says
+ * (`tasks::rules::gestures::StatusBlock`). */
+export type StatusBlock = "compound" | "below_sub_items" | "open_sub_items";
+
+/** One status an editor may not offer on a Task, and why. */
+export interface StatusBlockFact {
+  status: TaskStatus;
+  block: StatusBlock;
+}
 
 /** A dependency a Task is blocked by: its target, not Done, Achieved or released yet. */
 export interface DependencyBlock {
@@ -65,6 +76,9 @@ export interface NodeFacts {
   /** What a Task's sub-items say about it, when they say anything: the status they make it read at
    * least, and how many of them are not Done. */
   sub_items?: SubItemsWire;
+  /** The statuses a Task's sub-items forbid the editors to offer, each with why. Compound is not
+   * listed: it is the Task's own flag, and blocks every status. */
+  status_blocks?: StatusBlockFact[];
   /** Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
    * Achieved, a wait no longer pending. */
   met?: boolean;
