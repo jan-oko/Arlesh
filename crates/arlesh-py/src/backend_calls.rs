@@ -166,6 +166,11 @@ async fn dispatch(backend: &dyn Backend, request: Request) -> Result<Value, Wire
         Request::ReopenSpawnedWaitCheck { task_id, due_at } => {
             json(backend.reopen_spawned_wait_check(task_id, due_at).await?)
         }
+        Request::SaveAnswerDraft { wait_id, request } => {
+            json(backend.save_answer_draft(wait_id, request).await?)
+        }
+        Request::ClearAnswerDraft { wait_id } => json(backend.clear_answer_draft(wait_id).await?),
+        Request::SendAnswerDrafts { request } => json(backend.send_answer_drafts(request).await?),
 
         Request::SetTag {
             kind,

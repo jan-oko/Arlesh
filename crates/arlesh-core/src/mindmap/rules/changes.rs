@@ -22,6 +22,7 @@ use crate::{
     infos::model::Info,
     mindmap::model::{AgentActivity, FlowHabitEntry, MindmapLoad, NodeFacts},
     tasks::{
+        answer_drafts::AnswerDraft,
         lifecycle::ItemLifecycle,
         model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
     },
@@ -74,11 +75,13 @@ pub enum Collection {
     Facts,
     /// `agent_activity`: the one value.
     AgentActivity,
+    /// `answer_drafts`: one entry per staged wait, keyed `draft-<wait id>`.
+    AnswerDrafts,
 }
 
 impl Collection {
     /// Every collection, in the order of the [`MindmapLoad`] fields.
-    pub const ALL: [Collection; 21] = [
+    pub const ALL: [Collection; 22] = [
         Self::Domains,
         Self::Goals,
         Self::Tasks,
@@ -100,6 +103,7 @@ impl Collection {
         Self::ShortIds,
         Self::Facts,
         Self::AgentActivity,
+        Self::AnswerDrafts,
     ];
 
     /// The collection's name on the wire: the field's name.
@@ -126,6 +130,7 @@ impl Collection {
             Self::ShortIds => "short_ids",
             Self::Facts => "facts",
             Self::AgentActivity => "agent_activity",
+            Self::AnswerDrafts => "answer_drafts",
         }
     }
 
@@ -182,6 +187,8 @@ pub enum EntryValue<'a> {
     Facts(&'a NodeFacts),
     /// The `agent_activity` value.
     AgentActivity(&'a AgentActivity),
+    /// An `answer_drafts` row.
+    AnswerDraft(&'a AnswerDraft),
 }
 
 impl Serialize for EntryValue<'_> {
@@ -208,6 +215,7 @@ impl Serialize for EntryValue<'_> {
             Self::ShortId(value) => value.serialize(serializer),
             Self::Facts(value) => value.serialize(serializer),
             Self::AgentActivity(value) => value.serialize(serializer),
+            Self::AnswerDraft(value) => value.serialize(serializer),
         }
     }
 }
@@ -292,6 +300,7 @@ pub fn entries(load: &MindmapLoad) -> Vec<Entry<'_>> {
         short_ids,
         facts,
         agent_activity,
+        answer_drafts,
         plans: _,
         derived_in_progress: _,
     } = load;
@@ -450,6 +459,13 @@ pub fn entries(load: &MindmapLoad) -> Vec<Entry<'_>> {
             value: EntryValue::AgentActivity(activity),
         });
     }
+    rows(
+        &mut out,
+        Collection::AnswerDrafts,
+        answer_drafts,
+        |r| format!("draft-{}", r.wait_id),
+        EntryValue::AnswerDraft,
+    );
     out
 }
 

@@ -12,6 +12,7 @@ use crate::backend::AppBackend;
 use crate::{
     error::WireError,
     nodes::id::NodeId,
+    tasks::answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
     tasks::model::{
         CreateExpectationRequest, Expectation, SpawnedWait, UpdateExpectationRequest,
         UpdateSpawnedWaitRequest,
@@ -125,4 +126,34 @@ pub async fn reopen_spawned_wait_check(
     due_at: chrono::NaiveDateTime,
 ) -> Result<(), WireError> {
     backend.reopen_spawned_wait_check(task_id, due_at).await
+}
+
+/// Stages an answer to an open question or review: saves the draft, the last save winning. An
+/// agent sees nothing of it until the batch is sent.
+#[tauri::command]
+pub async fn save_answer_draft(
+    backend: State<'_, AppBackend>,
+    wait_id: NodeId,
+    request: DraftRequest,
+) -> Result<AnswerDraft, WireError> {
+    backend.save_answer_draft(wait_id, request).await
+}
+
+/// Unstages a wait: deletes its draft. Passes when it has none.
+#[tauri::command]
+pub async fn clear_answer_draft(
+    backend: State<'_, AppBackend>,
+    wait_id: NodeId,
+) -> Result<(), WireError> {
+    backend.clear_answer_draft(wait_id).await
+}
+
+/// Sends every staged answer on the board, releasing the waits in one write, and says which were
+/// sent and which skipped.
+#[tauri::command]
+pub async fn send_answer_drafts(
+    backend: State<'_, AppBackend>,
+    request: SendRequest,
+) -> Result<SendOutcome, WireError> {
+    backend.send_answer_drafts(request).await
 }

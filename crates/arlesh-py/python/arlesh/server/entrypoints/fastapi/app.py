@@ -37,6 +37,7 @@ from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
+from arlesh.server.entrypoints.fastapi.routers.drafts import DraftsRouter
 from arlesh.server.entrypoints.fastapi.routers.events import EventsRouter
 from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
@@ -136,6 +137,7 @@ class AppRouter(APIRouter):
         self.include_router(GoalsRouter(*routed, tag="goals"), prefix="/goals")
         self.include_router(CommitmentsRouter(*routed, tag="commitments"), prefix="/commitments")
         self.include_router(WaitsRouter(*routed, tag="waits"), prefix="/waits")
+        self.include_router(DraftsRouter(*routed, tag="waits"), prefix="/drafts")
         self.include_router(InfosRouter(*routed, tag="infos"), prefix="/infos")
         self.include_router(DomainsRouter(*routed, tag="domains"), prefix="/domains")
         self.include_router(FlowsRouter(*routed, tag="flows"), prefix="/flows")

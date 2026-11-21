@@ -38,7 +38,7 @@ function seen(value: Record<string, unknown>): Seen {
 }
 
 /**
- * The waits an `arlesh_waits` call named: the one `ask` or `raise` made, or the ones `watch`
+ * The waits an `arlesh_waits` call named: the one `ask`, `raise` or `raise_review` made, or the ones `watch`
  * validated. `taskLabel` is what the call called the Task, for a result that does not carry it.
  */
 export function waitsFrom(
@@ -48,11 +48,11 @@ export function waitsFrom(
 ): WaitRef[] {
   const payload = payloadOf(result)
   if (!isRecord(payload)) return []
-  if (operation === 'ask' || operation === 'raise') {
+  if (operation === 'ask' || operation === 'raise' || operation === 'raise_review') {
     const waitId = text(payload, 'full_id')
     const shortId = text(payload, 'short_id')
     if (waitId === undefined || shortId === undefined) return []
-    return [{ waitId, shortId, taskShortId: taskLabel, ...seen(payload) }]
+    return [{ waitId, shortId, taskShortId: text(payload, 'task_short_id') ?? taskLabel, ...seen(payload) }]
   }
   if (operation === 'watch') {
     const waits = payload['waits']

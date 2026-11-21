@@ -7,6 +7,12 @@ export interface Seen {
 /** What happened to a wait that is worth waking an agent for. */
 export type Change = 'released' | 'reopened' | 'archived' | 'deleted'
 
+/** Every [Change], to check a stored one against. */
+export const CHANGES: readonly Change[] = ['released', 'reopened', 'archived', 'deleted']
+
+/** What came of one try to put a notification in front of its recipient. */
+export type Delivery = { delivered: true } | { delivered: false; reason: string }
+
 /**
  * What changed between the state last seen and the one now, or `null` when nothing worth a
  * wake-up did. `current` is `null` for a wait that is gone. An edit to a pending wait's title or
@@ -81,4 +87,82 @@ export function notificationText(
     `Arlesh notification: wait ${wait.shortId} on Task ${wait.taskShortId} changed ` +
     `(${change === 'deleted' ? 'gone' : change}); read it with \`arlesh_waits.get\`.${naming}`
   )
+}
+
+/** One change a session is owed, with what a message about it names. */
+export interface Owed {
+  waitId: string
+  shortId: string
+  taskShortId: string
+  via?: Via
+  change: Change
+}
+
+/** A change and whether the message about it names the sub-agent that raised the wait. */
+export interface Addressed {
+  owed: Owed
+  named: boolean
+}
+
+/** Who gets what in one flush: each running sub-agent its own, the session the rest. */
+export interface Plan {
+  agents: Array<{ agentId: string; items: Addressed[] }>
+  session: Addressed[]
+}
+
+/**
+ * Groups the changes owed by recipient. Each is routed as [routeTo] routes it: to the sub-agent
+ * that raised the wait while it runs, else to whoever spawned it, else to the session. Changes with
+ * the same recipient go together, so a batch of answers is one wake-up for each agent.
+ */
+export function planDeliveries(owed: readonly Owed[], agents: readonly AgentLite[]): Plan {
+  const plan: Plan = { agents: [], session: [] }
+  for (const item of owed) {
+    const target = routeTo(item.via, agents)
+    const addressed = { owed: item, named: namesRaiser(target, item.via) }
+    if (target.kind === 'session') {
+      plan.session.push(addressed)
+      continue
+    }
+    const group = plan.agents.find((candidate) => candidate.agentId === target.agentId)
+    if (group === undefined) plan.agents.push({ agentId: target.agentId, items: [addressed] })
+    else group.items.push(addressed)
+  }
+  return plan
+}
+
+/**
+ * What the session is told when a sub-agent did not take its changes: the same changes, each
+ * naming the sub-agent that raised its wait.
+ */
+export function forSession(items: readonly Addressed[]): Addressed[] {
+  return items.map(({ owed }) => ({ owed, named: owed.via !== undefined }))
+}
+
+/**
+ * What a batch says: how many waits changed and each one, never the answers. An item that goes to
+ * anyone but the sub-agent that raised its wait names that sub-agent.
+ */
+export function batchNotificationText(items: readonly Addressed[]): string {
+  const each = items.map(({ owed, named }) => {
+    const raiser = named && owed.via !== undefined ? ` — raised by the sub-agent "${owed.via.description}"` : ''
+    const change = owed.change === 'deleted' ? 'gone' : owed.change
+    return `wait ${owed.shortId} on Task ${owed.taskShortId} (${change}${raiser})`
+  })
+  return (
+    `Arlesh notification: ${items.length} waits changed: ${each.join(', ')}; ` +
+    'read them with `arlesh_waits.get_many`.'
+  )
+}
+
+/**
+ * The one message for a recipient: a single change reads exactly as [notificationText] always
+ * did; several read as [batchNotificationText].
+ */
+export function messageFor(items: readonly Addressed[]): string {
+  const [only, ...rest] = items
+  if (only !== undefined && rest.length === 0) {
+    return notificationText(only.owed, only.owed.change, only.owed.via, only.named)
+  }
+  return batchNotificationText(items)
 }

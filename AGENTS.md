@@ -52,12 +52,12 @@ Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no pr
 
 Raising a wait does not by itself wake anyone when it is answered. What an agent does next depends
 on whether its session says **"Arlesh notifications are on in this session"** (the line the
-`arlesh-notify` plugin adds; see [ADR 0013](docs/adr/0013-notifying-agents-when-a-wait-resolves.md)).
+`arlesh` plugin adds; see [ADR 0013](docs/adr/0013-notifying-agents-when-a-wait-resolves.md)).
 The Arlesh MCP server's instructions carry the protocol and say nothing about whether the plugin is
 there; only that line does.
 
-**If it says so** (the plugin is installed: `/plugin install arlesh-notify --marketplace
-jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh-notify` from a checkout):
+**If it says so** (the plugin is installed: `/plugin install arlesh --marketplace
+jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh` from a checkout):
 
 - After raising a wait you are blocked on, carry on with other unblocked work. Otherwise end the turn
   and stay idle; the notification wakes you. A sub-agent reports back and finishes, and its parent
@@ -66,7 +66,10 @@ jan-oko/Arlesh`, or `claude --plugin-dir plugins/arlesh-notify` from a checkout)
   `arlesh_waits.watch`.
 - On "Arlesh notification: wait W on Task T changed (…)": read the wait with `arlesh_waits.get` and
   its Task, then act on the answer as the user's input to that question, within the usual rules.
-  Anything ambiguous means you ask again.
+  Anything ambiguous means you ask again. A notification may name **several** waits ("Arlesh
+  notification: 3 waits changed: wait W on Task T (released), …; read them with
+  `arlesh_waits.get_many`"): the user sent a batch of staged answers at once (ADR 0021). Read them
+  all with `arlesh_waits.get_many` and act on the whole set together, as one message to you.
 
   | The wait is | You |
   | --- | --- |

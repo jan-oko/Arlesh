@@ -4,6 +4,7 @@ use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
+    tasks::answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
     tasks::model::{
         CreateExpectationRequest, Expectation, ExpectationId, SpawnedWait, TaskId,
         UpdateExpectationRequest, UpdateSpawnedWaitRequest,
@@ -177,5 +178,44 @@ impl WaitsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)
+    }
+
+    async fn save_answer_draft(
+        &self,
+        wait_id: NodeId,
+        request: DraftRequest,
+    ) -> Result<AnswerDraft, WireError> {
+        let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
+        let draft = arlesh_core::tasks::answer_drafts::save_draft(
+            &mut db,
+            &wait_id,
+            request,
+            arlesh_core::tasks::expectations::now(),
+        )
+        .await
+        .map_err(WireError::from_error)?;
+        db.commit().await.map_err(WireError::from_error)?;
+        Ok(draft)
+    }
+
+    async fn clear_answer_draft(&self, wait_id: NodeId) -> Result<(), WireError> {
+        let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
+        arlesh_core::tasks::answer_drafts::clear_draft(&mut db, &wait_id)
+            .await
+            .map_err(WireError::from_error)?;
+        db.commit().await.map_err(WireError::from_error)
+    }
+
+    async fn send_answer_drafts(&self, request: SendRequest) -> Result<SendOutcome, WireError> {
+        let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
+        let outcome = arlesh_core::tasks::answer_drafts::send_drafts(
+            &mut db,
+            request,
+            arlesh_core::tasks::expectations::now(),
+        )
+        .await
+        .map_err(WireError::from_error)?;
+        db.commit().await.map_err(WireError::from_error)?;
+        Ok(outcome)
     }
 }

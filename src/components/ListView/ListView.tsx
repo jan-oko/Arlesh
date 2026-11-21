@@ -1,3 +1,4 @@
+import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
 import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -106,7 +107,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onAnswer, onCommitmentSave, onExpectationSave, checkScopeClamp,
+    onTaskSave, answers, onCommitmentSave, onExpectationSave, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -382,6 +383,8 @@ export default function ListView() {
   const selectedKind = activeSelectedId === null ? undefined : findNode(tree, activeSelectedId)?.kind;
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
+  const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast });
+  const jumpToStagedAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast, staged: true });
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
@@ -406,6 +409,8 @@ export default function ListView() {
     onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
+    onJumpToWaitingAnswer: jumpToWaitingAnswer,
+    onJumpToStagedAnswer: jumpToStagedAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
@@ -608,7 +613,7 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
                 onContextMenu={openRowMenu}
-                onAnswer={onAnswer}
+                answers={answers}
               />
             );
           })}
@@ -631,7 +636,7 @@ export default function ListView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
-          onAnswer={onAnswer}
+          answers={answers}
           onCheckScopeClamp={checkScopeClamp}
           openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={() => setEditorModal(null)}

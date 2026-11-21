@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
-import { agentActivityFrom } from "@/utils/agent-activity";
+import { agentActivityFrom, stagedWaitIdsFrom } from "@/utils/agent-activity";
 import { boardFence, boardHead, reportBoardDivergence } from "@/api/board";
 import type { BoardChange, BoardHead, DivergenceReport } from "@/api/board";
 import { getErrorMessage } from "@/api/errors";
@@ -185,6 +185,7 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       hold(board);
       // The whole board, before any view narrows it to a subtree: the top bar's agent status.
       useAgentActivityStore.getState().receive(agentActivityFrom(data.load.agent_activity));
+      useAgentActivityStore.getState().receiveStaged(stagedWaitIdsFrom(data.load.facts));
     } catch (err) {
       if (views > 0) set({ error: getErrorMessage(err) });
     } finally {
@@ -247,6 +248,9 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
     hold(board);
     if (change.changes.agent_activity !== undefined) {
       useAgentActivityStore.getState().receive(agentActivityFrom(applied.load.agent_activity));
+    }
+    if (change.changes.facts !== undefined) {
+      useAgentActivityStore.getState().receiveStaged(stagedWaitIdsFrom(applied.load.facts));
     }
     const tasks = change.changes.tasks;
     if (tasks !== undefined && delegatesToUnnamedPerson(tasks.set, held.personNames)) void refreshPeople();

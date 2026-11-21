@@ -11,6 +11,7 @@
 
 pub mod agentic;
 pub mod ancestry;
+pub mod answer_drafts;
 pub mod archival;
 pub mod compound;
 pub mod dependencies;

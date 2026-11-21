@@ -4,10 +4,19 @@ import CommandPalette from "./CommandPalette";
 import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
+import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { useBoardStore } from "@/stores/use-board-store";
+import { sendAnswerDrafts } from "@/api/answer-drafts";
+import { storedRowId } from "@/test/stored-id";
 import { surfaceCommand } from "@/test/surface-command";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string, options?: { count?: number }) => (options?.count === undefined ? key : `${key}:${options.count}`) }),
+}));
+vi.mock("@/api/answer-drafts", () => ({ saveAnswerDraft: vi.fn(), clearAnswerDraft: vi.fn(), sendAnswerDrafts: vi.fn() }));
+vi.mock("@/api/gesture", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/gesture")>()),
+  withGesture: (_name: string, run: () => Promise<unknown>) => run(),
 }));
 
 function publish(commands: readonly SurfaceCommand[]) {
@@ -16,6 +25,8 @@ function publish(commands: readonly SurfaceCommand[]) {
 
 beforeEach(() => {
   usePaletteStore.setState({ isOpen: true });
+  useAgentActivityStore.setState({ stagedWaitIds: [] });
+  useBoardStore.setState({ settle: () => Promise.resolve() });
 });
 
 describe("CommandPalette", () => {
@@ -58,5 +69,24 @@ describe("CommandPalette", () => {
     publish([]);
     render(<CommandPalette showTabs />);
     expect(screen.getByText("paletteEmpty")).toBeInTheDocument();
+  });
+
+  it("offers no Send entry while nothing is staged", () => {
+    publish([]);
+    render(<CommandPalette showTabs />);
+    expect(screen.queryByRole("button", { name: /paletteSendStaged/ })).not.toBeInTheDocument();
+  });
+
+  it("offers Send for the staged answers, with their number, and closes and sends when chosen", async () => {
+    vi.mocked(sendAnswerDrafts).mockResolvedValue({ sent: [], skipped: [] });
+    const staged = [storedRowId(3), storedRowId(4), storedRowId(5)];
+    useAgentActivityStore.setState({ stagedWaitIds: staged });
+    publish([]);
+    render(<CommandPalette showTabs />);
+
+    fireEvent.click(screen.getByRole("button", { name: "paletteSendStaged:3" }));
+
+    expect(usePaletteStore.getState().isOpen).toBe(false);
+    await vi.waitFor(() => expect(sendAnswerDrafts).toHaveBeenCalledWith({ shown: staged }));
   });
 });

@@ -4,6 +4,8 @@ Status: accepted 2026-11-07 (Task `7a0`), settled with the user in a design sess
 Subagents are no longer covered by their session's attach alone: see
 [ADR 0019](0019-child-agents-and-sub-claims.md) (child Agents, 2026-11-13).
 
+The plugin this ADR calls `arlesh` was named `arlesh-notify` until Task `109` renamed it.
+
 ## Context
 
 Until now the MCP had one set of roots for every session, one global capacity lock with no
@@ -28,7 +30,7 @@ has. It costs the server a session id: the Python `/mcp`, which was stateless, n
 `Mcp-Session-Id` at `initialize` and keeps the binding behind it, and the desktop endpoint uses
 `rmcp`'s per-session handler factory, one handler (and one binding) per session. The binding is
 **in memory**: a server restart drops it, the client starts a new session, and the agent attaches
-again with the agent token it was given (the arlesh-notify mod does this unprompted).
+again with the agent token it was given (the arlesh mod does this unprompted).
 
 **A Claim is a subtree and it is the agent's whole view.** Reads and writes are limited to it as
 if it were the agent's own MCP root, inside the user's roots, with private nodes hidden. Only one
@@ -122,7 +124,7 @@ bar's padlock shows for any agent at capacity, and opens Settings on the Agents 
 - An existing `/mcp` user on a server has to move to a connect token, and each session has to
   attach. **Rollout for a server:** run `arlesh-server connect-token` where the server runs, put
   the printed token in the `Authorization` header of the project's `.mcp.json` in place of the
-  device token, and install or update the arlesh-notify mod so attaching is automatic; without
+  device token, and install or update the arlesh mod so attaching is automatic; without
   the mod, give the agent a PIN from Settings → Agents. Revoke nothing: the device tokens keep
   working for the app, only not on `/mcp`.
 - Every board read on a bound session rebuilds the agent's view: one catalogue read and a pass

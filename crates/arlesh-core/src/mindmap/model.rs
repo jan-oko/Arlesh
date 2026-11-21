@@ -127,6 +127,11 @@ pub struct MindmapLoad {
     /// What the agents are doing on the whole board. Filled by the app's load only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_activity: Option<AgentActivity>,
+    /// Every staged answer: the drafts of waits the user has answered but not sent. Filled by the
+    /// app's board only (`mindmap::board`); never by `load_blocked`, so the MCP's board, the
+    /// snapshot and the wait stream carry none and an agent never sees a draft.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub answer_drafts: Vec<crate::tasks::answer_drafts::AnswerDraft>,
     /// Every node's effective Plan and every plan rule the board breaks — what the app's facts,
     /// the MCP and the write guard read. Never sent as it is.
     #[serde(skip)]
@@ -192,6 +197,10 @@ pub struct NodeFacts {
     /// them on the Task, never as nodes of their own. [`Self::open_question`] is the first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub open_questions: Vec<NodeId>,
+    /// The open questions beneath a Task that are **staged**: an answer is written and not yet
+    /// sent. A subset of [`Self::open_questions`]; the wait still reads Review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub staged_questions: Vec<NodeId>,
     /// Whether a Commitment's Verdict Window ran out before anything was recorded.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,
@@ -216,6 +225,11 @@ pub struct NodeFacts {
     pub capabilities: Option<crate::nodes::rules::capabilities::Capabilities>,
 }
 
+/// Whether a count is zero: left off the wire, as the facts leave their defaults off.
+fn is_zero(count: &usize) -> bool {
+    *count == 0
+}
+
 /// What the agents are doing on the whole board, counted.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize,
@@ -227,4 +241,7 @@ pub struct AgentActivity {
     pub waits: usize,
     /// Agentic Tasks an agent holds, with nothing asked of the user: On Agent.
     pub on_agent: usize,
+    /// Open questions and reviews on the whole board with a staged answer: what one Send sends.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub staged: usize,
 }

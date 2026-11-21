@@ -33,6 +33,26 @@ test('a wait asked in the session is recorded when the hook sees the result as t
   })
 })
 
+test('a review raised with raise_review is recorded like a question', async ($, on) => {
+  const stored: Record<string, unknown> = {}
+  storeTo(on, stored)
+  const review = { ...asked, task_short_id: '9a1', review: { links: [], hand_tests: [] } }
+  on('tool.call', () => ({ result: JSON.stringify(review), text: JSON.stringify(review) }))
+
+  await $.tool.call({
+    tool: 'mcp__Arlesh__arlesh_waits',
+    operation: 'raise_review',
+    task_id: '9a1',
+    title: 'PR is green',
+    summary: 's',
+    agentId: 'a1',
+  })
+
+  expect(stored['watch:s1']).toMatchObject({
+    'w-full': { shortId: 'w1', taskShortId: '9a1', via: { agentId: 'a1', description: 'Fix CI' } },
+  })
+})
+
 test('a wait is recorded from an object result too', async ($, on) => {
   const stored: Record<string, unknown> = {}
   storeTo(on, stored)
@@ -117,7 +137,11 @@ test('a failing catch-up backs off and warns once, instead of polling every seco
       value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: true }) },
     }
   })
-  on('store.get', () => ({ value: finished ? {} : { 'w-full': watched } }))
+  // Attached (the wait stream needs the agent token), watching one wait until the test ends. Without
+  // the token the mod never polls, and this test then hangs instead of failing.
+  on('store.get', (_, e) => ({
+    value: e.key === 'agent:s1' ? { token: 'placeholder' } : finished ? {} : { 'w-full': watched },
+  }))
   on('session.id', () => ({ value: 's1' }))
   // No handler for `mcp.call`: the catch-up call fails, as it does when the session's MCP
   // connection has dropped.
@@ -139,4 +163,46 @@ test('a failing catch-up backs off and warns once, instead of polling every seco
   expect(polled).toBeGreaterThan(3)
   expect(polled).toBeLessThan(10)
   expect(warnings).toEqual(['cannot reach Arlesh; notifications are paused and it keeps trying.'])
+})
+
+test('after a blackout, a server that answers every poll at once cannot make the loop poll faster than the floor', async ($, on) => {
+  // The server was away, and is back as a new run. It has revision 0, and it reads `after=0` as no cursor: it answers
+  // `reset` at once however often it is asked. The catch-up succeeds each round.
+  const clock = mock.clock(on)
+  let fetches = 0
+  let calls = 0
+  const watched = { waitId: 'w-full', shortId: 'w1', taskShortId: '9a1', status: 'pending', archived: false, seenAt: 0 }
+  on('session.start', () => ({ cwd: '/r' }))
+  on('session.root', () => ({ value: '/r' }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('fs.read', (_, e) =>
+    e.path === '/r/.mcp.json'
+      ? { value: JSON.stringify({ mcpServers: { arlesh: { url: 'http://127.0.0.1:4747/mcp' } } }) }
+      : (() => {
+          throw new Error('no such file')
+        })(),
+  )
+  on('http.fetch', () => {
+    fetches += 1
+    if (fetches <= 3) throw new Error('network is unreachable') // the blackout
+    return {
+      value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 0, epoch: 'e', changes: [], reset: true }) },
+    }
+  })
+  on('mcp.call', () => {
+    calls += 1
+    return { value: { structuredContent: { waits: [{ full_id: 'w-full', short_id: 'w1', status: 'pending', archival: 'live' }] } } }
+  })
+  on('store.get', (_, e) => ({ value: e.key === 'agent:s1' ? { token: 'placeholder' } : { 'w-full': watched } }))
+  on('store.set', () => ({ value: undefined }))
+  on('session.id', () => ({ value: 's1' }))
+
+  await $.session.start({ cwd: '/r', surface: null, isInteractive: false })
+  for (let second = 0; second < 60; second += 1) {
+    await clock.advance(1_000)
+    await clock.settle()
+  }
+
+  expect(calls).toBeGreaterThan(0)
+  expect(fetches).toBeLessThanOrEqual(16)
 })

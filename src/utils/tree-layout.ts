@@ -7,7 +7,7 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
 import type { SubItemsWire } from "@/wasm/rules";
-import type { Review } from "@/api/expectations";
+import type { Review, ReviewVerdict } from "@/api/expectations";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -268,6 +268,9 @@ export interface MindmapNode {
   /** Every open agentic question or review beneath a Task — the waits that make it read Review — by
    * row id, in position order. The backend's rule, read off the load's facts. */
   openQuestionIds?: RowId[];
+  /** The open questions among `openQuestionIds` that are **staged**: an answer written, not yet
+   * sent (ADR 0021). The backend's rule, read off the load's facts. The wait still reads Review. */
+  stagedQuestionIds?: RowId[];
   /** The agentic waits an agent raised beneath this node. No view draws them as nodes of their own:
    * they are held here, off the tree, so the Task can show its open question or review. */
   agentWaits?: MindmapNode[];
@@ -357,6 +360,9 @@ export interface MindmapNode {
     answer: string | null;
     /** Present on a **review**: what the agent handed back, and the verdict once given. */
     review?: Review;
+    /** The staged answer for this wait, when it has one: what the field shows, and whether the
+     * wait is staged. Stale when the wait is not open; `stagedQuestionIds` is the rule. */
+    draft?: { answer: string | null; verdict: ReviewVerdict | null };
   };
   /** The Expectations this Task depends on, stored or derived (a Habit wait item's occurrence), by row id (Tasks only). */
   expectationDependencyIds?: RowId[];

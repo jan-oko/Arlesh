@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { FIELD_HOME } from "@/utils/answer-focus";
 import styles from "./EditorModal.module.css";
 
 interface Props {
@@ -30,6 +31,8 @@ export default function EditorModal({ heading, onClose, onKeyDown, isSaving, onS
     <div className={styles.overlay} onMouseDown={onClose}>
       <div
         className={styles.modal}
+        {...{ [FIELD_HOME]: "" }}
+        tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >

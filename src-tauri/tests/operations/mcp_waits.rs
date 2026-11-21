@@ -355,3 +355,75 @@ async fn a_write_answers_briefly_unless_asked_for_the_whole_row() {
         "kept"
     );
 }
+
+/// What an agent can read of its waits: `get`, `get_many`, `list` and the snapshot's sections.
+async fn what_an_agent_reads(fixture: &Fixture, wait: RowId) -> Vec<serde_json::Value> {
+    let get = list(
+        &fixture.mcp,
+        params::WaitsOperation::Get { id: wait.param() },
+    )
+    .await;
+    let get_many = list(
+        &fixture.mcp,
+        params::WaitsOperation::GetMany {
+            ids: vec![wait.param()],
+        },
+    )
+    .await;
+    let listed = list(
+        &fixture.mcp,
+        listing(Some(params::WaitStatusParam::All), None, None),
+    )
+    .await;
+    let snapshot = fixture
+        .mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: None,
+            sections: None,
+            cursor: None,
+            filter: None,
+            agentic: None,
+        }))
+        .await
+        .expect("the snapshot tool returned no result")
+        .structured_content
+        .expect("structured");
+    vec![get, get_many, listed, snapshot]
+}
+
+/// ADR 0021: a staged answer is the user's, and an agent reads nothing of it until the batch is
+/// sent — not through `get`, `get_many`, `list` or the snapshot.
+#[tokio::test]
+async fn a_staged_answer_is_invisible_to_an_agent() {
+    use arlesh_lib::tasks::answer_drafts::{save_draft, DraftRequest};
+    let fixture = fixture().await;
+    let listed = list(&fixture.mcp, listing(None, None, Some(true))).await;
+    let pending = crate::helpers::row_id(&listed["waits"][0]["id"]);
+    let before = what_an_agent_reads(&fixture, pending).await;
+
+    let mut db = helpers::session_factory(&fixture.pool)
+        .begin()
+        .await
+        .unwrap();
+    save_draft(
+        &mut db,
+        &arlesh_lib::nodes::id::NodeId::Stored(pending),
+        DraftRequest {
+            answer: Some("blue".into()),
+            verdict: None,
+        },
+        arlesh_lib::tasks::expectations::now(),
+    )
+    .await
+    .expect("stage the answer");
+    db.commit().await.unwrap();
+
+    let staged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM answer_drafts")
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(staged, 1, "the draft is stored");
+    assert_eq!(what_an_agent_reads(&fixture, pending).await, before);
+    assert_eq!(before[0]["status"], "pending");
+    assert!(before[0]["answer"].is_null());
+}

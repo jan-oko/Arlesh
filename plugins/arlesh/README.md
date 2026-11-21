@@ -1,20 +1,22 @@
-# arlesh-notify
+# arlesh
 
 A Claude Code mod that makes a session an Arlesh **agent** and wakes it when an Arlesh wait it
 raised or watches changes: released (answered), reopened, archived or deleted. The message is a pointer only ("Arlesh notification:
 wait 7c0 on Task 9a1 changed (released); read it with `arlesh_waits.get`"), so the agent reads the
-wait itself.
+wait itself. When several waits changed at once (a batch of staged answers sent together), the
+agent gets **one** message naming them all ("Arlesh notification: 3 waits changed: wait 1ab on Task
+de1 (released), ...; read them with `arlesh_waits.get_many`"), so it wakes once for the batch.
 
 ## Install
 
 ```
-/plugin install arlesh-notify --marketplace jan-oko/Arlesh
+/plugin install arlesh --marketplace jan-oko/Arlesh
 ```
 
 or, from a checkout, for one session:
 
 ```
-claude --plugin-dir plugins/arlesh-notify
+claude --plugin-dir plugins/arlesh
 ```
 
 It needs an `Arlesh` HTTP server in the session's MCP configuration (`.mcp.json`, or your user or
@@ -118,7 +120,7 @@ environment variables:
     tasks cannot be changed by a mod and shows nothing of it.
   - When the session is not attached, or Arlesh is not running, nothing is registered and the
     subagent is told nothing: its Arlesh calls behave as the session's would.
-- Records every wait the session passes through `arlesh_waits.ask`, `raise` or `watch`, per session
+- Records every wait the session passes through `arlesh_waits.ask`, `raise`, `raise_review` or `watch`, per session
   (kept in the mod's store for 30 days, so a restart or `claude --resume` still watches them).
 - Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch` (sending the session's agent token, so it hears only of waits inside its Claim; an unattached session does not poll), one
   request at a time: the server answers as soon as a wait changes, else empty after the wait. With
@@ -126,6 +128,25 @@ environment variables:
   (`arlesh_waits.get_many`) to catch up on what changed while it was away. If requests time out
   early the wait is halved, down to 5 seconds. After three failures in a row it says once in the
   transcript that Arlesh cannot be reached, and keeps trying with a backoff.
+- Never submits while a turn of the main conversation is running. A prompt submitted then is only
+  queued behind the turn, and the host discards it if the turn is stopped, so the host's "entered"
+  answer proves nothing. The mod follows the main loop's `turn.start` and `turn.complete` (a stopped
+  turn completes too, `isAborted`), holds what it owes while a turn runs, and flushes when it
+  completes: the session being idle is the only moment a submit is known to start a turn. A dialog
+  such as `AskUserQuestion` is inside a running turn, so it holds too.
+- Keeps a change **owed** until its notification has entered the session. The host can refuse a
+  prompt without an error (`$.prompt.submit` resolves `{ drop }`, for instance after an interrupted
+  turn), and a message to a sub-agent can be undelivered; either leaves the change owed in the
+  stored book, and it is tried again on every poll round, when the session's turn completes and at
+  session start, never twice once it went in. A message a sub-agent does not take goes to the
+  session. After 20 failed attempts the transcript says the notification was given up on. The debug
+  log (`claude --debug`) has one line per attempt with its outcome and the drop reason.
+- Sends one message per recipient per flush: it takes the change at the head of every watched wait
+  and groups them by who gets them (the session, or one running sub-agent). A group of one wait reads
+  exactly as before; a group of several reads as the batch text above, each item naming the sub-agent
+  that raised it when the message goes to anyone else. A group counts as delivered, or failed, for
+  every wait in it. A wait that owes two changes (released, then reopened) tells them in two
+  flushes, because they are two events.
 - Wakes the session with the pointer message. A sub-agent that raised the wait gets it while it is
   running; once it has finished, the agent that spawned it does, else the session, with the
   sub-agent named either way. A sub-agent is also notified of a release it made itself.
@@ -146,6 +167,6 @@ Cloud sessions cannot reach a local Arlesh and are out of scope.
 ## Develop
 
 ```
-claude plugin validate plugins/arlesh-notify
-claude plugin test plugins/arlesh-notify
+claude plugin validate plugins/arlesh
+claude plugin test plugins/arlesh
 ```

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import AgentStatus from "./AgentStatus";
+import { useBoardStore } from "@/stores/use-board-store";
+import { sendAnswerDrafts } from "@/api/answer-drafts";
+import { storedRowId } from "@/test/stored-id";
 import { fetchAgents } from "@/api/agents";
 import type { AgentSummary } from "@/api/agents";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
@@ -25,6 +28,16 @@ vi.mock("@/api/agents", () => ({
 }));
 vi.mock("@/api/board", () => ({
   onBoardChanged: vi.fn(() => Promise.resolve(() => undefined)),
+}));
+
+vi.mock("@/api/answer-drafts", () => ({
+  saveAnswerDraft: vi.fn(),
+  clearAnswerDraft: vi.fn(),
+  sendAnswerDrafts: vi.fn(),
+}));
+vi.mock("@/api/gesture", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/gesture")>()),
+  withGesture: (_name: string, run: () => Promise<unknown>) => run(),
 }));
 
 type Cause = AgentSummary["at_capacity"];
@@ -63,6 +76,8 @@ function glyphs(): string[] {
 beforeEach(() => {
   vi.clearAllMocks();
   useDisplayStore.setState({ showAgentStatus: true });
+  useAgentActivityStore.setState({ stagedWaitIds: [] });
+  useBoardStore.setState({ settle: () => Promise.resolve() });
   useSettingsStore.setState({ isOpen: false, page: "general", anchor: null });
 });
 
@@ -193,5 +208,65 @@ describe("AgentStatus", () => {
 
     expect(screen.queryByRole("button")).toBeNull();
     expect(glyphs()).toEqual([]);
+  });
+
+  describe("staged answers", () => {
+    const staged = [storedRowId(3), storedRowId(4)];
+    const sendLine = () => screen.queryByRole("menuitem", { name: /agentStatus\.send: agentStatus\.staged/ });
+
+    it("shows no staged icon and no Send line while nothing is staged", async () => {
+      given(0, { review: 1 });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(glyphs()).toEqual(["head", "question"]);
+      fireEvent.click(screen.getByRole("button"));
+      expect(sendLine()).toBeNull();
+    });
+
+    it("shows the staged icon while something is staged, with the count in its tooltip", async () => {
+      given(0, { review: 2, staged: 2 });
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(glyphs()).toEqual(["head", "question", "staged"]);
+      expect(screen.getByRole("button").getAttribute("title")).toContain("agentStatus.staged:2");
+    });
+
+    it("draws the head for staged answers alone", async () => {
+      given(0);
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(glyphs()).toEqual(["head", "staged"]);
+    });
+
+    it("has a Send line in the menu, with the count, that sends every staged wait the board shows", async () => {
+      vi.mocked(sendAnswerDrafts).mockResolvedValue({ sent: [], skipped: [] });
+      given(0, { review: 2, staged: 2 });
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      render(<AgentStatus />);
+      await flush();
+
+      fireEvent.click(screen.getByRole("button"));
+      expect(screen.getByText("agentStatus.staged:2")).toBeDefined();
+      fireEvent.click(screen.getByRole("menuitem", { name: /agentStatus\.send: agentStatus\.staged/ }));
+
+      await vi.waitFor(() => expect(sendAnswerDrafts).toHaveBeenCalledWith({ shown: staged }));
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    it("draws nothing with the agent status turned off: the field and the palette are the ways to send", async () => {
+      given(0, { review: 2, staged: 2 });
+      useAgentActivityStore.setState({ stagedWaitIds: staged });
+      useDisplayStore.setState({ showAgentStatus: false });
+      render(<AgentStatus />);
+      await flush();
+
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(glyphs()).toEqual([]);
+    });
   });
 });

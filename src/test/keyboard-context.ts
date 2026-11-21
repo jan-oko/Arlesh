@@ -49,6 +49,8 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     onToggleStarted: vi.fn(),
     onNavigate: vi.fn(),
     onJumpToEdge: vi.fn(),
+    onJumpToWaitingAnswer: vi.fn(),
+    onJumpToStagedAnswer: vi.fn(),
     onScrollList: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),

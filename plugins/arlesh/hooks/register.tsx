@@ -19,7 +19,20 @@ import {
   type Reported,
   type Standing,
 } from './attach'
-import { forget, prune, remember, revive, type Book, type Entry } from './book'
+import {
+  failedOnce,
+  forget,
+  MAX_ATTEMPTS,
+  owedBy,
+  owedHeads,
+  owing,
+  prune,
+  remember,
+  revive,
+  settled,
+  type Book,
+  type Entry,
+} from './book'
 import * as kids from './children'
 import type { RowLines } from '../types'
 import {
@@ -33,23 +46,37 @@ import {
 import { isRecord, parseJson, text } from './json'
 import { nextWait, parsePoll, pollUrl, WAIT_START_S, type Cursor } from './poll'
 import { currentFrom, waitsFrom, type Current } from './results'
-import { changeBetween, namesRaiser, notificationText, routeTo, type Change, type Via } from './rules'
+import {
+  changeBetween,
+  forSession,
+  messageFor,
+  planDeliveries,
+  type Addressed,
+  type Change,
+  type Delivery,
+  type Owed,
+  type Via,
+} from './rules'
 
 type Engine = EngineInterface
 type SpawnInput = AgentSpawnInput
 
 /** What the agents are told at the start of a session in which the notifications are on. */
 const NOTES =
-  'Arlesh notifications are on in this session: waits you ask, raise or `arlesh_waits.watch` ' +
+  'Arlesh notifications are on in this session: waits you ask, raise (a review included) or `arlesh_waits.watch` ' +
   "will notify you when they change; don't poll."
 
 const BACKOFF_FIRST_MS = 1_000
 const BACKOFF_MAX_MS = 30_000
 const NO_SERVER_RETRY_MS = 30_000
+/**
+ * The least time one round of the poll loop takes. A held poll takes its whole wait, so it never
+ * meets this; a server that answers at once (a restarted one at revision 0 reads `after=0` as no
+ * cursor, and says `reset` every time) is asked no more than once in this long.
+ */
+const MIN_ROUND_MS = 5_000
 /** Failures in a row before the transcript is told once that Arlesh cannot be reached. */
 const SURFACE_AFTER = 3
-const SUBMIT_RETRY_MS = 3_000
-const SUBMIT_TRIES = 20
 
 let server: ServerEntry | undefined
 let following = false
@@ -85,7 +112,7 @@ const pendingByLabel = new Map<string, Pending>()
 const pendingByAgent = new Map<string, Pending>()
 
 /** The line under each subagent's row, by the Agent call's tool use id. */
-const rows = atom({ plugin: 'arlesh-notify', key: 'rows' } as const, {} as RowLines)
+const rows = atom({ plugin: 'arlesh', key: 'rows' } as const, {} as RowLines)
 
 /**
  * The terminal column (counted from the row's left edge) where the text of a tool row's result
@@ -130,6 +157,13 @@ export const register: Register = (on) => {
     }
   })
 
+  // Whether the main conversation is mid-turn: a prompt submitted then is only queued behind the
+  // turn, and the host discards it if the turn is stopped. See `flush`.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) turnRunning = true
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // The plan limits the session is under, reported for its account whenever one moves.
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
@@ -162,15 +196,18 @@ export const register: Register = (on) => {
       if (block === undefined) return started
       return { ...started, additionalContext: [...(started.additionalContext ?? []), block] }
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not register a subagent: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not register a subagent: ${String(error)}`, { to: 'debug' })
       return started
     }
   }).catch(($, e, next) => next(e))
 
   // A subagent that stops has its Claim paused; the child stays listed, still naming its Task.
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) turnRunning = false
     const done = await next(e)
     if (e.agentId !== undefined) void childStopped($, e.agentId)
+    // The session is idle again: what could not be delivered while it ran or after a stop goes now.
+    else void flush($)
     return done
   }).catch(($, e, next) => next(e))
 
@@ -236,7 +273,7 @@ export const register: Register = (on) => {
     try {
       await adopt($, input, ran.result ?? ran.text)
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not adopt the attach: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not adopt the attach: ${String(error)}`, { to: 'debug' })
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -338,6 +375,27 @@ async function reachable($: Engine, connection: ServerEntry): Promise<boolean> {
 }
 
 /**
+ * Sleeps `ms`. False when the sleep itself failed, as every call of the engine does once the
+ * session's environment is unloaded: the loop must then end, not go round again with nothing
+ * to pace it (each call rejecting at once made it spin without ever yielding).
+ */
+async function paused($: Engine, ms: number): Promise<boolean> {
+  try {
+    await $.clock.sleep(ms)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** An answer that came sooner than the floor: not a failure, only a pause owed. */
+class TooFast extends Error {
+  constructor(readonly pauseMs: number) {
+    super('the server answered too soon')
+  }
+}
+
+/**
  * Polls the server for the session's life, one request at a time: each is held open by the
  * server until a wait changes or `wait` seconds pass, and the next one resumes from the cursor
  * it answered. With no cursor, or after the server restarted, it reads the watched waits
@@ -350,6 +408,8 @@ async function follow($: Engine): Promise<void> {
   let failures = 0
   for (;;) {
     let started = 0
+    // Whatever is still owed is tried again every round, and so is a notification that failed.
+    void flush($)
     // The whole iteration is guarded: whatever rejects (reading the configuration included), the
     // loop backs off and goes on, for the session's life.
     try {
@@ -383,8 +443,18 @@ async function follow($: Engine): Promise<void> {
       backoff = BACKOFF_FIRST_MS
       failures = 0
       cursor = { revision: answer.revision, epoch: answer.epoch }
+      // The floor: an answer that came sooner than MIN_ROUND_MS (a held poll takes its whole wait,
+      // and never does) is followed by a pause, whatever made it quick.
+      const took = (await $.clock.now()) - started
+      if (took < MIN_ROUND_MS) throw new TooFast(MIN_ROUND_MS - took)
     } catch (error) {
+      if (error instanceof TooFast) {
+        if (await paused($, error.pauseMs)) continue
+        following = false
+        return
+      }
       failures += 1
+      server = undefined // read the configuration again: the URL or token may have changed
       try {
         wait = nextWait(wait, error, started === 0 ? Infinity : (await $.clock.now()) - started)
         $.ui.log(`the poll failed: ${String(error)}`, { to: 'debug' })
@@ -393,10 +463,12 @@ async function follow($: Engine): Promise<void> {
             'cannot reach Arlesh; notifications are paused and it keeps trying.',
           )
         }
-        server = undefined // read the configuration again: the URL or token may have changed
-        await $.clock.sleep(backoff)
       } catch {
-        // Even the bookkeeping failed: the loop still goes on.
+        // Even the bookkeeping failed: the loop still goes on, and still backs off.
+      }
+      if (!(await paused($, backoff))) {
+        following = false
+        return
       }
       backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
     }
@@ -415,54 +487,153 @@ async function catchUp($: Engine, connection: ServerEntry): Promise<void> {
   await apply($, currentFrom(ids, asked), true)
 }
 
-/** Compares each `current` with what was seen, notifies, and stores the new state. */
+/**
+ * Compares each `current` with what was seen and stores the new state. Each change worth a wake
+ * is recorded as owed in the same write, so it survives until the session has been told of it.
+ */
 async function apply($: Engine, answers: Current[], pruneFirst = false): Promise<void> {
   let book = await loadBook($)
   if (pruneFirst) book = prune(book, await $.clock.now())
   const now = await $.clock.now()
-  const wakes: Array<{ entry: Entry; change: Change }> = []
   for (const answer of answers) {
     const entry = book[answer.waitId]
-    if (entry === undefined) continue
+    if (entry === undefined || owedBy(entry).includes('deleted')) continue
     const change = changeBetween(entry, answer.state)
-    if (answer.state === null) {
-      book = forget(book, answer.waitId)
-    } else {
-      book = { ...book, [answer.waitId]: { ...entry, ...answer.state, seenAt: now } }
-    }
-    if (change !== null) wakes.push({ entry, change })
+    const seen = answer.state === null ? entry : { ...entry, ...answer.state, seenAt: now }
+    book = { ...book, [answer.waitId]: change === null ? seen : owing(seen, change) }
   }
   await saveBook($, book)
-  for (const { entry, change } of wakes) await deliver($, entry, change)
+  void flush($)
 }
 
-/** Sends the pointer to the raising sub-agent if it runs, else to whoever spawned it. */
-async function deliver($: Engine, entry: Entry, change: Change): Promise<void> {
+let flushing = false
+/** True from the main loop's `turn.start` to its `turn.complete`. */
+let turnRunning = false
+
+/**
+ * Tells the session of every change it is owed, stopping at the first group that does not go
+ * through, or while a turn runs (it stays owed, and the next poll, the next idle turn or the next
+ * session start tries again). Each round takes the head change of every wait and sends one message
+ * to each recipient, so a batch of answers wakes an agent once. One flush runs at a time, so a
+ * change in flight is never sent twice. It is not awaited by the poll loop: a prompt may wait for
+ * the running turn to end.
+ */
+async function flush($: Engine): Promise<void> {
+  if (flushing) return
+  flushing = true
+  try {
+    for (;;) {
+      // Only an idle session is known to start a turn from a submit; mid-turn the prompt would be
+      // queued, and lost if the turn is stopped. `turn.complete` flushes again.
+      if (turnRunning) return
+      const heads = await serially(async () => owedHeads(await loadBook($)))
+      if (heads.length === 0) return
+      if (!(await deliverRound($, heads))) return
+    }
+  } catch (error) {
+    $.ui.log(`could not deliver a notification: ${String(error)}`, { to: 'debug' })
+  } finally {
+    flushing = false
+  }
+}
+
+/** One round: a message for each recipient. False when one did not go through. */
+async function deliverRound($: Engine, heads: Array<{ entry: Entry; change: Change }>): Promise<boolean> {
+  const owed: Owed[] = heads.map(({ entry, change }) => ({
+    waitId: entry.waitId,
+    shortId: entry.shortId,
+    taskShortId: entry.taskShortId,
+    ...(entry.via === undefined ? {} : { via: entry.via }),
+    change,
+  }))
   const agents = (await $.agent.list()).map((agent) => ({
     id: agent.id,
     status: agent.status,
     ...(agent.parentId === undefined ? {} : { parentId: agent.parentId }),
   }))
-  const target = routeTo(entry.via, agents)
-  const message = notificationText(entry, change, entry.via, namesRaiser(target, entry.via))
-  if (target.kind === 'agent') {
-    try {
-      await $.session.send({ to: { agentId: target.agentId }, text: message })
-      return
-    } catch (error) {
-      $.ui.log(`could not message the agent: ${String(error)}`, { to: 'debug' })
+  const plan = planDeliveries(owed, agents)
+  const toSession = [...plan.session]
+  for (const group of plan.agents) {
+    const sent = await sendToAgent($, group.agentId, messageFor(group.items))
+    if (sent.delivered) {
+      await settleGroup($, heads, group.items, sent)
+      continue
     }
+    $.ui.log(`could not message the agent: ${sent.reason}`, { to: 'debug' })
+    toSession.push(...forSession(group.items))
   }
-  submit($, message, SUBMIT_TRIES)
+  if (toSession.length === 0) return true
+  const outcome = await submit($, messageFor(toSession))
+  await settleGroup($, heads, toSession, outcome)
+  return outcome.delivered
 }
 
-/** Wakes the session, as a finished background command does; tried again while it is busy. */
-function submit($: Engine, message: string, tries: number): void {
-  $.prompt.submit({ text: message }).catch(async () => {
-    if (tries <= 1) return
-    await $.clock.sleep(SUBMIT_RETRY_MS)
-    submit($, message, tries - 1)
-  })
+/** Records how one message went, on every change it carried. */
+async function settleGroup(
+  $: Engine,
+  heads: Array<{ entry: Entry; change: Change }>,
+  items: readonly Addressed[],
+  outcome: Delivery,
+): Promise<void> {
+  for (const { owed } of items) {
+    const head = heads.find(({ entry }) => entry.waitId === owed.waitId)
+    const attempt = (head?.entry.attempts ?? 0) + 1
+    $.ui.log(
+      `notification for wait ${owed.shortId} (${owed.change}), attempt ${attempt}: ` +
+        `${outcome.delivered ? 'delivered' : `not delivered, ${outcome.reason}`}`,
+      { to: 'debug' },
+    )
+    await serially(() => settle($, owed.waitId, owed.change, outcome))
+  }
+}
+
+/**
+ * Records how one attempt went: a delivered change leaves the book; a failed one counts, and the
+ * transcript says so once the last attempt has failed, as nothing will try that change again.
+ */
+async function settle($: Engine, waitId: string, change: Change, outcome: Delivery): Promise<void> {
+  const book = await loadBook($)
+  const entry = book[waitId]
+  if (entry === undefined || owedBy(entry)[0] !== change) return
+  const failed = failedOnce(entry)
+  const gaveUp = !outcome.delivered && (failed.attempts ?? 0) >= MAX_ATTEMPTS
+  if (!outcome.delivered && !gaveUp) {
+    await saveBook($, { ...book, [waitId]: failed })
+    return
+  }
+  if (gaveUp) {
+    $.ui.log(
+      `Arlesh: gave up telling this session that wait ${entry.shortId} on Task ${entry.taskShortId} ` +
+        `changed (${change === 'deleted' ? 'gone' : change}): ${outcome.reason}. Read it with arlesh_waits.get.`,
+    )
+  }
+  await saveBook(
+    $,
+    change === 'deleted' ? forget(book, waitId) : { ...book, [waitId]: settled(entry) },
+  )
+}
+
+async function sendToAgent($: Engine, agentId: string, text: string): Promise<Delivery> {
+  try {
+    const sent = await $.session.send({ to: { agentId }, text })
+    return sent.isDelivered ? { delivered: true } : { delivered: false, reason: sent.reason }
+  } catch (error) {
+    return { delivered: false, reason: String(error) }
+  }
+}
+
+/**
+ * Wakes the session, as a finished background command does. Only a prompt that entered counts:
+ * the host answers `{ drop }` for one it refuses (a Stop stands, a limit reached), which is not
+ * an error and not a delivery.
+ */
+async function submit($: Engine, message: string): Promise<Delivery> {
+  try {
+    const result = await $.prompt.submit({ text: message })
+    return result.drop === undefined ? { delivered: true } : { delivered: false, reason: `dropped: ${result.drop}` }
+  } catch (error) {
+    return { delivered: false, reason: String(error) }
+  }
 }
 
 async function viaOf($: Engine, agentId: unknown): Promise<Via | undefined> {
@@ -517,7 +688,7 @@ function attach($: Engine, connection: ServerEntry | undefined): Promise<Standin
           ? { kind: 'unattached', reason: 'the Arlesh server is not configured' }
           : await attachTo($, connection)
     } catch (error) {
-      $.ui.log(`arlesh-notify: could not attach: ${String(error)}`, { to: 'debug' })
+      $.ui.log(`arlesh: could not attach: ${String(error)}`, { to: 'debug' })
       standing = { kind: 'unattached', reason: 'attaching failed' }
     }
     return standing
@@ -595,7 +766,7 @@ async function reportUsage($: Engine, given: readonly Limit[] | undefined): Prom
       windows: usageWindows(limits),
     })
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not report usage: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not report usage: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -665,7 +836,7 @@ async function noteAnswer($: Engine, found: kids.Governing, tool: string, result
       ...(identity.standing === undefined ? {} : { standing: identity.standing }),
     }))
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not note a subagent's answer: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not note a subagent's answer: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -751,19 +922,19 @@ async function spawnRequest(
     if (e.resume !== undefined || e.isTeammate !== undefined || e.workflow !== undefined) return { request: e }
     const marker = kids.parseMarker(e.description, e.prompt)
     if (marker.kind === 'invalid') {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: ignoring the [arlesh:…] marker: ${marker.reason}`, { to: 'debug' })
       return { request: e }
     }
     if (marker.kind === 'none') return { request: e }
     const stripped = { ...e, description: kids.stripMarker(e.description), prompt: kids.stripMarker(e.prompt) }
     const connected = await ensureAttached($)
     if (!connected || server === undefined) {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: marker ${marker.ref}, session not attached: no label`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: marker ${marker.ref}, session not attached: no label`, { to: 'debug' })
       return { request: stripped }
     }
     const task = kids.taskFrom(await $.mcp.call(server.name, 'arlesh_tasks', { operation: 'get', id: marker.ref }))
     if (task === undefined) {
-      $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the Task ${marker.ref}: no label`, { to: 'debug' })
+      $.ui.log(`arlesh: spawn ${e.tool_use_id}: could not read the Task ${marker.ref}: no label`, { to: 'debug' })
       const pending: Pending = { kind: 'unreadable', label: stripped.description, original: stripped.description, ref: marker.ref }
       pendingByLabel.set(pending.label, pending)
       return { request: stripped, pending }
@@ -771,10 +942,10 @@ async function spawnRequest(
     const label = kids.label(stripped.description, task.shortId, task.title)
     const pending: Pending = { kind: 'task', label, original: stripped.description, shortId: task.shortId }
     pendingByLabel.set(label, pending)
-    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: labelled for Task ${task.shortId}`, { to: 'debug' })
+    $.ui.log(`arlesh: spawn ${e.tool_use_id}: labelled for Task ${task.shortId}`, { to: 'debug' })
     return { request: { ...stripped, description: label }, pending }
   } catch (error) {
-    $.ui.log(`arlesh-notify: spawn ${e.tool_use_id}: could not read the marker: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: spawn ${e.tool_use_id}: could not read the marker: ${String(error)}`, { to: 'debug' })
     return { request: e }
   }
 }
@@ -812,7 +983,7 @@ async function childStopped($: Engine, id: string): Promise<void> {
     await noteAnswer($, { id, child: known }, `mcp__${connection.name}__arlesh_agents`, paused)
     await finishChild($, connection, id, (await loadChildren($))[id] ?? known)
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not stop a subagent's child: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not stop a subagent's child: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -842,7 +1013,7 @@ async function sweepChildren($: Engine): Promise<void> {
       else await finishChild($, connection, id, child)
     }
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not sweep the children: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not sweep the children: ${String(error)}`, { to: 'debug' })
   }
 }
 
@@ -859,7 +1030,7 @@ async function pauseOwnClaim($: Engine): Promise<void> {
     if (server === undefined || (standing?.kind !== 'attached' && !(await hasStoredToken($)))) return
     await $.mcp.call(server.name, 'arlesh_agents', { operation: 'pause' })
   } catch (error) {
-    $.ui.log(`arlesh-notify: could not pause the session's claim: ${String(error)}`, { to: 'debug' })
+    $.ui.log(`arlesh: could not pause the session's claim: ${String(error)}`, { to: 'debug' })
   }
 }
 

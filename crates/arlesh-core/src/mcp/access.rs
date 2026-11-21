@@ -345,7 +345,7 @@ pub(super) fn agent_instructions(
                 desktop app), then attach with your session_id, the PIN, a name, your account \
                 label and the subtree you were asked to work. Keep the agent token the answer \
                 gives: attach with it (token instead of pin) after the server restarts or the \
-                session is resumed. A host with the arlesh-notify mod attaches for you."
+                session is resumed. A host with the arlesh mod attaches for you."
             .to_string();
     };
     let by_key: HashMap<NodeKey, &CatalogueNode> =

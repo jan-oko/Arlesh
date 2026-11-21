@@ -53,6 +53,8 @@
 .capacity { color: var(--agent-capacity); }
 .ask { color: var(--ask); }
 .wait { color: var(--wait); }
+/* Staged answers wait on you to send them: the accent. */
+.staged { color: var(--accent); }
 /* In Progress keeps the bar's own icon colour, as the head does. */
 .progress { color: inherit; }
 

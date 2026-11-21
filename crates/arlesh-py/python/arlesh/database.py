@@ -38,6 +38,7 @@ from arlesh.errors import InvalidRequest, NotPermitted, from_native
 from arlesh.models import (
     AgentAction,
     AgentsOverview,
+    AnswerDraft,
     BlockReason,
     Commitment,
     CommitmentArchival,
@@ -56,6 +57,7 @@ from arlesh.models import (
     DescendantPlans,
     Domain,
     DomainSubtype,
+    DraftRequest,
     DuplicatedDomain,
     DuplicatedGoal,
     DuplicatedInfo,
@@ -88,6 +90,8 @@ from arlesh.models import (
     PlanClampTarget,
     Reconcile,
     ReparentConflicts,
+    SendOutcome,
+    SendRequest,
     SetRecurrenceRequest,
     SpawnedWait,
     StartFlowRequest,
@@ -484,6 +488,20 @@ class Database(ABC):
     @abstractmethod
     async def reopen_spawned_wait_check(self, task_id: str, due_at: datetime) -> None:
         """Reopens a spawned wait's check, due again at ``due_at``."""
+
+    @abstractmethod
+    async def save_answer_draft(self, wait_id: NodeId, request: DraftRequest) -> AnswerDraft:
+        """Stages an answer to an open question or review. The last save wins; an agent sees
+        nothing of it until the batch is sent."""
+
+    @abstractmethod
+    async def clear_answer_draft(self, wait_id: NodeId) -> None:
+        """Unstages a wait: deletes its draft. Passes when it has none."""
+
+    @abstractmethod
+    async def send_answer_drafts(self, request: SendRequest) -> SendOutcome:
+        """Sends every staged answer on the board, releasing the waits in one write, and says
+        which were sent and which skipped."""
 
     # ---- Tags and block reasons ---------------------------------------------------------------
 
@@ -1238,6 +1256,17 @@ class Arlesh(Database):
     async def reopen_spawned_wait_check(self, task_id: str, due_at: datetime) -> None:
         await self._call(_NOTHING, "reopen_spawned_wait_check", task_id=task_id, due_at=due_at)
 
+    async def save_answer_draft(self, wait_id: NodeId, request: DraftRequest) -> AnswerDraft:
+        return await self._call(
+            _ANSWER_DRAFT, "save_answer_draft", wait_id=wait_id, request=request
+        )
+
+    async def clear_answer_draft(self, wait_id: NodeId) -> None:
+        await self._call(_NOTHING, "clear_answer_draft", wait_id=wait_id)
+
+    async def send_answer_drafts(self, request: SendRequest) -> SendOutcome:
+        return await self._call(_SEND_OUTCOME, "send_answer_drafts", request=request)
+
     async def set_tag(self, kind: str, id: NodeId, tag_id: str, present: bool) -> None:
         await self._call(_NOTHING, "set_tag", kind=kind, id=id, tag_id=tag_id, present=present)
 
@@ -1661,6 +1690,8 @@ _GOAL = TypeAdapter(Goal)
 _COMMITMENT = TypeAdapter(Commitment)
 _EXPECTATION = TypeAdapter(Expectation)
 _SPAWNED_WAIT = TypeAdapter(SpawnedWait)
+_ANSWER_DRAFT = TypeAdapter(AnswerDraft)
+_SEND_OUTCOME = TypeAdapter(SendOutcome)
 _INFO = TypeAdapter(Info)
 _DOMAIN = TypeAdapter(Domain)
 _DOMAINS = TypeAdapter(list[Domain])

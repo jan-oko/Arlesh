@@ -594,3 +594,151 @@ async fn an_explicit_null_in_the_payload_stops_the_checks() {
         .expectation_checks
         .is_empty());
 }
+
+// ---------------------------------------------------------------------------------------------
+// Staged answers (ADR 0021): one case per command.
+// ---------------------------------------------------------------------------------------------
+
+mod staged_answers {
+    use super::*;
+    use arlesh_lib::commands::expectations as commands;
+    use arlesh_lib::nodes::id::NodeId;
+    use arlesh_lib::tasks::answer_drafts::{DraftRequest, SendRequest, SkipReason};
+    use arlesh_lib::tasks::model::TaskAgentic;
+    use tauri::Manager;
+
+    /// An agentic Task in a fresh Project, with one open question under it.
+    async fn open_question(pool: &sqlx::SqlitePool, title: &str) -> NodeId {
+        let project = make_project(pool).await;
+        let mut db = helpers::session_factory(pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Work".into(),
+                parent_type: "project".into(),
+                parent_id: project.into(),
+                agentic: Some(TaskAgentic::Yes),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let wait = create_expectation(
+            &mut db,
+            CreateExpectationRequest {
+                title: title.into(),
+                parent_type: "task".into(),
+                parent_id: task.id,
+                agentic: true,
+                agentic_note: Some("Which?".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        wait.id
+    }
+
+    fn answer(text: &str) -> DraftRequest {
+        DraftRequest {
+            answer: Some(text.into()),
+            verdict: None,
+        }
+    }
+
+    async fn drafts(pool: &sqlx::SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM answer_drafts")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn save_answer_draft_stages_the_answer_and_leaves_the_wait_pending() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+
+        let saved = commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        assert_eq!(saved.answer.as_deref(), Some("blue"));
+        assert_eq!(drafts(&pool).await, 1);
+        let status: String = sqlx::query_scalar("SELECT status FROM expectations WHERE id = ?")
+            .bind(wait.stored().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(status, "pending");
+    }
+
+    #[tokio::test]
+    async fn save_answer_draft_refuses_a_blank_answer_and_writes_nothing() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+
+        let refused = commands::save_answer_draft(app.state(), wait, answer("  ")).await;
+
+        assert!(refused.is_err());
+        assert_eq!(drafts(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn clear_answer_draft_unstages_and_passes_when_there_is_none() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+        commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        commands::clear_answer_draft(app.state(), wait.clone())
+            .await
+            .expect("unstage");
+        commands::clear_answer_draft(app.state(), wait)
+            .await
+            .expect("unstaging again passes");
+
+        assert_eq!(drafts(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn send_answer_drafts_releases_the_staged_waits_and_names_the_skipped() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+        let unstaged = open_question(&pool, "Shape?").await;
+        commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        let outcome = commands::send_answer_drafts(
+            app.state(),
+            SendRequest {
+                shown: vec![wait.clone(), unstaged.clone()],
+            },
+        )
+        .await
+        .expect("send");
+
+        assert_eq!(outcome.sent.len(), 1);
+        assert_eq!(outcome.sent[0].wait_id, wait);
+        assert_eq!(outcome.skipped.len(), 1);
+        assert_eq!(outcome.skipped[0].wait_id, unstaged);
+        assert_eq!(outcome.skipped[0].reason, SkipReason::Unstaged);
+        let (status, answer): (String, Option<String>) =
+            sqlx::query_as("SELECT status, agentic_answer FROM expectations WHERE id = ?")
+                .bind(wait.stored().unwrap())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            (status.as_str(), answer.as_deref()),
+            ("released", Some("blue"))
+        );
+        assert_eq!(drafts(&pool).await, 0);
+    }
+}

@@ -39,7 +39,9 @@ use arlesh_core::{
         write,
     },
     tasks::{
-        self, gestures,
+        self,
+        answer_drafts::{DraftRequest, SendRequest},
+        gestures,
         model::{
             CommitmentId, CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
             CreateTaskRequest, Dependency, DescendantPlans, ExpectationId, GoalId, TaskId,
@@ -320,6 +322,23 @@ pub(crate) enum Request {
         task_id: RowId,
         /// When the check is due again.
         due_at: NaiveDateTime,
+    },
+    /// Stages an answer to an open question or review: saves the draft, the last save winning.
+    SaveAnswerDraft {
+        /// The wait, stored or derived.
+        wait_id: NodeId,
+        /// The answer, or a review's verdict and note.
+        request: DraftRequest,
+    },
+    /// Unstages a wait: deletes its draft, if it has one.
+    ClearAnswerDraft {
+        /// The wait.
+        wait_id: NodeId,
+    },
+    /// Sends every staged answer on the board: releases the waits, in one write.
+    SendAnswerDrafts {
+        /// The waits the caller's screen showed as staged.
+        request: SendRequest,
     },
 
     // ---- Tags and block reasons -------------------------------------------------------------
@@ -1273,6 +1292,31 @@ async fn dispatch(
         Request::ReopenSpawnedWaitCheck { task_id, due_at } => {
             transaction(factory, async |db| {
                 tasks::waits::reopen_spawned_check(db, TaskId(task_id), due_at)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+
+        Request::SaveAnswerDraft { wait_id, request } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::save_draft(db, &wait_id, request, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ClearAnswerDraft { wait_id } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::clear_draft(db, &wait_id)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::SendAnswerDrafts { request } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::send_drafts(db, request, now())
                     .await
                     .wired()
             })

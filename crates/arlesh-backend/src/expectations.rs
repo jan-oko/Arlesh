@@ -5,6 +5,7 @@ use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
+    tasks::answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
     tasks::model::{
         CreateExpectationRequest, Expectation, SpawnedWait, UpdateExpectationRequest,
         UpdateSpawnedWaitRequest,
@@ -76,4 +77,19 @@ pub trait WaitsPort: Send + Sync {
         task_id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<(), WireError>;
+
+    /// Stages an answer: saves the draft for an open question or review, replacing an earlier one.
+    /// The last save wins. An agent sees nothing of it.
+    async fn save_answer_draft(
+        &self,
+        wait_id: NodeId,
+        request: DraftRequest,
+    ) -> Result<AnswerDraft, WireError>;
+
+    /// Unstages a wait: deletes its draft. Passes when it has none.
+    async fn clear_answer_draft(&self, wait_id: NodeId) -> Result<(), WireError>;
+
+    /// Sends every staged answer on the board, releasing the waits in one write, and says which
+    /// were sent and which were skipped.
+    async fn send_answer_drafts(&self, request: SendRequest) -> Result<SendOutcome, WireError>;
 }
