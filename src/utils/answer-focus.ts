@@ -125,5 +125,5 @@ export function handleFieldKey(event: KeyEventLike, field: HTMLElement | null): 
   return true;
 }
 
-/** How many lines an answer or note field shows when empty on the touch layout: comfortable to type in. */
-export const TOUCH_FIELD_ROWS = 3;
+/** How many lines an answer or note field shows when empty on the touch layout: two, so the controls below stay on screen. */
+export const TOUCH_FIELD_ROWS = 2;

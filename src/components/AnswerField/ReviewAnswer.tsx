@@ -12,6 +12,10 @@ import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, TOUCH_FIEL
 import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
+import ControlFace from "./ControlFace";
+import { iconName } from "@/utils/icon-name";
+import ActionIcon from "@/components/ActionIcon/ActionIcon";
+import AgentStagedIcon from "@/components/TopBar/AgentStagedIcon";
 import styles from "./AnswerField.module.css";
 
 interface Props {
@@ -114,6 +118,8 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
     const chord = chordFor(option);
     return chord === null ? undefined : formatChord(chord);
   };
+  const verdictLabel = (option: ReviewVerdict): string =>
+    option === REVIEW_VERDICT.APPROVED ? (hasPullRequest(links) ? t("reviewApproveMerge") : t("reviewApprove")) : t("reviewRequestChanges");
   const keyTitle = (option: ReviewVerdict): string | undefined => keyShortcut(option);
 
   /** The answer field keys (Alt+Down, Alt+Up, Escape) and Alt+Y and Alt+N: select a verdict from anywhere in the review. They only select, and a staged
@@ -141,7 +147,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
 
   return (
     <div
-      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}`}
+      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}${touch ? ` ${styles.touch}` : ""}`}
       data-owns-keys={REVIEW_OWNED_CODES}
       onKeyDown={selectByKey}
       onClick={(event) => event.stopPropagation()}
@@ -215,20 +221,20 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
               aria-checked={verdict === option}
               tabIndex={verdict === option || (verdict === null && option === VERDICTS[0]) ? 0 : -1}
               disabled={busy || staged}
-              title={keyTitle(option)}
+              {...iconName(touch, verdictLabel(option), keyTitle(option))}
               aria-keyshortcuts={keyShortcut(option)}
               onClick={() => setChosen(option)}
             >
-              {option === REVIEW_VERDICT.APPROVED ? (hasPullRequest(links) ? t("reviewApproveMerge") : t("reviewApprove")) : t("reviewRequestChanges")}
+              <ControlFace touch={touch} label={verdictLabel(option)} icon={<ActionIcon name={option === REVIEW_VERDICT.APPROVED ? "approve" : "edit"} />} />
             </button>
           ))}
         </div>
         <div className={styles.actions}>
-        <button type="button" data-gesture-skip="" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} title={staged ? formatChord(UNSTAGE_CHORD) : undefined} disabled={!canStage} onClick={() => void toggleStage()}>
-          {t("answerStage")}
+        <button type="button" data-gesture-skip="" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} {...iconName(touch, t("answerStage"), staged ? formatChord(UNSTAGE_CHORD) : undefined)} disabled={!canStage} onClick={() => void toggleStage()}>
+          <ControlFace touch={touch} label={t("answerStage")} icon={<AgentStagedIcon />} />
         </button>
-        <button type="button" data-gesture-skip="" className={styles.send} disabled={!canSend} onClick={() => void send()}>
-          {t("answerSend")}
+        <button type="button" data-gesture-skip="" className={styles.send} {...iconName(touch, t("answerSend"), undefined)} disabled={!canSend} onClick={() => void send()}>
+          <ControlFace touch={touch} label={t("answerSend")} icon={<ActionIcon name="send" />} />
         </button>
         </div>
       </div>

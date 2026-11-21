@@ -10,6 +10,10 @@ import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import ControlFace from "./ControlFace";
+import { iconName } from "@/utils/icon-name";
+import ActionIcon from "@/components/ActionIcon/ActionIcon";
+import AgentStagedIcon from "@/components/TopBar/AgentStagedIcon";
 import styles from "./AnswerField.module.css";
 
 interface Props {
@@ -87,7 +91,7 @@ export default function AnswerField({ question, staged, actions, compact = false
 
   return (
     <div
-      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}`}
+      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}${touch ? ` ${styles.touch}` : ""}`}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
@@ -134,14 +138,14 @@ export default function AnswerField({ question, staged, actions, compact = false
             className={styles.secondary}
             aria-pressed={staged}
             aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined}
-            title={staged ? formatChord(UNSTAGE_CHORD) : undefined}
+            {...iconName(touch, t("answerStage"), staged ? formatChord(UNSTAGE_CHORD) : undefined)}
             disabled={!canStage}
             onClick={() => void toggleStage()}
           >
-            {t("answerStage")}
+            <ControlFace touch={touch} label={t("answerStage")} icon={<AgentStagedIcon />} />
           </button>
-          <button type="button" data-gesture-skip="" className={styles.send} disabled={!canSend} onClick={() => void send()}>
-            {t("answerSend")}
+          <button type="button" data-gesture-skip="" className={styles.send} {...iconName(touch, t("answerSend"), undefined)} disabled={!canSend} onClick={() => void send()}>
+            <ControlFace touch={touch} label={t("answerSend")} icon={<ActionIcon name="send" />} />
           </button>
         </div>
       </div>
