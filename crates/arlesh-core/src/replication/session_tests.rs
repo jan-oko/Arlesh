@@ -611,7 +611,9 @@ async fn removing_an_event_that_carried_no_rows_loses_nothing() {
     let snapshot = server.snapshot_body().await;
     let mut events = run_session(&mut server).await;
     // A write that changes no replicated row publishes an event whose source is empty.
-    server.publisher.record_write(crate::board::WriteOrigin::User);
+    server
+        .publisher
+        .record_write(crate::board::WriteOrigin::User);
     events.extend(server.next_events().await);
     let empty = events.len() - 1;
     assert_eq!(
@@ -898,7 +900,9 @@ async fn giving_up_the_capture_stops_the_log_and_the_publisher_does_not_take_it_
                 .unwrap();
         })
         .await;
-    server.publisher.record_write(crate::board::WriteOrigin::User);
+    server
+        .publisher
+        .record_write(crate::board::WriteOrigin::User);
     server.next_events().await;
     let logged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
         .fetch_one(&server.pool())
