@@ -1,6 +1,7 @@
 //! The desktop follows change events and says what to show.
 
 use super::*;
+use crate::board::ChangeOrigin;
 use crate::mindmap::{model::MindmapLoad, rules::changes::diff};
 use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
@@ -41,7 +42,6 @@ fn started(board: &MindmapLoad) -> DesktopNotifier {
             &serde_json::to_value(board).unwrap(),
             EPOCH,
             1,
-            1,
             &Switches::default(),
         )
         .unwrap();
@@ -49,13 +49,20 @@ fn started(board: &MindmapLoad) -> DesktopNotifier {
     notifier
 }
 
-fn event<'a>(seq: u64, revision: u64, changes: &'a Value) -> Change<'a> {
+fn event<'a>(seq: u64, changes: &'a Value) -> Change<'a> {
     Change {
         epoch: EPOCH,
         seq: Some(seq),
-        revision,
         changes: Some(changes),
         reload: false,
+        origin: Some(ChangeOrigin::Agent),
+    }
+}
+
+fn by(origin: ChangeOrigin, change: Change<'_>) -> Change<'_> {
+    Change {
+        origin: Some(origin),
+        ..change
     }
 }
 
@@ -74,10 +81,10 @@ fn starting_with_a_question_already_open_tells_nothing_and_a_new_one_tells_once(
     after.facts.insert(tkey("task", 2), asking(8));
     let delta = changes(&before, &after);
 
-    let first = notifier.follow(&event(2, 2, &delta), &Switches::default());
+    let first = notifier.follow(&event(2, &delta), &Switches::default());
     assert_eq!(shown(first), [format!("question:{}", tid(8))]);
 
-    let again = notifier.follow(&event(2, 2, &delta), &Switches::default());
+    let again = notifier.follow(&event(2, &delta), &Switches::default());
     assert!(shown(again).is_empty(), "a replayed event tells nothing");
 }
 
@@ -87,7 +94,7 @@ fn a_task_going_overdue_is_told_by_a_tick_that_carries_no_write() {
     let mut notifier = started(&before);
     let delta = changes(&before, &overdue(quiet()));
 
-    let intake = notifier.follow(&event(2, 1, &delta), &Switches::default());
+    let intake = notifier.follow(&event(2, &delta), &Switches::default());
 
     assert_eq!(shown(intake), [format!("overdue:{}", tid(2))]);
 }
@@ -99,10 +106,10 @@ fn a_switched_off_event_is_not_shown_and_not_owed_when_switched_on_again() {
     let off = Switches::with_off([Channel::AgentQuestion]);
     let delta = changes(&before, &asked(quiet()));
 
-    assert!(shown(notifier.follow(&event(2, 2, &delta), &off)).is_empty());
+    assert!(shown(notifier.follow(&event(2, &delta), &off)).is_empty());
 
     let nothing = serde_json::json!({});
-    let later = notifier.follow(&event(3, 3, &nothing), &Switches::default());
+    let later = notifier.follow(&event(3, &nothing), &Switches::default());
     assert!(shown(later).is_empty());
 }
 
@@ -110,47 +117,65 @@ fn a_switched_off_event_is_not_shown_and_not_owed_when_switched_on_again() {
 fn the_users_own_write_does_not_notify_what_it_made_true() {
     let before = quiet();
     let mut notifier = started(&before);
-    notifier.note_own_write(EPOCH, 2);
     let delta = changes(&before, &overdue(quiet()));
 
-    let intake = notifier.follow(&event(2, 2, &delta), &Switches::default());
+    let intake = notifier.follow(
+        &by(ChangeOrigin::User, event(2, &delta)),
+        &Switches::default(),
+    );
 
     assert!(shown(intake).is_empty());
 }
 
 #[test]
-fn an_own_write_never_hides_an_agents_question() {
+fn the_users_own_write_notifies_neither_a_question_nor_the_capacity_lock() {
     let before = quiet();
     let mut notifier = started(&before);
-    notifier.note_own_write(EPOCH, 2);
-    let delta = changes(&before, &asked(quiet()));
+    let switches = Switches::default();
+    let asked = changes(&before, &asked(quiet()));
+    let locked = serde_json::json!({ "block_reasons": { "set": [[&tkey("task", 1), [{
+        "owner_type": "task", "owner_id": tid(1), "reason": "Agents at capacity",
+        "position": 0, "derived": "agent_capacity" }]]], "del": [] } });
 
-    let intake = notifier.follow(&event(2, 2, &delta), &Switches::default());
+    let question = notifier.follow(&by(ChangeOrigin::User, event(2, &asked)), &switches);
+    let lock = notifier.follow(&by(ChangeOrigin::User, event(3, &locked)), &switches);
 
-    assert_eq!(shown(intake), [format!("question:{}", tid(7))]);
+    assert!(shown(question).is_empty(), "ctrl+z reopening a question");
+    assert!(shown(lock).is_empty(), "locking an account by hand");
 }
 
 #[test]
-fn an_own_write_the_publication_does_not_hold_yet_waits_for_the_one_that_does() {
+fn what_the_user_did_is_not_owed_to_them_later() {
     let before = quiet();
     let mut notifier = started(&before);
-    notifier.note_own_write(EPOCH, 5);
-    let tick = changes(&before, &overdue(quiet()));
-    let tell = notifier.follow(&event(2, 3, &tick), &Switches::default());
-    assert_eq!(
-        shown(tell),
-        [format!("overdue:{}", tid(2))],
-        "revision 3 does not hold write 5"
-    );
+    let switches = Switches::default();
+    let asked_by_user = changes(&before, &asked(quiet()));
+    notifier.follow(&by(ChangeOrigin::User, event(2, &asked_by_user)), &switches);
 
-    let mut with_generated = quiet();
-    with_generated.tasks.push(check(3));
-    with_generated
-        .lifecycles
-        .push(lifecycle(3, false, Archival::Live));
-    let delta = changes(&overdue(quiet()), &overdue(with_generated));
-    let own = notifier.follow(&event(3, 5, &delta), &Switches::default());
-    assert!(shown(own).is_empty(), "revision 5 holds the user's write");
+    let nothing = serde_json::json!({});
+    let later = notifier.follow(&event(3, &nothing), &switches);
+
+    assert!(shown(later).is_empty());
+}
+
+#[test]
+fn the_same_change_by_an_agent_or_by_time_notifies() {
+    let before = quiet();
+    let switches = Switches::default();
+    let asked = changes(&before, &asked(quiet()));
+
+    for origin in [Some(ChangeOrigin::Agent), Some(ChangeOrigin::Time), None] {
+        let mut notifier = started(&before);
+        let change = Change {
+            origin,
+            ..event(2, &asked)
+        };
+        assert_eq!(
+            shown(notifier.follow(&change, &switches)),
+            [format!("question:{}", tid(7))],
+            "{origin:?}"
+        );
+    }
 }
 
 #[test]
@@ -161,18 +186,18 @@ fn a_gap_a_new_run_or_a_reload_asks_for_the_whole_board() {
     let switches = Switches::default();
 
     assert_eq!(
-        notifier.follow(&event(5, 5, &delta), &switches),
+        notifier.follow(&event(5, &delta), &switches),
         Intake::Resync
     );
     let other_run = Change {
         epoch: "run-2",
-        ..event(2, 2, &delta)
+        ..event(2, &delta)
     };
     assert_eq!(notifier.follow(&other_run, &switches), Intake::Resync);
     let reload = Change {
         reload: true,
         changes: None,
-        ..event(2, 2, &delta)
+        ..event(2, &delta)
     };
     assert_eq!(notifier.follow(&reload, &switches), Intake::Resync);
 }
@@ -182,7 +207,7 @@ fn before_the_first_board_there_is_nothing_to_follow() {
     let mut notifier = DesktopNotifier::new();
     let delta = serde_json::json!({});
     assert_eq!(
-        notifier.follow(&event(2, 2, &delta), &Switches::default()),
+        notifier.follow(&event(2, &delta), &Switches::default()),
         Intake::Resync
     );
 }
@@ -198,7 +223,6 @@ fn a_board_loaded_after_a_gap_tells_what_is_new_on_it() {
         .load(
             &serde_json::to_value(&now).unwrap(),
             EPOCH,
-            9,
             9,
             &Switches::default(),
         )
@@ -224,8 +248,8 @@ fn the_capacity_lock_is_told_when_set_and_when_cleared() {
     let lifted = serde_json::json!({ "block_reasons": { "set": [], "del": [tkey("task", 1)] } });
     let switches = Switches::default();
 
-    let set = notifier.follow(&event(2, 2, &locked), &switches);
-    let cleared = notifier.follow(&event(3, 3, &lifted), &switches);
+    let set = notifier.follow(&event(2, &locked), &switches);
+    let cleared = notifier.follow(&event(3, &lifted), &switches);
 
     assert_eq!(shown(set), ["capacity"]);
     assert_eq!(shown(cleared), ["capacity"]);

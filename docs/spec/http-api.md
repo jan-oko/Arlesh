@@ -244,8 +244,10 @@ publication and the last 64 change events (at most 4 MiB); a restart starts afre
 **The stream.** `GET /events/changes` is a Server-Sent Events stream of two events:
 
 - `board-changed`, one per publication, with id `<epoch>:<seq>` and data `{epoch, seq, revision,
-  now, hash, changes}` ([Client Mode](client-mode.md#live-sync) describes `changes`), or `{epoch,
-  seq, revision, now, hash, reload: true}` when the changes would exceed 256 KiB or cannot be
+  now, hash, origin, changes}` ([Client Mode](client-mode.md#live-sync) describes `changes`;
+  `origin` is `user`, `agent` or `time`, who caused the publication, see
+  [Notifications](notifications.md#own-actions)), or `{epoch, seq, revision, now, hash, origin,
+  reload: true}` when the changes would exceed 256 KiB or cannot be
   replayed.
 - `board-head`, the latest publication's `{epoch, seq, revision, hash, sums}` (`sums`: the hash per
   collection), sent once on connecting and after every 15 s of silence, in place of a keepalive

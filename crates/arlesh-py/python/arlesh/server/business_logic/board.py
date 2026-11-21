@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from loguru import logger
 
 import arlesh
+from arlesh.server.ports.push.push_store import ChangeOrigin
 
 OpenAs = Callable[[str], Awaitable[arlesh.Database]]
 """Opens the database for writing as a client, past the hold check: ``open_as(client)``.
@@ -76,6 +77,11 @@ class Board:
         """The board's revision as it stands: how many writes have been committed to it, through
         any open of the file and any endpoint, this run."""
         return self.reader.revision
+
+    def origin_between(self, previous: int, reached: int) -> ChangeOrigin:
+        """Who caused the writes after revision ``previous`` up to ``reached``: the user's
+        devices, an agent, or no write at all (time)."""
+        return ChangeOrigin(self.reader.origin_between(previous, reached))
 
     async def open(self) -> None:
         """Takes the hold and opens the database for writing: the startup guard.

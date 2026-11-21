@@ -30,7 +30,8 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
-        self.publisher.record_write();
+        self.publisher
+            .record_write(arlesh_core::board::WriteOrigin::User);
         Ok(pin)
     }
 
@@ -40,7 +41,8 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
-        self.publisher.record_write();
+        self.publisher
+            .record_write(arlesh_core::board::WriteOrigin::User);
         Ok(())
     }
 
@@ -50,7 +52,8 @@ impl AgentsPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         db.commit().await.map_err(WireError::from_error)?;
-        self.publisher.record_write();
+        self.publisher
+            .record_write(arlesh_core::board::WriteOrigin::User);
         Ok(())
     }
 }

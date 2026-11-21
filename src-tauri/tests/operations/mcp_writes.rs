@@ -1625,7 +1625,7 @@ mod agent_waits {
         // The app polls: its windows write without announcing to the endpoint.
         let feed = ChangeFeed::new();
         // A cursor of 0 is no cursor, so the board has moved once before the poll begins.
-        feed.bump();
+        feed.bump(arlesh_core::board::WriteOrigin::Agent);
         let routes = events::routes(
             helpers::session_factory(&pool),
             EventStreams {

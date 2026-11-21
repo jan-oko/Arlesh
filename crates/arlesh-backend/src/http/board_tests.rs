@@ -346,6 +346,7 @@ fn an_event_moves_the_head_and_keeps_the_sums_of_the_same_run() {
         hash: Some(9),
         changes: None,
         reload: false,
+        origin: None,
     };
 
     backend.note_change(&change("run1", 3));

@@ -20,6 +20,15 @@ class Channel(StrEnum):
     capacity_cleared = "capacity_cleared"
 
 
+class ChangeOrigin(StrEnum):
+    """Who caused what happened on the board since the last look. The user's own changes are
+    pushed to nobody; an agent's, and time's, are."""
+
+    user = "user"
+    agent = "agent"
+    time = "time"
+
+
 class PushDevice(BaseModel):
     """A device registered for push."""
 
@@ -83,9 +92,13 @@ class PushStore(ABC):
         """Every registered device."""
 
     @abstractmethod
-    def plan(self, *, now: datetime | None = None) -> list[DevicePlan]:
+    def plan(
+        self, *, origin: ChangeOrigin = ChangeOrigin.time, now: datetime | None = None
+    ) -> list[DevicePlan]:
         """What each device is owed at ``now`` (the local clock by default), from the board
-        derived by the core's rules. A device owed nothing is left out."""
+        derived by the core's rules, after changes caused by ``origin``. A device owed nothing is
+        left out. After the user's own changes every device is owed nothing: what they made true
+        is recorded as told."""
 
     @abstractmethod
     def record(self, client: str, entries: list[SentEntry], *, now: datetime | None = None) -> None:

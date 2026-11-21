@@ -8,6 +8,7 @@ use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use tokio::sync::Notify;
 
 use super::*;
+use crate::board::{ChangeOrigin, WriteOrigin};
 use crate::nodes::id::tkey;
 
 struct TestClock {
@@ -96,7 +97,7 @@ async fn rig(clock: Arc<TestClock>, seed: &[&str]) -> Rig {
 impl Rig {
     async fn write(&self, sql: &str) {
         sqlx::query(sql).execute(&self.pool).await.unwrap();
-        self.publisher.record_write();
+        self.publisher.record_write(WriteOrigin::User);
     }
 
     async fn next(&self, seq: u64) -> Vec<Value> {
@@ -148,7 +149,7 @@ async fn writes_that_land_before_the_loop_runs_again_publish_one_event() {
     }
 
     for _ in 0..3 {
-        rig.publisher.record_write();
+        rig.publisher.record_write(WriteOrigin::User);
     }
     let events = rig.next(1).await;
 
@@ -296,4 +297,39 @@ async fn the_head_names_the_latest_publication() {
     assert_eq!(head.epoch, &*rig.publisher.epoch());
     assert!(head.sums.contains_key("tasks"));
     assert_eq!(rig.publisher.fence().revision, 0);
+}
+
+#[tokio::test]
+async fn every_event_says_who_caused_it() {
+    let rig = rig(TestClock::at(13, 12), &[]).await;
+    rig.publisher.current().await;
+
+    rig.write(TASK).await;
+    let by_user = rig.next(1).await;
+    sqlx::query("UPDATE tasks SET title = 'Agent' WHERE title = 'Docs'")
+        .execute(&rig.pool)
+        .await
+        .unwrap();
+    rig.publisher.record_write(WriteOrigin::Agent);
+    let by_agent = rig.next(2).await;
+
+    assert_eq!(by_user[0]["origin"], "user");
+    assert_eq!(by_agent[0]["origin"], "agent");
+}
+
+#[tokio::test]
+async fn a_tick_that_changes_something_is_the_work_of_time() {
+    let day = r#"'{"kind":"day","date":"2026-11-13"}'"#;
+    let due = format!(
+        "INSERT INTO tasks (id, title, parent_type, parent_id, time_scope_start_id, time_scope_end_id, on_scope_exit) \
+         VALUES ('00000000-0000-7000-8000-000000000064', 'Due', 'domain', '00000000-0000-7000-8000-000000000386', {day}, {day}, 'keep')"
+    );
+    let rig = rig(TestClock::at(13, 12), &[&due]).await;
+    rig.publisher.current().await;
+
+    rig.clock.tick_at(14, 3);
+    let events = rig.next(1).await;
+
+    assert_eq!(events[0]["origin"], "time");
+    assert_eq!(rig.publisher.current().await.origin, ChangeOrigin::Time);
 }

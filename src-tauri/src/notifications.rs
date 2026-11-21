@@ -26,7 +26,7 @@ use arlesh_core::push::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::backend::revision::{BoardChange, BoardRevision, CurrentBoard};
+use crate::backend::revision::{BoardChange, CurrentBoard};
 
 #[cfg(test)]
 mod tests;
@@ -181,9 +181,9 @@ impl Notifications {
         let event = Change {
             epoch: &change.epoch,
             seq: change.seq,
-            revision: change.revision,
             changes: changes.as_ref(),
             reload: change.reload || (change.changes.is_some() && changes.is_none()),
+            origin: change.origin,
         };
         let intake = lock(&self.notifier).follow(&event, &self.store.current());
         match intake {
@@ -202,24 +202,13 @@ impl Notifications {
             return;
         };
         let seq = board.seq.unwrap_or(0);
-        let shown = lock(&self.notifier).load(
-            &json,
-            &stamp.epoch,
-            seq,
-            stamp.revision,
-            &self.store.current(),
-        );
+        let shown = lock(&self.notifier).load(&json, &stamp.epoch, seq, &self.store.current());
         match shown {
             Ok(events) => self.show(&events),
             Err(error) => {
                 tracing::warn!(error = %error, "the board could not be read for notifications")
             }
         }
-    }
-
-    /// Notes that a window of this device wrote, and settled on `fence`.
-    pub fn note_own_write(&self, fence: &BoardRevision) {
-        lock(&self.notifier).note_own_write(&fence.epoch, fence.revision);
     }
 
     /// Claims the right to load the board for this service: `false` while another load runs.

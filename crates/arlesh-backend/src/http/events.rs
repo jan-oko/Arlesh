@@ -264,6 +264,7 @@ fn relay(backend: &HttpBackend, announce: &Announce, event: &Event) {
             hash: None,
             changes: None,
             reload: true,
+            origin: None,
         }
     });
     backend.note_change(&change);

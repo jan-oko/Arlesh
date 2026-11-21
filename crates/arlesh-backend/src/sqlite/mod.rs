@@ -72,7 +72,9 @@ impl SqliteBackend {
     /// endpoint hands it to every write an agent makes.
     pub fn write_recorder(&self) -> Announce {
         let publisher = self.publisher.clone();
-        Arc::new(move |_origin: Option<&str>| publisher.record_write())
+        Arc::new(move |_origin: Option<&str>| {
+            publisher.record_write(arlesh_core::board::WriteOrigin::Agent)
+        })
     }
 }
 

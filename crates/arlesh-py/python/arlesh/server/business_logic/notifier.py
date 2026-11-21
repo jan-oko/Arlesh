@@ -8,6 +8,11 @@ compares it with what the device was told) and sends it. Looks happen:
 * at the scope boundaries (see :mod:`arlesh.server.business_logic.ticks`) and every ``tick``
   seconds, since a Task becomes Overdue and an occurrence appears with no write at all.
 
+A look knows who caused what happened since the one before: the user's own devices (the app or
+the phone, undo and redo included), an agent, or time alone. What the user did is pushed to
+nobody: it is recorded as told, so it is not owed at a later look either. An agent's changes and
+time's are pushed.
+
 What was sent is recorded per device, only once the push service accepted it, so a restart never
 sends again what was sent and a message that failed is tried again at the next look. With no
 sender, the server takes registrations and sends nothing.
@@ -25,7 +30,7 @@ from loguru import logger
 from arlesh.server.business_logic.board import Board, BoardNotOpen
 from arlesh.server.business_logic.ticks import seconds_until_next_look
 from arlesh.server.ports.push.push_sender import Delivery, PushSender
-from arlesh.server.ports.push.push_store import PushStore, SentEntry
+from arlesh.server.ports.push.push_store import ChangeOrigin, PushStore, SentEntry
 
 TICK_SECONDS = 300.0
 """The coarse beat of looks that no write and no boundary asked for."""
@@ -101,12 +106,18 @@ class Notifier:
         async with self._lock:
             return await asyncio.to_thread(self._store.unregister, client)
 
-    async def look(self) -> int:
-        """Sends every device what it is owed, and answers how many messages were accepted."""
+    async def look_since(self, seen: int) -> int:
+        """Looks at the board after the writes since revision ``seen``, whoever made them."""
+        origin = self._board.origin_between(seen, self._board.revision)
+        return await self.look(origin)
+
+    async def look(self, origin: ChangeOrigin = ChangeOrigin.time) -> int:
+        """Sends every device what it is owed after changes caused by ``origin``, and answers how
+        many messages were accepted. Nothing is sent after the user's own changes."""
         if self._sender is None:
             return 0
         async with self._lock:
-            plans = await asyncio.to_thread(self._store.plan, now=self._clock())
+            plans = await asyncio.to_thread(self._store.plan, origin=origin, now=self._clock())
             accepted = 0
             for plan in plans:
                 told: list[SentEntry] = []
@@ -130,12 +141,20 @@ class Notifier:
 
     async def _run(self) -> None:
         seen = await self._revision()
+        origin = ChangeOrigin.time
         while True:
             try:
-                await self.look()
+                await self.look(origin)
+                looked = True
             except Exception:
                 logger.exception("A look at the board for pushes failed")
-            seen = await self._wait(seen)
+                looked = False
+            reached = await self._wait(seen)
+            # A look that failed leaves `seen` where it was, so the next one still knows who
+            # wrote what it has not yet looked at.
+            origin = self._board.origin_between(seen, reached)
+            if looked:
+                seen = reached
 
     async def _revision(self) -> int:
         while True:

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
+use crate::board::ChangeOrigin;
 use crate::database::session::SessionFactory;
 use chrono::NaiveDate;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -74,7 +75,7 @@ async fn a_new_device_is_baselined_and_a_known_one_keeps_its_record() {
     .unwrap());
     let plans = {
         set_capacity(&mut db, false).await;
-        plan_all(&mut db, noon())
+        plan_all(&mut db, noon(), ChangeOrigin::Agent)
     }
     .await
     .unwrap();
@@ -95,7 +96,7 @@ async fn what_is_recorded_is_not_planned_again() {
 
     let plans = {
         set_capacity(&mut db, true).await;
-        plan_all(&mut db, noon())
+        plan_all(&mut db, noon(), ChangeOrigin::Agent)
     }
     .await
     .unwrap();
@@ -112,7 +113,7 @@ async fn what_is_recorded_is_not_planned_again() {
 
     assert!({
         set_capacity(&mut db, true).await;
-        plan_all(&mut db, noon())
+        plan_all(&mut db, noon(), ChangeOrigin::Agent)
     }
     .await
     .unwrap()
@@ -161,4 +162,55 @@ async fn revoking_a_device_takes_its_registration_with_it() {
 
     assert!(db.push().devices().await.unwrap().is_empty());
     assert!(db.push().sent("phone").await.unwrap().is_empty());
+}
+
+async fn phone_on_a_clear_board(db: &mut Db<Transactional>) {
+    set_capacity(db, false).await;
+    register_device(db, "phone", "t", noon()).await.unwrap();
+}
+
+#[tokio::test]
+async fn locking_an_account_by_hand_pushes_nothing_now_or_later() {
+    let factory = factory().await;
+    let mut db = factory.begin().await.unwrap();
+    phone_on_a_clear_board(&mut db).await;
+
+    set_capacity(&mut db, true).await;
+    let by_the_user = plan_all(&mut db, noon(), ChangeOrigin::User).await.unwrap();
+    let later_by_time = plan_all(&mut db, noon(), ChangeOrigin::Time).await.unwrap();
+
+    assert!(by_the_user.is_empty());
+    assert!(later_by_time.is_empty(), "it was recorded as told");
+}
+
+#[tokio::test]
+async fn unlocking_by_hand_pushes_nothing_but_the_same_lock_by_an_agent_does() {
+    let factory = factory().await;
+    let mut db = factory.begin().await.unwrap();
+    phone_on_a_clear_board(&mut db).await;
+    set_capacity(&mut db, true).await;
+    plan_all(&mut db, noon(), ChangeOrigin::User).await.unwrap();
+
+    set_capacity(&mut db, false).await;
+    let by_the_user = plan_all(&mut db, noon(), ChangeOrigin::User).await.unwrap();
+    set_capacity(&mut db, true).await;
+    let by_an_agent = plan_all(&mut db, noon(), ChangeOrigin::Agent)
+        .await
+        .unwrap();
+
+    assert!(by_the_user.is_empty());
+    assert_eq!(by_an_agent.len(), 1);
+    assert_eq!(by_an_agent[0].events[0].key, "capacity");
+}
+
+#[tokio::test]
+async fn a_lock_found_by_a_look_with_no_write_is_pushed() {
+    let factory = factory().await;
+    let mut db = factory.begin().await.unwrap();
+    phone_on_a_clear_board(&mut db).await;
+
+    set_capacity(&mut db, true).await;
+    let plans = plan_all(&mut db, noon(), ChangeOrigin::Time).await.unwrap();
+
+    assert_eq!(plans.len(), 1);
 }
