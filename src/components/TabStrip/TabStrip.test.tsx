@@ -518,3 +518,35 @@ describe("the strip follows the touch layout, not the width", () => {
     expect(screen.getByRole("button", { name: "common:newTab" })).toBeInTheDocument();
   });
 });
+
+describe("a box instance names its branch at the strip's right end", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the branch as plain text with the full name as its tooltip", () => {
+    vi.stubEnv("VITE_ARLESH_BOX", "978-box-branch-name");
+    render(<TabStrip />);
+    const label = screen.getByText("978-box-branch-name");
+    expect(label).toHaveAttribute("title", "978-box-branch-name");
+    expect(label.closest("button")).toBeNull();
+  });
+
+  it("shows nothing when no instance name is set", () => {
+    vi.stubEnv("VITE_ARLESH_BOX", "");
+    render(<TabStrip />);
+    expect(screen.queryByTestId("box-branch")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing in the touch layout, where there is no strip", () => {
+    vi.stubEnv("VITE_ARLESH_BOX", "978-box-branch-name");
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(any-pointer: coarse) and (not (any-pointer: fine))",
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    render(<TabStrip />);
+    expect(screen.queryByText("978-box-branch-name")).not.toBeInTheDocument();
+  });
+});

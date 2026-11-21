@@ -104,7 +104,9 @@ class Board:
             raise
 
     async def close(self) -> None:
-        """Closes every open database."""
+        """Closes every open database, after giving up the change-log capture."""
+        if self._publish and self._reader is not None:
+            await self._reader.stop_publisher()
         for writer in self._writers.values():
             await writer.close()
         self._writers.clear()

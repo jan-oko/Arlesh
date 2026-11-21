@@ -891,16 +891,31 @@ class Database(ABC):
         one. Needs :meth:`start_publisher`."""
 
     @abstractmethod
-    async def board_events_after(self, after: int, wait: float) -> list[tuple[int, str]]:
+    async def board_events_after(
+        self, after: int, wait: float, rows: bool = False
+    ) -> list[tuple[int, str]]:
         """The change events after publication ``after`` as ``(seq, JSON)``, in order. When they
         are no longer all kept, one ``reload`` event at the latest publication. Waits up to
         ``wait`` seconds for the next one when there is none, and answers empty if it does not
-        come. Needs :meth:`start_publisher`."""
+        come. With ``rows`` each event also carries the replicated source rows it changed
+        (``source``); without, it is exactly what apps before the Replica read. Needs
+        :meth:`start_publisher`."""
+
+    @abstractmethod
+    async def stop_publisher(self) -> None:
+        """Gives up the change-log capture this process took with :meth:`start_publisher`, at a
+        clean shutdown, so no log is written after it. Raises :class:`NotPermitted` over HTTP."""
 
     @abstractmethod
     def board_head(self) -> BoardHead | None:
         """The latest publication's identity, or ``None`` before the first. Needs
         :meth:`start_publisher`."""
+
+    @abstractmethod
+    async def board_snapshot(self) -> str:
+        """The device snapshot as the core's JSON: every replicated row, read in one transaction,
+        with the epoch and revision it is at, the schema version and the rows' hash
+        (``docs/spec/http-api.md``, *Device snapshot*). Raises :class:`NotPermitted` over HTTP."""
 
 
 def set_time_zone(name: str | None) -> None:
@@ -1639,11 +1654,20 @@ class Arlesh(Database):
             raise from_native(error) from None
         return CurrentBoard(body=body, head=BoardHead.model_validate_json(head), now=now)
 
-    async def board_events_after(self, after: int, wait: float) -> list[tuple[int, str]]:
+    async def board_events_after(
+        self, after: int, wait: float, rows: bool = False
+    ) -> list[tuple[int, str]]:
         native = self._publishing_native()
         try:
-            events: list[tuple[int, str]] = await native.board_events_after(after, wait)
+            events: list[tuple[int, str]] = await native.board_events_after(after, wait, rows)
             return events
+        except _native.NativeError as error:
+            raise from_native(error) from None
+
+    async def stop_publisher(self) -> None:
+        native = self._publishing_native()
+        try:
+            await native.stop_publisher()
         except _native.NativeError as error:
             raise from_native(error) from None
 
@@ -1654,6 +1678,14 @@ class Arlesh(Database):
         except _native.NativeError as error:
             raise from_native(error) from None
         return None if head is None else BoardHead.model_validate_json(head)
+
+    async def board_snapshot(self) -> str:
+        native = self._publishing_native()
+        try:
+            body: str = await native.board_snapshot()
+            return body
+        except _native.NativeError as error:
+            raise from_native(error) from None
 
     def _publishing_native(self) -> _SqliteNative:
         """The native database, which publishes; over HTTP the server does, and this refuses."""

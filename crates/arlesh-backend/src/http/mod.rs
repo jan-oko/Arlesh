@@ -364,6 +364,7 @@ impl HttpBackend {
             revision: change.revision,
             hash,
             sums,
+            source: None,
         });
     }
 

@@ -100,6 +100,10 @@ use statement::{Replay, SqlValue, Statement};
 ///   operational state, not choices to take back. (`agents` and `agent_accounts` are journaled
 ///   from migration 0102: Claim management is undoable.)
 ///
+/// * `change_log` and `change_capture` — the buffer the server's board publisher reads the changed
+///   rows from, and the switch that turns it on (migration 0111): sync plumbing, rewritten by every
+///   write and never a choice to take back.
+///
 /// `sqlite_*` and `_sqlx_migrations` are infrastructure rather than board data and are excluded by
 /// name wherever tables are enumerated; they are not listed here because nothing about them is a
 /// design decision.
@@ -118,6 +122,8 @@ pub const EXCLUDED_TABLES: &[&str] = &[
     "connect_tokens",
     "push_devices",
     "push_sent",
+    "change_log",
+    "change_capture",
 ];
 
 /// How many Gestures the journal keeps before the oldest are dropped.

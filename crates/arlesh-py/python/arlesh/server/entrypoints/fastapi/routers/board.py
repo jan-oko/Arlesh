@@ -20,6 +20,7 @@ class BoardsRouter(BoardRouter):
 
     def _register_routes(self) -> None:
         self.get("/current")(self._current)
+        self.get("/snapshot")(self._snapshot)
         self.get("", response_model=MindmapLoad)(self._get)
         self.get("/lifecycles")(self._lifecycles)
         self.get("/task-dependencies")(self._task_dependencies)
@@ -41,6 +42,18 @@ class BoardsRouter(BoardRouter):
                 BOARD_NOW_HEADER: current.now,
             },
         )
+
+    async def _snapshot(self) -> Response:
+        """The device snapshot: every replicated row of the board, for a client's Replica.
+
+        ``{epoch, revision, schema_version, source: {upto, hash, count}, tables}``: ``tables`` maps
+        each replicated table to its rows (``{rowid, image}``), ``source.upto`` is the change-log
+        position the rows stand at and ``source.hash`` their board hash. A client applies the
+        change stream's rows past ``upto`` and nothing before it. Credentials, the server's tokens,
+        pairings and push registrations are never in it. Any device token may fetch it; ``/backup``
+        stays the administrator's."""
+        body = await self._reader.board_snapshot()
+        return Response(content=body, media_type="application/json")
 
     async def _get(self, now: datetime | None = None) -> Response:
         """Every node of every kind, with its derived lifecycle, short id and facts.

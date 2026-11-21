@@ -32,6 +32,15 @@ class BoardRevision(BaseModel):
     revision: int
 
 
+class SourceHead(BaseModel):
+    """Where the replicated source rows stand: the change-log position (``upto``) and the hash of
+    every replicated row at it, 16 lowercase hex digits (``docs/spec/client-mode.md``, *The source
+    hash*)."""
+
+    upto: int
+    hash: str
+
+
 class BoardHead(BaseModel):
     """The latest publication's identity: the run (``epoch``), its number within the run
     (``seq``), the writes its board holds at least (``revision``) and the board's hash, with the
@@ -42,6 +51,8 @@ class BoardHead(BaseModel):
     revision: int
     hash: int
     sums: dict[str, int]
+    source: SourceHead | None = None
+    """The replicated rows' position and hash, from a publisher that publishes them."""
 
 
 class CurrentBoard(BaseModel):
