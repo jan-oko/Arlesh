@@ -37,6 +37,7 @@ class FakeStore(PushStore):
         self.registered = True
         self.failing = False
         self.looks = 0
+        self.succeeded = 0
         self.origins: list[ChangeOrigin] = []
 
     def register(self, client: str, fcm_token: str, *, now: datetime | None = None) -> bool:
@@ -56,6 +57,7 @@ class FakeStore(PushStore):
         self.origins.append(origin)
         if self.failing:
             raise RuntimeError("the database is away")
+        self.succeeded += 1
         assert now is not None
         if not self.registered or now < self.due or "overdue:1" in self.told:
             return []
@@ -240,8 +242,7 @@ async def test_a_look_that_failed_still_knows_who_wrote_what_it_missed() -> None
         await board.write()
         await until(lambda: store.looks >= 3)
         store.failing = False
-        failed = store.looks
-        await until(lambda: store.looks > failed)
+        await until(lambda: store.succeeded >= 1)
     finally:
         await pushes.stop()
 

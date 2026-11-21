@@ -435,8 +435,9 @@ def test_undoing_the_release_of_a_question_does_not_push_it_again(
     _, wait = ask_wait(server, domain)
     look(server)
     assert sender.channels(PHONE_TOKEN) == ["agent_question"]
-    released = server.patch(f"/waits/{wait}", json={"status": "released"})
-    assert released.status_code == 200, released.text
+    server.put(f"/waits/{wait}/draft", json={"answer": "yes"})
+    sent = server.post("/drafts/send", json={"shown": [wait]})
+    assert sent.status_code == 200, sent.text
     look_since(server, 0)
     seen = revision(server)
 
