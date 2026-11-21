@@ -126,9 +126,18 @@
   font-size: var(--text-xs, var(--text-sm));
 }
 
-@media (pointer: coarse) {
-  .send,
-  /* Stage and the other secondary controls: an outline at the normal text contrast, so an enabled one
+.send {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--node-radius);
+  color: white;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+/* Stage and the other secondary controls: an outline at the normal text contrast, so an enabled one
    never reads as disabled. Pressed (staged) is filled and accented; disabled is faded and dashed. */
 .secondary {
   background: var(--node-bg);
@@ -158,6 +167,14 @@
   border-color: var(--node-border);
   color: var(--text-secondary);
   background: transparent;
+}
+
+@media (pointer: coarse) {
+  .send,
+  .secondary {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 .send:disabled,
