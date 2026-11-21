@@ -17,8 +17,8 @@ export interface PushBridge {
   /** Opens the system's notification settings for this app. */
   openSettings: () => void;
   /**
-   * What a tapped notification asked to open, once, as JSON `{"task": "task-12", "channel":
-   * "agent_question"}`; empty when none. See {@link readOpenedNotification}.
+   * What a tapped notification asked to open, once, as JSON `{"task": "task-12", "wait": "<id>",
+   * "channel": "agent_question"}` (`wait` only for a question); empty when none. See {@link readOpenedNotification}.
    */
   takeOpenedNotification: () => string;
 }
@@ -38,6 +38,8 @@ function isBridge(value: unknown): value is PushBridge {
 /** A tapped notification: the Task it is about, if it is about one, and the channel it came on. */
 export interface OpenedNotification {
   task: string | null;
+  /** The open wait a question's notification is about. */
+  wait: string | null;
   channel: string;
 }
 
@@ -49,8 +51,13 @@ export function readOpenedNotification(bridge: PushBridge): OpenedNotification |
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
     const task: unknown = Reflect.get(parsed, "task");
+    const wait: unknown = Reflect.get(parsed, "wait");
     const channel: unknown = Reflect.get(parsed, "channel");
-    return { task: typeof task === "string" && task !== "" ? task : null, channel: typeof channel === "string" ? channel : "" };
+    return {
+      task: typeof task === "string" && task !== "" ? task : null,
+      wait: typeof wait === "string" && wait !== "" ? wait : null,
+      channel: typeof channel === "string" ? channel : "",
+    };
   } catch {
     return null;
   }

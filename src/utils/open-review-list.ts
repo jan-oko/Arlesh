@@ -49,13 +49,22 @@ function replaceActiveView(): Tab["stores"] {
   return active.stores;
 }
 
+/** What a notification of an agent's question names: the Task holding it, and the wait itself. */
+export interface NotifiedQuestion {
+  task: string | null;
+  wait: string | null;
+}
+
 /**
  * Opens the List View on the Review preset for a clicked or tapped notification of an agent's
- * question, with `taskKey` (the Task that holds the question, when the notification names one)
- * selected and scrolled into view. A question already answered or gone simply is not in the list:
- * the list still opens, with nothing selected.
+ * question: the Task's row is selected and the wait's own answer box is scrolled into view, and on
+ * the desktop focused as `Q` would (on the phone it is not, so the keyboard does not rise on
+ * opening). A question already answered or gone is simply not drawn: the list still opens, the
+ * Task selected if it is still a row and no box focused.
  */
-export function openReviewList(taskKey: string | null, opening: ReviewOpening): void {
+export function openReviewList(question: NotifiedQuestion, opening: ReviewOpening): void {
   const stores = opening === "tab" ? showReviewTab() : replaceActiveView();
-  if (taskKey !== null) stores.mindmap.getState().requestSelection(taskKey);
+  if (question.task === null) return;
+  const wait = question.wait === null ? undefined : { id: question.wait, focus: opening === "tab" };
+  stores.mindmap.getState().requestSelection(question.task, wait);
 }

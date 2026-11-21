@@ -1,0 +1,4 @@
+/* Names one open wait's box for the notification that opens it, without being a box itself. */
+.wait {
+  display: contents;
+}

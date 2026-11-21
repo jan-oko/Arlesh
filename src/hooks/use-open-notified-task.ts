@@ -22,7 +22,7 @@ export function useOpenNotifiedTask(): void {
     const open = (): void => {
       const opened = readOpenedNotification(bridge);
       if (opened === null) return;
-      if (opened.channel === QUESTION_CHANNEL) openReviewList(opened.task, "replace-view");
+      if (opened.channel === QUESTION_CHANNEL) openReviewList({ task: opened.task, wait: opened.wait }, "replace-view");
       else if (opened.task !== null) activeTabStores().mindmap.getState().selectNode(opened.task);
     };
     window.addEventListener(OPEN_TASK_EVENT, open);
@@ -34,7 +34,7 @@ export function useOpenNotifiedTask(): void {
     if (pushBridge() !== null) return;
     let subscribed = true;
     let unlisten: (() => void) | null = null;
-    void onOpenReview((task) => { openReviewList(task, "tab"); }).then((stop) => {
+    void onOpenReview((question) => { openReviewList(question, "tab"); }).then((stop) => {
       if (subscribed) unlisten = stop;
       else stop();
     });

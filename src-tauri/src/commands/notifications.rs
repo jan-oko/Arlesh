@@ -16,7 +16,7 @@ use crate::{
 /// How long to wait before asking again for a board that could not be had.
 const RETRY: Duration = Duration::from_secs(10);
 
-/// The event a click on an agent's question raises for the page: `{"task": "task-12"}`. The page
+/// The event a click on an agent's question raises for the page: `{"task": "task-12", "wait": "<id>"}`. The page
 /// shows a List tab on the Review preset with that Task selected (`src/api/notifications.ts`).
 #[cfg(desktop)]
 const OPEN_REVIEW_EVENT: &str = "arlesh-open-review";
@@ -26,13 +26,14 @@ const OPEN_REVIEW_EVENT: &str = "arlesh-open-review";
 #[derive(Clone, serde::Serialize)]
 struct OpenReview {
     task: String,
+    wait: Option<String>,
 }
 
-/// Raises the app's window and tells its page to show the Review list at `task`. The first
+/// Raises the app's window and tells its page to show the Review list at `task`, focusing `wait`'s box. The first
 /// window is the one that answers (a notification belongs to the app, not to a window), so several
 /// windows never open the tab twice; a window hidden in the tray is shown.
 #[cfg(desktop)]
-fn open_review<R: Runtime>(app: &tauri::AppHandle<R>, task: &str) {
+fn open_review<R: Runtime>(app: &tauri::AppHandle<R>, task: &str, wait: Option<&str>) {
     let windows = app.webview_windows();
     let window = windows
         .get(crate::windows::BOOTSTRAP_LABEL)
@@ -46,6 +47,7 @@ fn open_review<R: Runtime>(app: &tauri::AppHandle<R>, task: &str) {
     }
     let payload = OpenReview {
         task: task.to_owned(),
+        wait: wait.map(str::to_owned),
     };
     if let Err(error) = window.emit(OPEN_REVIEW_EVENT, payload) {
         tracing::warn!(error = %error, "could not tell the window to open the Review list");
@@ -88,7 +90,9 @@ struct SystemNotices<R: Runtime>(tauri::AppHandle<R>);
 #[cfg(target_os = "linux")]
 impl<R: Runtime> Deliver for SystemNotices<R> {
     fn show(&self, notice: &Notice) {
-        let target = notice.review_target().map(str::to_owned);
+        let target = notice
+            .review_target()
+            .map(|target| (target.task.to_owned(), target.wait.map(str::to_owned)));
         let mut shown = notify_rust::Notification::new();
         shown
             .appname(&notice.title)
@@ -105,7 +109,7 @@ impl<R: Runtime> Deliver for SystemNotices<R> {
                 return;
             }
         };
-        let Some(task) = target else {
+        let Some((task, wait)) = target else {
             return;
         };
         let app = self.0.clone();
@@ -113,7 +117,7 @@ impl<R: Runtime> Deliver for SystemNotices<R> {
         std::thread::spawn(move || {
             handle.wait_for_action(|action| {
                 if action == DEFAULT_ACTION {
-                    open_review(&app, &task);
+                    open_review(&app, &task, wait.as_deref());
                 }
             });
         });

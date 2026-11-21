@@ -45,17 +45,39 @@ pub struct Notice {
     pub text: String,
     /// The Task it is about, keyed as the board keys it (`task-12`), if it is about one.
     pub task: Option<String>,
+    /// The open wait an agent's question is about (the id after `question:` in the fact's key).
+    pub wait: Option<String>,
+}
+
+/// What a click on a notice shows: the Review list at a Task, focusing one wait's box.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewTarget<'a> {
+    /// The Task that holds the question, keyed as the board keys it.
+    pub task: &'a str,
+    /// The question itself, when the notice knows it.
+    pub wait: Option<&'a str>,
 }
 
 impl Notice {
-    /// The Task to show in the Review list when this notice is clicked: only an agent's question
-    /// opens anything, and only when it names its Task. Every other notice does nothing on a click,
-    /// as before.
-    pub fn review_target(&self) -> Option<&str> {
-        match self.channel {
-            Channel::AgentQuestion => self.task.as_deref(),
+    /// What to show in the Review list when this notice is clicked: only an agent's question opens
+    /// anything, and only when it names its Task. Every other notice does nothing on a click, as
+    /// before.
+    pub fn review_target(&self) -> Option<ReviewTarget<'_>> {
+        match (self.channel, self.task.as_deref()) {
+            (Channel::AgentQuestion, Some(task)) => Some(ReviewTarget {
+                task,
+                wait: self.wait.as_deref(),
+            }),
             _ => None,
         }
+    }
+}
+
+/// The wait an agent's question is about: the fact's key is `question:<wait>`.
+fn wait_of(event: &PushEvent) -> Option<String> {
+    match event.channel {
+        Channel::AgentQuestion => event.key.strip_prefix("question:").map(str::to_owned),
+        _ => None,
     }
 }
 
@@ -74,6 +96,7 @@ pub fn notice_for(event: &PushEvent) -> Notice {
         title: "Arlesh".to_owned(),
         text,
         task: event.task.clone(),
+        wait: wait_of(event),
     }
 }
 

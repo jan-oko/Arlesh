@@ -10,12 +10,12 @@ vi.mock("@/stores/tab-stores-context", () => ({
 
 const openReviewList = vi.fn();
 vi.mock("@/utils/open-review-list", () => ({
-  openReviewList: (task: string | null, opening: string) => { openReviewList(task, opening); },
+  openReviewList: (question: unknown, opening: string) => { openReviewList(question, opening); },
 }));
 
-let clicked: ((task: string) => void) | null = null;
+let clicked: ((question: { task: string; wait: string | null }) => void) | null = null;
 vi.mock("@/api/notifications", () => ({
-  onOpenReview: (handler: (task: string) => void) => {
+  onOpenReview: (handler: (question: { task: string; wait: string | null }) => void) => {
     clicked = handler;
     return Promise.resolve(() => { clicked = null; });
   },
@@ -31,7 +31,7 @@ const bridge = {
   takeOpenedNotification: () => opened.shift() ?? "",
 };
 
-const tap = (task: string | null, channel: string): string => JSON.stringify({ task, channel });
+const tap = (task: string | null, channel: string, wait: string | null = null): string => JSON.stringify({ task, channel, wait });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,9 +44,9 @@ describe("useOpenNotifiedTask on the phone", () => {
   beforeEach(() => { Reflect.set(window, "ArleshPush", bridge); });
 
   it("opens the Review list for the question a cold start was tapped for", () => {
-    opened.push(tap("task-12", "agent_question"));
+    opened.push(tap("task-12", "agent_question", "w-1"));
     renderHook(() => useOpenNotifiedTask());
-    expect(openReviewList).toHaveBeenCalledWith("task-12", "replace-view");
+    expect(openReviewList).toHaveBeenCalledWith({ task: "task-12", wait: "w-1" }, "replace-view");
   });
 
   it("opens the Review list for a tap while running, once", () => {
@@ -58,7 +58,7 @@ describe("useOpenNotifiedTask on the phone", () => {
     act(() => { window.dispatchEvent(new Event(OPEN_TASK_EVENT)); });
 
     expect(openReviewList).toHaveBeenCalledTimes(1);
-    expect(openReviewList).toHaveBeenCalledWith("task-7", "replace-view");
+    expect(openReviewList).toHaveBeenCalledWith({ task: "task-7", wait: null }, "replace-view");
   });
 
   it("keeps selecting the Task for the other kinds of notification", () => {
@@ -74,8 +74,8 @@ describe("useOpenNotifiedTask on the desktop", () => {
     renderHook(() => useOpenNotifiedTask());
     await act(async () => { await Promise.resolve(); });
 
-    act(() => { clicked?.("task-5"); });
+    act(() => { clicked?.({ task: "task-5", wait: "w-2" }); });
 
-    expect(openReviewList).toHaveBeenCalledWith("task-5", "tab");
+    expect(openReviewList).toHaveBeenCalledWith({ task: "task-5", wait: "w-2" }, "tab");
   });
 });

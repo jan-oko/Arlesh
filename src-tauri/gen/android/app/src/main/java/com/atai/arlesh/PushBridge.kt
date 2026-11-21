@@ -55,8 +55,8 @@ class PushBridge(private val activity: MainActivity) {
   }
 
   /**
-   * What a tapped notification opened the app for, once, as JSON `{"task": "task-12", "channel":
-   * "agent_question"}` (`task` empty when it names none); else an empty string.
+   * What a tapped notification opened the app for, once, as JSON `{"task": "task-12", "wait":
+   * "<id>", "channel": "agent_question"}` (`task` and `wait` empty when it names none); else an empty string.
    */
   @JavascriptInterface
   fun takeOpenedNotification(): String {
@@ -68,6 +68,7 @@ class PushBridge(private val activity: MainActivity) {
   companion object {
     const val TASK_EXTRA = "arlesh_task"
     const val CHANNEL_EXTRA = "arlesh_channel"
+    const val WAIT_EXTRA = "arlesh_wait"
     private const val REQUEST = 4721
 
     /** A tapped notification's Task and channel (as JSON) that the page has not taken yet (a cold start). */
@@ -78,9 +79,11 @@ class PushBridge(private val activity: MainActivity) {
     fun remember(intent: Intent?): Boolean {
       val channel = intent?.getStringExtra(CHANNEL_EXTRA) ?: return false
       val task = intent.getStringExtra(TASK_EXTRA) ?: ""
+      val wait = intent.getStringExtra(WAIT_EXTRA) ?: ""
       intent.removeExtra(CHANNEL_EXTRA)
       intent.removeExtra(TASK_EXTRA)
-      pendingOpened = JSONObject().put("task", task).put("channel", channel).toString()
+      intent.removeExtra(WAIT_EXTRA)
+      pendingOpened = JSONObject().put("task", task).put("wait", wait).put("channel", channel).toString()
       return true
     }
 

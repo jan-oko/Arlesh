@@ -156,13 +156,17 @@ fn notice(channel: Channel, task: Option<&str>) -> Notice {
         title: "Arlesh".into(),
         text: String::new(),
         task: task.map(str::to_owned),
+        wait: Some("w-1".to_owned()),
     }
 }
 
 #[test]
 fn a_clicked_question_opens_the_review_list_at_its_task() {
     let question = notice(Channel::AgentQuestion, Some("task-12"));
-    assert_eq!(question.review_target(), Some("task-12"));
+    assert_eq!(
+        question.review_target(),
+        Some(ReviewTarget { task: "task-12", wait: Some("w-1") })
+    );
 }
 
 #[test]
@@ -180,4 +184,28 @@ fn the_other_notices_open_nothing_on_a_click() {
     ] {
         assert_eq!(notice(channel, Some("task-12")).review_target(), None);
     }
+}
+
+#[test]
+fn a_question_notice_knows_its_wait_from_the_fact_key() {
+    let event = PushEvent {
+        key: "question:0190-aaaa".into(),
+        value: String::new(),
+        channel: Channel::AgentQuestion,
+        task: Some("task-12".into()),
+        title: Some("Ship?".into()),
+    };
+    assert_eq!(notice_for(&event).wait.as_deref(), Some("0190-aaaa"));
+}
+
+#[test]
+fn only_a_question_notice_carries_a_wait() {
+    let event = PushEvent {
+        key: "overdue:12".into(),
+        value: String::new(),
+        channel: Channel::TaskOverdue,
+        task: Some("task-12".into()),
+        title: Some("Ship".into()),
+    };
+    assert_eq!(notice_for(&event).wait, None);
 }

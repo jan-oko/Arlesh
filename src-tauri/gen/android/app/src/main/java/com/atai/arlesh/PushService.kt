@@ -31,6 +31,10 @@ class PushService : FirebaseMessagingService() {
       flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
       putExtra(PushBridge.CHANNEL_EXTRA, channel)
       data["task"]?.let { putExtra(PushBridge.TASK_EXTRA, it) }
+      // A question's tag is `question:<wait>`: the wait the page focuses.
+      if (channel == "agent_question") {
+        data["tag"]?.removePrefix("question:")?.let { putExtra(PushBridge.WAIT_EXTRA, it) }
+      }
     }
     val tag = data["tag"] ?: channel
     val tap = PendingIntent.getActivity(

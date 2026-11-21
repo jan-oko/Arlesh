@@ -142,15 +142,21 @@ with the same defaults, generated Tasks included.
 
 Settled with the user on 2026-11-21: a notification of an agent's question or review opens the List
 View on the Review preset ([List View](list-view.md)), with the Task that holds the question
-selected and scrolled into view. (The list draws a question on its Task, so the Task's row is the
-selection.)
+selected and **the question's own answer box focused**, scrolled into view. The list draws each open
+question or review of a Task as its own box (ADR 0021), the same boxes `Q` jumps between, so with two
+open questions under one Task the one the notification is about is the one focused. The wait is named
+by the push: its fact key and tag are `question:<wait>`, which the Android intent, the page's
+`takeOpenedNotification()` and the desktop's `arlesh-open-review` event (`{task, wait}`) carry along.
 
 - **Desktop.** A click raises and focuses the app's window (first window; shown again if it is in
   the tray) and shows a **List tab on the Review preset**: a new tab after the active one, unless a
   List tab on the Review preset over the whole board is already open, in which case that tab is
-  switched to. The tab is an ordinary tab and is written down with the strip.
+  switched to. The tab is an ordinary tab and is written down with the strip. The question's box is
+  focused as `Q` focuses it.
 - **Phone.** A tap replaces the active tab's view with the List View on the Review preset, over the
   whole board (it leaves a subtree it was in). There is no history to restore: Back does not return
-  to the previous view. It works with the app running and from a cold start.
-- **Gone already.** A question answered or released by the time the notification is opened is no
-  longer in the Review list: the list still opens, with nothing selected, and no error.
+  to the previous view. It works with the app running and from a cold start. The question's box is
+  scrolled into view but **not focused**, so opening does not raise the keyboard.
+- **Gone already.** A question answered or released by the time the notification is opened has no
+  box: the list still opens, with its Task selected if the Task is still a row, nothing focused, and
+  no error. The request for the box lapses after a few seconds.

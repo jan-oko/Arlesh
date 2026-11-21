@@ -3,6 +3,7 @@ import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useTabStores } from "@/stores/tab-stores-context";
+import { useShowRequestedWait } from "@/hooks/use-show-requested-wait";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -265,6 +266,7 @@ export default function ListView() {
   // Derived rather than cleared via an effect: a stale selection (e.g. filtered out) just reads as none.
   const activeSelectedId =
     selectedRowId !== null && navigableIds.includes(selectedRowId) ? selectedRowId : null;
+  useShowRequestedWait(navigableIds);
   const selectedRow = filteredRows.find((row) => row.node.id === activeSelectedId);
   const selectedCommitment = filteredCommitments.find((row) => row.node.id === activeSelectedId);
   const selectedTaskId = selectedRow !== undefined ? selectedRow.node.id : null;
