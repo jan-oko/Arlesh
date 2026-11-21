@@ -51,6 +51,7 @@ png = "0.17"
 rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
 axum = "0.8.9"
 schemars = "1.2.2"
+arlesh-workspace-hack = { version = "0.1", path = "../crates/arlesh-workspace-hack" }
 
 # Client mode keeps the server token in the OS keychain: the macOS Keychain, the Windows Credential
 # Manager, or the Secret Service on Linux (through libdbus, which Tauri already links). Android has

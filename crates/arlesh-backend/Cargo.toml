@@ -31,6 +31,7 @@ tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 # (and NASM on Windows) on every bundle runner.
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["json", "query", "http2", "gzip", "rustls-no-provider"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+arlesh-workspace-hack = { version = "0.1", path = "../arlesh-workspace-hack" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

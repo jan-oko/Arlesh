@@ -198,6 +198,17 @@ jobs:
             echo "$crate is Tauri-free ($(echo "$deps" | wc -l) crates in its tree)."
           done
 
+      # The workspace-hack crate (crates/arlesh-workspace-hack, .config/hakari.toml) gives the desktop
+      # app and the server's native module the same features for the crates they share, so each
+      # shared crate compiles once into box's one target. A new dependency or feature that is not
+      # regenerated into it splits them again, silently; this fails instead. Resolves the lockfile
+      # only, no build.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+      - name: The workspace-hack crate is up to date
+        run: scripts/check-workspace-hack.sh
+
       # Second, for the same reason the guard above is first: this needs no apt
       # packages, no cache and no build — just the toolchain — so it costs seconds
       # and a violation never reaches the six-minute compile. That is the whole
