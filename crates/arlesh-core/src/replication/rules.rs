@@ -5,6 +5,7 @@
 //! call these, so the two sides cannot disagree about what a row's canonical form or the board's
 //! hash is.
 
+pub mod apply;
 pub mod hash;
 pub mod wire;
 

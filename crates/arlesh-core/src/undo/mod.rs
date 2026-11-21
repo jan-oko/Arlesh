@@ -558,6 +558,45 @@ impl<'session> UndoOperator<'session> {
         rows.into_iter().map(JournalRow::into_entry).collect()
     }
 
+    /// The newest `seq` the journal holds, or 0 when it is empty: a mark a Replica takes before a
+    /// prediction, so the prediction's entries are exactly those past it.
+    pub async fn newest_seq(&mut self) -> Result<i64, UndoError> {
+        let seq: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(seq), 0) FROM undo_journal")
+            .fetch_one(&mut *self.connection)
+            .await?;
+        Ok(seq)
+    }
+
+    /// Every entry with `after < seq <= through`, whoever wrote it, oldest first. For a Replica
+    /// taking a prediction back: unlike [`entries_for`](Self::entries_for) it is not a user's
+    /// history but everything the local board wrote.
+    pub async fn entries_between(
+        &mut self,
+        after: i64,
+        through: i64,
+    ) -> Result<Vec<JournalEntry>, UndoError> {
+        let rows: Vec<JournalRow> = sqlx::query_as(
+            "SELECT seq, table_name, row_id, operation, before_image, after_image \
+               FROM undo_journal WHERE seq > ? AND seq <= ? ORDER BY seq",
+        )
+        .bind(after)
+        .bind(through)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        rows.into_iter().map(JournalRow::into_entry).collect()
+    }
+
+    /// Deletes the entries with `after < seq <= through`, and returns how many went.
+    pub async fn discard_between(&mut self, after: i64, through: i64) -> Result<u64, UndoError> {
+        let removed = sqlx::query("DELETE FROM undo_journal WHERE seq > ? AND seq <= ?")
+            .bind(after)
+            .bind(through)
+            .execute(&mut *self.connection)
+            .await?
+            .rows_affected();
+        Ok(removed)
+    }
+
     /// Whether a Gesture wrote to the board at all — **whoever** made the writes.
     ///
     /// Deliberately not [`UndoOperator::entries_for`] with the filter dropped: the two questions

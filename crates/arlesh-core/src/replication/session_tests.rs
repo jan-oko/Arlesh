@@ -1,21 +1,16 @@
 //! Scripted sessions against a real server database with a publisher, and a Replica kept in step
 //! from nothing but its snapshot and the events: what ADR 0017 asks of the sync surface.
 //!
-//! The Replica here is a plain second database. It applies each event's rows as a client would
-//! (delete or `INSERT OR REPLACE` by `rowid`, foreign keys off), and after every event its hash must
-//! be the one the event states.
+//! The Replica here is the production one ([`replica`]): it applies each event's rows as a client
+//! does, and after every event its hash must be the one the event states.
 
 use std::{
-    str::FromStr,
     sync::{atomic::AtomicU32, atomic::Ordering, Arc},
     time::Duration,
 };
 
 use serde_json::Value;
-use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    SqlitePool,
-};
+use sqlx::SqlitePool;
 use tokio::sync::Notify;
 
 use super::*;
@@ -54,9 +49,9 @@ impl Clock for Ticker {
     }
 }
 
-/// A Replica: a second database and a change-log position.
+/// A Replica: the production Replica database, kept as the client keeps it, and a change-log position.
 struct Replica {
-    pool: SqlitePool,
+    factory: SessionFactory,
     position: i64,
 }
 
@@ -71,57 +66,19 @@ enum Gap {
 
 impl Replica {
     async fn empty() -> Self {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")
-            .unwrap()
-            .foreign_keys(false);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap();
-        crate::database::run_migrations(&pool).await.unwrap();
-        Self { pool, position: 0 }
-    }
-
-    async fn put(&self, table: &str, rowid: i64, image: &Value) {
-        let object = image.as_object().unwrap();
-        let names: Vec<String> = object.keys().map(|key| format!("\"{key}\"")).collect();
-        let values: Vec<String> = object
-            .keys()
-            .map(|key| format!("json_extract(?1, '$.\"{key}\"')"))
-            .collect();
-        let sql = format!(
-            "INSERT OR REPLACE INTO \"{table}\" (rowid, {}) VALUES (?2, {})",
-            names.join(", "),
-            values.join(", ")
-        );
-        sqlx::query(&sql)
-            .bind(image.to_string())
-            .bind(rowid)
-            .execute(&self.pool)
-            .await
-            .unwrap();
+        Self {
+            factory: replica::open_memory().await.unwrap(),
+            position: 0,
+        }
     }
 
     /// Replaces every replicated row with the snapshot's.
     async fn load(&mut self, body: &Value) {
-        let factory = SessionFactory::new(self.pool.clone());
-        let mut db = factory.begin_read().await.unwrap();
-        let held = db.replication().tables().await.unwrap();
-        drop(db);
-        for table in held {
-            sqlx::query(&format!("DELETE FROM \"{table}\""))
-                .execute(&self.pool)
-                .await
-                .unwrap();
-        }
-        for (table, rows) in body["tables"].as_object().unwrap() {
-            for row in rows.as_array().unwrap() {
-                self.put(table, row["rowid"].as_i64().unwrap(), &row["image"])
-                    .await;
-            }
-        }
-        self.position = body["source"]["upto"].as_i64().unwrap();
+        let parsed = rules::wire::parse_snapshot(&body.to_string()).unwrap();
+        replica::install_snapshot(&self.factory, &parsed.snapshot)
+            .await
+            .unwrap();
+        self.position = parsed.snapshot.upto;
     }
 
     /// Applies one live event as a client would, or says it must fetch a snapshot. Checks the hash.
@@ -130,39 +87,22 @@ impl Replica {
         if source.is_null() {
             return Err(Gap::NoSource);
         }
-        let (base, upto) = (
-            source["base"].as_i64().unwrap(),
-            source["upto"].as_i64().unwrap(),
-        );
-        if upto <= self.position {
-            return Ok(());
-        }
-        if base > self.position {
-            return Err(Gap::Missed);
-        }
-        for row in source["rows"].as_array().unwrap() {
-            if row["seq"].as_i64().unwrap() <= self.position {
-                continue;
-            }
-            let (table, rowid) = (
-                row["table"].as_str().unwrap(),
-                row["rowid"].as_i64().unwrap(),
-            );
-            match row["op"].as_str().unwrap() {
-                "set" => self.put(table, rowid, &row["image"]).await,
-                _ => {
-                    sqlx::query(&format!("DELETE FROM \"{table}\" WHERE rowid = ?"))
-                        .bind(rowid)
-                        .execute(&self.pool)
-                        .await
-                        .unwrap();
-                }
-            }
-        }
-        self.position = upto;
+        let delta = rules::wire::parse_source(&source.to_string()).unwrap();
+        let skip_through = match rules::apply::decide(self.position, delta.base, delta.upto) {
+            rules::apply::Decision::Held => return Ok(()),
+            rules::apply::Decision::Gap => return Err(Gap::Missed),
+            rules::apply::Decision::Apply { skip_through } => skip_through,
+        };
+        let fresh: Vec<RowChange> = delta
+            .rows
+            .into_iter()
+            .filter(|row| row.seq > skip_through)
+            .collect();
+        replica::apply_rows(&self.factory, &fresh).await.unwrap();
+        self.position = delta.upto;
         assert_eq!(
             self.hash().await,
-            source["hash"].as_str().unwrap(),
+            delta.hash,
             "the Replica's rows must hash as the server said after event {}",
             event["seq"]
         );
@@ -170,8 +110,7 @@ impl Replica {
     }
 
     async fn rows(&self) -> Vec<StoredRow> {
-        let factory = SessionFactory::new(self.pool.clone());
-        let mut db = factory.begin_read().await.unwrap();
+        let mut db = self.factory.begin_read().await.unwrap();
         snapshot(&mut db).await.unwrap().rows
     }
 

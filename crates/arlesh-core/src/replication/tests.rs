@@ -583,6 +583,11 @@ fn scan(directory: &std::path::Path, found: &mut Vec<String>) {
         if !name.ends_with(".rs") || name == "tests.rs" || name.ends_with("_tests.rs") {
             continue;
         }
+        // The Replica's own apply: capture is off and the journal suppressed there, so nothing
+        // needs to see the row it replaces (and foreign keys are off, so nothing cascades).
+        if path.ends_with("replication/mod.rs") {
+            continue;
+        }
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
