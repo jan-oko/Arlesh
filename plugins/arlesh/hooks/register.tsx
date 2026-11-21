@@ -20,6 +20,7 @@ import {
   type Standing,
 } from './attach'
 import {
+  acknowledged,
   failedOnce,
   forget,
   MAX_ATTEMPTS,
@@ -45,16 +46,18 @@ import {
 } from './config'
 import { isRecord, parseJson, text } from './json'
 import { nextWait, parsePoll, pollUrl, WAIT_START_S, type Cursor } from './poll'
-import { currentFrom, waitsFrom, type Current } from './results'
+import { currentFrom, releasedFrom, waitsFrom, type Current } from './results'
 import {
   changeBetween,
   forSession,
+  isCallersOwn,
   messageFor,
   planDeliveries,
   type Addressed,
   type Change,
   type Delivery,
   type Owed,
+  type Seen,
   type Via,
 } from './rules'
 
@@ -296,7 +299,10 @@ export const register: Register = (on) => {
       if (ran.deny !== undefined || ran.isError === true) return ran
       const input: Record<string, unknown> = { ...e }
       // `next(e)` gives the result as the string the model reads, holding the JSON.
-      const refs = waitsFrom(input['operation'], ran.result ?? ran.text, text(input, 'task_id'))
+      const answer = ran.result ?? ran.text
+      const callerId = typeof input['agentId'] === 'string' ? input['agentId'] : undefined
+      await recordOwnRelease($, releasedFrom(input['operation'], answer), callerId)
+      const refs = waitsFrom(input['operation'], answer, text(input, 'task_id'))
       if (refs.length === 0) return ran
       const via = await viaOf($, input['agentId'])
       await serially(async () => {
@@ -318,6 +324,30 @@ export const register: Register = (on) => {
     }
     return ran
   }).catch(($, e, next) => next(e))
+}
+
+/**
+ * A wait released by the call of its own recipient is seen as released, so the session is not
+ * woken to be told what it just did; the same wait released by anyone else is.
+ */
+async function recordOwnRelease(
+  $: Engine,
+  released: { waitId: string; state: Seen } | undefined,
+  caller: string | undefined,
+): Promise<void> {
+  if (released === undefined) return
+  const agents = (await $.agent.list()).map((agent) => ({
+    id: agent.id,
+    status: agent.status,
+    ...(agent.parentId === undefined ? {} : { parentId: agent.parentId }),
+  }))
+  await serially(async () => {
+    const book = await loadBook($)
+    const entry = book[released.waitId]
+    if (entry === undefined || !isCallersOwn(caller, entry.via, agents)) return
+    const now = await $.clock.now()
+    await saveBook($, { ...book, [released.waitId]: acknowledged(entry, released.state, 'released', now) })
+  })
 }
 
 /**
