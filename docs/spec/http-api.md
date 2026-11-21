@@ -167,6 +167,7 @@ UUIDv7. `api_version` is 2 since ids became UUIDs.
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
 | `GET /events/changes` | The change stream (below). `GET /events/expectations` is the agents' long poll, answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
 | `GET /board/current` | The latest **publication** as it is: the board's JSON, nulls included, with `X-Arlesh-Seq`, `X-Arlesh-Revision` (the publication's), `X-Arlesh-Hash` and `X-Arlesh-Board-Now`. Derives nothing. The app's full load (see *Live sync*) |
+| `GET /board/snapshot` | The **device snapshot**: every replicated row, for a client's Replica (below). Any device token; `/backup` stays the administrator's |
 | `GET /board?now=` | The whole board derived afresh at `now` (default: the server's clock): every node with its lifecycle, short id and facts. For agents and scripts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
@@ -244,10 +245,10 @@ publication and the last 64 change events (at most 4 MiB); a restart starts afre
 **The stream.** `GET /events/changes` is a Server-Sent Events stream of two events:
 
 - `board-changed`, one per publication, with id `<epoch>:<seq>` and data `{epoch, seq, revision,
-  now, hash, changes}` ([Client Mode](client-mode.md#live-sync) describes `changes`), or `{epoch,
+  now, hash, changes, source}` ([Client Mode](client-mode.md#live-sync) describes `changes` and `source`), or `{epoch,
   seq, revision, now, hash, reload: true}` when the changes would exceed 256 KiB or cannot be
   replayed.
-- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums}` (`sums`: the hash per
+- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums, source}` (`source`: `{upto, hash}`, the replicated rows' position and hash, [Client Mode](client-mode.md#the-source-rows-adr-0017-task-ccc)) (`sums`: the hash per
   collection), sent once on connecting and after every 15 s of silence, in place of a keepalive
   comment, so a proxy keeps the stream open and a client can check its board for free.
 
@@ -256,6 +257,34 @@ A client reconnecting with `Last-Event-ID: <epoch>:<seq>` of this epoch is sent 
 be read, it is sent one `reload` event at the latest publication. A client that reads only
 `revision` and `epoch` from the data, as apps before changed nodes did, treats each event as a
 signal to reload, as before.
+
+## Device snapshot: `GET /board/snapshot`
+
+*Task `ccc`, [ADR 0017](../adr/0017-client-board-replica.md), decisions 4 and 13.* The whole board's
+stored rows for a device that keeps a Replica; `/board` stays for agents and scripts and `/backup`
+for the administrator.
+
+```json
+{"epoch":"18f3c2a-4d1","revision":42,"schema_version":111,
+ "source":{"upto":1234,"hash":"9ac1d0e55b7c2f31","count":3120},
+ "tables":{"tasks":[{"rowid":7,"image":{"id":"…","title":"Write the ADR","…":"…"}}],"domains":["…"]}}
+```
+
+- `epoch` and `revision`: the run and the revision the snapshot is at least at (read before the
+  transaction, so a write landing mid-read makes it look older, never newer).
+- `schema_version`: the newest migration applied. A client on another schema cannot apply the rows.
+- `source`: `upto` is the change-log position the rows stand at (the events' `base`/`upto`/`seq`),
+  `hash` their [source hash](client-mode.md#the-source-hash), `count` the number of rows.
+- `tables`: each replicated table's rows by `rowid`. No credential is in it (`agents.token_sha256` is
+  left out) and none of the server-only tables.
+
+One read transaction, so rows, position and hash are one moment. Every repair is this route: the
+server keeps no history to catch up from.
+
+Both hosts serve what they host: the FastAPI server serves this route and the stream's `source`
+(the Replica's server is `arlesh-server`); the Rust core implements them (`arlesh_core::replication`,
+the publisher) and its own MCP endpoint's `/events/changes`, which is only a revision signal, is
+unchanged.
 
 ## Revision on every answer, and gzip
 

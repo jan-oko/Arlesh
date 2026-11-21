@@ -32,6 +32,7 @@ from arlesh.backends import (
     CurrentBoard,
     HttpBackend,
     ServerStatus,
+    SourceHead,
     SqliteBackend,
 )
 from arlesh.database import Arlesh, Database, NodeId, SqliteDatabase, open, set_time_zone
@@ -71,6 +72,7 @@ __all__ = [
     "NotFound",
     "NotPermitted",
     "ServerStatus",
+    "SourceHead",
     "SqliteBackend",
     "SqliteDatabase",
     "StatusChanged",

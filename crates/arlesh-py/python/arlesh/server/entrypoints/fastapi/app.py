@@ -81,7 +81,9 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
   the build commit: the desktop app's handshake before it uses the server.
 * **`/events/changes`** streams `board-changed` (Server-Sent Events) after every committed write,
   carrying the changed nodes, and a `board-head` when quiet. **`/board/current`** is the latest
-  published board, as it is, for a client's full load.
+  published board, as it is, for a client's full load. Each event also carries the replicated
+  source rows it changed (`source`), and **`/board/snapshot`** is every replicated row with the
+  revision, epoch and schema version it is at, for a client that keeps a Replica.
 * **`/events/expectations`** is a long poll over the changes to the waits the MCP can see
   (`?agentic=true` keeps the agentic ones): what an agent's notifications follow. The core
   computes the answer.

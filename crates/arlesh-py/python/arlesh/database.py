@@ -902,6 +902,12 @@ class Database(ABC):
         """The latest publication's identity, or ``None`` before the first. Needs
         :meth:`start_publisher`."""
 
+    @abstractmethod
+    async def board_snapshot(self) -> str:
+        """The device snapshot as the core's JSON: every replicated row, read in one transaction,
+        with the epoch and revision it is at, the schema version and the rows' hash
+        (``docs/spec/http-api.md``, *Device snapshot*). Raises :class:`NotPermitted` over HTTP."""
+
 
 def set_time_zone(name: str | None) -> None:
     """Makes ``name``, an IANA time zone name such as ``Europe/Berlin``, the zone this process reads
@@ -1654,6 +1660,14 @@ class Arlesh(Database):
         except _native.NativeError as error:
             raise from_native(error) from None
         return None if head is None else BoardHead.model_validate_json(head)
+
+    async def board_snapshot(self) -> str:
+        native = self._publishing_native()
+        try:
+            body: str = await native.board_snapshot()
+            return body
+        except _native.NativeError as error:
+            raise from_native(error) from None
 
     def _publishing_native(self) -> _SqliteNative:
         """The native database, which publishes; over HTTP the server does, and this refuses."""

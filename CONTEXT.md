@@ -194,7 +194,7 @@ How the board travels from where it is derived to the windows that draw it ([Cli
 
 ## Replication
 
-Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Only its first step, UUID identity, is built.
+Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Built so far: UUID identity, and the server's sync surface (Change Log rows on each event, Device Snapshot, Source Hash). The Replica itself is not.
 
 **Replica** — A client's own copy of the board, running the same core as the server, in memory. It is written to storage on the startup fetch and when the app quits normally, and a launch shows that stored board first, then fetches a whole one. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
 
@@ -204,13 +204,13 @@ Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Only its first st
 
 **Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
 
-**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas hear live changes from, and it is attached to each live event: the server keeps no history of it. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
+**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas hear live changes from, and it is written by triggers into a buffer that the publisher empties into each live event (`source`): the server keeps no history of it. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
 
 **Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and repairs any gap with one: a missed revision, a reconnect, a new epoch or a hash mismatch always fetches a whole board, never a catch-up by revision. _Avoid_: backup (that is the administrator's).
 
 **Row Id** — The UUID a stored row is stored under. A caller may choose it when it creates the row (a client does, so both sides hold the same node); otherwise the server mints a UUIDv7. A row from before UUID identity keeps its old `full_id` as its Row Id, which is why short ids and links did not change. A derived row's id is a version-8 UUID, the hash of its value key, so a Row Id alone says whether a row is stored or derived. _Avoid_: row number, integer id (they no longer exist).
 
-**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show.
+**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show. Two exist: the derived board's (ADR 0020, for the windows) and the **Source Hash** over the replicated stored rows (a sum of per-row FNV-1a 64 digests over each row's canonical `json_object` image and `rowid`), which a Replica computes over its own copy with the same `arlesh-core` code.
 
 ---
 

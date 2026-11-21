@@ -313,6 +313,78 @@ Since a hash is compared only at the same `seq`, and a tick that changes the boa
 publication of its own, time passing never reads as divergence: a window that has not yet applied
 the tick is behind, not wrong.
 
+### The source rows (ADR 0017, Task `ccc`)
+
+An event also says which **source rows** its writes changed, for a client that keeps a Replica of the
+board (the stored rows, not the derived nodes above). It is the event's `source`:
+
+```json
+"source":{"base":1228,"upto":1234,"hash":"9ac1d0e55b7c2f31",
+          "rows":[{"table":"tasks","rowid":7,"seq":1230,"op":"set","image":{"id":"…","title":"Write the ADR","…":"…"}},
+                  {"table":"tasks","rowid":9,"seq":1234,"op":"del"}]}
+```
+
+- **Rows.** One entry per row that changed since the publication before, as it last became (`set`
+  with its after-image) or as gone (`del`), in log order. They include undo and redo, cascaded
+  deletions and rows a trigger wrote, because they are written by triggers, not by commands
+  ([ADR 0017](../adr/0017-client-board-replica.md), decision 5). A row is named by its table and its
+  SQLite `rowid`, which is what a Replica stores it under.
+- **Position.** `seq` is the row's place in the **change log**, which is monotonic for the life of
+  the database file. `base` is the position of the publication before and `upto` the position after
+  this one. A client holding rows at position `p` **applies** an event with `base <= p < upto`
+  (skipping rows whose `seq <= p`) and moves to `upto`; an event with `upto <= p` is already held;
+  `base > p` means it missed an event and fetches a snapshot. The last event has no successor to show
+  a gap, so the head (below) does: its `source.upto` is ahead of the client's.
+- **Hash.** `hash` is the [source hash](#the-source-hash) of every replicated row at `upto`. After
+  applying an event the client's own hash must equal it.
+- **Too large.** An event whose changes and rows would exceed 256 KiB says `reload: true` and carries
+  no `source`: the client fetches a snapshot. So does an event with no `source` at all (a server
+  that does not publish rows, or one replayed from the ring).
+- **The head** (`board-head`) carries `source: {upto, hash}` of the latest publication.
+
+**Always a full board** (the user, 2026-11-13). The server keeps no history of source rows. The log
+the triggers write is a buffer the publisher empties into each publication, in the transaction that
+reads it, and a restart clears it, so nothing accumulates. A missed event, a reconnect, a new epoch,
+a schema difference or a hash mismatch are all repaired by fetching the [device
+snapshot](http-api.md#device-snapshot-get-boardsnapshot); the client never sends `Last-Event-ID`.
+(The ring of 64 events below is the derived nodes' catch-up for apps that predate the Replica; its
+events carry rows while they last, and a Replica does not use it.)
+
+**Revisions and epochs after a restart.** The revision counts committed writes since the server
+started and starts again at 0; the epoch names the run (see [HTTP API](http-api.md#revision-on-every-answer-and-gzip)).
+The change-log position does **not** restart: it lives in the database file. So after a restart a
+client sees a new epoch and fetches a snapshot, and never compares a revision or a position across
+epochs. Within an epoch the publisher reads the revision before it drains the log, so an event at
+revision `r` holds every row of writes `<= r` and perhaps rows of a write the next revision will
+count, which that event then carries empty.
+
+**Which tables.** Every table the undo journal covers, less the server-only ones
+(`arlesh_core::replication::UNREPLICATED_TABLES`): the credentials and pairings (`server_tokens`,
+`pairing_pins`, `agent_pins`, `agent_pin_failures`, `connect_tokens`), the accounts' usage reports
+(`agent_account_usage`), the push registrations (`push_devices`, `push_sent`), the journal and the
+change log itself. `agents` travels without `token_sha256`. `answer_drafts` travels (a device
+shows what it staged); keeping it from agents is the MCP's job
+([ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)). Applying rows needs foreign keys off
+and `INSERT OR REPLACE` by `rowid`, so a unique key that moves between rows within one burst
+converges once every row of the burst is applied.
+
+### The source hash
+
+The **source hash** fingerprints the replicated rows so a client can catch a row that changed behind
+the feed (a writer that is not the server's publisher). It is separate from the board hash above,
+which covers the derived board.
+
+- **Covers** every row of every replicated table.
+- **Canonical form.** A row's image is SQLite's own `json_object('column', value, …)` over the
+  table's columns in schema order, less the omitted ones. The change-log triggers and the snapshot
+  query write it; a Replica reads its own rows back with `arlesh_core::replication::row_query`.
+- **Digest.** FNV-1a 64 over `table`, a zero byte, the `rowid` in decimal, a zero byte and the image
+  (UTF-8). The hash is the sum of every row's digest, wrapping at 2^64, as 16 lowercase hex digits.
+  A sum, so it is independent of row order and kept current by adding and removing rows.
+- **Where it is computed.** `arlesh_core::replication::rules::hash` (the pure part; `board_hash`)
+  and `replication::board_hash` (over a database's rows): the server's publisher and a Replica call
+  the same code.
+
 **Catching up.** The server keeps its last 64 change events. A stream that reconnects with
 `Last-Event-ID` is sent the ones it missed; if they are gone, or the epoch changed, it is sent one
 `reload` event. So a dropped connection costs the events, not the board.
@@ -587,6 +659,12 @@ starts following the server and on every reconnect of the change stream, so a se
 underneath a running app is noticed. A route the server lacks answers 404 with `details.reason =
 "unknown_route"`, which the window shows as a refusal of that one action rather than a failure of
 the board.
+
+The sync surface (Task `ccc`, PR 2) did not bump it either: `source` on events, `source` on the
+head and `GET /board/snapshot` are additive, and an app that does not know them ignores them. What
+it does need is a **schema version** (migration 0111 added the change log), and ADR 0017 decision
+13 says client and server must share one: the snapshot carries `schema_version`, the newest migration
+the server has applied, and a Replica compares it with its own.
 
 Changed nodes (ADR 0020) did not bump it: they are additive both ways. An app that knows only
 revisions reloads on each `board-changed` and ignores `board-head`; an app on a server without

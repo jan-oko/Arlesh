@@ -60,7 +60,8 @@ third step of the delivery below.
     Startup loads the cache first then fetches a full board."). Launch shows the cached board at once,
     read-only, and then fetches a whole board; there is no catch-up by revision. Android therefore
     ships the core and SQLite, with no local-board mode.
-13. **Client and server must share a schema version.** On a mismatch the app is read-only and says
+13. **Client and server must share a schema version.** The device snapshot carries it
+    (`schema_version`, the newest applied migration). On a mismatch the app is read-only and says
     which side to update. A rule change without a schema change is tolerated: the server's answer
     corrects the prediction.
 14. **No wasm.** Rust sends what the UI needs as data, so the frontend holds no rules and the build

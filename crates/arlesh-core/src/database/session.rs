@@ -191,6 +191,11 @@ impl<M: SessionMode> Db<M> {
         BlockReasonOperator::new(self.connection())
     }
 
+    /// The change log and the replicated rows (ADR 0017): see [`crate::replication`].
+    pub fn replication(&mut self) -> crate::replication::ReplicationOperator<'_> {
+        crate::replication::ReplicationOperator::new(self.connection())
+    }
+
     /// `arlesh-server`'s bearer tokens, kept as digests.
     pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
         ServerTokenOperator::new(self.connection())
