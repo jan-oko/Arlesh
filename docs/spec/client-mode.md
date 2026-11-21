@@ -854,7 +854,22 @@ More of the tool, for trying pairing and the phone build:
   or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
   so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
   gone are listed in the plan and pruned too. Without `gh`, box cannot know which PRs are open,
-  so it skips the worktree part and prunes only those apps.
+  so it skips the worktree part and the data below, and prunes only those apps.
+- **`prune` removes the data box keeps per branch; `clean` does not.** Per branch box keeps: the
+  server's directory `<instances>/.servers/<branch>/` (database, logs, port, pid, host), the app
+  instance's directory `<instances>/<branch>/` (data, config, logs, port, pids, the kept binary and
+  APK), its entries in `state.json` (build stamps, install and provisioning records, the token
+  holders of its server) and its cached CI APKs in `$XDG_STATE_HOME/arlesh/box/ci/`. `prune` deletes
+  all of it for each worktree it removes, once `git worktree remove` has succeeded, and for the
+  leftovers of branches pruned earlier: any such directory, entry or APK whose branch has no
+  worktree and no open PR. The plan lists each path with its size and the total, under the same
+  prompt, `-y` and `--dry-run`. A worktree that stays (open PR, `dev`, `master`, dirty, unpushed,
+  current directory, or one `git worktree remove` refused) keeps its data. Data goes only after the
+  branch's server and app stopped: a server or app still alive is not deleted under, and a leftover
+  whose app is running is listed as kept. Each path is built from the branch's name alone, must be a
+  plain child of the instances or state directory and not a symlink, or it is refused. `clean`
+  removes only the binary, APK, CI APKs and build stamps and keeps the data. Shared caches (the
+  cargo target, sccache, `box.env`, the keystore, the device registry) are never touched.
 
 ## Not in phase 1
 

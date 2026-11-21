@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import contextlib
 import http.server
@@ -2886,6 +2887,209 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertIn("pruned 1 test app(s)", out)
         self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
+
+
+class PruneBranchData(OpenPrFixture):
+    """`prune` removes what box keeps per branch, once the branch's worktree is gone."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop("ARLESH_INSTANCES", None)
+        os.environ.pop("ARLESH_SHARED_TARGET", None)
+
+    def prompt(self, tty: bool, answer: str = "") -> tuple[int, str, str, list[str]]:
+        asked: list[str] = []
+
+        def fake_ask(text: str) -> str:
+            asked.append(text)
+            return answer
+
+        with (
+            mock.patch.object(box, "interactive", return_value=tty),
+            mock.patch.object(box, "ask", fake_ask),
+        ):
+            code, out, err = self.run_box("prune")
+        return code, out, err, asked
+
+    def keep(self, name: str, *, state: bool = True) -> None:
+        """Give `name` a server directory with a database, an instance directory and state entries."""
+        box.server_db(name).parent.mkdir(parents=True, exist_ok=True)
+        box.server_db(name).write_bytes(b"x" * 2048)
+        (box.server_dir(name) / "port").write_text("14700")
+        box.instance_dir(name).mkdir(parents=True, exist_ok=True)
+        (box.instance_dir(name) / "port").write_text("14200")
+        (box.instance_dir(name) / "arlesh").write_text("bin")
+        if state:
+            box.update_state(lambda s: (
+                s["built"][box.DESKTOP].__setitem__(name, "stamp"),
+                s["installed"].setdefault("pixel", {}).__setitem__(name, "old"),
+                s["provisioned"].setdefault("pixel", {}).__setitem__(name, {"server": name}),
+                s["tokens"].setdefault(name, {}).__setitem__("pixel", f"pixel/{name}"),
+            ))  # fmt: skip
+        apk = box.ci_cached_apk(name, "abcdef0123")
+        apk.parent.mkdir(parents=True, exist_ok=True)
+        apk.write_bytes(b"apk")
+
+    def has_data(self, name: str) -> bool:
+        return box.server_dir(name).exists() or box.instance_dir(name).exists()
+
+    def in_state(self, name: str) -> bool:
+        return name in box.state_branch_names()
+
+    def test_a_removed_worktrees_data_goes_and_the_plan_lists_it_with_sizes_first(self) -> None:
+        self.keep("merged-ff")
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn(f"delete {box.instance_dir('merged-ff')} (", out)
+        self.assertIn(f"delete {box.server_dir('merged-ff')} (", out)
+        self.assertIn("(2.0K)", out)  # the server directory's database
+        self.assertIn("build stamps", out)
+        self.assertIn("data to remove:", out)
+        self.assertTrue(self.has_data("merged-ff"))  # a dry run removes nothing
+        self.assertTrue(box.ci_cached_apk("merged-ff", "abcdef0123").exists())
+        self.assertTrue(self.in_state("merged-ff"))
+        self.assertTrue(box.git_in(self.main, "worktree", "list").stdout.count("merged-ff"))
+        code, out, _, asked = self.prompt(True, "y")
+        self.assertEqual((code, len(asked)), (0, 1))
+        self.assertLess(out.index("delete "), out.index("removed worktree merged-ff"))
+        self.assertFalse(self.has_data("merged-ff"))
+        self.assertFalse(box.ci_cached_apk("merged-ff", "abcdef0123").exists())
+        self.assertFalse(self.in_state("merged-ff"))
+
+    def test_the_prompt_declined_removes_no_data(self) -> None:
+        self.keep("merged-ff")
+        self.prompt(True, "n")
+        self.assertTrue(self.has_data("merged-ff"))
+        self.assertTrue(self.in_state("merged-ff"))
+
+    def test_without_a_terminal_and_without_yes_no_data_is_removed(self) -> None:
+        self.keep("merged-ff")
+        code, out, _, _ = self.prompt(False)
+        self.assertEqual(code, 1)
+        self.assertIn("delete ", out)
+        self.assertTrue(self.has_data("merged-ff"))
+
+    def test_leftovers_of_branches_without_worktree_or_pr_go(self) -> None:
+        self.keep("ghost-old")
+        box.server_db("ghost-state").parent.mkdir(parents=True)
+        box.update_state(lambda s: s["built"][box.DESKTOP].__setitem__("only-state", "x"))
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn("remove data of ghost-old: no worktree, no open PR", out)
+        self.assertTrue(self.has_data("ghost-old"))
+        self.run_box("prune", "-y")
+        self.assertFalse(self.has_data("ghost-old"))
+        self.assertFalse(self.in_state("ghost-old"))
+        self.assertFalse(self.in_state("only-state"))
+        self.assertFalse(box.server_dir("ghost-state").exists())
+        self.assertFalse(box.ci_cached_apk("ghost-old", "abcdef0123").exists())
+
+    def test_a_ci_apk_with_no_branch_left_is_a_leftover_too(self) -> None:
+        apk = box.ci_cached_apk("long-gone", "abcdef0123")
+        apk.parent.mkdir(parents=True)
+        apk.write_bytes(b"apk")
+        self.run_box("prune", "-y")
+        self.assertFalse(apk.exists())
+
+    def test_protected_branches_keep_their_data(self) -> None:
+        protected = ("dev", "master", "pr-with-wt", "pr-no-wt", "dirty", "unpushed")
+        for name in protected:
+            self.keep(name)
+        self.run_box("prune", "-y")
+        for name in protected:
+            self.assertTrue(self.has_data(name), name)
+            self.assertTrue(self.in_state(name), name)
+            self.assertTrue(box.ci_cached_apk(name, "abcdef0123").exists(), name)
+
+    def test_the_current_directorys_branch_keeps_its_data(self) -> None:
+        self.keep("unmerged")
+        os.chdir(self.wts["unmerged"])
+        _, out, _ = self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("unmerged"))
+        self.assertIn("kept: unmerged: current directory", out)
+
+    def test_a_worktree_that_cannot_be_removed_keeps_its_data(self) -> None:
+        self.keep("merged-ff")
+        real = box.git_in
+
+        def refuse(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ("worktree", "remove"):
+                return subprocess.CompletedProcess(args, 1, "", "locked")
+            return real(cwd, *args)
+
+        with mock.patch.object(box, "git_in", refuse):
+            _, _, err = self.run_box("prune", "-y")
+        self.assertIn("git worktree remove failed", err)
+        self.assertTrue(self.has_data("merged-ff"))
+        self.assertTrue(self.in_state("merged-ff"))
+        self.assertTrue(box.server_db("merged-ff").exists())
+
+    def test_data_is_removed_only_after_the_stop(self) -> None:
+        self.keep("merged-ff")
+        seen: list[bool] = []
+        real = box.stop_server
+
+        def spy(name: str) -> None:
+            seen.append(box.server_db(name).exists())
+            real(name)
+
+        with mock.patch.object(box, "stop_server", spy):
+            self.run_box("prune", "-y")
+        self.assertEqual(seen, [True])
+        self.assertFalse(self.has_data("merged-ff"))
+
+    def test_a_server_that_survives_the_stop_keeps_its_data(self) -> None:
+        self.keep("ghost-old")
+        with (
+            mock.patch.object(box, "server_running", lambda n: n == "ghost-old"),
+            mock.patch.object(box, "stop_server"),
+        ):
+            _, _, err = self.run_box("prune", "-y")
+        self.assertIn("kept data of ghost-old: its server or app is still running", err)
+        self.assertTrue(box.server_db("ghost-old").exists())
+
+    def test_a_running_app_of_a_leftover_is_not_planned_nor_deleted_under(self) -> None:
+        self.keep("ghost-old")
+        (box.instance_dir("ghost-old") / "run.pid").write_text(str(os.getpid()))
+        _, out, _ = self.run_box("prune", "-y")
+        self.assertIn("kept: ghost-old: data kept: its app is running", out)
+        self.assertTrue(self.has_data("ghost-old"))
+
+    def test_without_gh_no_data_is_removed_and_it_says_so(self) -> None:
+        (self.gh_dir / "authed").unlink()
+        self.keep("ghost-old")
+        self.keep("merged-ff")
+        code, _, err = self.run_box("prune", "-y")
+        self.assertEqual(code, 0)
+        self.assertIn("removing any branch data", err)
+        self.assertTrue(self.has_data("ghost-old"))
+        self.assertTrue(self.has_data("merged-ff"))
+
+    def test_paths_never_leave_the_instances_directory(self) -> None:
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        (outside / "precious").write_text("keep")
+        box.instances_dir().mkdir(parents=True)
+        (box.instances_dir() / "evil").symlink_to(outside)
+        self.run_box("prune", "-y")
+        self.assertTrue((outside / "precious").exists())
+        self.assertTrue((box.instances_dir() / "evil").is_symlink())
+        for bad in ("", ".", "..", ".servers", "a/b", "dev", "master"):
+            self.assertFalse(box.safe_branch_name(bad), bad)
+        data = box.BranchData("x", "t", [(box.instances_dir(), outside)])
+        with contextlib.redirect_stderr(io.StringIO()):
+            box.purge_branch_data(data)
+        self.assertTrue((outside / "precious").exists())
+
+    def test_clean_keeps_the_data_that_prune_removes(self) -> None:
+        self.keep("ghost-old")
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            mock.patch.object(box, "Firebase"),
+            mock.patch.object(box, "uninstall_everywhere"),
+        ):
+            box.cmd_clean(argparse.Namespace(branches=["ghost-old"]))
+        self.assertTrue(box.server_db("ghost-old").exists())
+        self.assertTrue((box.instance_dir("ghost-old") / "port").exists())
+        self.assertFalse((box.instance_dir("ghost-old") / "arlesh").exists())
 
 
 class NodeModules(IsolatedEnv):
