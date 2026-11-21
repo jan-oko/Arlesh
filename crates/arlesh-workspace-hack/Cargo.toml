@@ -28,7 +28,6 @@ indexmap = { version = "2", features = ["serde"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled", "unlock_notify"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 percent-encoding = { version = "2" }
-proc-macro2 = { version = "1", features = ["span-locations"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
@@ -57,7 +56,6 @@ indexmap = { version = "2", features = ["serde"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled", "unlock_notify"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 percent-encoding = { version = "2" }
-proc-macro2 = { version = "1", features = ["span-locations"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
@@ -83,7 +81,6 @@ num-traits = { version = "0.2", default-features = false, features = ["i128", "s
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["union"] }
-syn = { version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tokio = { version = "1", default-features = false, features = ["process", "tracing"] }
 tokio-util = { version = "0.7", features = ["codec", "io"] }
 tower = { version = "0.5", default-features = false, features = ["log", "make", "retry", "timeout"] }
@@ -99,7 +96,6 @@ num-traits = { version = "0.2", default-features = false, features = ["i128", "s
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["union"] }
-syn = { version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tokio = { version = "1", default-features = false, features = ["process", "tracing"] }
 
 [target.aarch64-unknown-linux-gnu.dependencies]
@@ -114,7 +110,6 @@ num-traits = { version = "0.2", default-features = false, features = ["i128", "s
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["union"] }
-syn = { version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tokio = { version = "1", default-features = false, features = ["process", "tracing"] }
 tokio-util = { version = "0.7", features = ["codec", "io"] }
 tower = { version = "0.5", default-features = false, features = ["log", "make", "retry", "timeout"] }
@@ -130,7 +125,6 @@ num-traits = { version = "0.2", default-features = false, features = ["i128", "s
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["union"] }
-syn = { version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tokio = { version = "1", default-features = false, features = ["process", "tracing"] }
 
 [target.aarch64-linux-android.dependencies]
