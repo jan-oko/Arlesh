@@ -1,13 +1,14 @@
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useTouchLayout } from "@/hooks/use-media-query";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { REVIEW_VERDICT } from "@/api/expectations";
 import type { ReviewLink, ReviewVerdict } from "@/api/expectations";
 import type { WaitReply } from "@/hooks/use-answer-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { chordFor, REVIEW_OWNED_CODES, verdictForKey } from "@/utils/hotkeys/review-keys";
-import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, UNSTAGE_CHORD } from "@/utils/answer-focus";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, TOUCH_FIELD_ROWS, UNSTAGE_CHORD } from "@/utils/answer-focus";
 import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
@@ -52,6 +53,7 @@ function hasPullRequest(links: readonly ReviewLink[]): boolean {
  */
 export default function ReviewAnswer({ review, staged, actions, compact = false }: Props) {
   const { t } = useTranslation("expectation");
+  const touch = useTouchLayout();
   const fieldId = useId();
   const field = useRef<HTMLTextAreaElement>(null);
   const [chosen, setChosen] = useState<ReviewVerdict | null>(null);
@@ -178,11 +180,11 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
         {...{ [ANSWER_FIELD]: "", [ANSWER_STAGED]: String(staged) }}
         className={`${styles.field}${staged ? ` ${styles.staged}` : ""}`}
         dir="auto"
-        rows={compact ? 1 : 2}
+        rows={touch ? TOUCH_FIELD_ROWS : compact ? 1 : 2}
         value={note}
         readOnly={staged}
         title={staged ? t("answerStagedTitle") : undefined}
-        placeholder={t("reviewNoteHint")}
+        placeholder={t(touch ? "reviewNoteHintTouch" : "reviewNoteHint")}
         onChange={(event) => setTyped(event.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -221,12 +223,14 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
             </button>
           ))}
         </div>
+        <div className={styles.actions}>
         <button type="button" data-gesture-skip="" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} title={staged ? formatChord(UNSTAGE_CHORD) : undefined} disabled={!canStage} onClick={() => void toggleStage()}>
           {t("answerStage")}
         </button>
         <button type="button" data-gesture-skip="" className={styles.send} disabled={!canSend} onClick={() => void send()}>
           {t("answerSend")}
         </button>
+        </div>
       </div>
     </div>
   );

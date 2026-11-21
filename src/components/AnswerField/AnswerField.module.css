@@ -277,3 +277,64 @@
     min-height: 44px;
   }
 }
+
+/* Stage and Send: kept together, so they wrap as one unit and are never split across lines. */
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+/* The phone: the field to type in is the largest thing in the group and the controls are the
+   smallest that still make a 44 px target. The field is three lines when empty, grows with its
+   text up to a cap and never clips it; the row's compact one-line form does not apply. The verdict
+   switch takes a line of its own only when it cannot share one with Stage and Send, which then
+   stay together. */
+@media (pointer: coarse) {
+  .field,
+  .compact .field {
+    line-height: 1.4;
+    min-height: calc(3 * 1.4em + 2 * var(--space-2) + 2px);
+    max-height: 50vh;
+    overflow-y: auto;
+    field-sizing: content;
+    resize: none;
+    flex: none;
+    width: 100%;
+  }
+
+  .send,
+  .secondary {
+    padding: var(--space-1) var(--space-3);
+  }
+
+  .option {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .row {
+    flex-direction: column;
+  }
+
+  .buttons {
+    flex-direction: row;
+  }
+
+  .buttons > *,
+  .actions > * {
+    flex: 1 1 auto;
+  }
+
+  .controls {
+    flex-wrap: wrap;
+  }
+
+  .switch {
+    flex: 1 0 auto;
+    width: auto;
+  }
+
+  .actions {
+    flex: 1 0 auto;
+  }
+}

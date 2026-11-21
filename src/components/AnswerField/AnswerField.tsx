@@ -1,10 +1,11 @@
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useTouchLayout } from "@/hooks/use-media-query";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isSendableAnswer } from "@/utils/open-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, UNSTAGE_CHORD } from "@/utils/answer-focus";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, TOUCH_FIELD_ROWS, UNSTAGE_CHORD } from "@/utils/answer-focus";
 import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
@@ -39,6 +40,7 @@ function isChord(event: KeyboardEvent): boolean {
  */
 export default function AnswerField({ question, staged, actions, compact = false }: Props) {
   const { t } = useTranslation("expectation");
+  const touch = useTouchLayout();
   const fieldId = useId();
   const field = useRef<HTMLTextAreaElement>(null);
   const [typed, setTyped] = useState("");
@@ -101,11 +103,11 @@ export default function AnswerField({ question, staged, actions, compact = false
           {...{ [ANSWER_FIELD]: "", [ANSWER_STAGED]: String(staged) }}
           className={`${styles.field}${staged ? ` ${styles.staged}` : ""}`}
           dir="auto"
-          rows={compact ? 1 : 2}
+          rows={touch ? TOUCH_FIELD_ROWS : compact ? 1 : 2}
           value={shown}
           readOnly={staged}
           title={staged ? t("answerStagedTitle") : undefined}
-          placeholder={t("answerHint")}
+          placeholder={t(touch ? "answerHintTouch" : "answerHint")}
           onChange={(event) => setTyped(event.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
