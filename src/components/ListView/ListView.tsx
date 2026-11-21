@@ -384,6 +384,7 @@ export default function ListView() {
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
   const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast });
+  const jumpToStagedAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast, staged: true });
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
@@ -409,6 +410,7 @@ export default function ListView() {
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
     onJumpToWaitingAnswer: jumpToWaitingAnswer,
+    onJumpToStagedAnswer: jumpToStagedAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,

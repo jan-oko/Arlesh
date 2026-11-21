@@ -42,6 +42,7 @@
   "reviewKind": "Review",
   "openWaits": "Waiting on you",
   "nothingWaiting": "No answer is waiting for you.",
+  "nothingStaged": "No answer is staged.",
   "draftSkipped": "{{title}} ({{reason}})",
   "draftSkippedUntitled": "an answer",
   "draftSkipReason": {

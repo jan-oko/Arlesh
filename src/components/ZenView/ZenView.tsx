@@ -202,6 +202,7 @@ export default function ZenView() {
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
   const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedId, showToast });
+  const jumpToStagedAnswer = useJumpToWaiting({ select: setSelectedId, showToast, staged: true });
   useKeyboardZenView({
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
     selectedTaskId: selectedTask === undefined ? null : selectedTask.node.id,
@@ -213,6 +214,7 @@ export default function ZenView() {
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
     onJumpToWaitingAnswer: jumpToWaitingAnswer,
+    onJumpToStagedAnswer: jumpToStagedAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onCycleVerdict: cycleVerdict,

@@ -10,14 +10,18 @@ export const ANSWER_TASK = "data-answer-task";
 /** Set on a container a field's `Escape` returns focus to, instead of the page: the editor modal. */
 export const FIELD_HOME = "data-field-home";
 
+/** `Ctrl+Shift+Enter`: unstages the staged answer the focus is in. The field handles it itself. */
+export const UNSTAGE_CHORD: Chord = { code: "Enter", ctrl: true, shift: true };
+
 /** What a key does inside an answer field. */
-export type AnswerFieldKey = "next" | "previous" | "leave";
+export type AnswerFieldKey = "next" | "previous" | "leave" | "unstage";
 
 /** The answer fields' own keys, with the cheat-sheet's words for each. */
-export const ANSWER_FIELD_KEYS: ReadonlyArray<{ action: AnswerFieldKey; chord: Chord; labelKey: "answerFieldNextKey" | "answerFieldPreviousKey" | "answerFieldLeaveKey" }> = [
+export const ANSWER_FIELD_KEYS: ReadonlyArray<{ action: AnswerFieldKey; chord: Chord; labelKey: "answerFieldNextKey" | "answerFieldPreviousKey" | "answerFieldLeaveKey" | "answerFieldUnstageKey" }> = [
   { action: "next", chord: { code: "ArrowDown", alt: true }, labelKey: "answerFieldNextKey" },
   { action: "previous", chord: { code: "ArrowUp", alt: true }, labelKey: "answerFieldPreviousKey" },
   { action: "leave", chord: { code: "Escape" }, labelKey: "answerFieldLeaveKey" },
+  { action: "unstage", chord: UNSTAGE_CHORD, labelKey: "answerFieldUnstageKey" },
 ];
 
 /** The answer field key a press is, or `null` when it is none. */
@@ -51,17 +55,33 @@ export function focusAdjacentField(from: Element | null, step: 1 | -1): boolean 
 }
 
 /**
- * The next answer field whose wait is not staged, after the one `from` is in (or from the first when
- * it is in none), wrapping at the end. `null` when nothing waits.
+ * The next answer field after the one `from` is in (or from the first when it is in none), wrapping at
+ * the end, among those that are **staged** (`staged`) or still **waiting** (not). `null` when there
+ * are none.
  */
-export function nextWaitingField(from: Element | null): HTMLElement | null {
+export function nextAnswerField(from: Element | null, staged: boolean): HTMLElement | null {
   const fields = answerFields();
-  const waiting = fields.filter((field) => field.getAttribute(ANSWER_STAGED) !== "true");
-  if (waiting.length === 0) return null;
+  const wanted = fields.filter((field) => (field.getAttribute(ANSWER_STAGED) === "true") === staged);
+  if (wanted.length === 0) return null;
   const here = fieldOf(from);
   const position = here === null ? -1 : fields.indexOf(here);
-  const after = fields.slice(position + 1).find((field) => waiting.includes(field));
-  return after ?? waiting.find((field) => field !== here) ?? waiting[0] ?? null;
+  const after = fields.slice(position + 1).find((field) => wanted.includes(field));
+  return after ?? wanted.find((field) => field !== here) ?? wanted[0] ?? null;
+}
+
+/** The next answer field whose wait is not staged: {@link nextAnswerField} over the waiting ones. */
+export function nextWaitingField(from: Element | null): HTMLElement | null {
+  return nextAnswerField(from, false);
+}
+
+/** Puts the caret at the end of a text field and keeps focus in it, after the field has re-rendered. */
+export function keepFocusAtEnd(field: HTMLTextAreaElement | null): void {
+  if (field === null) return;
+  field.focus();
+  window.setTimeout(() => {
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, 0);
 }
 
 /** The node id of the Task whose controls hold `field`, or `null`. */
@@ -95,7 +115,7 @@ interface KeyEventLike {
  */
 export function handleFieldKey(event: KeyEventLike, field: HTMLElement | null): boolean {
   const key = answerFieldKey(event.nativeEvent);
-  if (key === null) return false;
+  if (key === null || key === "unstage") return false;
   if (key === "leave" && (field === null || document.activeElement !== field)) return false;
   event.preventDefault();
   event.stopPropagation();

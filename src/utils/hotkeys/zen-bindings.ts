@@ -84,6 +84,6 @@ export const ZEN_BINDINGS: readonly Binding<ZenContext>[] = [
   ...asZenBindings(LIST_PLAN_BINDINGS),
   ...asZenBindings(LIST_DEPENDENCY_BINDINGS),
   ...asZenBindings(LIST_DESELECT_BINDINGS),
-  ...asZenBindings(LIST_WAITING_BINDINGS, { "listView.jumpToWaitingAnswer": "jumpToWaitingAnswerCard" }),
+  ...asZenBindings(LIST_WAITING_BINDINGS, { "listView.jumpToWaitingAnswer": "jumpToWaitingAnswerCard", "listView.jumpToStagedAnswer": "jumpToStagedAnswerCard" }),
   ...asZenBindings(LIST_HISTORY_BINDINGS),
 ];

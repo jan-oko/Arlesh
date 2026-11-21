@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isSendableAnswer } from "@/utils/open-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey } from "@/utils/answer-focus";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, UNSTAGE_CHORD } from "@/utils/answer-focus";
+import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
@@ -33,7 +34,7 @@ function isChord(event: KeyboardEvent): boolean {
  * unstages, keeping the text to edit. **Send** sends every staged answer on the board, this one
  * included: on text that is not staged yet it stages it first. `Alt+Down` / `Alt+Up` move to the next / previous answer field and `Escape` leaves the
  * field, back to the view, without touching the answer. `Ctrl+Enter` stages; in a staged field
- * it sends. While the field has focus the view's keys stand aside, as for any inline editor; the
+ * it sends, and `Ctrl+Shift+Enter` unstages it, keeping the text and the focus. While the field has focus the view's keys stand aside, as for any inline editor; the
  * chord is the field's own and is stopped there.
  */
 export default function AnswerField({ question, staged, actions, compact = false }: Props) {
@@ -61,12 +62,15 @@ export default function AnswerField({ question, staged, actions, compact = false
     }
   }
 
-  async function toggleStage(): Promise<void> {
+  async function toggleStage(keepFocus = false): Promise<void> {
     if (!canStage) return;
     if (staged) {
       // Unstaging keeps the text, to be edited and staged again.
       const kept = question.agentWaiting?.draft?.answer ?? "";
-      if (await run(() => actions.unstage(question))) setTyped(kept);
+      if (await run(() => actions.unstage(question))) {
+        setTyped(kept);
+        if (keepFocus) keepFocusAtEnd(field.current);
+      }
       return;
     }
     await run(() => actions.stage(question, { answer: typed }));
@@ -107,6 +111,13 @@ export default function AnswerField({ question, staged, actions, compact = false
           onBlur={() => setFocused(false)}
           onKeyDown={(event) => {
             if (handleFieldKey(event, field.current)) return;
+            if (matchesChord(event.nativeEvent, UNSTAGE_CHORD)) {
+              // Ctrl+Shift+Enter unstages a staged answer, and does nothing in one that is not.
+              event.preventDefault();
+              event.stopPropagation();
+              if (staged) void toggleStage(true);
+              return;
+            }
             if (!isChord(event)) return;
             event.preventDefault();
             event.stopPropagation();
@@ -119,6 +130,8 @@ export default function AnswerField({ question, staged, actions, compact = false
             type="button"
             className={styles.secondary}
             aria-pressed={staged}
+            aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined}
+            title={staged ? formatChord(UNSTAGE_CHORD) : undefined}
             disabled={!canStage}
             onClick={() => void toggleStage()}
           >

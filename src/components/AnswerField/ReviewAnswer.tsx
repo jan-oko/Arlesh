@@ -7,8 +7,8 @@ import type { ReviewLink, ReviewVerdict } from "@/api/expectations";
 import type { WaitReply } from "@/hooks/use-answer-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { chordFor, REVIEW_OWNED_CODES, verdictForKey } from "@/utils/hotkeys/review-keys";
-import { formatChord } from "@/utils/hotkeys/chord";
-import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey } from "@/utils/answer-focus";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, UNSTAGE_CHORD } from "@/utils/answer-focus";
+import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import styles from "./AnswerField.module.css";
@@ -83,7 +83,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
     }
   }
 
-  async function toggleStage(): Promise<void> {
+  async function toggleStage(keepFocus = false): Promise<void> {
     if (!canStage || verdict === null) return;
     if (staged) {
       // Unstaging keeps the verdict and the note, to change and stage again.
@@ -91,6 +91,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
       if (await run(() => actions.unstage(review))) {
         setChosen(kept.verdict);
         setTyped(kept.note);
+        if (keepFocus) keepFocusAtEnd(field.current);
       }
       return;
     }
@@ -186,6 +187,13 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={(event) => {
+          if (matchesChord(event.nativeEvent, UNSTAGE_CHORD)) {
+            // Ctrl+Shift+Enter unstages a staged answer, and does nothing in one that is not.
+            event.preventDefault();
+            event.stopPropagation();
+            if (staged) void toggleStage(true);
+            return;
+          }
           if (!isChord(event)) return;
           event.preventDefault();
           event.stopPropagation();
@@ -212,7 +220,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
             </button>
           ))}
         </div>
-        <button type="button" className={styles.secondary} aria-pressed={staged} disabled={!canStage} onClick={() => void toggleStage()}>
+        <button type="button" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} title={staged ? formatChord(UNSTAGE_CHORD) : undefined} disabled={!canStage} onClick={() => void toggleStage()}>
           {t("answerStage")}
         </button>
         <button type="button" className={styles.send} disabled={!canSend} onClick={() => void send()}>

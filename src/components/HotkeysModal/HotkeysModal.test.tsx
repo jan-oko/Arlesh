@@ -252,11 +252,13 @@ describe("HotkeysModal — search", () => {
     expect(rowOf(panel, "hotkeys:answerFieldNextKey")).toHaveTextContent("Alt+↓");
     expect(rowOf(panel, "hotkeys:answerFieldPreviousKey")).toHaveTextContent("Alt+↑");
     expect(rowOf(panel, "hotkeys:answerFieldLeaveKey")).toHaveTextContent("Esc");
+    expect(rowOf(panel, "hotkeys:answerFieldUnstageKey")).toHaveTextContent("Ctrl+Shift+Enter");
   });
 
   it("lists the jump to the next waiting answer in the List and Zen Views", () => {
     render(<HotkeysModal onClose={vi.fn()} view="list" />);
     expect(rowOf(screen.getByRole("tabpanel"), "hotkeys:jumpToWaitingAnswer")).toHaveTextContent("Q");
+    expect(rowOf(screen.getByRole("tabpanel"), "hotkeys:jumpToStagedAnswer")).toHaveTextContent("Shift+Q");
     cleanup();
     render(<HotkeysModal onClose={vi.fn()} view="zen" />);
     expect(rowOf(screen.getByRole("tabpanel"), "hotkeys:jumpToWaitingAnswerCard")).toHaveTextContent("Q");

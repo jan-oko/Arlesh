@@ -283,10 +283,18 @@ runs the same React components. So the change is made once:
   the first `Escape` moves focus to the editor (which takes focus for it) and the second closes it, as
   `Escape` did before. These take precedence inside a field over any binding on the chord (the
   Mindmap's `Alt+Down` / `Alt+Up` reorder is the only one on the tables, and no answer field is on
-  its canvas). **The jump into a field:** `Q` (provisional; the user has not named a key) in the List
+  its canvas). **The jump into a field:** `Q` (confirmed by the user, 2026-11-21) in the List
   and Zen Views selects the Task of the next answer waiting for you, an open question or review that is
   not staged, and focuses its field; again, it goes on to the next, wrapping at the end; with none it
-  shows a toast. It looks among the answer fields the view draws. The keys are in `answer-focus.ts`,
+  shows a toast. It looks among the answer fields the view draws. **Into a staged field** (ruled
+  2026-11-21): `Shift+Q` does the same over the staged answers, questions and reviews alike: it
+  selects the Task and focuses the locked field, again goes on to the next, wraps, and with none
+  staged shows a toast. `Alt+Down` / `Alt+Up` stop on staged fields too (a locked field is read
+  only, not disabled, so it takes focus). **`Ctrl+Shift+Enter` in a staged field unstages it**: the
+  text (and a review's verdict and note) is kept, the field becomes editable and keeps focus with the
+  caret at the end; in a field that is not staged it does nothing, and it never sends. `Ctrl+Enter`
+  is unchanged (its chord check refuses Shift, so the two never both fire). The Stage button shows
+  `Ctrl+Shift+Enter` as its tooltip while staged, and the cheat-sheet's "Answer fields" tab lists it. The keys are in `answer-focus.ts`,
   `list/waiting.ts` (a registry binding, so the cheat-sheet and the palette list it) and the cheat-sheet's
   "Answer fields" tab.
 - **Keyboard.** In a field that is not staged, `Ctrl+Enter` stages when there is text and does
