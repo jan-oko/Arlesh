@@ -14,9 +14,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 arlesh-core = { path = "../arlesh-core" }
-# The app's own Backend, shared: `HttpBackend` is Client mode for a script. Only the `http` feature;
-# SQLite stays on `request.rs` (ADR 0016).
-arlesh-backend = { path = "../arlesh-backend", default-features = false, features = ["http"] }
+# The app's own Backend, shared: `HttpBackend` is Client mode for a script. SQLite stays on
+# `request.rs` (ADR 0016), so nothing here calls `SqliteBackend`. `sqlite` is named anyway, to match
+# the desktop app's feature set: a crate built with other features is another cargo unit, and the
+# two builds share one target (scripts/box.py, "Shared target"), so without it `arlesh-backend`
+# compiled once for the app and once for this module. The unused module adds no code to the wheel.
+arlesh-backend = { path = "../arlesh-backend", default-features = false, features = ["http", "sqlite"] }
 pyo3 = { version = "0.29", features = ["abi3-py311"] }
 pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 serde = { version = "1", features = ["derive"] }
@@ -26,3 +29,4 @@ chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "sync", "time"] }
 axum = "0.8.9"
 tracing = "0.1"
+arlesh-workspace-hack = { version = "0.1", path = "../arlesh-workspace-hack" }

@@ -1,0 +1,54 @@
+# Settings for `cargo hakari`: the workspace-hack crate, `crates/arlesh-workspace-hack`.
+#
+# Why it exists: the desktop app (`cargo build --bin arlesh`) and the server's native module
+# (`maturin develop`) resolve different features for the third-party crates the shared crates use
+# (tokio, serde_json, uuid, ...), and a crate built with other features is a different cargo unit.
+# Both builds go into one shared target (scripts/box.py, "Shared target"), so `arlesh-core`,
+# `arlesh-backend` and every dependency under them compiled twice. Every workspace crate that does
+# the compiling depends on the hack crate, which names the union of those features, so each build
+# resolves the same ones. `cargo hakari generate` writes the hack crate, `cargo hakari manage-deps`
+# the dependency lines; CI checks both (`scripts/check-workspace-hack.sh`).
+hakari-package = "arlesh-workspace-hack"
+dep-format-version = "4"
+resolver = "2"
+
+# The platforms Arlesh ships on. Hakari only unifies within a platform and writes the extra
+# features under a `cfg` for it, so the Android build does not receive what only desktop needs.
+platforms = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-linux-android",
+    "x86_64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+# `arlesh-rules` stays out of it, on purpose: it must compile to wasm32 (`arlesh-rules-wasm`) and
+# `scripts/check-rules-purity.sh` bars tokio and the rest from its manifest, and the hack crate
+# names them. Its own dependencies (serde_json, uuid, chrono) are still unified, because the
+# features are resolved over the whole graph of the build that includes it.
+[traversal-excludes]
+workspace-members = ["arlesh-rules"]
+
+# The desktop shell is not shared: only `src-tauri` links it, and the app's release build must not
+# get its `test` feature (the mock runtime `src-tauri`'s dev-dependency turns on), nor should the
+# server's module compile it. Its own dependencies go the same way: a crate only `src-tauri` reaches
+# is compiled once however it is built, so naming it here would only make the server's module
+# compile it too. (`schemars` 0.8 and `phf_shared` are `tauri-utils`' and the tray's; `core` and
+# `py` use `schemars` 1.x.)
+[final-excludes]
+third-party = [
+    { name = "tauri" },
+    { name = "tauri-utils" },
+    { name = "tauri-build" },
+    { name = "schemars", version = "0.8" },
+    { name = "phf_shared" },
+    { name = "regex-automata" },
+    { name = "semver" },
+    { name = "time" },
+    { name = "deranged" },
+    { name = "fastrand" },
+    { name = "toml_datetime" },
+    { name = "toml_parser" },
+    { name = "winnow" },
+]
