@@ -14,12 +14,14 @@ export interface AgentActivity {
   waits: number;
   /** Agentic Tasks an agent holds, with nothing asked of the user: On Agent. */
   onAgent: number;
+  /** Open questions and reviews with a staged answer, on the whole board: what one Send sends. */
+  staged: number;
 }
 
-export const NO_AGENT_ACTIVITY: AgentActivity = { review: 0, waits: 0, onAgent: 0 };
+export const NO_AGENT_ACTIVITY: AgentActivity = { review: 0, waits: 0, onAgent: 0, staged: 0 };
 
 /** The activity the board load counted, or none when it sent none. */
 export function agentActivityFrom(counts: AgentActivityCounts | undefined): AgentActivity {
   if (counts === undefined) return NO_AGENT_ACTIVITY;
-  return { review: counts.review, waits: counts.waits, onAgent: counts.on_agent };
+  return { review: counts.review, waits: counts.waits, onAgent: counts.on_agent, staged: counts.staged ?? 0 };
 }

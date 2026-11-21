@@ -37,6 +37,7 @@ export const COLLECTIONS = [
   "short_ids",
   "facts",
   "agent_activity",
+  "answer_drafts",
 ] as const;
 
 export type CollectionName = (typeof COLLECTIONS)[number];
@@ -102,6 +103,7 @@ const ROW_COLLECTIONS: ReadonlySet<string> = new Set<RowCollection>([
   "flow_instance_nodes",
   "lifecycles",
   "habits",
+  "answer_drafts",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -135,6 +137,8 @@ export function keyOf(collection: Exclude<CollectionName, MapCollection | "agent
       return `${field(item, "node_type")}-${field(item, "node_id")}`;
     case "habits":
       return field(item, "flow_id");
+    case "answer_drafts":
+      return `draft-${field(item, "wait_id")}`;
     case "block_reasons":
       return `${field(item, "owner_type")}-${field(item, "owner_id")}`;
     case "task_dependencies":
@@ -145,7 +149,8 @@ export function keyOf(collection: Exclude<CollectionName, MapCollection | "agent
 }
 
 function rowsOf(load: MindmapLoad, collection: RowCollection | GroupCollection): readonly unknown[] {
-  return load[collection];
+  // `answer_drafts` is left off the wire when no answer is staged.
+  return load[collection] ?? [];
 }
 
 /** Every entry of `load`, grouping block reasons by owner and dependencies by Task in board order. */
@@ -375,9 +380,9 @@ export function applyBoardChanges(held: HeldBoard, changes: BoardChanges): HeldB
     for (const [key] of change.set) retire(collection, key);
     for (const [key, value] of change.set) admit(collection, key, value);
     if (isRowCollection(collection)) {
-      Object.assign(load, { [collection]: applyRows(collection, load[collection], change) });
+      Object.assign(load, { [collection]: applyRows(collection, load[collection] ?? [], change) });
     } else if (isGroupCollection(collection)) {
-      Object.assign(load, { [collection]: applyGroups(collection, load[collection], change) });
+      Object.assign(load, { [collection]: applyGroups(collection, load[collection] ?? [], change) });
     } else if (collection === "short_ids") {
       load.short_ids = applyMap(load.short_ids, change, isShortId);
     } else if (collection === "facts") {

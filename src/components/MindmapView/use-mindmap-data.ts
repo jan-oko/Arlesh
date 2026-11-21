@@ -8,7 +8,8 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
-import type { Expectation } from "@/api/expectations";
+import type { Expectation, ReviewVerdict } from "@/api/expectations";
+import type { AnswerDraft } from "@/api/answer-drafts";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
 import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
@@ -397,6 +398,11 @@ function dependencyNodeId(block: DependencyBlock): string {
   return `${block.kind}-${block.id}`;
 }
 
+/** The draft as a wait node carries it. */
+function draftOf(draft: AnswerDraft | undefined): { answer: string | null; verdict: ReviewVerdict | null } {
+  return { answer: draft?.answer ?? null, verdict: draft?.verdict ?? null };
+}
+
 /** Stamps what the board's rules say about `node` onto it. */
 function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.inherited_agentic === true) node.inheritedAgentic = true;
@@ -407,6 +413,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   }
   if (fact.plan_conflict !== undefined) node.planConflict = fact.plan_conflict;
   if (fact.open_questions !== undefined) node.openQuestionIds = fact.open_questions;
+  if (fact.staged_questions !== undefined) node.stagedQuestionIds = fact.staged_questions;
   if (fact.expired === true) node.expired = true;
   if (fact.derived_in_progress === true) node.derivedInProgress = true;
   if (fact.sub_items !== undefined) node.subItems = fact.sub_items;
@@ -455,8 +462,11 @@ export function buildTree(
   /** Every Flow's Commitment items and wait items (Task b66). */
   flowCommitments: FlowCommitment[] = [],
   flowExpectations: FlowExpectation[] = [],
+  /** Every staged answer (the load's `answer_drafts`): drawn on the wait it answers. */
+  answerDrafts: readonly AnswerDraft[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
+  const draftsByWait = new Map(answerDrafts.map((draft) => [draft.wait_id, draft]));
 
   // Explicit block reasons, grouped per owner in stored (position) order. A reason the backend
   // derived — the agent capacity lock's, or a Compound Task's — is not the owner's to edit, so it is
@@ -612,6 +622,7 @@ export function buildTree(
             question: expectation.question !== false,
             answer: expectation.answer ?? null,
             ...(expectation.review !== undefined ? { review: expectation.review } : {}),
+            ...(draftsByWait.has(expectation.id) ? { draft: draftOf(draftsByWait.get(expectation.id)) } : {}),
           },
         }
         : {}),
@@ -999,7 +1010,7 @@ export function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode
     data.expectations, inputs.delegationWaitTitle,
     (title) => `${inputs.checkPrefix}${title}`, inputs.compoundReason, inputs.capacityReason,
     inputs.cooldownReason, data.short_ids ?? {}, board.personNames, data.facts ?? {},
-    data.flow_commitments ?? [], data.flow_expectations ?? [],
+    data.flow_commitments ?? [], data.flow_expectations ?? [], data.answer_drafts ?? [],
   );
   applyLifecycles(built, lifecycleMap(data.lifecycles));
   // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose

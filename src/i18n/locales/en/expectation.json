@@ -34,5 +34,13 @@
   "reviewApproveMerge": "Approve and merge",
   "reviewRequestChanges": "Request changes",
   "reviewKind": "Review",
-  "openWaits": "Waiting on you"
+  "openWaits": "Waiting on you",
+  "draftSkipped": "{{title}} ({{reason}})",
+  "draftSkippedUntitled": "an answer",
+  "draftSkipReason": {
+    "released": "already answered",
+    "gone": "gone",
+    "unstaged": "unstaged on another device"
+  },
+  "draftsNotSent": "Not sent: {{list}}"
 }

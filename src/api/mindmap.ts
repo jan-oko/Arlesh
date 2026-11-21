@@ -6,6 +6,7 @@ import type { Goal } from "@/api/goals";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
 import type { Commitment } from "@/api/commitments";
 import type { Expectation } from "@/api/expectations";
+import type { AnswerDraft } from "@/api/answer-drafts";
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
@@ -53,6 +54,9 @@ export interface NodeFacts {
   open_question?: RowId;
   /** Every open agentic question or review beneath a Task, in position order. */
   open_questions?: RowId[];
+  /** The open questions among `open_questions` that are staged: an answer written, not yet sent.
+   * The wait still reads Review. */
+  staged_questions?: RowId[];
   /** Whether a Commitment's Verdict Window ran out before anything was recorded. */
   expired?: boolean;
   /** Whether a Task reads In Progress (Doing) only from its sub-items rather than a status held by
@@ -93,6 +97,9 @@ export interface AgentActivityCounts {
   waits: number;
   /** Agentic Tasks an agent holds, with nothing asked of the user: On Agent. */
   on_agent: number;
+  /** Open questions and reviews on the whole board with a staged answer: what one Send sends.
+   * Absent when none. */
+  staged?: number;
 }
 
 /**
@@ -148,6 +155,9 @@ export interface MindmapLoad {
   facts?: Record<string, NodeFacts>;
   /** What the agents are doing on the whole board. */
   agent_activity?: AgentActivityCounts;
+  /** Every staged answer (ADR 0021). Absent when none is staged. Only the app's board carries them:
+   * an agent never sees a draft. */
+  answer_drafts?: AnswerDraft[];
 }
 
 /**
