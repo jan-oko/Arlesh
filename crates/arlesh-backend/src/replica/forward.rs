@@ -17,21 +17,21 @@ macro_rules! method_body {
         }
     }};
     (write $s:ident $name:ident [$($arg:ident)*]) => {{
-        $s.submit(move |backend| {
+        let args = serde_json::to_value(($(&$arg,)*)).unwrap_or(serde_json::Value::Null);
+        $s.predict(args, move |backend| {
             $( let $arg = $arg.clone(); )*
             Box::pin(async move { backend.$name($($arg),*).await })
         })
         .await
     }};
-    (create $s:ident $name:ident [$($arg:ident)*]) => {{
-        $s.submit(move |backend| {
-            $( let $arg = $arg.clone(); )*
-            Box::pin(async move { backend.$name($($arg),*).await })
-        })
-        .await
+    (create $s:ident $name:ident [$request:ident]) => {{
+        let mut $request = $request;
+        $crate::replica::mint::MintsId::mint_id(&mut $request);
+        method_body!(write $s $name [$request])
     }};
     (remote $s:ident $name:ident [$($arg:ident)*]) => {{
-        $s.submit(move |backend| {
+        let args = serde_json::to_value(($(&$arg,)*)).unwrap_or(serde_json::Value::Null);
+        $s.remote_item(args, move |backend| {
             $( let $arg = $arg.clone(); )*
             Box::pin(async move { backend.$name($($arg),*).await })
         })
@@ -47,7 +47,7 @@ macro_rules! method_body {
         $s.remote().$name($($arg),*).await
     }};
     (undo $s:ident $name:ident [$($arg:ident)*]) => {{
-        $s.submit(move |backend| {
+        $s.undo_item(serde_json::Value::Null, stringify!($name) == "undo", move |backend| {
             Box::pin(async move { backend.$name().await })
         })
         .await

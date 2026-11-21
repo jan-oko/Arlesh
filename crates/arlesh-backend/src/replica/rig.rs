@@ -116,6 +116,93 @@ macro_rules! implement_bracketed {
 
 super::ports::with_ports!(implement_bracketed);
 
+/// A server a test can hold: every write waits at the gate until the test lets it through, and can
+/// be made to fail as a lost connection does.
+pub struct Gated {
+    inner: Arc<Bracketed>,
+    open: tokio::sync::watch::Sender<bool>,
+    /// How many writes reached the server.
+    pub calls: AtomicU32,
+    /// Whether writes fail as an unreachable server does.
+    pub unreachable: AtomicBool,
+}
+
+impl Gated {
+    /// A gate over `inner`, open.
+    pub fn new(inner: Arc<Bracketed>) -> Self {
+        Self {
+            inner,
+            open: tokio::sync::watch::channel(true).0,
+            calls: AtomicU32::new(0),
+            unreachable: AtomicBool::new(false),
+        }
+    }
+
+    /// Holds every write that arrives from now on.
+    pub fn hold(&self) {
+        self.open.send_replace(false);
+    }
+
+    /// Lets the held writes, and later ones, through.
+    pub fn release(&self) {
+        self.open.send_replace(true);
+    }
+
+    async fn pass(&self) -> Result<(), WireError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let mut open = self.open.subscribe();
+        let _ = open.wait_for(|open| *open).await;
+        if self.unreachable.load(Ordering::SeqCst) {
+            return Err(crate::http::read_only_error(ReadOnlyReason::ServerUnreachable));
+        }
+        Ok(())
+    }
+}
+
+macro_rules! gated_body {
+    (read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
+    (option_read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
+    (remote_read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
+    (refused $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
+    (local $s:ident $name:ident [$($arg:ident)*]) => { LocalGestures.$name().await };
+    (write $s:ident $name:ident [$($arg:ident)*]) => {{ $s.pass().await?; $s.inner.$name($($arg),*).await }};
+    (create $s:ident $name:ident [$($arg:ident)*]) => {{ $s.pass().await?; $s.inner.$name($($arg),*).await }};
+    (remote $s:ident $name:ident [$($arg:ident)*]) => {{ $s.pass().await?; $s.inner.$name($($arg),*).await }};
+    (undo $s:ident $name:ident [$($arg:ident)*]) => {{ $s.pass().await?; $s.inner.$name($($arg),*).await }};
+}
+
+macro_rules! implement_gated {
+    ( $( $port:ident in $module:ident {
+            uses { $( $import:item )* }
+            methods { $( $kind:ident $name:ident ( $( $arg:ident : $ty:ty ),* ) -> $ret:ty ; )* }
+        } )* ) => {
+        mod gated_impls {
+            $(
+                pub(super) mod $module {
+                    #![allow(unused_imports, clippy::all)]
+                    use std::sync::Arc;
+                    $( $import )*
+                    use super::super::{Gated, LocalGestures};
+                    use crate::Backend;
+                    use crate::$module::$port as _;
+                    use crate::undo::UndoPort as _;
+
+                    #[async_trait::async_trait]
+                    impl crate::$module::$port for Gated {
+                        $(
+                            async fn $name(&self $(, $arg: $ty)*) -> $ret {
+                                gated_body!($kind self $name [$($arg)*])
+                            }
+                        )*
+                    }
+                }
+            )*
+        }
+    };
+}
+
+super::ports::with_ports!(implement_gated);
+
 /// The server: a core publishing rows over an in-memory database, and the ways to reach it.
 pub struct ServerRig {
     /// The core itself.
@@ -317,4 +404,9 @@ pub fn remote(server: &ServerRig) -> Arc<dyn Backend> {
 /// A server reached over HTTP, as a Backend.
 pub fn remote_of(backend: &Arc<crate::http::HttpBackend>) -> Arc<dyn Backend> {
     Arc::clone(backend) as Arc<dyn Backend>
+}
+
+/// A gated server as a Backend.
+pub fn gated(server: &ServerRig) -> Arc<Gated> {
+    Arc::new(Gated::new(Arc::clone(&server.bracketed)))
 }

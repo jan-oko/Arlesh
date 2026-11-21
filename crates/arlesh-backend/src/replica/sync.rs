@@ -22,12 +22,18 @@ use arlesh_core::{
 };
 use tokio::{sync::watch, time::Instant};
 
-use super::source::{Incoming, SharedSource, SourceEvent};
+use super::{
+    queue::{Command, OnDropped, Queue},
+    source::{Incoming, SharedSource, SourceEvent},
+};
 use crate::{
-    http::ReadOnlyReason,
+    http::{read_only_error, ReadOnlyReason},
     revision::{BoardHead, BoardRevision},
     sqlite::SqliteBackend,
+    Backend,
 };
+use arlesh_core::replication::rules::wire::ParsedSnapshot;
+use tokio::sync::mpsc;
 
 /// The waits that decide when the Replica doubts its rows. Tests shorten them.
 #[derive(Debug, Clone, Copy)]
@@ -91,18 +97,45 @@ enum SessionEnd {
     SchemaMismatch(ReadOnlyReason),
 }
 
+/// What the syncer is wired to besides the server.
+pub struct Wiring {
+    /// Where the writes and the server's answers to them arrive.
+    pub commands: mpsc::UnboundedReceiver<Command>,
+    /// Where the syncer's own tasks send the answers.
+    pub commands_tx: mpsc::UnboundedSender<Command>,
+    /// Told when writes were taken back.
+    pub on_dropped: OnDropped,
+    /// Told each change the Replica's board makes.
+    pub sink: Sink,
+    /// The runtime the publisher runs on.
+    pub runtime: tokio::runtime::Handle,
+    /// When the Replica doubts its rows.
+    pub timings: Timings,
+}
+
 /// The task that keeps the Replica current.
 pub struct Syncer {
     pub(super) factory: SessionFactory,
     pub(super) source: SharedSource,
     pub(super) shared: Arc<Shared>,
+    pub(super) remote: Arc<dyn Backend>,
+    pub(super) commands: mpsc::UnboundedReceiver<Command>,
+    pub(super) commands_tx: mpsc::UnboundedSender<Command>,
+    pub(super) on_dropped: OnDropped,
+    pub(super) queue: Queue,
+    /// Whether the Replica holds the server's board and the server answers: writes are allowed.
+    pub(super) live: bool,
+    /// Why writes are refused while it is not [`live`](Self::live).
+    pub(super) down_reason: ReadOnlyReason,
+    /// Whether the rows applied since the last publication came from an agent (or a snapshot).
+    pub(super) agent_origin: bool,
     sink: Sink,
     runtime: tokio::runtime::Handle,
     timings: Timings,
-    epoch: String,
-    position: i64,
-    tracker: SourceTracker,
-    needs_snapshot: bool,
+    pub(super) epoch: String,
+    pub(super) position: i64,
+    pub(super) tracker: SourceTracker,
+    pub(super) needs_snapshot: bool,
     ahead_since: Option<Instant>,
     last_event: Instant,
     last_check: Instant,
@@ -114,15 +147,30 @@ impl Syncer {
     pub fn new(
         factory: SessionFactory,
         source: SharedSource,
+        remote: Arc<dyn Backend>,
         shared: Arc<Shared>,
-        sink: Sink,
-        runtime: tokio::runtime::Handle,
-        timings: Timings,
+        wiring: Wiring,
     ) -> Self {
+        let Wiring {
+            commands,
+            commands_tx,
+            on_dropped,
+            sink,
+            runtime,
+            timings,
+        } = wiring;
         Self {
             factory,
             source,
             shared,
+            remote,
+            commands,
+            commands_tx,
+            on_dropped,
+            queue: Queue::default(),
+            live: false,
+            down_reason: ReadOnlyReason::Syncing,
+            agent_origin: true,
             sink,
             runtime,
             timings,
@@ -153,8 +201,24 @@ impl Syncer {
                     self.source.hold(Some(reason));
                 }
             }
-            tokio::time::sleep(backoff).await;
+            self.live = false;
+            self.serve_for(backoff).await;
             backoff = (backoff * 2).min(self.timings.max_backoff);
+        }
+    }
+
+    /// Answers writes with a refusal until `wait` has passed: there is no server to send them to.
+    async fn serve_for(&mut self, wait: Duration) {
+        let deadline = tokio::time::sleep(wait);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                () = &mut deadline => return,
+                command = self.commands.recv() => {
+                    let Some(command) = command else { return };
+                    let _ = self.on_command(command).await;
+                }
+            }
         }
     }
 
@@ -171,8 +235,17 @@ impl Syncer {
         loop {
             tokio::select! {
                 incoming = events.recv() => {
-                    let Some(incoming) = incoming else { return SessionEnd::Closed };
+                    let Some(incoming) = incoming else {
+                        let _ = self.lose_connection(read_only_error(ReadOnlyReason::ServerUnreachable)).await;
+                        return SessionEnd::Closed;
+                    };
                     if let Err(error) = self.on_incoming(incoming).await {
+                        return SessionEnd::Failed(error);
+                    }
+                }
+                command = self.commands.recv() => {
+                    let Some(command) = command else { return SessionEnd::Closed };
+                    if let Err(error) = self.on_command(command).await {
                         return SessionEnd::Failed(error);
                     }
                 }
@@ -182,7 +255,7 @@ impl Syncer {
                     }
                 }
             }
-            if self.needs_snapshot {
+            if self.needs_snapshot && !self.queue.holding() {
                 if let Err(end) = self.install_snapshot().await {
                     return end;
                 }
@@ -190,45 +263,66 @@ impl Syncer {
         }
     }
 
-    /// Fetches the device snapshot and makes the Replica exactly that board.
-    async fn install_snapshot(&mut self) -> Result<(), SessionEnd> {
-        self.needs_snapshot = false;
-        let body = self.source.snapshot().await.map_err(SessionEnd::Failed)?;
+    /// Fetches the device snapshot and checks its schema is this app's.
+    pub(super) async fn fetch_snapshot(&mut self) -> Result<ParsedSnapshot, WireError> {
+        let body = self.source.snapshot().await?;
         let parsed = wire::parse_snapshot(&body)
-            .map_err(|error| SessionEnd::Failed(WireError::internal(error.to_string())))?;
+            .map_err(|error| WireError::internal(error.to_string()))?;
         let ours = replica::schema_version(&self.factory)
             .await
-            .map_err(|error| SessionEnd::Failed(WireError::internal(error.to_string())))?;
+            .map_err(|error| WireError::internal(error.to_string()))?;
         if parsed.snapshot.schema_version != ours {
-            return Err(SessionEnd::SchemaMismatch(
-                if parsed.snapshot.schema_version > ours {
-                    ReadOnlyReason::UpdateApp
-                } else {
-                    ReadOnlyReason::UpdateServer
-                },
-            ));
+            let reason = if parsed.snapshot.schema_version > ours {
+                ReadOnlyReason::UpdateApp
+            } else {
+                ReadOnlyReason::UpdateServer
+            };
+            return Err(read_only_error(reason));
         }
-        replica::install_snapshot(&self.factory, &parsed.snapshot)
-            .await
-            .map_err(|error| SessionEnd::Failed(WireError::internal(error.to_string())))?;
+        Ok(parsed)
+    }
+
+    /// Starts again from a snapshot that has just been installed.
+    pub(super) fn reseed(&mut self, parsed: &ParsedSnapshot) {
         self.tracker = SourceTracker::seed(&parsed.snapshot.rows, parsed.snapshot.upto);
         self.position = parsed.snapshot.upto;
         self.epoch = parsed.epoch.clone();
         self.ahead_since = None;
         self.unchecked = false;
         self.last_event = Instant::now();
+        self.queue.reset_buffer(self.position);
+        self.shared.applied.send_replace(Applied {
+            epoch: parsed.epoch.clone(),
+            revision: parsed.revision,
+        });
+    }
+
+    /// Fetches the device snapshot and makes the Replica exactly that board.
+    async fn install_snapshot(&mut self) -> Result<(), SessionEnd> {
+        self.needs_snapshot = false;
+        let parsed = match self.fetch_snapshot().await {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                return Err(match schema_reason(&error) {
+                    Some(reason) => SessionEnd::SchemaMismatch(reason),
+                    None => SessionEnd::Failed(error),
+                })
+            }
+        };
+        replica::install_snapshot(&self.factory, &parsed.snapshot)
+            .await
+            .map_err(|error| SessionEnd::Failed(WireError::internal(error.to_string())))?;
+        self.reseed(&parsed);
+        self.live = true;
+        self.agent_origin = true;
         self.source.hold(None);
         self.source.reachable(true);
         self.announce();
-        self.shared.applied.send_replace(Applied {
-            epoch: parsed.epoch,
-            revision: parsed.revision,
-        });
         Ok(())
     }
 
     /// Makes the local backend when the first board is in, and tells it a write landed.
-    fn announce(&self) {
+    pub(super) fn announce(&self) {
         if let Some(local) = self.shared.local.borrow().clone() {
             local.record_write();
             return;
@@ -256,6 +350,10 @@ impl Syncer {
 
     async fn on_event(&mut self, event: SourceEvent) -> Result<(), WireError> {
         self.last_event = Instant::now();
+        if self.queue.holding() {
+            self.hold_event(event);
+            return self.try_settle().await;
+        }
         if event.epoch != self.epoch {
             self.needs_snapshot = true;
             return Ok(());
@@ -299,7 +397,7 @@ impl Syncer {
         Ok(())
     }
 
-    fn note_revision(&self, epoch: &str, revision: u64) {
+    pub(super) fn note_revision(&self, epoch: &str, revision: u64) {
         self.shared.applied.send_if_modified(|applied| {
             if applied.epoch == epoch && applied.revision >= revision {
                 return false;
@@ -312,7 +410,7 @@ impl Syncer {
 
     fn on_head(&mut self, head: BoardHead) {
         if head.epoch != self.epoch {
-            self.needs_snapshot = true;
+            self.request_snapshot();
             return;
         }
         let Some(source) = head.source else { return };
@@ -323,11 +421,23 @@ impl Syncer {
         self.ahead_since = None;
         if source.upto == self.position && source.hash != self.tracker.head().hash {
             tracing::error!("a row changed behind the feed; fetching a snapshot");
+            self.request_snapshot();
+        }
+    }
+
+    /// Asks for a whole board: at once when idle, at the settle when writes are pending.
+    fn request_snapshot(&mut self) {
+        if self.queue.holding() {
+            self.queue.ask_for_snapshot();
+        } else {
             self.needs_snapshot = true;
         }
     }
 
     async fn on_tick(&mut self) -> Result<(), WireError> {
+        if self.queue.holding() {
+            return self.settle_on_tick().await;
+        }
         if self
             .ahead_since
             .is_some_and(|since| since.elapsed() >= self.timings.ahead_limit)
@@ -360,6 +470,15 @@ impl Syncer {
 
     /// Whether the rows are all confirmed ones, so their hash means something.
     fn can_check(&self) -> bool {
-        true
+        !self.queue.holding()
+    }
+}
+
+/// The side a schema refusal names, when `error` is one.
+fn schema_reason(error: &WireError) -> Option<ReadOnlyReason> {
+    let reason = error.details()?.get("reason")?.clone();
+    match serde_json::from_value::<ReadOnlyReason>(reason).ok()? {
+        reason @ (ReadOnlyReason::UpdateApp | ReadOnlyReason::UpdateServer) => Some(reason),
+        _ => None,
     }
 }

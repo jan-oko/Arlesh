@@ -68,6 +68,7 @@ async fn a_snapshot_is_fetched_on_every_connect() {
         remote: remote_of(&http),
         sink: Arc::new(|_| {}),
         runtime: tokio::runtime::Handle::current(),
+        on_dropped: Arc::new(|_| {}),
         timings: Timings {
             tick: Duration::from_millis(50),
             max_backoff: Duration::from_millis(100),

@@ -16,7 +16,8 @@ use arlesh_core::{
 };
 
 use super::{
-    rig::{remote, RigSource, ServerRig},
+    queue::Dropped,
+    rig::{gated, remote, Gated, RigSource, ServerRig},
     sync::Timings,
     ReplicaBackend, ReplicaConfig,
 };
@@ -88,26 +89,32 @@ fn fast() -> Timings {
     }
 }
 
-struct Rig {
-    server: ServerRig,
-    source: Arc<RigSource>,
-    replica: Arc<ReplicaBackend>,
-    published: Arc<Mutex<Vec<u64>>>,
+pub(super) struct Rig {
+    pub(super) server: ServerRig,
+    pub(super) source: Arc<RigSource>,
+    pub(super) replica: Arc<ReplicaBackend>,
+    pub(super) published: Arc<Mutex<Vec<u64>>>,
+    pub(super) gate: Arc<Gated>,
+    pub(super) dropped: Arc<Mutex<Vec<Dropped>>>,
 }
 
 impl Rig {
     /// A server and a Replica following it, with the events `drop` names never sent.
-    async fn start(drop: impl FnOnce(u64) -> Vec<u64>) -> Self {
+    pub(super) async fn start(drop: impl FnOnce(u64) -> Vec<u64>) -> Self {
         let server = ServerRig::start().await;
         let source = Arc::new(RigSource::new(&server, Duration::from_millis(100)));
         source.drop_events(drop(server.seq()));
         let published = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&published);
+        let gate = gated(&server);
+        let dropped = Arc::new(Mutex::new(Vec::new()));
+        let told = Arc::clone(&dropped);
         let replica = ReplicaBackend::start(ReplicaConfig {
             source: Arc::clone(&source) as _,
-            remote: remote(&server),
+            remote: Arc::clone(&gate) as Arc<dyn Backend>,
             sink: Arc::new(move |event: &ChangeEvent| log.lock().expect("lock").push(event.seq)),
             runtime: tokio::runtime::Handle::current(),
+            on_dropped: Arc::new(move |notice| told.lock().expect("lock").push(notice)),
             timings: fast(),
         })
         .await
@@ -117,23 +124,25 @@ impl Rig {
             source,
             replica,
             published,
+            gate,
+            dropped,
         };
         rig.local().await;
         rig
     }
 
-    async fn local(&self) -> Arc<SqliteBackend> {
+    pub(super) async fn local(&self) -> Arc<SqliteBackend> {
         self.replica.local().await.expect("the first board")
     }
 
-    async fn replica_rows(&self) -> Vec<StoredRow> {
+    pub(super) async fn replica_rows(&self) -> Vec<StoredRow> {
         let local = self.local().await;
         let mut db = local.factory().begin_read().await.expect("a read");
         arlesh_core::replication::snapshot(&mut db).await.expect("rows").rows
     }
 
     /// Waits until the Replica holds the server's rows, and answers how long it took.
-    async fn converge(&self) -> Duration {
+    pub(super) async fn converge(&self) -> Duration {
         let start = Instant::now();
         loop {
             let (theirs, ours) = (self.server.rows().await, self.replica_rows().await);
@@ -151,7 +160,7 @@ impl Rig {
     }
 }
 
-fn task(title: &str, parent_type: &str, parent: NodeId) -> CreateTaskRequest {
+pub(super) fn task(title: &str, parent_type: &str, parent: NodeId) -> CreateTaskRequest {
     CreateTaskRequest {
         title: title.into(),
         parent_type: parent_type.into(),
@@ -162,7 +171,7 @@ fn task(title: &str, parent_type: &str, parent: NodeId) -> CreateTaskRequest {
 
 /// The server's own writes, one publication each, as another client would make them. Answers the
 /// sequence number of each publication.
-async fn session(server: &ServerRig) -> Vec<u64> {
+pub(super) async fn session(server: &ServerRig) -> Vec<u64> {
     let bracketed = Arc::clone(&server.bracketed);
     let aspect = {
         let mut db = server.backend.factory().connect().await.expect("a session");
@@ -317,7 +326,7 @@ async fn a_new_epoch_refetches() {
     assert!(rig.source.told.snapshots.load(Ordering::SeqCst) > snapshots);
 }
 
-async fn first_project(rig: &Rig) -> arlesh_core::nodes::id::RowId {
+pub(super) async fn first_project(rig: &Rig) -> arlesh_core::nodes::id::RowId {
     let mut db = rig.server.backend.factory().connect().await.expect("a session");
     db.domains()
         .list(Some(DomainSubtype::Project))
@@ -337,6 +346,7 @@ async fn a_schema_mismatch_is_read_only_and_names_the_side() {
             remote: remote(&server),
             sink: Arc::new(|_| {}),
             runtime: tokio::runtime::Handle::current(),
+            on_dropped: Arc::new(|_| {}),
             timings: fast(),
         })
         .await
