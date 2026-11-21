@@ -21,6 +21,7 @@ pub mod mindmap;
 pub mod node_gestures;
 pub mod notifications;
 pub mod push;
+pub mod rules;
 pub mod scopes;
 pub mod tasks;
 /// The tray and close-to-tray are desktop-only; a phone has neither, and `mobile_shell` answers

@@ -212,6 +212,12 @@ pub struct NodeFacts {
     /// they say anything: the editors grey out the statuses it cannot hold from it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_items: Option<crate::tasks::rules::gestures::SubItems>,
+    /// The statuses a Task's sub-items forbid the editors to offer, each with why: Done over an open
+    /// sub-item, an ordinary status below the floor they derive. Compound is not listed: it is the
+    /// Task's own flag and blocks every status, so a reader that has the flag has the answer.
+    /// Absent when its sub-items forbid nothing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub status_blocks: Vec<StatusBlockFact>,
     /// Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
     /// Achieved, a wait no longer pending.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -223,6 +229,17 @@ pub struct NodeFacts {
     /// derived wait ([`crate::nodes::rules::capabilities`]). Absent, everything is allowed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<crate::nodes::rules::capabilities::Capabilities>,
+}
+
+/// One status an editor may not offer on a Task, and why.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize,
+)]
+pub struct StatusBlockFact {
+    /// The status that cannot be chosen.
+    pub status: crate::tasks::model::Status,
+    /// Why not.
+    pub block: crate::tasks::rules::gestures::StatusBlock,
 }
 
 /// Whether a count is zero: left off the wire, as the facts leave their defaults off.

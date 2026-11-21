@@ -5,7 +5,7 @@ import type { InstanceType, FirstCheck, FlowItemType, TemplateFields } from "@/a
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
+import type { NodeCapabilities, PlanConflict, StatusBlockFact } from "@/api/mindmap";
 import type { SubItemsWire } from "@/wasm/rules";
 import type { Review, ReviewVerdict } from "@/api/expectations";
 import type { Delegate, TaskStatus } from "@/api/tasks";
@@ -328,6 +328,9 @@ export interface MindmapNode {
   /** What the Task's sub-items say about it, when they say anything — the status they make it read
    * at least and how many are open. The editors grey out the statuses it cannot hold from it. */
   subItems?: SubItemsWire;
+  /** The statuses the Task's sub-items forbid the editors to offer, each with why — served with
+   * the board (`NodeFacts.status_blocks`). */
+  statusBlocks?: StatusBlockFact[];
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

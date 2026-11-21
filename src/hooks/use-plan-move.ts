@@ -16,7 +16,7 @@ import type { PendingToast } from "@/stores/use-mindmap-store";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import type { ScopeRef } from "@/utils/scope-ref";
-import { planRefusal } from "@/utils/plan-triage";
+import { planRefusals } from "@/utils/plan-triage";
 import type { TakeOutTarget } from "@/utils/plan-take-out";
 
 /** A scope work can be planned to: its key, its window once resolved, and its name for the toasts. */
@@ -267,8 +267,9 @@ export function usePlanMove({
       // within its iteration's window, which the containment check below holds it to.
       const allowed: TaskListRow[] = [];
       const refused: BatchOutcome["refused"] = [];
+      const refusals = await planRefusals(rows, scopeId);
       for (const row of rows) {
-        const bound = planRefusal(row, scopeId);
+        const bound = refusals.get(row.node.id) ?? null;
         if (bound === null) allowed.push(row); else refused.push({ row, bound });
       }
       return write(allowed, { start_id: scopeId, end_id: scopeId }, gesture, refused, label, leftPane);

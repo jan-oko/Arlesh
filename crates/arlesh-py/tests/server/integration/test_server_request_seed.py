@@ -8,10 +8,9 @@ from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
+from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
-
-from arlesh.server.entrypoints.fastapi.app import ArleshServer
 
 ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
 Start = Callable[..., ArleshServer]
@@ -56,10 +55,12 @@ def test_two_servers_given_the_same_seed_mint_the_same_ids(
 def test_without_a_seed_or_with_one_that_is_not_a_uuid_ids_are_random(
     start: Start, migrated: Path, tmp_path: Path
 ) -> None:
-    for header in ({}, {SEED_HEADER: "not-a-uuid"}):
-        first = _copy_of_a_domain_with_a_task(start, migrated, tmp_path, "first.db", header)
-        second = _copy_of_a_domain_with_a_task(start, migrated, tmp_path, "second.db", header)
+    for number, header in enumerate(({}, {SEED_HEADER: "not-a-uuid"})):
+        first = _copy_of_a_domain_with_a_task(
+            start, migrated, tmp_path, f"first{number}.db", header
+        )
+        second = _copy_of_a_domain_with_a_task(
+            start, migrated, tmp_path, f"second{number}.db", header
+        )
 
         assert first != second
-        (tmp_path / "first.db").unlink()
-        (tmp_path / "second.db").unlink()
