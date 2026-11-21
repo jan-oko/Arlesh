@@ -41,6 +41,7 @@
   "reviewRequestChanges": "Request changes",
   "reviewKind": "Review",
   "openWaits": "Waiting on you",
+  "nothingWaiting": "No answer is waiting for you.",
   "draftSkipped": "{{title}} ({{reason}})",
   "draftSkippedUntitled": "an answer",
   "draftSkipReason": {

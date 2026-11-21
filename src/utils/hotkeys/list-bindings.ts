@@ -18,6 +18,7 @@ import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
 import { LIST_STATUS_PRESET_BINDINGS, type ListStatusPresetContext } from "./list/status-presets";
 import { LIST_UNBLOCK_PRESET_BINDINGS, type ListUnblockPresetContext } from "./list/unblock-preset";
+import { LIST_WAITING_BINDINGS, type ListWaitingContext } from "./list/waiting";
 import { LIST_REVIEW_PRESET_BINDINGS, type ListReviewPresetContext } from "./list/review-preset";
 
 export type { ListSelectionContext };
@@ -50,7 +51,8 @@ export interface ListContext extends
   ListStatusContext,
   ListStatusPresetContext,
   ListUnblockPresetContext,
-  ListReviewPresetContext {}
+  ListReviewPresetContext,
+  ListWaitingContext {}
 
 /** `list/expectation.ts` holds a preset and a create key beside its edits; the sheet lists them
  * with their kind. */
@@ -87,5 +89,6 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...inGroup("groupEdit", LIST_PLAN_BINDINGS),
   ...inGroup("groupEdit", LIST_DEPENDENCY_BINDINGS),
   ...inGroup("groupMove", LIST_DESELECT_BINDINGS),
+  ...inGroup("groupMove", LIST_WAITING_BINDINGS),
   ...inGroup("groupEdit", LIST_HISTORY_BINDINGS),
 ];

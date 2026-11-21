@@ -13,6 +13,7 @@ import { ZEN_BINDINGS } from "@/utils/hotkeys/zen-bindings";
 import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
 import { SCOPE_PICKER_KEYS } from "@/utils/hotkeys/scope-picker-keys";
 import { REVIEW_KEYS } from "@/utils/hotkeys/review-keys";
+import { ANSWER_FIELD_KEYS } from "@/utils/answer-focus";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { GESTURE_SCOPES, gesturesOf } from "@/utils/touch/gesture-list";
@@ -134,15 +135,20 @@ function scopePickerSection(translate: Translate): SheetSection {
   };
 }
 
-/** The keys that act inside a review answer while focus is in it: they select a verdict. */
+/** The keys that act inside the answer fields: between and out of them, and a review's verdicts. */
 function reviewSection(translate: Translate): SheetSection {
   return {
     key: "review",
     tab: translate("tabReview"),
     title: translate("sectionReview"),
-    rows: REVIEW_KEYS.map((key) => ({
-      key: key.verdict, chords: [formatChord(key.chord)], description: translate(key.labelKey), group: null,
-    })),
+    rows: [
+      ...ANSWER_FIELD_KEYS.map((key) => ({
+        key: key.action, chords: [formatChord(key.chord)], description: translate(key.labelKey), group: null,
+      })),
+      ...REVIEW_KEYS.map((key) => ({
+        key: key.verdict, chords: [formatChord(key.chord)], description: translate(key.labelKey), group: null,
+      })),
+    ],
   };
 }
 

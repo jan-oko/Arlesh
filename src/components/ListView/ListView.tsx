@@ -1,3 +1,4 @@
+import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
 import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -382,6 +383,7 @@ export default function ListView() {
   const selectedKind = activeSelectedId === null ? undefined : findNode(tree, activeSelectedId)?.kind;
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
+  const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast });
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
@@ -406,6 +408,7 @@ export default function ListView() {
     onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
+    onJumpToWaitingAnswer: jumpToWaitingAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,

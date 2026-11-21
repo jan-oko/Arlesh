@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import HotkeysModal from "./HotkeysModal";
 import { TOUCH_ONLY_QUERY } from "@/hooks/use-media-query";
@@ -249,6 +249,17 @@ describe("HotkeysModal — search", () => {
     const panel = openTab("hotkeys:tabReview");
     expect(rowOf(panel, "hotkeys:reviewApproveKey")).toHaveTextContent("Alt+Y");
     expect(rowOf(panel, "hotkeys:reviewRequestChangesKey")).toHaveTextContent("Alt+N");
+    expect(rowOf(panel, "hotkeys:answerFieldNextKey")).toHaveTextContent("Alt+↓");
+    expect(rowOf(panel, "hotkeys:answerFieldPreviousKey")).toHaveTextContent("Alt+↑");
+    expect(rowOf(panel, "hotkeys:answerFieldLeaveKey")).toHaveTextContent("Esc");
+  });
+
+  it("lists the jump to the next waiting answer in the List and Zen Views", () => {
+    render(<HotkeysModal onClose={vi.fn()} view="list" />);
+    expect(rowOf(screen.getByRole("tabpanel"), "hotkeys:jumpToWaitingAnswer")).toHaveTextContent("Q");
+    cleanup();
+    render(<HotkeysModal onClose={vi.fn()} view="zen" />);
+    expect(rowOf(screen.getByRole("tabpanel"), "hotkeys:jumpToWaitingAnswerCard")).toHaveTextContent("Q");
   });
 
   it("hides a section left with no matching rows", () => {

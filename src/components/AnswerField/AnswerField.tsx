@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isSendableAnswer } from "@/utils/open-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey } from "@/utils/answer-focus";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
@@ -30,7 +31,8 @@ function isChord(event: KeyboardEvent): boolean {
  * in the Task editor's agentic section. Two buttons (ADR 0021). **Stage** toggles: it writes the
  * answer down without sending it, and the field is then locked and marked Staged; pressing it again
  * unstages, keeping the text to edit. **Send** sends every staged answer on the board, this one
- * included: on text that is not staged yet it stages it first. `Ctrl+Enter` stages; in a staged field
+ * included: on text that is not staged yet it stages it first. `Alt+Down` / `Alt+Up` move to the next / previous answer field and `Escape` leaves the
+ * field, back to the view, without touching the answer. `Ctrl+Enter` stages; in a staged field
  * it sends. While the field has focus the view's keys stand aside, as for any inline editor; the
  * chord is the field's own and is stopped there.
  */
@@ -92,6 +94,7 @@ export default function AnswerField({ question, staged, actions, compact = false
         <textarea
           ref={field}
           id={fieldId}
+          {...{ [ANSWER_FIELD]: "", [ANSWER_STAGED]: String(staged) }}
           className={`${styles.field}${staged ? ` ${styles.staged}` : ""}`}
           dir="auto"
           rows={compact ? 1 : 2}
@@ -103,6 +106,7 @@ export default function AnswerField({ question, staged, actions, compact = false
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={(event) => {
+            if (handleFieldKey(event, field.current)) return;
             if (!isChord(event)) return;
             event.preventDefault();
             event.stopPropagation();

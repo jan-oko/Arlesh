@@ -275,6 +275,20 @@ runs the same React components. So the change is made once:
 | Staged | shows the draft's text, **locked** (read only), with a **Staged** mark on the field and its title (decided, question 1) | pressed (`aria-pressed="true"`); a press unstages and keeps the text in the field, to edit and stage again | enabled: sends the batch |
 | Sending | as it was | disabled | disabled |
 
+- **Moving between answer fields** (ruled 2026-11-21, after the first trial): `Alt+Down` / `Alt+Up` in
+  an answer field (a question's, or a review's note, or its controls) move focus to the next /
+  previous answer field in the order shown, question and review alike; `Tab` keeps its meaning; at the
+  last or first field they do nothing (no wrap). `Escape` in a field **leaves it**, back to the view,
+  so the view's keys and `Ctrl+Z` work again; it unstages, clears and sends nothing. In the Task editor
+  the first `Escape` moves focus to the editor (which takes focus for it) and the second closes it, as
+  `Escape` did before. These take precedence inside a field over any binding on the chord (the
+  Mindmap's `Alt+Down` / `Alt+Up` reorder is the only one on the tables, and no answer field is on
+  its canvas). **The jump into a field:** `Q` (provisional; the user has not named a key) in the List
+  and Zen Views selects the Task of the next answer waiting for you, an open question or review that is
+  not staged, and focuses its field; again, it goes on to the next, wrapping at the end; with none it
+  shows a toast. It looks among the answer fields the view draws. The keys are in `answer-focus.ts`,
+  `list/waiting.ts` (a registry binding, so the cheat-sheet and the palette list it) and the cheat-sheet's
+  "Answer fields" tab.
 - **Keyboard.** In a field that is not staged, `Ctrl+Enter` stages when there is text and does
   nothing when it is empty. In a staged field, `Ctrl+Enter` sends. The chord is the field's own and
   is stopped there, as today.

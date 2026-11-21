@@ -8,6 +8,7 @@ import type { WaitReply } from "@/hooks/use-answer-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { chordFor, REVIEW_OWNED_CODES, verdictForKey } from "@/utils/hotkeys/review-keys";
 import { formatChord } from "@/utils/hotkeys/chord";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey } from "@/utils/answer-focus";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import styles from "./AnswerField.module.css";
@@ -112,9 +113,10 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
   };
   const keyTitle = (option: ReviewVerdict): string | undefined => keyShortcut(option);
 
-  /** Alt+Y and Alt+N select a verdict from anywhere in the review. They only select, and a staged
+  /** The answer field keys (Alt+Down, Alt+Up, Escape) and Alt+Y and Alt+N: select a verdict from anywhere in the review. They only select, and a staged
    * review is locked. Handled here, before anything behind it sees the chord, and nothing is typed. */
   function selectByKey(event: KeyboardEvent<HTMLDivElement>): void {
+    if (handleFieldKey(event, field.current)) return;
     const selected = verdictForKey(event.nativeEvent);
     if (selected === null) return;
     event.preventDefault();
@@ -172,6 +174,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
       <textarea
         ref={field}
         id={fieldId}
+        {...{ [ANSWER_FIELD]: "", [ANSWER_STAGED]: String(staged) }}
         className={`${styles.field}${staged ? ` ${styles.staged}` : ""}`}
         dir="auto"
         rows={compact ? 1 : 2}

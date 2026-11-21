@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { ANSWER_TASK } from "@/utils/answer-focus";
 import { isReviewWait, isTaskStaged, isWaitStaged, openWaits } from "@/utils/open-question";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import AnswerField from "./AnswerField";
@@ -27,7 +28,7 @@ export default function OpenWaits({ task, actions, compact = false }: Props) {
   const waits = openWaits(task);
   if (waits.length === 0) return null;
   return (
-    <div className={styles.waits}>
+    <div className={styles.waits} {...{ [ANSWER_TASK]: task.id }}>
       {isTaskStaged(task) && <span className={styles.mark} title={t("taskStagedTitle")}>{t("taskStaged")}</span>}
       {waits.map((wait) => isReviewWait(wait)
         ? <ReviewAnswer key={wait.id} review={wait} staged={isWaitStaged(task, wait)} actions={actions} compact={compact} />
