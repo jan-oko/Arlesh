@@ -116,7 +116,8 @@ its Cargo.toml, with the reason), `arlesh-py` names `arlesh-backend`'s `sqlite` 
 a third-party one), and `arlesh-rules` has no hack dependency (it compiles to wasm and may not
 name tokio) and gets the unified features through whatever depends on it. Tauri and the crates only
 it reaches are excluded from the hack, so the server's module does not compile them. CI
-(`scripts/check-workspace-hack.sh`) fails when the hack drifts: after adding a dependency or a
+(`scripts/check-workspace-hack.sh`, with `scripts/check-shared-features.py`, which compares the unit
+graphs of the two builds) fails when the hack drifts: after adding a dependency or a
 feature run `cargo hakari generate && cargo hakari manage-deps --yes`. maturin itself adds nothing
 that splits the units: it runs `cargo rustc --lib --locked --features pyo3/extension-module` (the
 same dev profile, host target and no RUSTFLAGS) with PYO3_CONFIG_FILE, PYO3_PYTHON and

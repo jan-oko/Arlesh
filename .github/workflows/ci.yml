@@ -201,11 +201,13 @@ jobs:
       # The workspace-hack crate (crates/arlesh-workspace-hack, .config/hakari.toml) gives the desktop
       # app and the server's native module the same features for the crates they share, so each
       # shared crate compiles once into box's one target. A new dependency or feature that is not
-      # regenerated into it splits them again, silently; this fails instead. Resolves the lockfile
-      # only, no build.
+      # regenerated into it splits them again, silently; this fails instead. It also compares the
+      # unit graph of the app's build and the server module's build for the shared crates, which is
+      # what the hack is for. Resolves the lockfile only, no build. The tool version is pinned to the
+      # one that generated the hack, so a new hakari release cannot redden every PR.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-hakari
+          tool: cargo-hakari@0.9.39
       - name: The workspace-hack crate is up to date
         run: scripts/check-workspace-hack.sh
 
