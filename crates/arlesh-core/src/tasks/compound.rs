@@ -105,11 +105,54 @@ pub struct Served {
     pub sub_items: SubItems,
 }
 
+/// The stored Task `id` when the board serves it exactly as its row says, and nothing is counted
+/// beneath it — so its reading and its sub-items can be had without deriving the whole board.
+///
+/// That holds for a stored Task that is not Compound, not Asynchronous (a wait template draws
+/// check Tasks beneath it) and has no row hanging directly beneath it. The board changes a Task's
+/// status in two places only: [`settle`] derives it from what lies beneath, and the Review
+/// derivation raises an On Agent Task from an open question beneath it. Both read only the Task's
+/// sub-items, and a Task with none keeps the status it stores; its [`SubItems`] are then the
+/// default, which is what counting an empty subtree gives. `None` for anything else, and for a
+/// Task the table does not hold, which the board answers for itself.
+async fn stored_leaf(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+) -> Result<Option<super::model::Task>, AppError> {
+    let Some(row) = id.stored() else {
+        return Ok(None);
+    };
+    let task = match db.tasks().get(TaskId(row)).await {
+        Ok(task) => task,
+        Err(TaskError::TaskNotFound(_)) => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if task.compound || task.asynchronous || db.tasks().has_children(TaskId(row)).await? {
+        return Ok(None);
+    }
+    Ok(Some(task))
+}
+
 /// The Task `id` as a load serves it — what it reads, and what its sub-items say. A press cycles
 /// from what the Task **reads**, not from the status it stores. `None` when the board does not
 /// hold the Task.
 #[tracing::instrument(skip(db))]
 pub async fn serve(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Option<Served>, AppError> {
+    if let Some(task) = stored_leaf(db, id).await? {
+        return Ok(Some(Served {
+            status: task.status,
+            sub_items: SubItems::default(),
+        }));
+    }
+    serve_from_board(db, id, now).await
+}
+
+/// [`serve`] read off the derived board, whatever the Task is.
+async fn serve_from_board(
     db: &mut Db<Transactional>,
     id: &NodeId,
     now: NaiveDateTime,
@@ -135,6 +178,10 @@ pub async fn require_closed(
     id: &NodeId,
     now: NaiveDateTime,
 ) -> Result<(), AppError> {
+    // A leaf has no open sub-item, so there is nothing to refuse: no need to derive the board.
+    if stored_leaf(db, id).await?.is_some() {
+        return Ok(());
+    }
     let load = crate::mindmap::load(db, now).await?;
     let Some(task) = load.tasks.iter().find(|task| task.id == *id) else {
         return Ok(());
@@ -148,3 +195,6 @@ pub async fn require_closed(
         open => Err(TaskError::OpenSubItems { open }.into()),
     }
 }
+
+#[cfg(test)]
+mod tests;

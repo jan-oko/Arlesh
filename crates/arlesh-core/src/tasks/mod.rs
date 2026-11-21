@@ -426,6 +426,27 @@ struct GoalAncestryRow {
     on_scope_exit: Option<String>,
 }
 
+/// Every owner's tag ids, in id order, read in one statement: what a list of rows needs instead of
+/// one lookup per row.
+///
+/// `table` and `owner` name a tag join table and its owner column; callers pass literals only.
+async fn tags_by_owner(
+    connection: &mut sqlx::SqliteConnection,
+    table: &str,
+    owner: &str,
+) -> Result<HashMap<RowId, Vec<RowId>>, sqlx::Error> {
+    let rows: Vec<(RowId, RowId)> = sqlx::query_as(&format!(
+        "SELECT {owner}, tag_id FROM {table} ORDER BY {owner}, tag_id"
+    ))
+    .fetch_all(connection)
+    .await?;
+    let mut by_owner: HashMap<RowId, Vec<RowId>> = HashMap::new();
+    for (owner_id, tag_id) in rows {
+        by_owner.entry(owner_id).or_default().push(tag_id);
+    }
+    Ok(by_owner)
+}
+
 async fn fetch_task_tag_ids(
     connection: &mut sqlx::SqliteConnection,
     task_id: RowId,
@@ -788,9 +809,10 @@ impl<'session> GoalOperator<'session> {
         let rows = sqlx::query_as::<_, GoalRow>("SELECT * FROM goals ORDER BY position ASC")
             .fetch_all(&mut *self.connection)
             .await?;
+        let mut tags = tags_by_owner(&mut *self.connection, "tags_on_goals", "goal_id").await?;
         let mut goals = Vec::with_capacity(rows.len());
         for row in rows {
-            let tag_ids = fetch_goal_tag_ids(&mut *self.connection, row.id).await?;
+            let tag_ids = tags.remove(&row.id).unwrap_or_default();
             goals.push(Goal {
                 tag_ids,
                 ..row.into()
@@ -1071,9 +1093,10 @@ impl<'session> TaskOperator<'session> {
             .fetch_all(&mut *self.connection)
             .await?;
         let mut briefs = self.agentic_briefs().await?;
+        let mut tags = tags_by_owner(&mut *self.connection, "tags_on_tasks", "task_id").await?;
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
-            let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
+            let tag_ids = tags.remove(&row.id).unwrap_or_default();
             let async_template = if row.asynchronous {
                 self.async_template(TaskId(row.id)).await?
             } else {
@@ -1088,6 +1111,22 @@ impl<'session> TaskOperator<'session> {
             });
         }
         Ok(tasks)
+    }
+
+    /// Whether anything hangs directly beneath the Task `id`: a Task, Goal, Commitment or
+    /// Expectation row naming it as its parent, archived or not.
+    ///
+    /// What [`crate::tasks::compound`] asks before it reads a Task from its own row alone.
+    pub async fn has_children(&mut self, id: TaskId) -> Result<bool, TaskError> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE parent_type = 'task' AND parent_id = ?1)
+                 OR EXISTS(SELECT 1 FROM goals WHERE parent_type = 'task' AND parent_id = ?1)
+                 OR EXISTS(SELECT 1 FROM commitments WHERE parent_type = 'task' AND parent_id = ?1)
+                 OR EXISTS(SELECT 1 FROM expectations WHERE parent_type = 'task' AND parent_id = ?1)",
+        )
+        .bind(id.0)
+        .fetch_one(&mut *self.connection)
+        .await?)
     }
 
     /// Returns the ids of the tasks parented directly by `(parent_type, parent_id)`.
@@ -1819,5 +1858,7 @@ fn dependency_parts(
     })
 }
 
+#[cfg(test)]
+mod list_tests;
 #[cfg(test)]
 mod tests;

@@ -1,9 +1,15 @@
-//! Throwaway harness: what one "press" costs on an in-memory board (ccc, Replica sizing).
+//! A dev tool, run by hand and never by CI: what one "press" costs on an in-memory board
+//! (task `ccc`, sizing the client Replica). It takes a copy of any Arlesh database as its first
+//! argument, so nothing private is compiled in.
+//!
+//! `DUMP_BOARD=<file>` writes the derived board at a fixed instant instead of measuring, to compare
+//! before and after a change to the board read byte for byte. `EACH=1` prints every press.
+//! Build it for a phone with `--target aarch64-linux-android` and run it from `adb shell`.
 //!
 //! usage: press_measure <arlesh.db copy> [presses=60] [warmup=10] [scale_to_tasks=0]
 //!
 //! Phases per press: gesture open, write (step_status + commit), gesture close, blocking read,
-//! BoardSources::read (total, then query-only by replaying the same statements, decode = the rest),
+//! BoardSources::read (total, then an estimate of query time by replaying its statements; the remainder is decode plus what the replay cannot bind),
 //! derive_board, facts (reads + derivation), diff (serialize, compare).
 //! Also: cold load of a full snapshot into an empty in-memory database, and core undo of one write.
 use std::collections::BTreeMap;
@@ -12,9 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use arlesh_core::database::client::ClientId;
 use arlesh_core::database::open::{open, OpenMode};
 use arlesh_core::database::session::SessionFactory;
-use arlesh_core::database::client::ClientId;
 use arlesh_core::flows::occurrences::Horizon;
 use arlesh_core::mindmap::rules as mrules;
 use arlesh_core::mindmap::sources::BoardSources;
@@ -46,7 +52,10 @@ impl tracing::field::Visit for Grab {
     }
 }
 impl tracing::Subscriber for Capture {
-    fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+    fn register_callsite(
+        &self,
+        _: &'static tracing::Metadata<'static>,
+    ) -> tracing::subscriber::Interest {
         tracing::subscriber::Interest::sometimes()
     }
     fn enabled(&self, m: &tracing::Metadata<'_>) -> bool {
@@ -81,14 +90,21 @@ impl Phases {
         self.0.entry(k).or_default().push(v);
     }
     fn report(&self, order: &[&str]) {
-        println!("{:<22}{:>10}{:>10}{:>10}{:>10}", "phase (ms)", "median", "p95", "min", "max");
+        println!(
+            "{:<22}{:>10}{:>10}{:>10}{:>10}",
+            "phase (ms)", "median", "p95", "min", "max"
+        );
         for k in order {
             if let Some(v) = self.0.get(k) {
                 let mut s = v.clone();
                 s.sort_by(f64::total_cmp);
                 let med = s[s.len() / 2];
                 let p95 = s[((s.len() as f64) * 0.95).ceil() as usize - 1];
-                println!("{k:<22}{med:>10.2}{p95:>10.2}{:>10.2}{:>10.2}", s[0], s[s.len() - 1]);
+                println!(
+                    "{k:<22}{med:>10.2}{p95:>10.2}{:>10.2}{:>10.2}",
+                    s[0],
+                    s[s.len() - 1]
+                );
             }
         }
     }
@@ -104,7 +120,9 @@ async fn memory_pool() -> anyhow::Result<SqlitePool> {
         .max_lifetime(None)
         .after_connect(|c, _| {
             Box::pin(async move {
-                sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *c).await?;
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(&mut *c)
+                    .await?;
                 Ok(())
             })
         })
@@ -121,8 +139,12 @@ async fn cold_load(snapshot: &replication::Snapshot) -> anyhow::Result<(SqlitePo
 
     let t = Instant::now();
     let mut conn = pool.acquire().await?;
-    sqlx::query("PRAGMA foreign_keys = OFF").execute(&mut *conn).await?;
-    sqlx::query("UPDATE undo_context SET suppressed = 1 WHERE id = 1").execute(&mut *conn).await?;
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("UPDATE undo_context SET suppressed = 1 WHERE id = 1")
+        .execute(&mut *conn)
+        .await?;
     sqlx::query("BEGIN").execute(&mut *conn).await?;
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name <> '_sqlx_migrations'",
@@ -130,7 +152,9 @@ async fn cold_load(snapshot: &replication::Snapshot) -> anyhow::Result<(SqlitePo
     .fetch_all(&mut *conn)
     .await?;
     for table in tables.iter().filter(|t| replication::is_replicated(t)) {
-        sqlx::query(&format!("DELETE FROM \"{table}\"")).execute(&mut *conn).await?;
+        sqlx::query(&format!("DELETE FROM \"{table}\""))
+            .execute(&mut *conn)
+            .await?;
     }
     let mut by_table: BTreeMap<&str, Vec<&replication::StoredRow>> = BTreeMap::new();
     for row in &snapshot.rows {
@@ -143,28 +167,45 @@ async fn cold_load(snapshot: &replication::Snapshot) -> anyhow::Result<(SqlitePo
             .iter()
             .map(|r| r.get::<String, _>("name"))
             .collect();
-        let names = cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+        let names = cols
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
         let vals = cols
             .iter()
             .map(|c| format!("json_extract(?2, '$.{c}')"))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!("INSERT OR REPLACE INTO \"{table}\" (rowid, {names}) VALUES (?1, {vals})");
+        let sql =
+            format!("INSERT OR REPLACE INTO \"{table}\" (rowid, {names}) VALUES (?1, {vals})");
         for row in rows {
-            sqlx::query(&sql).bind(row.rowid).bind(&row.image).execute(&mut *conn).await?;
+            sqlx::query(&sql)
+                .bind(row.rowid)
+                .bind(&row.image)
+                .execute(&mut *conn)
+                .await?;
         }
     }
     sqlx::query("COMMIT").execute(&mut *conn).await?;
-    sqlx::query("DELETE FROM undo_journal").execute(&mut *conn).await?;
-    sqlx::query("UPDATE undo_context SET suppressed = 0 WHERE id = 1").execute(&mut *conn).await?;
-    sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *conn).await?;
+    sqlx::query("DELETE FROM undo_journal")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("UPDATE undo_context SET suppressed = 0 WHERE id = 1")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await?;
     drop(conn);
     Ok((pool, schema_ms, ms(t)))
 }
 
 async fn scale_tasks(pool: &SqlitePool, target: i64) -> anyhow::Result<()> {
     let mut conn = pool.acquire().await?;
-    sqlx::query("UPDATE undo_context SET suppressed = 1 WHERE id = 1").execute(&mut *conn).await?;
+    sqlx::query("UPDATE undo_context SET suppressed = 1 WHERE id = 1")
+        .execute(&mut *conn)
+        .await?;
     let cols: Vec<String> = sqlx::query("PRAGMA table_info(tasks)")
         .fetch_all(&mut *conn)
         .await?
@@ -172,9 +213,15 @@ async fn scale_tasks(pool: &SqlitePool, target: i64) -> anyhow::Result<()> {
         .map(|r| r.get::<String, _>("name"))
         .filter(|c| c != "id")
         .collect();
-    let list = cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+    let list = cols
+        .iter()
+        .map(|c| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     loop {
-        let have: i64 = sqlx::query_scalar("SELECT count(*) FROM tasks").fetch_one(&mut *conn).await?;
+        let have: i64 = sqlx::query_scalar("SELECT count(*) FROM tasks")
+            .fetch_one(&mut *conn)
+            .await?;
         if have >= target {
             break;
         }
@@ -189,8 +236,12 @@ async fn scale_tasks(pool: &SqlitePool, target: i64) -> anyhow::Result<()> {
         );
         sqlx::query(&sql).execute(&mut *conn).await?;
     }
-    sqlx::query("DELETE FROM undo_journal").execute(&mut *conn).await?;
-    sqlx::query("UPDATE undo_context SET suppressed = 0 WHERE id = 1").execute(&mut *conn).await?;
+    sqlx::query("DELETE FROM undo_journal")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("UPDATE undo_context SET suppressed = 0 WHERE id = 1")
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
@@ -203,8 +254,13 @@ fn cpu_now() -> Option<usize> {
 fn freqs() -> String {
     let mut out = Vec::new();
     for i in 0..16 {
-        if let Ok(s) = std::fs::read_to_string(format!("/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq")) {
-            out.push(format!("cpu{i}={}MHz", s.trim().parse::<u64>().unwrap_or(0) / 1000));
+        if let Ok(s) = std::fs::read_to_string(format!(
+            "/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq"
+        )) {
+            out.push(format!(
+                "cpu{i}={}MHz",
+                s.trim().parse::<u64>().unwrap_or(0) / 1000
+            ));
         }
     }
     out.join(" ")
@@ -213,17 +269,29 @@ fn freqs() -> String {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
-    let path = args.next().expect("db path");
+    let path = args.next().ok_or_else(|| {
+        anyhow::anyhow!("usage: press_measure <arlesh.db copy> [presses] [warmup] [scale_to_tasks]")
+    })?;
     let presses: usize = args.next().map_or(60, |s| s.parse().unwrap_or(60));
     let warmup: usize = args.next().map_or(10, |s| s.parse().unwrap_or(10));
     let scale: i64 = args.next().map_or(0, |s| s.parse().unwrap_or(0));
 
     let on = Arc::new(AtomicBool::new(false));
     let sink = Arc::new(Mutex::new(Vec::new()));
-    tracing::subscriber::set_global_default(Capture { on: on.clone(), sink: sink.clone() })?;
+    tracing::subscriber::set_global_default(Capture {
+        on: on.clone(),
+        sink: sink.clone(),
+    })?;
 
     // ---- snapshot from the source file ----
-    let source = open(std::path::Path::new(&path), OpenMode::Write { client: ClientId::desktop(), force: true }).await?;
+    let source = open(
+        std::path::Path::new(&path),
+        OpenMode::Write {
+            client: ClientId::desktop(),
+            force: true,
+        },
+    )
+    .await?;
     let mut db = source.begin_read().await?;
     let t = Instant::now();
     let snapshot = replication::snapshot(&mut db).await?;
@@ -250,11 +318,13 @@ async fn main() -> anyhow::Result<()> {
         println!("cold load run {run}: schema install {schema_ms:.1} ms + insert rows {rows_ms:.1} ms = {:.1} ms", schema_ms + rows_ms);
         keep = Some(pool);
     }
-    let pool = keep.expect("pool");
+    let pool = keep.ok_or_else(|| anyhow::anyhow!("no cold load ran"))?;
     if scale > 0 {
         scale_tasks(&pool, scale).await?;
     }
-    let n_tasks: i64 = sqlx::query_scalar("SELECT count(*) FROM tasks").fetch_one(&pool).await?;
+    let n_tasks: i64 = sqlx::query_scalar("SELECT count(*) FROM tasks")
+        .fetch_one(&pool)
+        .await?;
     let factory = SessionFactory::new(pool.clone());
     let stacks = UndoStacks::new();
 
@@ -264,7 +334,26 @@ async fn main() -> anyhow::Result<()> {
     )
     .fetch_all(&pool)
     .await?;
-    println!("board in memory: {n_tasks} Tasks; {} press candidates; start {}", ids.len(), freqs());
+    println!(
+        "board in memory: {n_tasks} Tasks; {} press candidates; start {}",
+        ids.len(),
+        freqs()
+    );
+
+    if let Ok(out) = std::env::var("DUMP_BOARD") {
+        // The board at a fixed instant, for a before/after byte comparison of a change to the read.
+        let fixed = chrono::NaiveDate::from_ymd_opt(2026, 11, 21)
+            .and_then(|d| d.and_hms_opt(12, 0, 0))
+            .ok_or_else(|| anyhow::anyhow!("bad date"))?;
+        let mut db = factory.begin_read().await?;
+        let blocking = arlesh_core::agents::service::blocking(&mut db, fixed).await?;
+        let sources = BoardSources::read(&mut db).await?;
+        db.commit().await?;
+        let load = mrules::derive_board(sources, fixed, Horizon::default(), blocking)?;
+        std::fs::write(&out, serde_json::to_vec_pretty(&load)?)?;
+        println!("board written to {out}");
+        return Ok(());
+    }
 
     let mut ph = Phases::default();
     let mut cpus: BTreeMap<usize, usize> = BTreeMap::new();
@@ -297,7 +386,9 @@ async fn main() -> anyhow::Result<()> {
         }
         let t = Instant::now();
         let mut db = factory.begin().await?;
-        let outcome = step_status(&mut db, &id, StatusStep::Advance, true, now).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let outcome = step_status(&mut db, &id, StatusStep::Advance, true, now)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
         db.commit().await?;
         let t_write = ms(t);
         if done_presses == 0 {
@@ -311,7 +402,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let mut top: Vec<_> = hist.into_iter().collect();
             top.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-            for (q, n) in top.iter().take(6) {
+            for (q, n) in top.iter().take(40) {
                 println!("   {n:>5} x {q}");
             }
         }
@@ -350,7 +441,10 @@ async fn main() -> anyhow::Result<()> {
 
         // facts (reads, then derivation)
         let t = Instant::now();
-        let access = arlesh_core::access::access_map(&mut db).await.ok().map(|m| m.effective());
+        let access = arlesh_core::access::access_map(&mut db)
+            .await
+            .ok()
+            .map(|m| m.effective());
         load.answer_drafts = db.answer_drafts().list().await?;
         let t_facts_read = ms(t);
         db.commit().await?;
@@ -376,7 +470,11 @@ async fn main() -> anyhow::Result<()> {
                     for (k, bv) in b {
                         match (a.get(k), bv) {
                             (Some(serde_json::Value::Array(x)), serde_json::Value::Array(y)) => {
-                                changed += y.iter().enumerate().filter(|(i, v)| x.get(*i) != Some(v)).count()
+                                changed += y
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(i, v)| x.get(*i) != Some(v))
+                                    .count()
                             }
                             (Some(x), y) => changed += usize::from(x != y),
                             (None, _) => changed += 1,
@@ -410,7 +508,11 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         if done_presses == 0 {
-            println!("(captured {} statements in BoardSources::read, {} with bind parameters)", stmts.len(), stmts.iter().filter(|s| s.contains('?')).count());
+            println!(
+                "(captured {} statements in BoardSources::read, {} with bind parameters)",
+                stmts.len(),
+                stmts.iter().filter(|s| s.contains('?')).count()
+            );
             let mut hist: BTreeMap<String, usize> = BTreeMap::new();
             for q in &stmts {
                 let one: String = q.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -418,7 +520,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let mut top: Vec<_> = hist.into_iter().collect();
             top.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-            for (q, n) in top.iter().take(8) {
+            for (q, n) in top.iter().take(40) {
                 println!("   {n:>5} x {q}");
             }
         }
@@ -448,17 +550,42 @@ async fn main() -> anyhow::Result<()> {
         ph.put("diff: serialize", t_ser);
         ph.put("diff: to_value", t_value);
         ph.put("diff: compare", t_cmp);
-        let pipeline = t_open + t_write + t_close + t_blocking + t_read + t_derive + t_facts_read + t_facts + t_ser + t_cmp;
+        let pipeline = t_open
+            + t_write
+            + t_close
+            + t_blocking
+            + t_read
+            + t_derive
+            + t_facts_read
+            + t_facts
+            + t_ser
+            + t_cmp;
         ph.put("TOTAL (ser path)", pipeline);
-        if done_presses % 20 == 0 {
+        if done_presses.is_multiple_of(20) {
             println!("  ..{done_presses} presses, {}", freqs());
         }
     }
     println!("\n{presses} measured presses ({warmup} warm-up discarded), refused skipped: {refused}, wall {:.1}s", run_start.elapsed().as_secs_f64());
-    println!("board JSON {board_bytes} bytes; cpus the process was on at press end: {cpus:?}; end {}", freqs());
+    println!(
+        "board JSON {board_bytes} bytes; cpus the process was on at press end: {cpus:?}; end {}",
+        freqs()
+    );
     ph.report(&[
-        "gesture open", "write (step+commit)", "gesture close", "blocking", "read total", "  read: set queries", "  read: N+1 floor", "  read: remainder", "derive", "facts reads", "facts derive", "diff: serialize", "diff: to_value",
-        "diff: compare", "TOTAL (ser path)",
+        "gesture open",
+        "write (step+commit)",
+        "gesture close",
+        "blocking",
+        "read total",
+        "  read: set queries",
+        "  read: N+1 floor",
+        "  read: remainder",
+        "derive",
+        "facts reads",
+        "facts derive",
+        "diff: serialize",
+        "diff: to_value",
+        "diff: compare",
+        "TOTAL (ser path)",
     ]);
     let mut u = Phases::default();
     for v in &undo_times {

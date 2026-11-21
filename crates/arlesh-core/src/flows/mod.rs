@@ -268,7 +268,8 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         mut goals: Vec<FlowGoal>,
     ) -> Result<Vec<FlowGoal>, FlowError> {
-        let mut fields = self.templates().all(TemplateTable::FlowGoal).await?;
+        let ids: Vec<RowId> = goals.iter().map(|goal| goal.id).collect();
+        let mut fields = self.templates().of(TemplateTable::FlowGoal, &ids).await?;
         for goal in &mut goals {
             goal.template = fields.remove(&goal.id).unwrap_or_default();
         }
@@ -280,7 +281,8 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         mut tasks: Vec<FlowTask>,
     ) -> Result<Vec<FlowTask>, FlowError> {
-        let mut fields = self.templates().all(TemplateTable::FlowTask).await?;
+        let ids: Vec<RowId> = tasks.iter().map(|task| task.id).collect();
+        let mut fields = self.templates().of(TemplateTable::FlowTask, &ids).await?;
         for task in &mut tasks {
             task.template = fields.remove(&task.id).unwrap_or_default();
         }
@@ -599,7 +601,11 @@ impl<'session> FlowOperator<'session> {
         .into_iter()
         .map(FlowCommitment::from)
         .collect();
-        let mut fields = self.templates().all(TemplateTable::FlowCommitment).await?;
+        let ids: Vec<RowId> = items.iter().map(|item| item.id).collect();
+        let mut fields = self
+            .templates()
+            .of(TemplateTable::FlowCommitment, &ids)
+            .await?;
         for item in &mut items {
             item.template = fields.remove(&item.id).unwrap_or_default();
         }
@@ -620,7 +626,11 @@ impl<'session> FlowOperator<'session> {
         .into_iter()
         .map(FlowExpectation::from)
         .collect();
-        let mut fields = self.templates().all(TemplateTable::FlowExpectation).await?;
+        let ids: Vec<RowId> = items.iter().map(|item| item.id).collect();
+        let mut fields = self
+            .templates()
+            .of(TemplateTable::FlowExpectation, &ids)
+            .await?;
         for item in &mut items {
             item.template = fields.remove(&item.id).unwrap_or_default();
         }

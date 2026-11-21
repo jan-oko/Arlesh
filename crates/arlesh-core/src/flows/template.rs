@@ -160,6 +160,13 @@ impl TemplateBriefRow {
     }
 }
 
+/// The JSON array of `ids`, the one parameter a narrowed template read binds. A row id is a UUID,
+/// so its text needs no escaping.
+fn row_filter(ids: &[RowId]) -> String {
+    let quoted: Vec<String> = ids.iter().map(|id| format!("\"{id}\"")).collect();
+    format!("[{}]", quoted.join(","))
+}
+
 /// Reads and writes template fields on one connection.
 pub struct TemplateOperator<'session> {
     connection: &'session mut sqlx::SqliteConnection,
@@ -175,6 +182,31 @@ impl<'session> TemplateOperator<'session> {
     pub async fn all(
         &mut self,
         table: TemplateTable,
+    ) -> Result<HashMap<RowId, TemplateFields>, FlowError> {
+        self.load(table, None).await
+    }
+
+    /// The fields of the rows `ids` name in one template table, by row id: what a caller that holds
+    /// some rows (one Flow's items) needs, without reading the table's every other row. A row with
+    /// no template columns is absent, as it is from [`Self::all`].
+    pub async fn of(
+        &mut self,
+        table: TemplateTable,
+        ids: &[RowId],
+    ) -> Result<HashMap<RowId, TemplateFields>, FlowError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        self.load(table, Some(row_filter(ids))).await
+    }
+
+    /// [`Self::all`] or [`Self::of`]: the table's rows, narrowed to the JSON array of ids `only`
+    /// holds. Each statement takes the narrowing as a bound parameter that is NULL for [`Self::all`],
+    /// so one query text serves both.
+    async fn load(
+        &mut self,
+        table: TemplateTable,
+        only: Option<String>,
     ) -> Result<HashMap<RowId, TemplateFields>, FlowError> {
         let bare = format!(
             "SELECT id, NULL AS delegate_kind, NULL AS delegate_id, NULL AS agentic,
@@ -195,20 +227,27 @@ impl<'session> TemplateOperator<'session> {
                  FROM flow_tasks"
             }
         };
-        let rows: Vec<TemplateColumns> = sqlx::query_as(select)
-            .fetch_all(&mut *self.connection)
-            .await?;
+        let rows: Vec<TemplateColumns> = sqlx::query_as(&format!(
+            "{select} WHERE (?1 IS NULL OR id IN (SELECT value FROM json_each(?1)))"
+        ))
+        .bind(only.as_deref())
+        .fetch_all(&mut *self.connection)
+        .await?;
         let tags: Vec<(RowId, RowId)> = sqlx::query_as(
-            "SELECT item_id, tag_id FROM template_tags WHERE item_type = ? ORDER BY tag_id",
+            "SELECT item_id, tag_id FROM template_tags WHERE item_type = ?1
+             AND (?2 IS NULL OR item_id IN (SELECT value FROM json_each(?2))) ORDER BY tag_id",
         )
         .bind(table.as_str())
+        .bind(only.as_deref())
         .fetch_all(&mut *self.connection)
         .await?;
         let reasons: Vec<(RowId, String)> = sqlx::query_as(
-            "SELECT item_id, reason FROM template_block_reasons WHERE item_type = ?
+            "SELECT item_id, reason FROM template_block_reasons WHERE item_type = ?1
+             AND (?2 IS NULL OR item_id IN (SELECT value FROM json_each(?2)))
              ORDER BY item_id, position, id",
         )
         .bind(table.as_str())
+        .bind(only.as_deref())
         .fetch_all(&mut *self.connection)
         .await?;
 
@@ -246,9 +285,11 @@ impl<'session> TemplateOperator<'session> {
         }
         let briefs: Vec<TemplateBriefRow> = sqlx::query_as(
             "SELECT item_id, priority, spec, design, acceptance, notes
-             FROM template_agentic_briefs WHERE item_type = ?",
+             FROM template_agentic_briefs WHERE item_type = ?1
+             AND (?2 IS NULL OR item_id IN (SELECT value FROM json_each(?2)))",
         )
         .bind(table.as_str())
+        .bind(only.as_deref())
         .fetch_all(&mut *self.connection)
         .await?;
         for brief in briefs {
@@ -257,7 +298,7 @@ impl<'session> TemplateOperator<'session> {
             }
         }
         if table.has_task_columns() {
-            for (item_id, template) in self.async_templates(table).await? {
+            for (item_id, template) in self.async_templates(table, only.as_deref()).await? {
                 // Kept only while the item is Asynchronous, as a stored Task's is.
                 if let Some(row) = fields.get_mut(&item_id).filter(|row| row.asynchronous) {
                     row.async_template = Some(template);
@@ -271,6 +312,7 @@ impl<'session> TemplateOperator<'session> {
     async fn async_templates(
         &mut self,
         table: TemplateTable,
+        only: Option<&str>,
     ) -> Result<HashMap<RowId, AsyncTemplate>, FlowError> {
         let Some((templates, tags, key)) = table.wait_template() else {
             return Ok(HashMap::new());
@@ -278,13 +320,16 @@ impl<'session> TemplateOperator<'session> {
         let rows: Vec<AsyncTemplateRow> = sqlx::query_as(&format!(
             "SELECT {key} AS item_id, title, time_scope_n, time_scope_kind, check_every_n,
                     check_every_kind
-             FROM {templates}"
+             FROM {templates} WHERE (?1 IS NULL OR {key} IN (SELECT value FROM json_each(?1)))"
         ))
+        .bind(only)
         .fetch_all(&mut *self.connection)
         .await?;
         let tags: Vec<(RowId, RowId)> = sqlx::query_as(&format!(
-            "SELECT {key}, tag_id FROM {tags} ORDER BY {key}, tag_id"
+            "SELECT {key}, tag_id FROM {tags}
+             WHERE (?1 IS NULL OR {key} IN (SELECT value FROM json_each(?1))) ORDER BY {key}, tag_id"
         ))
+        .bind(only)
         .fetch_all(&mut *self.connection)
         .await?;
         let mut templates: HashMap<RowId, AsyncTemplate> = rows
@@ -359,7 +404,7 @@ impl<'session> TemplateOperator<'session> {
         table: TemplateTable,
         id: RowId,
     ) -> Result<TemplateFields, FlowError> {
-        Ok(self.all(table).await?.remove(&id).unwrap_or_default())
+        Ok(self.of(table, &[id]).await?.remove(&id).unwrap_or_default())
     }
 
     /// Applies `update` to one template row. A Task-only column named for any other template is
