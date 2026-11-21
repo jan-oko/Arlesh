@@ -12,6 +12,7 @@
 
 pub(crate) mod agentic;
 mod ancestry;
+pub mod answer_drafts;
 pub mod commitments;
 pub mod compound;
 pub mod done_date;
