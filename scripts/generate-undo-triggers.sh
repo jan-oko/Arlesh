@@ -32,8 +32,17 @@ mode="${1:-undo}"
 case "$mode" in undo|change) ;; *) echo "usage: $0 [undo|change]" >&2; exit 2 ;; esac
 
 EXCLUDED="undo_context undo_journal server_tokens pairing_pins agent_pins agent_pin_failures agent_account_usage connect_tokens push_devices push_sent change_log change_capture"
-# Columns a change image leaves out: `table.column`. A credential never travels to a device.
-OMITTED_COLUMNS="agents.token_sha256"
+# A change image holds a stand-in for these columns (see `arlesh_core::replication::REDACTED_COLUMNS`,
+# which this must agree with): the row still applies under the same schema, a credential never
+# travels to a device, and bookkeeping rewritten on every request is a constant, so writing it
+# changes no image and is not logged. An undo image must hold the whole row, so only `change` mode
+# redacts.
+redaction() {
+    case "$1.$2" in
+        agents.token_sha256) echo "'redacted:' || $3.id" ;;
+        agents.last_seen_at) echo "NULL" ;;
+    esac
+}
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 migrations="$repository_root/crates/arlesh-core/migrations"
@@ -57,43 +66,58 @@ is_excluded() {
 
 # `json_object('col', <row>.col, …)` for one table, over `new` or `old`.
 image() {
-    local table="$1" row="$2" omitted=""
-    # Only a change image leaves a column out: an undo image must hold the whole row to restore it.
-    if [ "$mode" = change ]; then
-        for entry in $OMITTED_COLUMNS; do
-            [ "${entry%%.*}" = "$table" ] && omitted="$omitted,'${entry#*.}'"
-        done
-    fi
-    sqlite3 "$schema" \
-        "SELECT 'json_object(' || group_concat(char(39) || name || char(39) || ', $row.' || name, ', ') || ')'
-           FROM pragma_table_info('$table') WHERE name NOT IN ('' $omitted);"
+    local table="$1" row="$2" parts="" column expression redacted
+    for column in $(sqlite3 "$schema" "SELECT name FROM pragma_table_info('$table') ORDER BY cid;"); do
+        expression="$row.$column"
+        if [ "$mode" = change ]; then
+            redacted="$(redaction "$table" "$column" "$row")"
+            [ -n "$redacted" ] && expression="$redacted"
+        fi
+        parts="$parts${parts:+, }'$column', $expression"
+    done
+    echo "json_object($parts)"
+}
+
+# Whether an update changed any column of the image: the update trigger's WHEN, so a write that
+# changes nothing a device holds (an agent's `last_seen_at`) logs nothing.
+changed() {
+    local table="$1" condition="old.rowid IS NOT new.rowid" column
+    for column in $(sqlite3 "$schema" "SELECT name FROM pragma_table_info('$table') ORDER BY cid;"); do
+        [ -n "$(redaction "$table" "$column" new)" ] && continue
+        condition="$condition OR old.$column IS NOT new.$column"
+    done
+    echo "$condition"
 }
 
 # The change log's three triggers for one table: each reports the row it touched, as the row it
-# became (`set`, with the image) or as gone (`del`). Written only while `change_capture.enabled`.
+# became (`set`, with the image) or as gone (`del`). Written only while a publisher holds a valid
+# lease on the capture (`change_capture.leased_until` in the future), so a crashed server cannot
+# make the log grow without bound.
 change_triggers() {
-    local table="$1" new_image="$2"
+    local table="$1" new_image="$2" when
+    when="$(changed "$table")"
+    local live="change_capture WHERE id = 1 AND leased_until > CAST(strftime('%s', 'now') AS INTEGER)"
     cat <<TRIGGERS
 
 CREATE TRIGGER change_log_${table}_insert AFTER INSERT ON ${table} BEGIN
     INSERT INTO change_log (table_name, row_id, operation, image)
     SELECT '${table}', new.rowid, 'set', ${new_image}
-      FROM change_capture WHERE id = 1 AND enabled = 1;
+      FROM ${live};
 END;
 
-CREATE TRIGGER change_log_${table}_update AFTER UPDATE ON ${table} BEGIN
+CREATE TRIGGER change_log_${table}_update AFTER UPDATE ON ${table} WHEN ${when} BEGIN
     INSERT INTO change_log (table_name, row_id, operation, image)
     SELECT '${table}', old.rowid, 'del', NULL
-      FROM change_capture WHERE id = 1 AND enabled = 1 AND old.rowid <> new.rowid;
+      FROM ${live} AND old.rowid <> new.rowid;
     INSERT INTO change_log (table_name, row_id, operation, image)
     SELECT '${table}', new.rowid, 'set', ${new_image}
-      FROM change_capture WHERE id = 1 AND enabled = 1;
+      FROM ${live};
 END;
 
 CREATE TRIGGER change_log_${table}_delete AFTER DELETE ON ${table} BEGIN
     INSERT INTO change_log (table_name, row_id, operation, image)
     SELECT '${table}', old.rowid, 'del', NULL
-      FROM change_capture WHERE id = 1 AND enabled = 1;
+      FROM ${live};
 END;
 TRIGGERS
 }

@@ -47,8 +47,10 @@ def test_a_write_reaches_a_device_as_the_rows_it_changed_and_the_head_agrees(
 ) -> None:
     desktop = tokens.add("desktop")
     phone = tokens.add("phone")
-    stream = follow(live, desktop)
+    stream = follow(live, desktop, rows=True)
+    plain = follow(live, tokens.add("old-app"))
     assert stream.connected.wait(20)
+    assert plain.connected.wait(20)
     before = httpx.get(f"{live}/board/snapshot", headers=_auth(desktop)).json()
 
     written = httpx.post(
@@ -60,7 +62,7 @@ def test_a_write_reaches_a_device_as_the_rows_it_changed_and_the_head_agrees(
 
     event = stream.next_change()
     source = event["source"]
-    assert source["base"] >= before["source"]["upto"] or source["upto"] > before["source"]["upto"]
+    assert source["base"] <= before["source"]["upto"] < source["upto"]
     created = [r for r in source["rows"] if r["table"] == "tasks" and r["op"] == "set"]
     assert [r["image"]["title"] for r in created] == ["From the phone"]
     after = httpx.get(f"{live}/board/snapshot", headers=_auth(desktop)).json()
@@ -68,3 +70,8 @@ def test_a_write_reaches_a_device_as_the_rows_it_changed_and_the_head_agrees(
     assert after["source"]["hash"] == source["hash"]
     head = stream.heads.get(timeout=10)
     assert head["source"]["upto"] >= before["source"]["upto"]
+    # An app that predates the Replica reads exactly what it always did: no `source` anywhere.
+    old_event = plain.next_change()
+    assert "source" not in old_event
+    assert set(old_event) == {"epoch", "seq", "revision", "now", "hash", "changes"}
+    assert "source" not in plain.heads.get(timeout=10)

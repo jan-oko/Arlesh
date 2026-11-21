@@ -145,11 +145,13 @@ impl NativeDatabase {
 
     /// The change events after publication `after`, each `(seq, JSON)`; waits up to `wait`
     /// seconds for the next one. One `reload` event when the ring no longer holds them all.
+    #[pyo3(signature = (after, wait, rows=false))]
     fn board_events_after<'py>(
         &self,
         py: Python<'py>,
         after: u64,
         wait: f64,
+        rows: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let publisher = self.publisher()?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -158,8 +160,18 @@ impl NativeDatabase {
                 .await;
             Ok(events
                 .into_iter()
-                .map(|event| (event.seq, event.data.to_string()))
+                .map(|event| (event.seq, event.wire(rows).into_owned()))
                 .collect::<Vec<_>>())
+        })
+    }
+
+    /// Gives up the change-log capture this process holds, at a clean shutdown.
+    fn stop_publisher<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let publisher = self.publisher()?;
+        let factory = self.factory.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            publisher.release_capture(&factory).await;
+            Ok(())
         })
     }
 

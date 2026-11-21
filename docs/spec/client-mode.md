@@ -315,8 +315,10 @@ the tick is behind, not wrong.
 
 ### The source rows (ADR 0017, Task `ccc`)
 
-An event also says which **source rows** its writes changed, for a client that keeps a Replica of the
-board (the stored rows, not the derived nodes above). It is the event's `source`:
+An event can also say which **source rows** its writes changed, for a client that keeps a Replica of
+the board (the stored rows, not the derived nodes above). It is the event's `source`, and **only a
+stream that asks for it gets it**: `GET /events/changes?rows=true`. Without `rows`, the event and the
+head are byte for byte what apps before the Replica read, so existing clients are unaffected.
 
 ```json
 "source":{"base":1228,"upto":1234,"hash":"9ac1d0e55b7c2f31",
@@ -328,27 +330,57 @@ board (the stored rows, not the derived nodes above). It is the event's `source`
   with its after-image) or as gone (`del`), in log order. They include undo and redo, cascaded
   deletions and rows a trigger wrote, because they are written by triggers, not by commands
   ([ADR 0017](../adr/0017-client-board-replica.md), decision 5). A row is named by its table and its
-  SQLite `rowid`, which is what a Replica stores it under.
+  SQLite `rowid` (see *Why rowid*, below). An update that changes no column of the image logs nothing.
 - **Position.** `seq` is the row's place in the **change log**, which is monotonic for the life of
   the database file. `base` is the position of the publication before and `upto` the position after
   this one. A client holding rows at position `p` **applies** an event with `base <= p < upto`
   (skipping rows whose `seq <= p`) and moves to `upto`; an event with `upto <= p` is already held;
-  `base > p` means it missed an event and fetches a snapshot. The last event has no successor to show
-  a gap, so the head (below) does: its `source.upto` is ahead of the client's.
+  `base > p` means it missed an event and fetches a snapshot. An event whose `base == upto` carries no
+  rows, so removing it loses nothing. The last event has no successor to show a gap, so the head
+  does: its `source.upto` is ahead of the client's.
 - **Hash.** `hash` is the [source hash](#the-source-hash) of every replicated row at `upto`. After
   applying an event the client's own hash must equal it.
-- **Too large.** An event whose changes and rows would exceed 256 KiB says `reload: true` and carries
-  no `source`: the client fetches a snapshot. So does an event with no `source` at all (a server
-  that does not publish rows, or one replayed from the ring).
-- **The head** (`board-head`) carries `source: {upto, hash}` of the latest publication.
+- **No `source`.** An event with none says the rows cannot be applied: the client fetches a
+  snapshot. The publisher sends none when it published no rows (another publisher holds the
+  capture), when its hash disagreed with the database's (below), when the rows alone were over
+  256 KiB, and when the ring's budget for sources has moved past that event. Only the rows are ever
+  dropped for size: the derived `changes` decide `reload` exactly as before, so rows never turn an
+  event an old app could apply into a reload.
+- **The head** (`board-head`) carries `source: {upto, hash}` of the latest publication, on a
+  `?rows=true` stream only.
+
+**The published hash is the database's, not the feed's.** On every turn (each write, and each
+minute) the publisher reads the replicated rows in the same write transaction in which it drains the
+log, and compares their hash with the one it keeps from the log. A difference means a change the log
+never held (a writer that was not the publisher, a lapsed lease, a log emptied by hand): it logs an
+error, starts again from the rows, states the **database's** hash on the head and on the event, and
+sends that event with no `source`. A Replica that applied the feed faithfully then disagrees with the
+head, and fetches a snapshot.
+
+**The capture.** The triggers write the log only while a publisher holds a **lease** on it
+(`change_capture.leased_until` in the future, `owner` naming the holder). The server's publisher takes
+it (clearing the log and seeding its hash from every row), renews it on every turn, and gives it up
+at a clean shutdown. A publisher that finds another's valid lease is refused: it neither drains nor
+takes the capture, and publishes no `source`. A publisher without rows (the desktop's Standalone one)
+never touches it. A crashed server's lease runs out in 3 minutes, so the log stops growing by itself
+and the next publisher starts again from the rows. A writer that is not a publisher is never
+captured, which is a row changed behind the feed: the hash catches it.
 
 **Always a full board** (the user, 2026-11-13). The server keeps no history of source rows. The log
-the triggers write is a buffer the publisher empties into each publication, in the transaction that
-reads it, and a restart clears it, so nothing accumulates. A missed event, a reconnect, a new epoch,
-a schema difference or a hash mismatch are all repaired by fetching the [device
-snapshot](http-api.md#device-snapshot-get-boardsnapshot); the client never sends `Last-Event-ID`.
-(The ring of 64 events below is the derived nodes' catch-up for apps that predate the Replica; its
-events carry rows while they last, and a Replica does not use it.)
+is a buffer the publisher empties into each publication, in the transaction that reads it, and a
+restart clears it, so nothing accumulates. A missed event, a reconnect, a new epoch, a schema
+difference or a hash mismatch are all repaired by fetching the [device
+snapshot](http-api.md#device-snapshot-get-boardsnapshot); a Replica never sends `Last-Event-ID`. The
+live stream is pulled from the 64-event ring of the derived nodes (ADR 0020), which keeps each
+event's `source` while a separate 4 MiB budget lasts, oldest first; an event past it has none, and a
+Replica that finds none fetches a snapshot.
+
+**What apps before the Replica pay.** Nothing per event: they do not ask for `rows`, and the ring's
+event budget (4 MiB) counts the derived part only. They can see one more event than before when a
+publication holds only changed rows and no derived change (a tick that finds rows no announced
+write explained, or a resync): an event with empty `changes`, which they apply as nothing. Writes
+that change no column of an image publish nothing of their own: an agent's `last_seen_at` (rewritten
+by `touch` on every request an agent session makes) is a constant in the image and does not log.
 
 **Revisions and epochs after a restart.** The revision counts committed writes since the server
 started and starts again at 0; the epoch names the run (see [HTTP API](http-api.md#revision-on-every-answer-and-gzip)).
@@ -356,17 +388,43 @@ The change-log position does **not** restart: it lives in the database file. So 
 client sees a new epoch and fetches a snapshot, and never compares a revision or a position across
 epochs. Within an epoch the publisher reads the revision before it drains the log, so an event at
 revision `r` holds every row of writes `<= r` and perhaps rows of a write the next revision will
-count, which that event then carries empty.
+count, which that event then carries empty. The snapshot's `revision` is likewise read before its
+transaction: a write landing mid-read makes it look older than it is, never newer, which only costs
+a client one redundant event, so it is harmless.
 
 **Which tables.** Every table the undo journal covers, less the server-only ones
 (`arlesh_core::replication::UNREPLICATED_TABLES`): the credentials and pairings (`server_tokens`,
 `pairing_pins`, `agent_pins`, `agent_pin_failures`, `connect_tokens`), the accounts' usage reports
 (`agent_account_usage`), the push registrations (`push_devices`, `push_sent`), the journal and the
-change log itself. `agents` travels without `token_sha256`. `answer_drafts` travels (a device
-shows what it staged); keeping it from agents is the MCP's job
-([ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)). Applying rows needs foreign keys off
-and `INSERT OR REPLACE` by `rowid`, so a unique key that moves between rows within one burst
-converges once every row of the burst is applied.
+change log itself. `answer_drafts` travels (a device shows what it staged); keeping it from agents
+is the MCP's job ([ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)).
+
+**Stand-ins in `agents`.** `agents.token_sha256` is a credential and is `NOT NULL UNIQUE`, so its
+image holds `'redacted:' || id` (unique, deterministic, secret-free) and the row applies under the
+**same schema** a device has: no schema difference, no special case for the Replica. `last_seen_at`
+is the constant `null`. The hash covers these stand-ins, so both sides agree on them.
+
+**How a Replica applies rows.** With foreign keys off, `INSERT OR REPLACE` by explicit `rowid`, and
+`DELETE` by `rowid`; capture stays off on the Replica. A unique key that moves between rows within one
+event (two agents swapping names) converges once every row of the event is applied, because a
+conflicting row is replaced and then set again by its own entry.
+
+**Why rowid, and what must never be done.** A row is named by its `rowid`, which is implicit on every
+table (since 0107 made the keys TEXT): it is what every table has, it survives a changed primary key,
+and the triggers can always name it. So nothing may renumber rowids or delete a row without a trigger
+seeing it: **no `VACUUM`, no table rebuild outside a migration that regenerates the triggers, no
+`INSERT OR REPLACE` / `REPLACE INTO` / `ON CONFLICT REPLACE` against a replicated table, no WITHOUT
+ROWID replicated table.** `replication::tests` fails if non-test code issues `VACUUM` or a replacing
+insert, or a replicated table is WITHOUT ROWID. (Keying rows by their primary keys instead would
+need a per-table key list in the triggers, the snapshot and the digests, and composite keys for the
+link tables; it is possible, and not done.)
+
+**Canonical text assumptions.** The image is the text of SQLite's `json_object` over the columns in
+`pragma_table_info` order. Server and client must therefore run a SQLite whose `json_object` prints
+the same text (integers, escaping, and reals to 15 significant digits) and have the same column order
+for every replicated table: one schema version, from the chain or the baseline alike (a test pins the
+order for both). A client whose text differed would mismatch on every event and fetch a snapshot each
+time.
 
 ### The source hash
 

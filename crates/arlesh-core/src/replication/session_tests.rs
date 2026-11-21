@@ -1,4 +1,4 @@
-//! A scripted session against a real server database with a publisher, and a Replica kept in step
+//! Scripted sessions against a real server database with a publisher, and a Replica kept in step
 //! from nothing but its snapshot and the events: what ADR 0017 asks of the sync surface.
 //!
 //! The Replica here is a plain second database. It applies each event's rows as a client would
@@ -16,6 +16,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     SqlitePool,
 };
+use tokio::sync::Notify;
 
 use super::*;
 use crate::{
@@ -39,20 +40,21 @@ use crate::{
 
 static NEXT_DIRECTORY: AtomicU32 = AtomicU32::new(0);
 
-/// A clock that never ticks, so only writes publish.
-struct NeverTicks;
+/// A clock that ticks only when the test says so.
+struct Ticker(Arc<Notify>);
 
-impl Clock for NeverTicks {
+impl Clock for Ticker {
     fn now(&self) -> chrono::NaiveDateTime {
         crate::clock::now()
     }
 
     fn next_tick(&self) -> Tick {
-        Box::pin(std::future::pending())
+        let notify = Arc::clone(&self.0);
+        Box::pin(async move { notify.notified().await })
     }
 }
 
-/// A Replica: a second database, a change-log position, and the hash it last agreed on.
+/// A Replica: a second database and a change-log position.
 struct Replica {
     pool: SqlitePool,
     position: i64,
@@ -63,6 +65,8 @@ struct Replica {
 enum Gap {
     /// The event's `base` is past where the Replica is: an event was missed.
     Missed,
+    /// The event carries no `source`: the publisher says rows cannot be applied.
+    NoSource,
 }
 
 impl Replica {
@@ -120,9 +124,12 @@ impl Replica {
         self.position = body["source"]["upto"].as_i64().unwrap();
     }
 
-    /// Applies one live event as a client would, or says it missed one. Checks the hash.
+    /// Applies one live event as a client would, or says it must fetch a snapshot. Checks the hash.
     async fn apply(&mut self, event: &Value) -> Result<(), Gap> {
         let source = &event["source"];
+        if source.is_null() {
+            return Err(Gap::NoSource);
+        }
         let (base, upto) = (
             source["base"].as_i64().unwrap(),
             source["upto"].as_i64().unwrap(),
@@ -177,6 +184,7 @@ struct Server {
     factory: SessionFactory,
     stacks: UndoStacks,
     publisher: BoardPublisher,
+    ticks: Arc<Notify>,
     /// The last event's `seq` taken from the publisher.
     seen: u64,
 }
@@ -199,22 +207,38 @@ impl Server {
         )
         .await
         .unwrap();
-        let sink: Sink = Arc::new(|_| {});
-        let publisher = BoardPublisher::start_with_rows(
-            factory.clone(),
-            ChangeFeed::new(),
-            Arc::new(NeverTicks),
-            sink,
-            &tokio::runtime::Handle::current(),
-        );
-        // The first publication is the seed: wait for it, so the log is capturing.
+        let ticks = Arc::new(Notify::new());
+        let publisher = Self::publisher(&factory, &ticks, true);
+        // The first publication is the seed: wait for it, so the capture is held.
         publisher.current().await;
         Self {
             factory,
             stacks: UndoStacks::new(),
             publisher,
+            ticks,
             seen: 1,
         }
+    }
+
+    /// Another publisher over the same file, with or without rows.
+    fn publisher(factory: &SessionFactory, ticks: &Arc<Notify>, rows: bool) -> BoardPublisher {
+        let sink: Sink = Arc::new(|_| {});
+        let start = if rows {
+            BoardPublisher::start_with_rows
+        } else {
+            BoardPublisher::start
+        };
+        start(
+            factory.clone(),
+            ChangeFeed::new(),
+            Arc::new(Ticker(Arc::clone(ticks))),
+            sink,
+            &tokio::runtime::Handle::current(),
+        )
+    }
+
+    fn pool(&self) -> SqlitePool {
+        self.factory.pool_for_tests().clone()
     }
 
     async fn snapshot_body(&self) -> Value {
@@ -223,11 +247,8 @@ impl Server {
         serde_json::from_str(&rules::wire::snapshot_body(&snapshot, "e", 0).unwrap()).unwrap()
     }
 
-    /// One user Gesture: opened, written, committed and closed onto the undo stack, then announced.
-    async fn gesture<T>(
-        &mut self,
-        write: impl AsyncFnOnce(&mut Db<Transactional>) -> T,
-    ) -> (T, Vec<Value>) {
+    /// One user Gesture: opened, written, committed and closed onto the undo stack. Not announced.
+    async fn commit<T>(&mut self, write: impl AsyncFnOnce(&mut Db<Transactional>) -> T) -> T {
         let mut db = self.factory.begin().await.unwrap();
         db.undo().open_gesture().await.unwrap();
         let outcome = write(&mut db).await;
@@ -235,21 +256,50 @@ impl Server {
         undo::close_gesture(&self.factory, &self.stacks)
             .await
             .unwrap();
+        outcome
+    }
+
+    /// One user Gesture, then announced.
+    async fn gesture<T>(
+        &mut self,
+        write: impl AsyncFnOnce(&mut Db<Transactional>) -> T,
+    ) -> (T, Vec<Value>) {
+        let outcome = self.commit(write).await;
         (outcome, self.announce().await)
     }
 
-    async fn announce(&mut self) -> Vec<Value> {
-        self.publisher.record_write();
+    /// The events the publisher makes next, as a Replica's stream sends them (rows included).
+    async fn next_events(&mut self) -> Vec<Value> {
         let events = self
             .publisher
             .after(self.seen, Duration::from_secs(10))
             .await;
-        assert!(!events.is_empty(), "a write must publish");
+        assert!(!events.is_empty(), "the publisher must publish");
         self.seen = events.last().unwrap().seq;
         events
             .iter()
-            .map(|event| serde_json::from_str(&event.data).unwrap())
+            .map(|event| serde_json::from_str(&event.wire(true)).unwrap())
             .collect()
+    }
+
+    async fn announce(&mut self) -> Vec<Value> {
+        self.publisher.record_write();
+        self.next_events().await
+    }
+
+    /// A tick of the publisher's clock: no write is announced.
+    async fn tick(&mut self) -> Vec<Value> {
+        self.ticks.notify_one();
+        self.next_events().await
+    }
+
+    async fn rows(&self) -> Vec<StoredRow> {
+        let mut db = self.factory.begin_read().await.unwrap();
+        snapshot(&mut db).await.unwrap().rows
+    }
+
+    async fn truth(&self) -> String {
+        rules::hash::board_hash(&self.rows().await)
     }
 }
 
@@ -266,7 +316,11 @@ fn task_id(id: &NodeId) -> TaskId {
     TaskId(id.require_stored().unwrap())
 }
 
-/// The scripted session: every event it makes, in order, and the server's rows at the end.
+async fn sql(pool: &SqlitePool, statement: &str) {
+    sqlx::query(statement).execute(pool).await.unwrap();
+}
+
+/// The scripted session: every event it makes, in order.
 async fn run_session(server: &mut Server) -> Vec<Value> {
     let mut events = Vec::new();
 
@@ -446,12 +500,19 @@ async fn run_session(server: &mut Server) -> Vec<Value> {
         .await;
     events.extend(more);
 
-    events
-}
+    // Agents: a parent and a child (the credential column is `NOT NULL UNIQUE`, so a device's row
+    // must apply under the same schema), a Claim, a lock, then bookkeeping that changes nothing a
+    // device holds.
+    let pool = server.pool();
+    sql(&pool, "INSERT INTO agents (id, name, account, session_uuid, token_sha256, created_at) VALUES (1, 'parent', 'default', 's1', 'SECRET-1', 'x')").await;
+    sql(&pool, "INSERT INTO agents (id, name, account, session_uuid, token_sha256, created_at, parent_id) VALUES (2, 'child', 'default', 's2', 'SECRET-2', 'x', 1)").await;
+    events.extend(server.announce().await);
+    sql(&pool, "UPDATE agents SET locked = 1 WHERE id = 2").await;
+    events.extend(server.announce().await);
+    sql(&pool, "DELETE FROM agents WHERE id = 2").await;
+    events.extend(server.announce().await);
 
-async fn server_rows(server: &Server) -> Vec<StoredRow> {
-    let mut db = server.factory.begin_read().await.unwrap();
-    snapshot(&mut db).await.unwrap().rows
+    events
 }
 
 #[tokio::test]
@@ -461,7 +522,7 @@ async fn a_replica_fed_the_events_ends_with_the_servers_rows_byte_for_byte() {
     replica.load(&server.snapshot_body().await).await;
     assert_eq!(
         replica.rows().await,
-        server_rows(&server).await,
+        server.rows().await,
         "the snapshot loads whole"
     );
 
@@ -470,11 +531,18 @@ async fn a_replica_fed_the_events_ends_with_the_servers_rows_byte_for_byte() {
         replica.apply(event).await.unwrap();
     }
 
-    assert!(events.len() >= 9, "each step published: {}", events.len());
-    assert_eq!(replica.rows().await, server_rows(&server).await);
+    assert!(events.len() >= 12, "each step published: {}", events.len());
+    assert_eq!(replica.rows().await, server.rows().await);
     let head = server.publisher.head().unwrap().source.unwrap();
     assert_eq!(head.hash, replica.hash().await);
     assert_eq!(head.upto, replica.position);
+    let text: String = server
+        .rows()
+        .await
+        .iter()
+        .map(|row| row.image.clone())
+        .collect();
+    assert!(!text.contains("SECRET-"), "no credential travels");
 }
 
 #[tokio::test]
@@ -503,16 +571,22 @@ async fn the_session_changed_cascaded_and_undone_rows_are_all_reported() {
         reported("expectations", "set") >= 2,
         "the wait, and its release"
     );
+    assert!(
+        reported("agents", "set") >= 3,
+        "a parent, a child and a lock"
+    );
+    assert!(reported("agents", "del") >= 1, "the child went");
 }
 
 #[tokio::test]
-async fn removing_any_event_is_detected_from_the_positions_alone() {
+async fn removing_any_event_that_carried_rows_is_detected_from_the_positions_alone() {
     let mut server = Server::start().await;
     let snapshot = server.snapshot_body().await;
     let events = run_session(&mut server).await;
     let head = server.publisher.head().unwrap().source.unwrap();
+    let moved = |event: &Value| event["source"]["base"] != event["source"]["upto"];
 
-    for removed in 0..events.len() {
+    for removed in (0..events.len()).filter(|&index| moved(&events[index])) {
         let mut replica = Replica::empty().await;
         replica.load(&snapshot).await;
         let mut missed = false;
@@ -525,10 +599,33 @@ async fn removing_any_event_is_detected_from_the_positions_alone() {
                 break;
             }
         }
-        // The last event has no successor to show the gap, so the head does.
+        // The last such event has no successor to show the gap, so the head does.
         missed |= replica.position != head.upto;
         assert!(missed, "removing event {removed} went unnoticed");
     }
+}
+
+#[tokio::test]
+async fn removing_an_event_that_carried_no_rows_loses_nothing() {
+    let mut server = Server::start().await;
+    let snapshot = server.snapshot_body().await;
+    let mut events = run_session(&mut server).await;
+    // A write that changes no replicated row publishes an event whose source is empty.
+    server.publisher.record_write();
+    events.extend(server.next_events().await);
+    let empty = events.len() - 1;
+    assert_eq!(
+        events[empty]["source"]["base"],
+        events[empty]["source"]["upto"]
+    );
+
+    let mut replica = Replica::empty().await;
+    replica.load(&snapshot).await;
+    for event in &events[..empty] {
+        replica.apply(event).await.unwrap();
+    }
+
+    assert_eq!(replica.rows().await, server.rows().await);
 }
 
 #[tokio::test]
@@ -547,34 +644,270 @@ async fn the_events_carry_consecutive_sequence_numbers_so_a_removal_also_shows_t
 }
 
 #[tokio::test]
-async fn a_row_changed_behind_the_feed_is_caught_by_the_hash() {
+async fn several_transactions_before_one_publication_arrive_as_one_event() {
     let mut server = Server::start().await;
     let mut replica = Replica::empty().await;
     replica.load(&server.snapshot_body().await).await;
-    let events = run_session(&mut server).await;
-    for event in &events {
+    let aspect: RowId = {
+        let mut db = server.factory.connect().await.unwrap();
+        db.domains()
+            .list(Some(DomainSubtype::Aspect))
+            .await
+            .unwrap()[0]
+            .id
+    };
+
+    let mut parent = NodeId::from(aspect);
+    for title in ["One", "Two", "Three"] {
+        let created = server
+            .commit(async |db| {
+                crate::tasks::create_task(db, task(title, "domain", parent.clone()))
+                    .await
+                    .unwrap()
+                    .id
+            })
+            .await;
+        parent = created;
+    }
+    let events = server.announce().await;
+
+    assert_eq!(events.len(), 1, "one publication took all three");
+    let rows = events[0]["source"]["rows"].as_array().unwrap();
+    assert!(rows.iter().filter(|row| row["table"] == "tasks").count() >= 3);
+    replica.apply(&events[0]).await.unwrap();
+    assert_eq!(replica.rows().await, server.rows().await);
+}
+
+#[tokio::test]
+async fn a_tick_that_finds_rows_no_write_announced_publishes_them_and_the_late_announcement_is_empty(
+) {
+    let mut server = Server::start().await;
+    let mut replica = Replica::empty().await;
+    replica.load(&server.snapshot_body().await).await;
+    let aspect: RowId = {
+        let mut db = server.factory.connect().await.unwrap();
+        db.domains()
+            .list(Some(DomainSubtype::Aspect))
+            .await
+            .unwrap()[0]
+            .id
+    };
+
+    // A write commits, but the announcement (the revision bump) has not happened yet when the
+    // publisher's clock ticks: its rows are drained under the old revision.
+    server
+        .commit(async |db| {
+            crate::tasks::create_task(db, task("Early", "domain", aspect.into()))
+                .await
+                .unwrap();
+        })
+        .await;
+    let early = server.tick().await;
+    let late = server.announce().await;
+
+    assert!(!early[0]["source"]["rows"].as_array().unwrap().is_empty());
+    assert!(late[0]["source"]["rows"].as_array().unwrap().is_empty());
+    assert!(late[0]["revision"].as_u64() > early[0]["revision"].as_u64());
+    for event in early.iter().chain(&late) {
+        replica.apply(event).await.unwrap();
+    }
+    assert_eq!(replica.rows().await, server.rows().await);
+}
+
+#[tokio::test]
+async fn a_unique_key_that_moves_between_rows_converges_once_the_event_is_applied() {
+    let mut server = Server::start().await;
+    let pool = server.pool();
+    sql(&pool, "INSERT INTO agents (id, name, account, session_uuid, token_sha256, created_at) VALUES (1, 'alpha', 'd', 's', 'T1', 'x')").await;
+    sql(&pool, "INSERT INTO agents (id, name, account, session_uuid, token_sha256, created_at) VALUES (2, 'beta', 'd', 's', 'T2', 'x')").await;
+    let mut replica = Replica::empty().await;
+    server.announce().await;
+    replica.load(&server.snapshot_body().await).await;
+
+    // Swap the two names (`agents.name` is UNIQUE): applying one row first conflicts with the other.
+    sql(&pool, "UPDATE agents SET name = 'tmp' WHERE id = 1").await;
+    sql(&pool, "UPDATE agents SET name = 'alpha' WHERE id = 2").await;
+    sql(&pool, "UPDATE agents SET name = 'beta' WHERE id = 1").await;
+    for event in server.announce().await {
+        replica.apply(&event).await.unwrap();
+    }
+
+    assert_eq!(replica.rows().await, server.rows().await);
+}
+
+#[tokio::test]
+async fn a_row_changed_behind_the_feed_is_caught_by_the_published_hash() {
+    let mut server = Server::start().await;
+    let mut replica = Replica::empty().await;
+    replica.load(&server.snapshot_body().await).await;
+    for event in &run_session(&mut server).await {
         replica.apply(event).await.unwrap();
     }
     let agreed = server.publisher.head().unwrap().source.unwrap();
     assert_eq!(agreed.hash, replica.hash().await);
 
-    // A writer that is not the server's board publisher: a second process, a script with `force`.
-    // Switch the capture off the way such a process's rows are never captured, then edit.
-    sqlx::query("UPDATE change_capture SET enabled = 0")
-        .execute(&sqlx_pool(&server))
-        .await
-        .unwrap();
-    sqlx::query("UPDATE tasks SET title = 'Edited behind the feed' WHERE title = 'First'")
-        .execute(&sqlx_pool(&server))
-        .await
-        .unwrap();
+    // The capture is lost (another process took it, or switched it off, or the lease lapsed), and
+    // then the database changes: no log entry, so nothing in the feed says so.
+    sql(&server.pool(), "UPDATE change_capture SET leased_until = 0").await;
+    sql(
+        &server.pool(),
+        "UPDATE tasks SET title = 'Edited behind the feed' WHERE title = 'First'",
+    )
+    .await;
+    let events = server.announce().await;
 
-    let mut db = server.factory.begin_read().await.unwrap();
-    let server_now = snapshot(&mut db).await.unwrap();
-    assert_eq!(server_now.upto, agreed.upto, "no event announced it");
-    assert_ne!(server_now.hash, replica.hash().await, "the hash sees it");
+    let head = server.publisher.head().unwrap().source.unwrap();
+    assert_eq!(
+        head.hash,
+        server.truth().await,
+        "the published head states what the database holds"
+    );
+    assert_ne!(
+        head.hash,
+        replica.hash().await,
+        "a faithful Replica disagrees with the head"
+    );
+    for event in &events {
+        assert!(
+            event.get("source").is_none(),
+            "an event that cannot say what changed must not claim to: {event}"
+        );
+        assert_eq!(replica.apply(event).await, Err(Gap::NoSource));
+    }
+
+    // The publisher heals: a snapshot, then the feed agrees again.
+    replica.load(&server.snapshot_body().await).await;
+    sql(
+        &server.pool(),
+        "UPDATE tasks SET title = 'Edited again' WHERE title = 'Second'",
+    )
+    .await;
+    for event in server.announce().await {
+        replica.apply(&event).await.unwrap();
+    }
+    assert_eq!(replica.rows().await, server.rows().await);
 }
 
-fn sqlx_pool(server: &Server) -> SqlitePool {
-    server.factory.pool_for_tests().clone()
+#[tokio::test]
+async fn a_row_changed_behind_the_feed_with_the_capture_still_held_is_caught_on_a_tick() {
+    let mut server = Server::start().await;
+    let mut replica = Replica::empty().await;
+    replica.load(&server.snapshot_body().await).await;
+    // A writer that bypasses the triggers' notice entirely: the log is emptied under the publisher.
+    sql(
+        &server.pool(),
+        "INSERT INTO retired_beads_ids (table_name, row_id, beads_id) VALUES ('tasks', 1, 'x')",
+    )
+    .await;
+    sql(&server.pool(), "DELETE FROM change_log").await;
+
+    let events = server.tick().await;
+
+    let head = server.publisher.head().unwrap().source.unwrap();
+    assert_eq!(head.hash, server.truth().await);
+    assert_ne!(head.hash, replica.hash().await);
+    assert!(events.iter().all(|event| event.get("source").is_none()));
+}
+
+#[tokio::test]
+async fn a_publisher_without_rows_on_the_same_file_does_not_take_the_capture() {
+    let mut server = Server::start().await;
+    let mut replica = Replica::empty().await;
+    replica.load(&server.snapshot_body().await).await;
+
+    // The desktop's Standalone publisher opened on the file while the server runs.
+    let desktop = Server::publisher(&server.factory, &server.ticks, false);
+    desktop.current().await;
+    let aspect: RowId = {
+        let mut db = server.factory.connect().await.unwrap();
+        db.domains()
+            .list(Some(DomainSubtype::Aspect))
+            .await
+            .unwrap()[0]
+            .id
+    };
+    server
+        .commit(async |db| {
+            crate::tasks::create_task(db, task("After", "domain", aspect.into()))
+                .await
+                .unwrap();
+        })
+        .await;
+    for event in server.announce().await {
+        replica.apply(&event).await.unwrap();
+    }
+
+    assert_eq!(replica.rows().await, server.rows().await);
+    assert_eq!(
+        server.publisher.head().unwrap().source.unwrap().hash,
+        server.truth().await
+    );
+}
+
+#[tokio::test]
+async fn a_second_publisher_with_rows_is_refused_and_the_first_goes_on() {
+    let mut server = Server::start().await;
+    let mut replica = Replica::empty().await;
+    replica.load(&server.snapshot_body().await).await;
+
+    let second = Server::publisher(&server.factory, &server.ticks, true);
+    second.current().await;
+    let aspect: RowId = {
+        let mut db = server.factory.connect().await.unwrap();
+        db.domains()
+            .list(Some(DomainSubtype::Aspect))
+            .await
+            .unwrap()[0]
+            .id
+    };
+    server
+        .commit(async |db| {
+            crate::tasks::create_task(db, task("After", "domain", aspect.into()))
+                .await
+                .unwrap();
+        })
+        .await;
+    for event in server.announce().await {
+        replica.apply(&event).await.unwrap();
+    }
+
+    assert!(
+        second.head().unwrap().source.is_none(),
+        "it holds no capture, so it publishes no rows"
+    );
+    assert_eq!(replica.rows().await, server.rows().await);
+}
+
+#[tokio::test]
+async fn giving_up_the_capture_stops_the_log_and_the_publisher_does_not_take_it_again() {
+    let mut server = Server::start().await;
+    server.publisher.release_capture(&server.factory).await;
+
+    let aspect: RowId = {
+        let mut db = server.factory.connect().await.unwrap();
+        db.domains()
+            .list(Some(DomainSubtype::Aspect))
+            .await
+            .unwrap()[0]
+            .id
+    };
+    server
+        .commit(async |db| {
+            crate::tasks::create_task(db, task("After", "domain", aspect.into()))
+                .await
+                .unwrap();
+        })
+        .await;
+    server.publisher.record_write();
+    server.next_events().await;
+    let logged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
+        .fetch_one(&server.pool())
+        .await
+        .unwrap();
+    let leased: i64 = sqlx::query_scalar("SELECT leased_until FROM change_capture")
+        .fetch_one(&server.pool())
+        .await
+        .unwrap();
+
+    assert_eq!((logged, leased), (0, 0));
 }

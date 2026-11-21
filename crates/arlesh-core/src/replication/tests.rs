@@ -6,7 +6,7 @@
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
 use super::{
-    rules::{coalesce, hash, is_replicated, SourceTracker},
+    rules::{coalesce, decide_capture, hash, is_replicated, Capture, SourceTracker},
     *,
 };
 use crate::database::session::SessionFactory;
@@ -157,6 +157,19 @@ fn server_only_tables_are_not_replicated() {
     }
 }
 
+#[test]
+fn a_lease_is_renewed_by_its_owner_refused_to_another_and_taken_once_it_lapses() {
+    // Held by me, valid.
+    assert_eq!(decide_capture(Some("a"), 200, 100, "a"), Capture::Renewed);
+    // Held by another, valid: neither drain nor take.
+    assert_eq!(decide_capture(Some("b"), 200, 100, "a"), Capture::Refused);
+    // Another's lapsed, never held, released.
+    assert_eq!(decide_capture(Some("b"), 100, 100, "a"), Capture::Acquired);
+    assert_eq!(decide_capture(None, 0, 100, "a"), Capture::Acquired);
+    // Mine, but it lapsed: the log has a gap, so it starts again from the rows.
+    assert_eq!(decide_capture(Some("a"), 99, 100, "a"), Capture::Acquired);
+}
+
 async fn pool() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -183,6 +196,14 @@ async fn trigger_sql(pool: &SqlitePool, table: &str, operation: &str) -> Option<
         .fetch_optional(pool)
         .await
         .unwrap()
+}
+
+/// Takes the capture as `owner` in its own transaction.
+async fn hold(factory: &SessionFactory, owner: &str) -> Turn {
+    let mut db = factory.begin().await.unwrap();
+    let turn = take_turn(&mut db, owner).await.unwrap();
+    db.commit().await.unwrap();
+    turn
 }
 
 #[tokio::test]
@@ -213,7 +234,7 @@ async fn every_replicated_table_has_its_three_change_triggers_and_no_other_table
 }
 
 #[tokio::test]
-async fn every_change_trigger_names_every_column_of_its_table_but_the_omitted_ones() {
+async fn every_change_trigger_names_every_column_of_its_table() {
     let pool = pool().await;
     for table in tables(&pool).await.into_iter().filter(|t| is_replicated(t)) {
         let columns: Vec<String> =
@@ -225,59 +246,115 @@ async fn every_change_trigger_names_every_column_of_its_table_but_the_omitted_on
         let insert = trigger_sql(&pool, &table, "insert").await.unwrap();
         let update = trigger_sql(&pool, &table, "update").await.unwrap();
         for column in columns {
-            let named = |sql: &str| sql.contains(&format!("'{column}', new.{column}"));
-            if rules::is_omitted(&table, &column) {
-                assert!(
-                    !named(&insert) && !named(&update),
-                    "{table}.{column} travels"
-                );
-            } else {
-                assert!(
-                    named(&insert) && named(&update),
-                    "the change triggers of {table} do not name {column}: a migration changed the \
-                     columns without regenerating them"
-                );
+            match rules::redaction(&table, &column) {
+                Some(expression) => {
+                    let stood_in =
+                        format!("'{column}', {}", expression.replace("\"id\"", "new.id"));
+                    assert!(
+                        insert.contains(&stood_in) && update.contains(&stood_in),
+                        "{table}.{column} must hold its stand-in {stood_in}"
+                    );
+                    assert!(
+                        !insert.contains(&format!("new.{column}")),
+                        "{table}.{column} travels"
+                    );
+                }
+                None => {
+                    let named = format!("'{column}', new.{column}");
+                    assert!(
+                        insert.contains(&named) && update.contains(&named),
+                        "the change triggers of {table} do not name {column}: a migration changed \
+                         the columns without regenerating them"
+                    );
+                    assert!(
+                        update.contains(&format!("old.{column} IS NOT new.{column}")),
+                        "the update trigger of {table} does not watch {column}"
+                    );
+                }
             }
         }
     }
 }
 
 #[tokio::test]
-async fn the_log_is_written_only_while_capture_is_on() {
+async fn the_log_is_written_only_while_a_publisher_holds_a_valid_lease() {
     let pool = pool().await;
     let factory = SessionFactory::new(pool.clone());
+    let count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM change_log")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    let add = |id: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query("INSERT INTO domains (id, title, subtype) VALUES (?, ?, 'aspect')")
+                .bind(id)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+    };
 
-    sqlx::query("INSERT INTO domains (id, title, subtype) VALUES ('d-1', 'One', 'aspect')")
+    add("d-1").await;
+    let never_held = count().await;
+    hold(&factory, "me").await;
+    add("d-2").await;
+    let held = count().await;
+    sqlx::query("UPDATE change_capture SET leased_until = 0")
         .execute(&pool)
         .await
         .unwrap();
-    let off: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
+    add("d-3").await;
+    let lapsed = count().await;
+
+    assert_eq!(
+        (never_held, held, lapsed),
+        (0, 1, 1),
+        "a crashed publisher's lease runs out and the log stops growing by itself"
+    );
+}
+
+#[tokio::test]
+async fn an_update_that_changes_nothing_a_device_holds_logs_nothing() {
+    let pool = pool().await;
+    let factory = SessionFactory::new(pool.clone());
+    sqlx::query(
+        "INSERT INTO agents (id, name, account, session_uuid, token_sha256, locked, created_at, last_seen_at) \
+         VALUES (1, 'a', 'default', 's', 'SECRET', 0, 'x', 'x')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    hold(&factory, "me").await;
+
+    sqlx::query("UPDATE agents SET last_seen_at = 'later', token_sha256 = 'ROTATED' WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after_bookkeeping: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE agents SET locked = 1 WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after_lock: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
         .fetch_one(&pool)
         .await
         .unwrap();
 
-    let mut db = factory.begin().await.unwrap();
-    start_capture(&mut db).await.unwrap();
-    db.commit().await.unwrap();
-    sqlx::query("INSERT INTO domains (id, title, subtype) VALUES ('d-2', 'Two', 'aspect')")
-        .execute(&pool)
-        .await
-        .unwrap();
-    let on: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-
-    assert_eq!((off, on), (0, 1));
+    assert_eq!((after_bookkeeping, after_lock), (0, 1));
 }
 
 #[tokio::test]
 async fn a_logged_image_is_the_image_a_snapshot_reads() {
     let pool = pool().await;
     let factory = SessionFactory::new(pool.clone());
-    let mut db = factory.begin().await.unwrap();
-    start_capture(&mut db).await.unwrap();
-    db.commit().await.unwrap();
+    hold(&factory, "me").await;
 
     sqlx::query(
         "INSERT INTO domains (id, title, subtype, description) VALUES ('d-1', 'It''s \"One\"', 'aspect', NULL)",
@@ -285,28 +362,40 @@ async fn a_logged_image_is_the_image_a_snapshot_reads() {
     .execute(&pool)
     .await
     .unwrap();
+    sqlx::query(
+        "INSERT INTO agents (id, name, account, session_uuid, token_sha256, locked, created_at) \
+         VALUES (7, 'a', 'default', 's', 'SECRET', 0, 'x')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
-    let mut db = factory.begin().await.unwrap();
-    let log = drain(&mut db).await.unwrap();
-    db.commit().await.unwrap();
+    let Turn::Renewed(drained) = hold(&factory, "me").await else {
+        panic!("the holder renews");
+    };
     let mut db = factory.begin_read().await.unwrap();
     let rows = snapshot(&mut db).await.unwrap().rows;
-    let read = rows
-        .iter()
-        .find(|row| row.table == "domains" && row.image.contains("d-1"))
-        .unwrap();
-    assert_eq!(log.len(), 1);
-    assert_eq!(log[0].image.as_deref(), Some(read.image.as_str()));
-    assert_eq!(log[0].rowid, read.rowid);
+    for logged in &drained.entries {
+        let read = rows
+            .iter()
+            .find(|row| row.table == logged.table && row.rowid == logged.rowid)
+            .unwrap();
+        assert_eq!(
+            logged.image.as_deref(),
+            Some(read.image.as_str()),
+            "{}",
+            logged.table
+        );
+    }
+    assert_eq!(drained.entries.len(), 2);
+    assert_eq!(drained.hash, hash::board_hash(&drained.rows));
 }
 
 #[tokio::test]
-async fn draining_takes_the_log_and_leaves_the_position() {
+async fn a_turn_takes_the_log_and_leaves_the_position() {
     let pool = pool().await;
     let factory = SessionFactory::new(pool.clone());
-    let mut db = factory.begin().await.unwrap();
-    start_capture(&mut db).await.unwrap();
-    db.commit().await.unwrap();
+    assert!(matches!(hold(&factory, "me").await, Turn::Acquired(_)));
     for id in ["a", "b"] {
         sqlx::query("INSERT INTO domains (id, title, subtype) VALUES (?, ?, 'aspect')")
             .bind(id)
@@ -316,25 +405,75 @@ async fn draining_takes_the_log_and_leaves_the_position() {
             .unwrap();
     }
 
-    let mut db = factory.begin().await.unwrap();
-    let drained = drain(&mut db).await.unwrap();
-    db.commit().await.unwrap();
-    let mut db = factory.begin().await.unwrap();
-    let again = drain(&mut db).await.unwrap();
-    db.commit().await.unwrap();
-    let mut db = factory.begin_read().await.unwrap();
-    let after = snapshot(&mut db).await.unwrap();
+    let Turn::Renewed(first) = hold(&factory, "me").await else {
+        panic!("renewed");
+    };
+    let Turn::Renewed(second) = hold(&factory, "me").await else {
+        panic!("renewed");
+    };
 
-    assert_eq!(drained.len(), 2);
+    assert_eq!(first.entries.len(), 2);
     assert!(
-        again.is_empty(),
+        second.entries.is_empty(),
         "nothing accumulates: the log was consumed"
     );
+    assert_eq!(second.position, first.entries.last().unwrap().seq);
+}
+
+#[tokio::test]
+async fn a_second_publisher_is_refused_and_touches_nothing() {
+    let pool = pool().await;
+    let factory = SessionFactory::new(pool.clone());
+    hold(&factory, "first").await;
+    sqlx::query("INSERT INTO domains (id, title, subtype) VALUES ('a', 'a', 'aspect')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let refused = hold(&factory, "second").await;
+    let logged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let owner: String = sqlx::query_scalar("SELECT owner FROM change_capture")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert!(matches!(refused, Turn::Refused));
     assert_eq!(
-        after.upto,
-        drained.last().unwrap().seq,
-        "the position outlives the rows it counted"
+        (logged, owner.as_str()),
+        (1, "first"),
+        "it neither drained nor took the capture"
     );
+}
+
+#[tokio::test]
+async fn releasing_the_capture_stops_the_log_and_only_its_owner_can() {
+    let pool = pool().await;
+    let factory = SessionFactory::new(pool.clone());
+    hold(&factory, "me").await;
+
+    let mut db = factory.begin().await.unwrap();
+    release_capture(&mut db, "someone else").await.unwrap();
+    db.commit().await.unwrap();
+    let still: i64 = sqlx::query_scalar("SELECT leased_until > 0 FROM change_capture")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let mut db = factory.begin().await.unwrap();
+    release_capture(&mut db, "me").await.unwrap();
+    db.commit().await.unwrap();
+    sqlx::query("INSERT INTO domains (id, title, subtype) VALUES ('a', 'a', 'aspect')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let logged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM change_log")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!((still, logged), (1, 0));
 }
 
 #[tokio::test]
@@ -360,8 +499,142 @@ async fn a_snapshot_holds_no_credential_and_no_server_only_table() {
 
     let text: String = snapshot.rows.iter().map(|row| row.image.as_str()).collect();
     assert!(!text.contains("SECRETHASH") && !text.contains("TOKENHASH"));
-    assert!(snapshot.rows.iter().any(|row| row.table == "agents"));
+    let agent = snapshot
+        .rows
+        .iter()
+        .find(|row| row.table == "agents")
+        .unwrap();
+    assert!(
+        agent.image.contains(r#""token_sha256":"redacted:1""#),
+        "{}",
+        agent.image
+    );
+    assert!(
+        agent.image.contains(r#""last_seen_at":null"#),
+        "{}",
+        agent.image
+    );
     assert!(snapshot.rows.iter().all(|row| is_replicated(&row.table)));
     assert!(snapshot.schema_version >= 111);
     assert_eq!(snapshot.hash, hash::board_hash(&snapshot.rows));
+}
+
+/// What identity-by-`rowid` forbids (ADR 0017, decision 5; `docs/spec/client-mode.md`, *The source
+/// rows*). A row is named by its SQLite `rowid`, which is implicit on every table since 0107 made the
+/// keys TEXT. `VACUUM` and any table rebuild renumber rowids without firing a trigger, an
+/// `INSERT OR REPLACE` (or `ON CONFLICT REPLACE`) deletes a conflicting row without firing its delete
+/// trigger, and a WITHOUT ROWID table has no `rowid` for the triggers to name.
+#[tokio::test]
+async fn nothing_replicated_is_without_rowid_or_replaces_on_conflict() {
+    let pool = pool().await;
+    let defined: Vec<(String, String)> = sqlx::query_as(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    for (name, sql) in defined.into_iter().filter(|(name, _)| is_replicated(name)) {
+        let sql = sql.to_uppercase();
+        assert!(
+            !sql.contains("WITHOUT ROWID"),
+            "{name} is WITHOUT ROWID: it has no rowid to log"
+        );
+        assert!(
+            !sql.contains("ON CONFLICT REPLACE"),
+            "{name} replaces on conflict: a deletion no trigger sees"
+        );
+    }
+}
+
+#[test]
+fn no_runtime_code_vacuums_or_replaces_into_a_table() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let roots = [
+        manifest.join("src"),
+        manifest.join("../arlesh-backend/src"),
+        manifest.join("../arlesh-py/src"),
+        manifest.join("../../src-tauri/src"),
+    ];
+    let mut found = Vec::new();
+    for root in roots {
+        scan(&root, &mut found);
+    }
+    assert!(
+        found.is_empty(),
+        "VACUUM and INSERT OR REPLACE / REPLACE INTO change or delete rows without a change-log \
+         trigger (a rowid renumbered, a row replaced): {found:?}"
+    );
+}
+
+fn scan(directory: &std::path::Path, found: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan(&path, found);
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if !name.ends_with(".rs") || name == "tests.rs" || name.ends_with("_tests.rs") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for (number, line) in text.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("").to_uppercase();
+            if ["VACUUM", "INSERT OR REPLACE", "REPLACE INTO"]
+                .iter()
+                .any(|banned| code.contains(banned))
+            {
+                found.push(format!("{}:{}", path.display(), number + 1));
+            }
+        }
+    }
+}
+
+/// The canonical text depends on column order being the server's and the client's alike (ADR 0017,
+/// decision 13: one schema version). A database that ran the chain from nothing and one made from
+/// the baseline plus the newer migrations must agree for every replicated table.
+#[tokio::test]
+async fn the_chain_and_the_baseline_give_every_replicated_table_the_same_column_order() {
+    let from_baseline = pool().await;
+    let from_chain = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    crate::database::run_chain(&from_chain, &crate::database::MIGRATOR)
+        .await
+        .unwrap();
+
+    for table in tables(&from_baseline)
+        .await
+        .into_iter()
+        .filter(|t| is_replicated(t))
+    {
+        let order = |pool: &SqlitePool| {
+            let table = table.clone();
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, String>(
+                    "SELECT name FROM pragma_table_info(?) ORDER BY cid",
+                )
+                .bind(table)
+                .fetch_all(&pool)
+                .await
+                .unwrap()
+            }
+        };
+        assert_eq!(
+            order(&from_baseline).await,
+            order(&from_chain).await,
+            "{table}"
+        );
+    }
 }

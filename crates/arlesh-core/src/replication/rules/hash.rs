@@ -10,7 +10,7 @@
 //! # Canonical form
 //!
 //! A row's **image** is the text SQLite's own `json_object('column', value, …)` makes of it, over the
-//! table's columns in schema order, less [`super::OMITTED_COLUMNS`]. It is what the change-log
+//! table's columns in schema order, with the stand-ins of [`super::REDACTED_COLUMNS`]. It is what the change-log
 //! triggers write and what a snapshot reads, so the server never builds one itself, and a Replica
 //! that applied the rows as given and reads its own back with the same query ([`super::super::row_query`])
 //! gets the same text: integers stay integers, text is escaped as SQLite escapes it, a NULL is `null`.

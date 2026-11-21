@@ -24,7 +24,7 @@ def _database(events: list[list[tuple[int, str]]], head_seq: int = 4) -> Any:
     database.board_head = lambda: _head(head_seq)
     answers = iter(events)
 
-    async def after(_after: int, _wait: float) -> list[tuple[int, str]]:
+    async def after(_after: int, _wait: float, _rows: bool = False) -> list[tuple[int, str]]:
         await asyncio.sleep(0)
         answer: list[tuple[int, str]] = next(answers, [])
         return answer

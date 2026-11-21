@@ -56,6 +56,10 @@ pub struct SourceDelta {
     pub hash: String,
     /// Each row that changed, once, as it last became, in log order.
     pub rows: Vec<RowChange>,
+    /// The log and the database disagreed (a change the log never held), so the tracker was
+    /// started again from the rows: `hash` is the database's, `rows` are empty, and a client that
+    /// applied the feed must fetch a snapshot.
+    pub resynced: bool,
 }
 
 impl SourceDelta {
@@ -63,6 +67,19 @@ impl SourceDelta {
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
+}
+
+/// What a publisher's turn read in one write transaction while it held the capture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Drained {
+    /// The log since the last turn, oldest first; deleted in the same transaction.
+    pub entries: Vec<RowChange>,
+    /// The change-log position of the database in that transaction.
+    pub position: i64,
+    /// The hash of every replicated row, read from the database in that transaction.
+    pub hash: String,
+    /// Those rows, for starting again when the log fell short of them.
+    pub rows: Vec<StoredRow>,
 }
 
 /// Every replicated row, read in one transaction: what a device starts from.

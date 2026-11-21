@@ -30,8 +30,53 @@ pub const UNREPLICATED_TABLES: &[&str] = &[
     "change_capture",
 ];
 
-/// Columns a row's image leaves out, as `(table, column)`: a credential never travels to a device.
-pub const OMITTED_COLUMNS: &[(&str, &str)] = &[("agents", "token_sha256")];
+/// Columns whose image holds a stand-in for the stored value, as `(table, column, SQL
+/// expression over the row's other columns)`. The row still applies under the schema the server
+/// has (the column is `NOT NULL UNIQUE`), the stand-in is deterministic and holds nothing secret,
+/// and the hash covers the stand-in, so both sides agree on it.
+///
+/// * `agents.token_sha256` is a credential, so a device gets `'redacted:' || id` (unique per row).
+/// * `agents.last_seen_at` is bookkeeping rewritten on every request an agent makes, which no one
+///   derives anything from: it is a constant, so such a write changes no image and is not logged.
+pub const REDACTED_COLUMNS: &[(&str, &str, &str)] = &[
+    ("agents", "token_sha256", "'redacted:' || \"id\""),
+    ("agents", "last_seen_at", "NULL"),
+];
+
+/// How long a publisher's hold on the change-log capture lasts without being renewed, in seconds.
+/// The publisher renews it on every turn (at least once a minute), and the triggers log only while
+/// it is valid, so a crashed publisher stops the log growing by itself.
+pub const CAPTURE_LEASE_SECONDS: i64 = 180;
+
+/// What a publisher's turn finds the capture to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capture {
+    /// The publisher holds it and the lease is valid: the log holds every change since its last turn.
+    Renewed,
+    /// Nobody holds it (never taken, released, or expired, the publisher's own included): the log
+    /// has a gap, so the publisher starts again from the rows.
+    Acquired,
+    /// Another publisher holds a valid lease: this one must neither drain nor take it.
+    Refused,
+}
+
+/// Decides what `mine` gets on a turn at `now`, given who holds the capture and until when.
+pub fn decide_capture(owner: Option<&str>, leased_until: i64, now: i64, mine: &str) -> Capture {
+    let valid = leased_until > now;
+    match owner {
+        Some(holder) if holder == mine && valid => Capture::Renewed,
+        Some(_) if valid => Capture::Refused,
+        _ => Capture::Acquired,
+    }
+}
+
+/// The SQL expression an image uses for `column` of `table` when it is redacted.
+pub fn redaction(table: &str, column: &str) -> Option<&'static str> {
+    REDACTED_COLUMNS
+        .iter()
+        .find(|(t, c, _)| *t == table && *c == column)
+        .map(|(_, _, expression)| *expression)
+}
 
 /// Whether `table` is replicated: a user table that is not on the server-only list. SQLite's own
 /// tables and `_sqlx_migrations` are infrastructure, not data.
@@ -39,11 +84,6 @@ pub fn is_replicated(table: &str) -> bool {
     !table.starts_with("sqlite_")
         && table != "_sqlx_migrations"
         && !UNREPLICATED_TABLES.contains(&table)
-}
-
-/// Whether `column` of `table` is left out of the row's image.
-pub fn is_omitted(table: &str, column: &str) -> bool {
-    OMITTED_COLUMNS.contains(&(table, column))
 }
 
 /// One change per row: the last thing that happened to each `(table, rowid)`, in the order those
@@ -95,6 +135,7 @@ impl SourceTracker {
             upto: self.upto,
             hash: hash::format(self.total),
             rows,
+            resynced: false,
         }
     }
 

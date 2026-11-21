@@ -245,10 +245,10 @@ publication and the last 64 change events (at most 4 MiB); a restart starts afre
 **The stream.** `GET /events/changes` is a Server-Sent Events stream of two events:
 
 - `board-changed`, one per publication, with id `<epoch>:<seq>` and data `{epoch, seq, revision,
-  now, hash, changes, source}` ([Client Mode](client-mode.md#live-sync) describes `changes` and `source`), or `{epoch,
+  now, hash, changes}`, and on a `?rows=true` stream also `source` ([Client Mode](client-mode.md#live-sync) describes `changes` and `source`), or `{epoch,
   seq, revision, now, hash, reload: true}` when the changes would exceed 256 KiB or cannot be
   replayed.
-- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums, source}` (`source`: `{upto, hash}`, the replicated rows' position and hash, [Client Mode](client-mode.md#the-source-rows-adr-0017-task-ccc)) (`sums`: the hash per
+- `board-head`, the latest publication's `{epoch, seq, revision, hash, sums}`, and on a `?rows=true` stream also `source: {upto, hash}` (the replicated rows' position and hash, [Client Mode](client-mode.md#the-source-rows-adr-0017-task-ccc)) (`sums`: the hash per
   collection), sent once on connecting and after every 15 s of silence, in place of a keepalive
   comment, so a proxy keeps the stream open and a client can check its board for free.
 
