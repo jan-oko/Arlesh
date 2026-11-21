@@ -1506,3 +1506,106 @@ async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
         "and it was a single step"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Staged answers (ADR 0021): a send is one Gesture, and undo stages the answers again.
+// ---------------------------------------------------------------------------------------------
+
+/// Two open questions under an agentic Task, both staged with an answer.
+async fn two_staged_questions(
+    pool: &SqlitePool,
+    app: &App<MockRuntime>,
+) -> [arlesh_lib::nodes::id::NodeId; 2] {
+    use arlesh_lib::commands::expectations as expectation_commands;
+    use arlesh_lib::tasks::answer_drafts::DraftRequest;
+    use arlesh_lib::tasks::model::CreateExpectationRequest;
+
+    let project_id = make_project(pool).await;
+    let task = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            agentic: Some(TaskAgentic::Yes),
+            ..task_request("project", project_id, "work")
+        },
+    )
+    .await
+    .expect("create task");
+    let mut waits = Vec::new();
+    for title in ["One?", "Two?"] {
+        let wait = expectation_commands::create_expectation(
+            app.state(),
+            CreateExpectationRequest {
+                title: title.into(),
+                parent_type: "task".into(),
+                parent_id: task.id.clone(),
+                agentic: true,
+                agentic_note: Some("Which?".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("ask");
+        expectation_commands::save_answer_draft(
+            app.state(),
+            wait.id.clone(),
+            DraftRequest {
+                answer: Some(format!("answer to {title}")),
+                verdict: None,
+            },
+        )
+        .await
+        .expect("stage");
+        waits.push(wait.id);
+    }
+    let [one, two]: [arlesh_lib::nodes::id::NodeId; 2] = waits.try_into().expect("two questions");
+    [one, two]
+}
+
+async fn staged_and_pending(pool: &SqlitePool) -> (i64, i64) {
+    let drafts = sqlx::query_scalar("SELECT COUNT(*) FROM answer_drafts")
+        .fetch_one(pool)
+        .await
+        .expect("count drafts");
+    let pending = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM expectations WHERE agentic = 1 AND status = 'pending'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("count pending");
+    (drafts, pending)
+}
+
+#[tokio::test]
+async fn undoing_a_send_stages_every_answer_again_and_redoing_sends_them() {
+    use arlesh_lib::commands::expectations as expectation_commands;
+    use arlesh_lib::tasks::answer_drafts::SendRequest;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let waits = two_staged_questions(&pool, &app).await;
+    assert_eq!(staged_and_pending(&pool).await, (2, 2));
+    let drafts_before = dump(&pool, "answer_drafts").await;
+
+    open_gesture(&app).await;
+    expectation_commands::send_answer_drafts(
+        app.state(),
+        SendRequest {
+            shown: waits.to_vec(),
+        },
+    )
+    .await
+    .expect("send");
+    close_gesture(&app).await;
+    assert_eq!(staged_and_pending(&pool).await, (0, 0));
+
+    undo(&app).await.expect("the send is one undo step");
+    assert_eq!(staged_and_pending(&pool).await, (2, 2));
+    assert_eq!(
+        dump(&pool, "answer_drafts").await,
+        drafts_before,
+        "the drafts come back as they were, at their own rowids"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(staged_and_pending(&pool).await, (0, 0));
+}

@@ -202,6 +202,15 @@
     "reopen_spawned_wait_check": [
       "POST /tasks/{id}/spawned-wait/check/reopen"
     ],
+    "save_answer_draft": [
+      "PUT /waits/{id}/draft"
+    ],
+    "clear_answer_draft": [
+      "DELETE /waits/{id}/draft"
+    ],
+    "send_answer_drafts": [
+      "POST /drafts/send"
+    ],
     "add_tag_to_expectation": [
       "PUT /nodes/{kind}/{id}/tags/{tag_id}"
     ],
