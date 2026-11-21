@@ -45,8 +45,11 @@ def _event(epoch: str, seq: int, data: str) -> str:
     return f"id: {epoch}:{seq}\nevent: {BOARD_CHANGED}\ndata: {data}\n\n"
 
 
-def _head_event(head: BoardHead) -> str:
-    return f"event: {BOARD_HEAD}\ndata: {head.model_dump_json()}\n\n"
+def _head_event(head: BoardHead, *, rows: bool) -> str:
+    """The head; ``source`` (the replicated rows' position and hash) only for a stream that asked
+    for rows, so apps that predate the Replica read exactly what they always did."""
+    data = head.model_dump_json(exclude=None if rows else {"source"})
+    return f"event: {BOARD_HEAD}\ndata: {data}\n\n"
 
 
 def _resume_point(epoch: str, last_event_id: str | None) -> int | None:
@@ -76,6 +79,7 @@ async def board_changes(
     epoch: str,
     last_event_id: str | None,
     keepalive: float = KEEPALIVE_SECONDS,
+    rows: bool = False,
 ) -> AsyncIterator[str]:
     """The stream's text: the events a reconnecting client missed, the head, then an event for
     each publication, and the head again whenever it has been quiet for ``keepalive`` seconds."""
@@ -85,23 +89,23 @@ async def board_changes(
     else:
         resume = _resume_point(epoch, last_event_id)
         last = resume if resume is not None else 0
-        for seq, data in await database.board_events_after(last, 0):
+        for seq, data in await database.board_events_after(last, 0, rows):
             yield _event(epoch, seq, data)
             last = seq
     yield ": connected\n\n"
-    yield _head_event(await _latest(database))
+    yield _head_event(await _latest(database), rows=rows)
     quiet = 0.0
     while True:
         if going_down():
             return
-        events = await database.board_events_after(last, SHUTDOWN_POLL_SECONDS)
+        events = await database.board_events_after(last, SHUTDOWN_POLL_SECONDS, rows)
         for seq, data in events:
             yield _event(epoch, seq, data)
             last = seq
         quiet = 0.0 if events else quiet + SHUTDOWN_POLL_SECONDS
         if quiet >= keepalive:
             quiet = 0.0
-            yield _head_event(await _latest(database))
+            yield _head_event(await _latest(database), rows=rows)
 
 
 class EventsRouter(BoardRouter):
@@ -114,10 +118,16 @@ class EventsRouter(BoardRouter):
         self,
         request: Request,
         last_event_id: str | None = Header(default=None),
+        rows: bool = False,
     ) -> StreamingResponse:
         """``board-changed`` for each publication, with its changed nodes, as Server-Sent Events.
-        Send ``Last-Event-ID`` on a reconnect to be sent at once what was missed."""
-        changes = board_changes(self._reader, epoch=self._board.epoch, last_event_id=last_event_id)
+        Send ``Last-Event-ID`` on a reconnect to be sent at once what was missed. ``?rows=true``
+        adds each event's changed source rows (``source``) and the head's ``source``, for a
+        client that keeps a Replica; without it the stream is what apps before the Replica read.
+        A Replica does not resume: it fetches ``/board/snapshot`` after any gap."""
+        changes = board_changes(
+            self._reader, epoch=self._board.epoch, last_event_id=last_event_id, rows=rows
+        )
         return StreamingResponse(
             _until_disconnected(request, changes),
             media_type="text/event-stream",

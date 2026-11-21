@@ -166,7 +166,21 @@ async fn migrate_with(
     if baseline::is_fresh(pool).await? {
         baseline::install(pool, chain).await?;
     }
-    if !row_ids::migration_applied(pool).await? {
+    run_chain(pool, chain).await
+}
+
+/// Runs `chain` on `pool` the only way it can run: with the Rust step migration 0107 needs before
+/// its SQL (the old-to-new row-id map). Anything that applies the chain, the baseline generator
+/// included, goes through here; `Migrator::run` alone fails on 0107 ("NOT NULL constraint failed:
+/// domains.id") because the seed rows are rebuilt with no id.
+pub(crate) async fn run_chain(
+    pool: &DatabasePool,
+    chain: &Migrator,
+) -> Result<(), sqlx::migrate::MigrateError> {
+    let reaches_row_ids = chain
+        .iter()
+        .any(|migration| migration.version >= row_ids::MIGRATION);
+    if reaches_row_ids && !row_ids::migration_applied(pool).await? {
         // The row-id map is read from the integer schema as it stands just below migration 0107, so
         // a database further behind catches up first (the baseline already stands there).
         let below = Migrator {

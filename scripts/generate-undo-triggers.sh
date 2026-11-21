@@ -1,34 +1,59 @@
 #!/usr/bin/env bash
-# Generates the undo-journal triggers for every journaled table.
+# Generates the trigger families that are written from the live schema: the undo-journal triggers
+# for every journaled table (the default), and the change-log triggers for every replicated one.
 #
 # The undo journal is written by SQL triggers rather than by the 83 mutating commands, so that a
 # command cannot fail to be covered (docs/adr/0006-undo-via-a-trigger-written-row-journal.md).
 # Three triggers per table, each naming every column, is mechanical and long — this script writes
 # them from the live schema so nobody has to.
 #
+# The change log (docs/adr/0017-client-board-replica.md, decision 5) is written the same way, for the
+# same reason: a command that has to remember to say what it changed will forget.
+#
+# `ARLESH_CARGO` replaces `cargo` (for a shared target: `ARLESH_CARGO="npm run cargo --"`).
+#
 # Usage:
-#   scripts/generate-undo-triggers.sh > /tmp/triggers.sql
+#   scripts/generate-undo-triggers.sh [undo] > /tmp/triggers.sql
+#   scripts/generate-undo-triggers.sh change > /tmp/triggers.sql
 #
-# It builds a throwaway database by applying every migration in crates/arlesh-core/migrations in order, then
-# prints one INSERT/UPDATE/DELETE trigger per journaled table. Paste the output into a **new**
-# migration that first drops the triggers it replaces; never edit a migration that has already run.
+# It builds a throwaway database the way the application does (`migrate_copy`, which runs the Rust
+# step migration 0107 needs before its SQL, so the CLI's sqlite3 alone cannot apply the chain), then
+# prints one INSERT/UPDATE/DELETE trigger per table. Paste the output into a **new** migration that
+# first drops the triggers it replaces; never edit a migration that has already run.
 #
-# EXCLUDED below must agree with `arlesh_core::undo::EXCLUDED_TABLES`. It is checked from the other
-# side by `undo_journal.rs::every_journaled_table_has_its_three_triggers`, which enumerates
-# sqlite_master and fails when a non-excluded table has no triggers — so a divergence here shows up
-# as a failing test rather than as silently unjournaled rows.
+# EXCLUDED below must agree with `arlesh_core::undo::EXCLUDED_TABLES`, and `change` mode skips the
+# same tables (`arlesh_core::replication::UNREPLICATED_TABLES` is that list). Both are checked from the
+# other side by tests that enumerate sqlite_master (`undo_journal.rs::every_journaled_table_has_its_three_triggers`,
+# `replication::tests`) and fail when a non-excluded table has no triggers, so a divergence here
+# shows up as a failing test rather than as silently unjournaled or unreplicated rows.
 set -euo pipefail
 
-EXCLUDED="undo_context undo_journal server_tokens pairing_pins agent_pins agent_pin_failures agent_account_usage connect_tokens"
+mode="${1:-undo}"
+case "$mode" in undo|change) ;; *) echo "usage: $0 [undo|change]" >&2; exit 2 ;; esac
+
+EXCLUDED="undo_context undo_journal server_tokens pairing_pins agent_pins agent_pin_failures agent_account_usage connect_tokens push_devices push_sent change_log change_capture"
+# A change image holds a stand-in for these columns (see `arlesh_core::replication::REDACTED_COLUMNS`,
+# which this must agree with): the row still applies under the same schema, a credential never
+# travels to a device, and bookkeeping rewritten on every request is a constant, so writing it
+# changes no image and is not logged. An undo image must hold the whole row, so only `change` mode
+# redacts.
+redaction() {
+    case "$1.$2" in
+        agents.token_sha256) echo "'redacted:' || $3.id" ;;
+        agents.last_seen_at) echo "NULL" ;;
+    esac
+}
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 migrations="$repository_root/crates/arlesh-core/migrations"
 
 schema="$(mktemp -d)/schema.db"
 trap 'rm -rf "$(dirname "$schema")"' EXIT
-for migration in "$migrations"/*.sql; do
-    sqlite3 "$schema" < "$migration"
-done
+# Not `sqlite3 < each migration`: since migration 0107 the chain needs the Rust step that computes the
+# old-to-new id map first, and without it the seed rows are rebuilt with a NULL id ("NOT NULL
+# constraint failed: domains.id"). The example opens the file the way the application does.
+touch "$schema"
+(cd "$repository_root" && ${ARLESH_CARGO:-cargo} run --quiet -p arlesh-core --example migrate_copy -- "$schema")
 
 is_excluded() {
     local table="$1"
@@ -41,15 +66,69 @@ is_excluded() {
 
 # `json_object('col', <row>.col, …)` for one table, over `new` or `old`.
 image() {
-    local table="$1" row="$2"
-    sqlite3 "$schema" \
-        "SELECT 'json_object(' || group_concat(char(39) || name || char(39) || ', $row.' || name, ', ') || ')'
-           FROM pragma_table_info('$table');"
+    local table="$1" row="$2" parts="" column expression redacted
+    for column in $(sqlite3 "$schema" "SELECT name FROM pragma_table_info('$table') ORDER BY cid;"); do
+        expression="$row.$column"
+        if [ "$mode" = change ]; then
+            redacted="$(redaction "$table" "$column" "$row")"
+            [ -n "$redacted" ] && expression="$redacted"
+        fi
+        parts="$parts${parts:+, }'$column', $expression"
+    done
+    echo "json_object($parts)"
+}
+
+# Whether an update changed any column of the image: the update trigger's WHEN, so a write that
+# changes nothing a device holds (an agent's `last_seen_at`) logs nothing.
+changed() {
+    local table="$1" condition="old.rowid IS NOT new.rowid" column
+    for column in $(sqlite3 "$schema" "SELECT name FROM pragma_table_info('$table') ORDER BY cid;"); do
+        [ -n "$(redaction "$table" "$column" new)" ] && continue
+        condition="$condition OR old.$column IS NOT new.$column"
+    done
+    echo "$condition"
+}
+
+# The change log's three triggers for one table: each reports the row it touched, as the row it
+# became (`set`, with the image) or as gone (`del`). Written only while a publisher holds a valid
+# lease on the capture (`change_capture.leased_until` in the future), so a crashed server cannot
+# make the log grow without bound.
+change_triggers() {
+    local table="$1" new_image="$2" when
+    when="$(changed "$table")"
+    local live="change_capture WHERE id = 1 AND leased_until > CAST(strftime('%s', 'now') AS INTEGER)"
+    cat <<TRIGGERS
+
+CREATE TRIGGER change_log_${table}_insert AFTER INSERT ON ${table} BEGIN
+    INSERT INTO change_log (table_name, row_id, operation, image)
+    SELECT '${table}', new.rowid, 'set', ${new_image}
+      FROM ${live};
+END;
+
+CREATE TRIGGER change_log_${table}_update AFTER UPDATE ON ${table} WHEN ${when} BEGIN
+    INSERT INTO change_log (table_name, row_id, operation, image)
+    SELECT '${table}', old.rowid, 'del', NULL
+      FROM ${live} AND old.rowid <> new.rowid;
+    INSERT INTO change_log (table_name, row_id, operation, image)
+    SELECT '${table}', new.rowid, 'set', ${new_image}
+      FROM ${live};
+END;
+
+CREATE TRIGGER change_log_${table}_delete AFTER DELETE ON ${table} BEGIN
+    INSERT INTO change_log (table_name, row_id, operation, image)
+    SELECT '${table}', old.rowid, 'del', NULL
+      FROM ${live};
+END;
+TRIGGERS
 }
 
 for table in $(sqlite3 "$schema" "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;"); do
     is_excluded "$table" && continue
     new_image="$(image "$table" new)"
+    if [ "$mode" = change ]; then
+        change_triggers "$table" "$new_image"
+        continue
+    fi
     old_image="$(image "$table" old)"
     cat <<TRIGGERS
 
