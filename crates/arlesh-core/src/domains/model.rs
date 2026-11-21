@@ -115,7 +115,7 @@ pub struct Domain {
 }
 
 /// Request body for creating a new domain.
-#[derive(Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateDomainRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -142,7 +142,7 @@ pub struct CreateDomainRequest {
 }
 
 /// Request body for updating an existing domain.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateDomainRequest {
     /// New title (if provided).
     pub title: Option<String>,

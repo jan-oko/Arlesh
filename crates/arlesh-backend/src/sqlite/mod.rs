@@ -68,6 +68,45 @@ impl SqliteBackend {
         }
     }
 
+    /// A backend like [`Self::new`] that also publishes the source rows each write changed, on a
+    /// clock of the caller's: what a server stand-in in a test is.
+    pub fn with_rows(
+        factory: SessionFactory,
+        stacks: UndoStacks,
+        clock: Arc<dyn arlesh_core::mindmap::publisher::Clock>,
+        sink: Sink,
+        runtime: &tokio::runtime::Handle,
+    ) -> Self {
+        let publisher = BoardPublisher::start_with_rows(
+            factory.clone(),
+            ChangeFeed::new(),
+            clock,
+            sink,
+            runtime,
+        );
+        Self {
+            factory,
+            stacks,
+            publisher,
+        }
+    }
+
+    /// Tells the publisher a write committed, so the board is derived and published again. For a
+    /// Replica, which makes its own writes through the port and announces them itself.
+    pub fn record_write(&self) {
+        self.publisher.record_write();
+    }
+
+    /// The publisher this backend announces through.
+    pub fn publisher(&self) -> &BoardPublisher {
+        &self.publisher
+    }
+
+    /// The session factory over the database.
+    pub fn factory(&self) -> &SessionFactory {
+        &self.factory
+    }
+
     /// What tells the publisher a write committed, for a writer that is not a command: the MCP
     /// endpoint hands it to every write an agent makes.
     pub fn write_recorder(&self) -> Announce {

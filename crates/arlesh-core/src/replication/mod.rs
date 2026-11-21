@@ -169,6 +169,12 @@ impl<'session> ReplicationOperator<'session> {
             .collect())
     }
 
+    /// Runs `statement` as it stands.
+    async fn execute(&mut self, statement: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(statement).execute(&mut *self.connection).await?;
+        Ok(())
+    }
+
     /// Turns foreign-key enforcement on or off for the connection. SQLite ignores the pragma
     /// inside a transaction, so a Replica sets it before one begins.
     async fn set_foreign_keys(&mut self, enforced: bool) -> Result<(), sqlx::Error> {

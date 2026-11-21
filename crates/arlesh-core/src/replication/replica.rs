@@ -276,6 +276,17 @@ pub async fn inserted_ids(
         .collect())
 }
 
+/// Runs one statement straight on the database, behind everything: how a test changes a row the
+/// change feed never hears of. Not for the app.
+#[doc(hidden)]
+pub async fn execute_for_tests(
+    factory: &SessionFactory,
+    statement: &str,
+) -> Result<(), ReplicaError> {
+    factory.connect().await?.replication().execute(statement).await?;
+    Ok(())
+}
+
 /// The newest migration the Replica's database has applied: what a snapshot's schema must match.
 pub async fn schema_version(factory: &SessionFactory) -> Result<i64, ReplicaError> {
     let mut db = factory.connect().await?;

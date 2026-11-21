@@ -44,6 +44,7 @@ mod mindmap;
 mod node_gestures;
 pub mod pairing;
 pub mod push;
+mod replica;
 mod tasks;
 mod undo;
 
@@ -80,6 +81,8 @@ pub enum ReadOnlyReason {
     UpdateApp,
     /// The server speaks an older API than this app: update the server.
     UpdateServer,
+    /// The board shown is the one cached from the last run, and the server's has not arrived yet.
+    Syncing,
 }
 
 /// What the windows show about the server: the top bar's mode and reachability, and the banner.
@@ -138,6 +141,9 @@ struct Link {
     board: Option<BoardLoad>,
     /// The last published board taken in, which a window is shown while the server is away.
     current: Option<CurrentBoard>,
+    /// Why a Replica holds writes although the server answers: its schema differs from the app's,
+    /// or it has not taken the server's board in yet. Set by the Replica, never by a call.
+    hold: Option<ReadOnlyReason>,
 }
 
 /// The Backend port over `arlesh-server`.
@@ -180,6 +186,7 @@ impl HttpBackend {
                 server_api_version: None,
                 board: None,
                 current: None,
+                hold: None,
             }),
             fence: Mutex::new(None),
             head: Mutex::new(None),
@@ -413,7 +420,8 @@ fn status_of(connection: &Connection, link: &Link) -> ServerStatus {
     let read_only = if !link.reachable {
         Some(ReadOnlyReason::ServerUnreachable)
     } else {
-        link.server_api_version.and_then(compatibility)
+        link.hold
+            .or_else(|| link.server_api_version.and_then(compatibility))
     };
     ServerStatus {
         url: connection.url.clone(),
@@ -444,6 +452,7 @@ pub fn read_only_error(reason: ReadOnlyReason) -> WireError {
         ReadOnlyReason::UpdateServer => {
             "the server is older than this app: update the server to edit"
         }
+        ReadOnlyReason::Syncing => "the server's board is still being fetched, so the board is read-only",
     };
     WireError::new(
         WireErrorKind::NotPermitted,
@@ -534,6 +543,6 @@ impl Call {
 }
 
 #[cfg(test)]
-mod board_tests;
+pub(crate) mod board_tests;
 #[cfg(test)]
 mod tests;
