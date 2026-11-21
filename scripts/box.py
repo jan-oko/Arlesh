@@ -113,6 +113,28 @@ worktree has its own node_modules, Vite server and dist), and the per-branch bin
 copied out of the target right after the build, so a "build is current" stamp never points at
 another branch's artifact.
 
+Shared dependencies compile once, too: a crate built with other features is another cargo unit, and
+the desktop app (`cargo build --bin arlesh`) and the server's native module (`maturin develop`)
+resolved different features for tokio, serde_json, uuid and a few dozen more, so those and
+`arlesh-rules`, `arlesh-core` and `arlesh-backend` above them compiled twice into the one target.
+`crates/arlesh-workspace-hack` (cargo-hakari, `.config/hakari.toml`) now names the union of those
+features and every crate that compiles depends on it, so both builds resolve the same ones; the test
+builds (`cargo test`) agree too, except for the dev-only features (`arlesh-rules`'s `test-support`,
+Tauri's `test`), which are separate units by design. Three things stay outside hakari's reach and
+are done by hand: the hack names `quote`'s default features itself (a line above hakari's section in
+its Cargo.toml, with the reason), `arlesh-py` names `arlesh-backend`'s `sqlite` feature (a workspace crate's own feature is not
+a third-party one), and `arlesh-rules` has no hack dependency (it compiles to wasm and may not
+name tokio) and gets the unified features through whatever depends on it. Tauri and the crates only
+it reaches are excluded from the hack, so the server's module does not compile them. CI
+(`scripts/check-workspace-hack.sh`, with `scripts/check-shared-features.py`, which compares the unit
+graphs of the two builds) fails when the hack drifts: after adding a dependency or a
+feature run `cargo hakari generate && cargo hakari manage-deps --yes`. maturin itself adds nothing
+that splits the units: it runs `cargo rustc --lib --locked --features pyo3/extension-module` (the
+same dev profile, host target and no RUSTFLAGS) with PYO3_CONFIG_FILE, PYO3_PYTHON and
+PYO3_BUILD_EXTENSION_MODULE set, which only the pyo3 build scripts read. Measured: a build of the app
+and then of the module compiles `arlesh-rules`, `arlesh-core` and `arlesh-backend` once, in either
+order; the module's build then compiles only `arlesh-py`.
+
 One build at a time: `owned_target` holds an exclusive lock on `<target>/.arlesh-box.lock` for the
 whole of key check, drop, cargo and record, so two box commands (or `box cargo`) building different
 branches queue; the second prints one line and waits. Cargo serialises on the target itself anyway,
