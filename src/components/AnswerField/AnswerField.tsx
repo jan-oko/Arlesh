@@ -142,7 +142,6 @@ export default function AnswerField({ question, staged, actions, compact = false
           </button>
         </div>
       </div>
-      {staged && <span className={styles.mark} title={t("answerStagedTitle")}>{t("answerStaged")}</span>}
     </div>
   );
 }

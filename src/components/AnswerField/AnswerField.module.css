@@ -109,14 +109,19 @@
   gap: var(--space-2);
 }
 
-/* A staged field is locked: written down, not yet sent. */
+/* A staged field is locked: written down, not yet sent. Dashed while it is not the focused one; the
+   focus border is solid, staged or not. */
 .staged {
   border-style: dashed;
   color: var(--text-secondary);
   cursor: default;
 }
 
-/* The Staged mark, on a wait and on a Task whose every open wait is staged. */
+.staged:focus {
+  border-style: solid;
+}
+
+/* The Staged mark on a Task whose every open wait is staged. */
 .mark {
   align-self: flex-start;
   padding: 0 var(--space-2);

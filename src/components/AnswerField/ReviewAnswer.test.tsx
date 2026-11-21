@@ -143,7 +143,7 @@ describe("ReviewAnswer: a staged review", () => {
     expect(screen.getByRole("textbox")).toHaveValue("fix it");
     expect(screen.getByRole("textbox")).toHaveAttribute("readonly");
     expect(stage()).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("answerStaged")).toBeInTheDocument();
+    expect(screen.queryByText("answerStaged")).not.toBeInTheDocument();
   });
 
   it("sends the batch with Send and with the second Ctrl+Enter, without staging again", async () => {

@@ -227,7 +227,6 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
           {t("answerSend")}
         </button>
       </div>
-      {staged && <span className={styles.mark} title={t("answerStagedTitle")}>{t("answerStaged")}</span>}
     </div>
   );
 }

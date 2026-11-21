@@ -27,16 +27,17 @@ function task(staged: number[]): MindmapNode {
 }
 
 describe("OpenWaits: the staged marks", () => {
-  it("marks the Task when every open wait is staged, and each wait too", () => {
+  it("marks the Task when every open wait is staged, and no wait has a tag of its own", () => {
     render(<OpenWaits task={task([2, 3])} actions={answerActions()} />);
     expect(screen.getByText("taskStaged")).toBeInTheDocument();
-    expect(screen.getAllByText("answerStaged")).toHaveLength(2);
+    expect(screen.queryByText("answerStaged")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "answerStage" }).filter((b) => b.getAttribute("aria-pressed") === "true")).toHaveLength(2);
   });
 
-  it("marks only the staged wait, and not the Task, while any open wait is not staged", () => {
+  it("presses only the staged wait's Stage, and does not mark the Task, while any open wait is not staged", () => {
     render(<OpenWaits task={task([2])} actions={answerActions()} />);
     expect(screen.queryByText("taskStaged")).not.toBeInTheDocument();
-    expect(screen.getAllByText("answerStaged")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "answerStage" }).filter((b) => b.getAttribute("aria-pressed") === "true")).toHaveLength(1);
   });
 
   it("marks nothing when nothing is staged", () => {

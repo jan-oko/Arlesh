@@ -79,7 +79,7 @@ describe("AnswerField: a staged field", () => {
     expect(field()).toHaveValue("blue");
     expect(field()).toHaveAttribute("readonly");
     expect(stage()).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("answerStaged")).toBeInTheDocument();
+    expect(screen.queryByText("answerStaged")).not.toBeInTheDocument();
   });
 
   it("locks the text: typing changes nothing", () => {

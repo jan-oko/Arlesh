@@ -264,7 +264,7 @@ runs the same React components. So the change is made once:
 - The Task's staged mark is drawn where its answer controls are, which every view that draws Review
   uses: `OpenWaits` heads its list with it (the List row, the Zen card and the Task editor's agentic
   section), and the Mindmap node's hover says it. It shows only when **every** open question and
-  review of the Task is staged (decided, question 3); each wait carries its own Staged mark either way.
+  review of the Task is staged (decided, question 3); each wait is told apart by its pressed Stage button and its locked field, not by a tag of its own (the user dropped the per-wait tag, 2026-11-21).
 
 **The question's field.** Its states:
 
@@ -272,7 +272,7 @@ runs the same React components. So the change is made once:
 | --- | --- | --- | --- |
 | Not staged, empty | editable | disabled | enabled only if something else on the board is staged |
 | Not staged, with text | editable | enabled | enabled: stages this answer (one call), then sends the batch (a second call) |
-| Staged | shows the draft's text, **locked** (read only), with a **Staged** mark on the field and its title (decided, question 1) | pressed (`aria-pressed="true"`); a press unstages and keeps the text in the field, to edit and stage again | enabled: sends the batch |
+| Staged | shows the draft's text, **locked** (read only), dashed while unfocused and solid while it has focus; no tag of its own, the pressed Stage button is the indicator (decided, question 1) | pressed (`aria-pressed="true"`); a press unstages and keeps the text in the field, to edit and stage again | enabled: sends the batch |
 | Sending | as it was | disabled | disabled |
 
 - **Moving between answer fields** (ruled 2026-11-21, after the first trial): `Alt+Down` / `Alt+Up` in

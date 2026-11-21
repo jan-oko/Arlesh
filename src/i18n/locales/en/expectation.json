@@ -26,7 +26,6 @@
   "agentAnswer": "Your answer",
   "answerHint": "Answer the agent — Ctrl+Enter stages it, and again sends",
   "answerStage": "Stage",
-  "answerStaged": "Staged",
   "answerStagedTitle": "Staged: it goes out with the others when you press Send",
   "taskStaged": "All staged",
   "taskStagedTitle": "Every answer this Task waits on is staged: Send sends them",
