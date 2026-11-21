@@ -5,7 +5,7 @@ use crate::board::ChangeOrigin;
 use crate::mindmap::{model::MindmapLoad, rules::changes::diff};
 use crate::nodes::id::tid;
 use crate::nodes::id::tkey;
-use crate::push::rules::tests::{asking, check, lifecycle, todo};
+use crate::push::rules::tests::{asking, lifecycle, todo};
 use crate::tasks::lifecycle::Archival;
 
 const EPOCH: &str = "run-1";

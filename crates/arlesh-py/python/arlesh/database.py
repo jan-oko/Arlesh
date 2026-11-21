@@ -1635,7 +1635,8 @@ class Arlesh(Database):
         return epoch
 
     def origin_between(self, previous: int, reached: int) -> str:
-        return self._native.origin_between(previous, reached)
+        origin: str = self._publishing_native().origin_between(previous, reached)
+        return origin
 
     def start_publisher(self) -> None:
         self._publishing_native().start_publisher()
