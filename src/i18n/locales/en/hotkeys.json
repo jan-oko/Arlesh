@@ -6,6 +6,7 @@
   "tabHere": "here",
   "tabFilters": "Filters",
   "tabScopePicker": "Scope pickers",
+  "tabReview": "Review answers",
   "groupViews": "Views",
   "groupSubtree": "Subtree",
   "groupFilters": "Filters",
@@ -153,5 +154,8 @@
   "pickerPick": "Pick the highlighted scope (a second pick makes a range)",
   "pickerEnter": "Step into the highlighted scope (a month → its weeks)",
   "pickerApply": "Apply what is picked",
+  "sectionReview": "Review answers (while focus is anywhere in a review)",
+  "reviewApproveKey": "Select the verdict Approve (Approve and merge, when the review has a PR link); Ctrl+Enter then stages it",
+  "reviewRequestChangesKey": "Select the verdict Request changes; Ctrl+Enter then stages it",
   "pickerClose": "Close without a change (in an editor, closes the editor)"
 }

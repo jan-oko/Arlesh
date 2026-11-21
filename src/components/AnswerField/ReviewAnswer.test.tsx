@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ReviewVerdict } from "@/api/expectations";
 import ReviewAnswer from "./ReviewAnswer";
+import { useHotkeys } from "@/hooks/use-hotkeys";
+import type { Binding } from "@/utils/hotkeys/chord";
 import { answerActions } from "@/test/answer-actions";
 import { storedRowId } from "@/test/stored-id";
 
@@ -164,5 +166,95 @@ describe("ReviewAnswer: a staged review", () => {
     expect(approve()).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("textbox")).toHaveValue("ok");
     expect(approve()).toBeEnabled();
+  });
+});
+
+describe("ReviewAnswer: Alt+Y and Alt+N", () => {
+  const altY = { key: "y", code: "KeyY", altKey: true };
+  const altN = { key: "n", code: "KeyN", altKey: true };
+
+  it("select Approve and Request changes from the note field, and type nothing into it", () => {
+    render(<ReviewAnswer review={review()} staged={false} actions={answerActions()} />);
+    const note = screen.getByRole("textbox");
+    note.focus();
+    expect(fireEvent.keyDown(note, altY)).toBe(false);
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(note, altN);
+    expect(changes()).toHaveAttribute("aria-checked", "true");
+    expect(approve()).toHaveAttribute("aria-checked", "false");
+    expect(note).toHaveValue("");
+  });
+
+  it("select from the controls too", () => {
+    render(<ReviewAnswer review={review()} staged={false} actions={answerActions()} />);
+    fireEvent.keyDown(stage(), altN);
+    expect(changes()).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(send(), altY);
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("only select: nothing is staged or sent", () => {
+    const actions = answerActions();
+    render(<ReviewAnswer review={review()} staged={false} actions={actions} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), altY);
+    expect(actions.stage).not.toHaveBeenCalled();
+    expect(actions.send).not.toHaveBeenCalled();
+  });
+
+  it("select Approve and merge when that is the option shown", () => {
+    render(<ReviewAnswer review={review([{ label: "PR", url: "https://github.com/o/r/pull/3" }])} staged={false} actions={answerActions()} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), altY);
+    expect(screen.getByRole("radio", { name: "reviewApproveMerge" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("are ignored in a staged review, and still type nothing", () => {
+    render(<ReviewAnswer review={review([], { verdict: "approved", answer: "ok" })} staged actions={answerActions()} />);
+    const note = screen.getByRole("textbox");
+    expect(fireEvent.keyDown(note, altN)).toBe(false);
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+    expect(changes()).toHaveAttribute("aria-checked", "false");
+    expect(note).toHaveValue("ok");
+  });
+
+  it("are shown on the two options, as a title and as aria-keyshortcuts", () => {
+    render(<ReviewAnswer review={review()} staged={false} actions={answerActions()} />);
+    expect(approve()).toHaveAttribute("title", "Alt+Y");
+    expect(approve()).toHaveAttribute("aria-keyshortcuts", "Alt+Y");
+    expect(changes()).toHaveAttribute("title", "Alt+N");
+    expect(changes()).toHaveAttribute("aria-keyshortcuts", "Alt+N");
+  });
+
+  describe("against a global binding on the same chord", () => {
+    const fired = vi.fn();
+    const bindings: readonly Binding<{ run: () => void }>[] = [
+      { id: "test.altY", section: "global", chord: { code: "KeyY", alt: true }, labelKey: "filterCloseMenu", run: (ctx) => ctx.run() },
+    ];
+
+    function Host() {
+      useHotkeys(bindings, { run: fired }, true);
+      return (
+        <div>
+          <ReviewAnswer review={review()} staged={false} actions={answerActions()} />
+          <button type="button" aria-label="outside" />
+        </div>
+      );
+    }
+
+    it("takes precedence while focus is in the review: the binding does not also fire", () => {
+      fired.mockClear();
+      render(<Host />);
+      fireEvent.keyDown(stage(), altY);
+      fireEvent.keyDown(screen.getByRole("textbox"), altY);
+      expect(approve()).toHaveAttribute("aria-checked", "true");
+      expect(fired).not.toHaveBeenCalled();
+    });
+
+    it("does nothing new outside the review: the binding fires and no verdict is selected", () => {
+      fired.mockClear();
+      render(<Host />);
+      fireEvent.keyDown(screen.getByRole("button", { name: "outside" }), altY);
+      expect(fired).toHaveBeenCalledTimes(1);
+      expect(approve()).toHaveAttribute("aria-checked", "false");
+    });
   });
 });

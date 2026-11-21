@@ -6,6 +6,8 @@ import { REVIEW_VERDICT } from "@/api/expectations";
 import type { ReviewLink, ReviewVerdict } from "@/api/expectations";
 import type { WaitReply } from "@/hooks/use-answer-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { chordFor, REVIEW_OWNED_CODES, verdictForKey } from "@/utils/hotkeys/review-keys";
+import { formatChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import styles from "./AnswerField.module.css";
@@ -40,7 +42,7 @@ function hasPullRequest(links: readonly ReviewLink[]): boolean {
 /**
  * An agent's open review, and the controls to answer it in: its title and summary, its links, its
  * hand tests (a plain list — nothing is ticked or stored per item), a note of the user's own, and
- * the two verdicts (ADR 0021), drawn as one segmented switch on a line with Stage and Send. The switch only **selects**: **Approve** is the user's word to
+ * the two verdicts (ADR 0021; `Alt+Y` and `Alt+N` select them from anywhere in the review), drawn as one segmented switch on a line with Stage and Send. The switch only **selects**: **Approve** is the user's word to
  * merge the PR when there is a PR link, and plain acceptance otherwise; **Request changes** sends the
  * note back. Then the same two buttons as a question: **Stage** writes the verdict and the note
  * down, locking them; **Send** sends every staged answer, staging this one first when it is not
@@ -104,6 +106,23 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
     }
   }
 
+  const keyShortcut = (option: ReviewVerdict): string | undefined => {
+    const chord = chordFor(option);
+    return chord === null ? undefined : formatChord(chord);
+  };
+  const keyTitle = (option: ReviewVerdict): string | undefined => keyShortcut(option);
+
+  /** Alt+Y and Alt+N select a verdict from anywhere in the review. They only select, and a staged
+   * review is locked. Handled here, before anything behind it sees the chord, and nothing is typed. */
+  function selectByKey(event: KeyboardEvent<HTMLDivElement>): void {
+    const selected = verdictForKey(event.nativeEvent);
+    if (selected === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (staged || busy) return;
+    setChosen(selected);
+  }
+
   /** Arrow keys move the choice along the switch, as a radio group's do. */
   function moveVerdict(event: KeyboardEvent<HTMLDivElement>): void {
     if (staged || busy) return;
@@ -118,6 +137,8 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
   return (
     <div
       className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}`}
+      data-owns-keys={REVIEW_OWNED_CODES}
+      onKeyDown={selectByKey}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
@@ -180,6 +201,8 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
               aria-checked={verdict === option}
               tabIndex={verdict === option || (verdict === null && option === VERDICTS[0]) ? 0 : -1}
               disabled={busy || staged}
+              title={keyTitle(option)}
+              aria-keyshortcuts={keyShortcut(option)}
               onClick={() => setChosen(option)}
             >
               {option === REVIEW_VERDICT.APPROVED ? (hasPullRequest(links) ? t("reviewApproveMerge") : t("reviewApprove")) : t("reviewRequestChanges")}

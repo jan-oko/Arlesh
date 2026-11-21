@@ -415,7 +415,16 @@ CI is the gate.
    verdict with its note; a second `Ctrl+Enter` in the staged note sends the batch. With no verdict
    selected, Stage and Send are disabled and `Ctrl+Enter` does nothing. **Approve and merge** is a
    selectable verdict like the others and keeps its meaning on send: the user's word to merge the PR.
-   This changes what the verdict buttons did before (they sent at once).
+   This changes what the verdict buttons did before (they sent at once). **Hotkeys (ruled
+   2026-11-21):** `Alt+Y` selects Approve (Approve and merge, when that is the option shown) and
+   `Alt+N` selects Request changes. They act while focus is anywhere in a review item, its note or
+   its controls, and take **precedence** there over any global binding on the same chord (the
+   review marks itself `data-owns-keys`, so a view's binding stands aside, and its own handler
+   stops the event). Outside a review they do nothing new. They only select; they are ignored in a
+   staged (locked) review; they type nothing into the note. They are shown as the options'
+   `title` and `aria-keyshortcuts`, and on the cheat-sheet in a "Review answers" tab (`REVIEW_KEYS`,
+   `src/utils/hotkeys/review-keys.ts`, listed like the Scope Picker's keys: not registry bindings).
+   Neither chord is bound globally today.
 3. **The Task's staged mark.** The Task is marked staged **only when all** of its open question and
    review waits are staged, so the mark means "nothing left for you but Send". Each wait is marked on
    its own either way.

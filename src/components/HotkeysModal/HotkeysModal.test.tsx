@@ -41,7 +41,7 @@ describe("HotkeysModal — tabs", () => {
     expect(names).toEqual([
       "hotkeys:sectionGlobal", "hotkeys:tabFilters", "hotkeys:sectionTabs",
       "hotkeys:sectionMindmap", "hotkeys:sectionListView", "hotkeys:sectionPlanView",
-      "hotkeys:tabScopePicker", "hotkeys:sectionStepsView", "hotkeys:sectionZenView",
+      "hotkeys:tabScopePicker", "hotkeys:sectionStepsView", "hotkeys:sectionZenView", "hotkeys:tabReview",
     ]);
   });
 
@@ -73,7 +73,10 @@ describe("HotkeysModal — tabs", () => {
   it("when → and ← are pressed with the search empty, steps through the tabs and wraps", () => {
     render(<HotkeysModal onClose={vi.fn()} view="zen" />);
     press("ArrowRight");
+    expect(tab("hotkeys:tabReview")).toHaveAttribute("aria-selected", "true");
+    press("ArrowRight");
     expect(tab("hotkeys:sectionGlobal")).toHaveAttribute("aria-selected", "true");
+    press("ArrowLeft");
     press("ArrowLeft");
     press("ArrowLeft");
     expect(tab("hotkeys:sectionStepsView")).toHaveAttribute("aria-selected", "true");
@@ -239,6 +242,13 @@ describe("HotkeysModal — search", () => {
     expect(within(mindmap).queryByText("hotkeys:createGoalChild")).toBeNull();
     // The group a match sits in keeps its sub-heading.
     expect(within(mindmap).getByRole("heading", { level: 4, name: "hotkeys:groupCreate" })).toBeInTheDocument();
+  });
+
+  it("lists the review answer's keys: Alt+Y and Alt+N select the verdict", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    const panel = openTab("hotkeys:tabReview");
+    expect(rowOf(panel, "hotkeys:reviewApproveKey")).toHaveTextContent("Alt+Y");
+    expect(rowOf(panel, "hotkeys:reviewRequestChangesKey")).toHaveTextContent("Alt+N");
   });
 
   it("hides a section left with no matching rows", () => {

@@ -12,6 +12,7 @@ import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
 import { ZEN_BINDINGS } from "@/utils/hotkeys/zen-bindings";
 import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
 import { SCOPE_PICKER_KEYS } from "@/utils/hotkeys/scope-picker-keys";
+import { REVIEW_KEYS } from "@/utils/hotkeys/review-keys";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { GESTURE_SCOPES, gesturesOf } from "@/utils/touch/gesture-list";
@@ -29,7 +30,7 @@ interface Props {
 type GestureKey = `gestures-${GestureScope}`;
 
 /** A tab of the sheet: a binding section, one of the two lists of keys that are not bindings, or a gesture list. */
-type SheetKey = Section | "filters" | "scopePicker" | GestureKey;
+type SheetKey = Section | "filters" | "scopePicker" | "review" | GestureKey;
 
 const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = [
   { section: "global", titleKey: "sectionGlobal" },
@@ -133,6 +134,18 @@ function scopePickerSection(translate: Translate): SheetSection {
   };
 }
 
+/** The keys that act inside a review answer while focus is in it: they select a verdict. */
+function reviewSection(translate: Translate): SheetSection {
+  return {
+    key: "review",
+    tab: translate("tabReview"),
+    title: translate("sectionReview"),
+    rows: REVIEW_KEYS.map((key) => ({
+      key: key.verdict, chords: [formatChord(key.chord)], description: translate(key.labelKey), group: null,
+    })),
+  };
+}
+
 /**
  * The touch sheet: the gestures, in place of the keyboard's shortcuts, on a device whose only
  * pointer is a finger. The rows come from `GESTURES`, the one list `touch.md` mirrors.
@@ -156,6 +169,8 @@ function sheetSections(translate: Translate): SheetSection[] {
     if (section === "global") return [drawn, filterGesturesSection(translate)];
     // The picker's keys follow the Plan View, whose `[` `]` `\` they borrow.
     if (section === "planView") return [drawn, scopePickerSection(translate)];
+    // The review answer's keys close the list, after the last view.
+    if (section === "zenView") return [drawn, reviewSection(translate)];
     return [drawn];
   });
 }
