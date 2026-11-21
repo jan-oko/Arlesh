@@ -30,6 +30,9 @@ function isChord(event: KeyboardEvent): boolean {
   return event.key === "Enter" && event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
 }
 
+/** The two verdicts, in the order the switch draws them. */
+const VERDICTS: readonly ReviewVerdict[] = [REVIEW_VERDICT.APPROVED, REVIEW_VERDICT.CHANGES_REQUESTED];
+
 function hasPullRequest(links: readonly ReviewLink[]): boolean {
   return links.some((link) => /\/pull\/\d+/.test(link.url));
 }
@@ -37,7 +40,7 @@ function hasPullRequest(links: readonly ReviewLink[]): boolean {
 /**
  * An agent's open review, and the controls to answer it in: its title and summary, its links, its
  * hand tests (a plain list — nothing is ticked or stored per item), a note of the user's own, and
- * the two verdicts (ADR 0021). The verdict buttons only **select**: **Approve** is the user's word to
+ * the two verdicts (ADR 0021), drawn as one segmented switch on a line with Stage and Send. The switch only **selects**: **Approve** is the user's word to
  * merge the PR when there is a PR link, and plain acceptance otherwise; **Request changes** sends the
  * note back. Then the same two buttons as a question: **Stage** writes the verdict and the note
  * down, locking them; **Send** sends every staged answer, staging this one first when it is not
@@ -101,7 +104,16 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
     }
   }
 
-  const select = (selected: ReviewVerdict) => () => setChosen((was) => (was === selected ? null : selected));
+  /** Arrow keys move the choice along the switch, as a radio group's do. */
+  function moveVerdict(event: KeyboardEvent<HTMLDivElement>): void {
+    if (staged || busy) return;
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const from = verdict === null ? (step === 1 ? -1 : 0) : VERDICTS.indexOf(verdict);
+    const next = VERDICTS[(from + step + VERDICTS.length) % VERDICTS.length];
+    if (next !== undefined) setChosen(next);
+  }
 
   return (
     <div
@@ -157,27 +169,23 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
           else void toggleStage();
         }}
       />
-      <div className={styles.row} role="group" aria-label={t("reviewVerdict")}>
-        <button
-          type="button"
-          className={styles.secondary}
-          aria-pressed={verdict === REVIEW_VERDICT.APPROVED}
-          disabled={busy || staged}
-          onClick={select(REVIEW_VERDICT.APPROVED)}
-        >
-          {hasPullRequest(links) ? t("reviewApproveMerge") : t("reviewApprove")}
-        </button>
-        <button
-          type="button"
-          className={styles.secondary}
-          aria-pressed={verdict === REVIEW_VERDICT.CHANGES_REQUESTED}
-          disabled={busy || staged}
-          onClick={select(REVIEW_VERDICT.CHANGES_REQUESTED)}
-        >
-          {t("reviewRequestChanges")}
-        </button>
-      </div>
-      <div className={styles.row}>
+      <div className={styles.controls}>
+        <div className={styles.switch} role="radiogroup" aria-label={t("reviewVerdict")} onKeyDown={moveVerdict}>
+          {VERDICTS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              className={styles.option}
+              aria-checked={verdict === option}
+              tabIndex={verdict === option || (verdict === null && option === VERDICTS[0]) ? 0 : -1}
+              disabled={busy || staged}
+              onClick={() => setChosen(option)}
+            >
+              {option === REVIEW_VERDICT.APPROVED ? (hasPullRequest(links) ? t("reviewApproveMerge") : t("reviewApprove")) : t("reviewRequestChanges")}
+            </button>
+          ))}
+        </div>
         <button type="button" className={styles.secondary} aria-pressed={staged} disabled={!canStage} onClick={() => void toggleStage()}>
           {t("answerStage")}
         </button>

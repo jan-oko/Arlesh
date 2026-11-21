@@ -21,8 +21,8 @@ function review(links: { label: string; url: string }[] = [], draft?: { verdict:
   };
 }
 
-const approve = () => screen.getByRole("button", { name: "reviewApprove" });
-const changes = () => screen.getByRole("button", { name: "reviewRequestChanges" });
+const approve = () => screen.getByRole("radio", { name: "reviewApprove" });
+const changes = () => screen.getByRole("radio", { name: "reviewRequestChanges" });
 const stage = () => screen.getByRole("button", { name: "answerStage" });
 const send = () => screen.getByRole("button", { name: "answerSend" });
 const chord = { key: "Enter", ctrlKey: true };
@@ -45,7 +45,7 @@ describe("ReviewAnswer: what the review shows", () => {
 
   it("calls Approve a merge when there is a PR link, and the button is a selectable verdict like the other", () => {
     render(<ReviewAnswer review={review([{ label: "PR", url: "https://github.com/o/r/pull/3" }])} staged={false} actions={answerActions()} />);
-    expect(screen.getByRole("button", { name: "reviewApproveMerge" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("radio", { name: "reviewApproveMerge" })).toHaveAttribute("aria-checked", "false");
   });
 });
 
@@ -60,18 +60,39 @@ describe("ReviewAnswer: choosing a verdict, staging and sending", () => {
     expect(actions.send).not.toHaveBeenCalled();
   });
 
-  it("a verdict button only selects: nothing is written, and pressing it again deselects", () => {
+  it("is one switch with none selected at first, one selected at a time, and selecting writes nothing", () => {
     const actions = answerActions();
     render(<ReviewAnswer review={review()} staged={false} actions={actions} />);
+    expect(screen.getByRole("radiogroup", { name: "reviewVerdict" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(approve()).toHaveAttribute("aria-checked", "false");
+    expect(changes()).toHaveAttribute("aria-checked", "false");
     fireEvent.click(approve());
-    expect(approve()).toHaveAttribute("aria-pressed", "true");
-    expect(changes()).toHaveAttribute("aria-pressed", "false");
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+    expect(changes()).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(changes());
+    expect(approve()).toHaveAttribute("aria-checked", "false");
+    expect(changes()).toHaveAttribute("aria-checked", "true");
     expect(stage()).toBeEnabled();
     expect(actions.stage).not.toHaveBeenCalled();
     expect(actions.send).not.toHaveBeenCalled();
-    fireEvent.click(approve());
-    expect(approve()).toHaveAttribute("aria-pressed", "false");
-    expect(stage()).toBeDisabled();
+  });
+
+  it("the arrow keys move the choice along the switch, as a radio group's do", () => {
+    render(<ReviewAnswer review={review()} staged={false} actions={answerActions()} />);
+    fireEvent.keyDown(approve(), { key: "ArrowRight" });
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(approve(), { key: "ArrowRight" });
+    expect(changes()).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(changes(), { key: "ArrowLeft" });
+    expect(approve()).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps the switch, Stage and Send on one line", () => {
+    render(<ReviewAnswer review={review()} staged={false} actions={answerActions()} />);
+    const line = screen.getByRole("radiogroup").parentElement;
+    expect(line).toContainElement(stage());
+    expect(line).toContainElement(send());
   });
 
   it("stages the selected verdict with the trimmed note", async () => {
@@ -114,7 +135,7 @@ describe("ReviewAnswer: choosing a verdict, staging and sending", () => {
 describe("ReviewAnswer: a staged review", () => {
   it("shows the staged verdict and note, locked, marked Staged", () => {
     render(<ReviewAnswer review={review([], { verdict: "changes_requested", answer: "fix it" })} staged actions={answerActions()} />);
-    expect(changes()).toHaveAttribute("aria-pressed", "true");
+    expect(changes()).toHaveAttribute("aria-checked", "true");
     expect(changes()).toBeDisabled();
     expect(approve()).toBeDisabled();
     expect(screen.getByRole("textbox")).toHaveValue("fix it");
@@ -140,7 +161,7 @@ describe("ReviewAnswer: a staged review", () => {
     fireEvent.click(stage());
     await waitFor(() => expect(actions.unstage).toHaveBeenCalledTimes(1));
     rerender(<ReviewAnswer review={review()} staged={false} actions={actions} />);
-    expect(approve()).toHaveAttribute("aria-pressed", "true");
+    expect(approve()).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("textbox")).toHaveValue("ok");
     expect(approve()).toBeEnabled();
   });
