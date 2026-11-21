@@ -67,6 +67,16 @@ export function routeTo(via: Via | undefined, agents: readonly AgentLite[]): Tar
   return { kind: 'session' }
 }
 
+/**
+ * Whether a change made by `caller` (the sub-agent that made the call, or `undefined` for the
+ * session itself) is one the recipient of the wait's notifications already knows of: the
+ * recipient is the caller. Anyone else is still told.
+ */
+export function isCallersOwn(caller: string | undefined, via: Via | undefined, agents: readonly AgentLite[]): boolean {
+  const target = routeTo(via, agents)
+  return target.kind === 'session' ? caller === undefined : target.agentId === caller
+}
+
 /** Whether the message names the sub-agent: it does whenever it goes to anyone else than it. */
 export function namesRaiser(target: Target, via: Via | undefined): boolean {
   return via !== undefined && !(target.kind === 'agent' && !target.byProxy)

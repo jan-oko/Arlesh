@@ -70,6 +70,16 @@ export function waitsFrom(
   return []
 }
 
+/** The wait a `release` call changed, and what it changed it to, or `undefined` when the result names none. */
+export function releasedFrom(operation: unknown, result: unknown): { waitId: string; state: Seen } | undefined {
+  if (operation !== 'release') return undefined
+  const payload = payloadOf(result)
+  if (!isRecord(payload)) return undefined
+  const waitId = text(payload, 'full_id')
+  if (waitId === undefined) return undefined
+  return { waitId, state: { ...seen(payload), status: 'released' } }
+}
+
 /** What the server says of a watched wait now: its state, or `null` when it is gone. */
 export interface Current {
   waitId: string

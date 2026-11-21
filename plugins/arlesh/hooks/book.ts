@@ -84,6 +84,21 @@ export function owing(entry: Entry, change: Change): Entry {
   return { ...entry, owed: [...owedBy(entry), change] }
 }
 
+/**
+ * The entry once its recipient's own call changed the wait to `state`: the new state counts as
+ * seen, so the poll's report of it is no change, and a `change` the poll reported first and
+ * still owed is taken back (the newest one, which is the one the call caused).
+ */
+export function acknowledged(entry: Entry, state: Seen, change: Change, now: number): Entry {
+  const { owed, attempts, ...rest } = entry
+  const all = [...(owed ?? [])]
+  const index = all.lastIndexOf(change)
+  if (index >= 0) all.splice(index, 1)
+  const kept: Entry = { ...rest, ...state, seenAt: now }
+  if (all.length === 0) return kept
+  return index === 0 || attempts === undefined ? { ...kept, owed: all } : { ...kept, owed: all, attempts }
+}
+
 /** The entry once the change at the head of `owed` has been delivered or given up on. */
 export function settled(entry: Entry): Entry {
   const { owed, attempts, ...rest } = entry

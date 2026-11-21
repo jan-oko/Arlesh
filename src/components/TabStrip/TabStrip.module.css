@@ -117,3 +117,23 @@
   background: var(--surface-raised);
   color: var(--text-primary);
 }
+
+/* Which box instance this window is, at the strip's right end. Plain text, not a control: it stays
+   put (sticky) while the tabs scroll under it, and never takes width from them. */
+.box {
+  position: sticky;
+  right: 0;
+  align-self: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: 30%;
+  padding-left: var(--space-2);
+  overflow: hidden;
+  background: var(--canvas-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
