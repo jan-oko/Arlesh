@@ -167,7 +167,7 @@ def test_an_undo_reaches_the_stream_as_the_node_gone(live: str, tokens: Database
 def test_a_quiet_connection_is_sent_the_head_at_once(live: str, tokens: DatabaseTokenStore) -> None:
     stream = _follow(live, tokens.add("desktop"))
 
-    head = stream.heads.get(timeout=20)
+    assert set(head) == {"epoch", "seq", "revision", "hash", "sums", "source"}
 
     assert set(head) == {"epoch", "seq", "revision", "hash", "sums"}
     assert "domains" in head["sums"]
