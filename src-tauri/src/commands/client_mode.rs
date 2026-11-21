@@ -10,8 +10,6 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{Emitter, Runtime, State};
-// `restart` and `on_lifecycle` call `Manager` methods, and only the mobile build has them.
-#[cfg(mobile)]
 use tauri::Manager;
 
 use crate::{
@@ -220,20 +218,38 @@ pub fn status_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> StatusNotify {
     })
 }
 
-/// Holds no connection while the app is in the background: the change stream stops when the app is
-/// suspended and is followed again, `/health` checked, when it is resumed. Standalone has no
-/// stream to stop, and so no `Follower` to find.
+/// Keeps the board the Replica last confirmed, for the next start. Called when the app quits
+/// normally, and on a phone when it is suspended: a phone never quits, so a suspend is the quit.
+pub fn save_board_on_quit<R: Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(replica) = app.try_state::<Arc<crate::backend::replica::ReplicaBackend>>() else {
+        return;
+    };
+    let replica = Arc::clone(&replica);
+    let saved = tauri::async_runtime::block_on(async {
+        tokio::time::timeout(std::time::Duration::from_secs(5), replica.save_board()).await
+    });
+    if saved.is_err() {
+        tracing::warn!("the board could not be cached before quitting");
+    }
+}
+
+/// Holds no connection while the app is in the background: the Replica stops following the server
+/// when the app is suspended (keeping its confirmed board for the next start, as a quit does) and
+/// takes a whole board in again when it is resumed. Standalone has no Replica to stop.
 #[cfg(mobile)]
 pub fn on_lifecycle<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
-    let Some(follower) = window
+    let Some(replica) = window
         .app_handle()
-        .try_state::<crate::backend::http::events::Follower>()
+        .try_state::<Arc<crate::backend::replica::ReplicaBackend>>()
     else {
         return;
     };
     match event {
-        tauri::WindowEvent::Suspended => follower.suspend(),
-        tauri::WindowEvent::Resumed => follower.resume(),
+        tauri::WindowEvent::Suspended => {
+            save_board_on_quit(window.app_handle());
+            replica.suspend();
+        }
+        tauri::WindowEvent::Resumed => replica.resume(),
         _ => {}
     }
 }

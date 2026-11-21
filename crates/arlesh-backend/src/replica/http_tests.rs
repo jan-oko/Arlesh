@@ -74,6 +74,7 @@ async fn a_snapshot_is_fetched_on_every_connect() {
             max_backoff: Duration::from_millis(100),
             ..Timings::default()
         },
+        cache: None,
     })
     .await
     .expect("a replica");

@@ -242,14 +242,21 @@ pub fn run() {
             commands::board::board_fence,
             commands::board::board_head,
             commands::board::report_board_divergence,
+            commands::replica::report_press_timing,
             commands::node_gestures::delete_nodes,
             commands::node_gestures::run_gesture,
             commands::windows::open_board_window,
             commands::windows::board_windows,
             commands::windows::focus_board_window,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // A normal quit keeps the board the server last confirmed for the next start.
+            if let tauri::RunEvent::Exit = event {
+                commands::client_mode::save_board_on_quit(app);
+            }
+        });
 }
 
 /// Standalone mode: the local database, held while the app runs, served in-process by
@@ -367,24 +374,32 @@ fn setup_client(
         )
         .map_err(|error| format!("{error:?}"))?,
     );
-    app.manage(backend::AppBackend::shared(backend.clone()));
     // The app serves no MCP in Client mode, but agents on this machine still get their PIN from
     // it: the door forwards to the server with this device's token.
     commands::agents::serve_pin_door(app.handle(), app_dir);
     if url.is_empty() {
         // First run of a build with no Standalone mode: no server chosen yet, so nothing to follow.
+        app.manage(backend::AppBackend::shared(backend.clone()));
         return Ok(backend);
     }
-    let follower = backend::http::events::Follower::new(
-        backend.clone(),
-        std::sync::Arc::new({
-            let app = app.handle().clone();
-            move |change| commands::board::emit_board_change(&app, &change)
-        }),
-        tauri::async_runtime::handle().inner().clone(),
-    );
-    follower.resume();
-    app.manage(follower);
+    // The whole board is kept in memory on this device and every command is served from it
+    // (ADR 0017): reads and predicted writes locally, the server followed by snapshot and rows.
+    // The board kept from the last run is shown, read-only, until the server's arrives.
+    let replica = tauri::async_runtime::block_on(backend::replica::ReplicaBackend::start(
+        backend::replica::ReplicaConfig {
+            source: std::sync::Arc::new(backend::replica::HttpSource::new(backend.clone())),
+            remote: backend.clone(),
+            sink: commands::board::board_change_sink(app.handle()),
+            on_dropped: commands::replica::dropped_notifier(app.handle()),
+            runtime: tauri::async_runtime::handle().inner().clone(),
+            timings: backend::replica::sync::Timings::default(),
+            cache: Some(std::sync::Arc::new(backend::replica::cache::FileCache::for_server(
+                app_dir, url,
+            ))),
+        },
+    ))?;
+    app.manage(backend::AppBackend::shared(replica.clone()));
+    app.manage(replica);
     Ok(backend)
 }
 

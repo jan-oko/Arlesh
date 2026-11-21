@@ -86,7 +86,29 @@ pub async fn board(
     now: NaiveDateTime,
     blocking: crate::capacity::blocks::Blocking,
 ) -> Result<MindmapLoad, AppError> {
-    let mut load = load_blocked(db, now, blocking).await?;
+    Ok(board_timed(db, now, blocking).await?.0)
+}
+
+/// How long the two halves of a derive took: reading the sources, and deriving from them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeriveSplit {
+    /// Reading every table the board derives from.
+    pub read: std::time::Duration,
+    /// Everything after: the rules, the facts, the short ids.
+    pub derive: std::time::Duration,
+}
+
+/// [`board`], and how long reading and deriving each took: what the press timing log reports.
+pub async fn board_timed(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+    blocking: crate::capacity::blocks::Blocking,
+) -> Result<(MindmapLoad, DeriveSplit), AppError> {
+    let started = std::time::Instant::now();
+    let sources = BoardSources::read(db).await?;
+    let read = started.elapsed();
+    let derived = std::time::Instant::now();
+    let mut load = rules::derive_board(sources, now, Horizon::default(), blocking)?;
     let access = match crate::access::access_map(db).await {
         Ok(map) => Some(map.effective()),
         Err(error) => {
@@ -99,7 +121,8 @@ pub async fn board(
     let (facts, activity) = rules::facts::derive(&load, access.as_deref());
     load.facts = facts;
     load.agent_activity = Some(activity);
-    Ok(load)
+    let derive = derived.elapsed();
+    Ok((load, DeriveSplit { read, derive }))
 }
 
 /// The board a host publishes, at wall-clock `now`: [`board`], blocked by the agents at capacity
@@ -112,6 +135,14 @@ pub async fn current(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
 ) -> Result<MindmapLoad, AppError> {
+    Ok(current_timed(db, now).await?.0)
+}
+
+/// [`current`], and how long reading and deriving each took.
+pub async fn current_timed(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+) -> Result<(MindmapLoad, DeriveSplit), AppError> {
     let blocking = crate::agents::service::blocking(db, now).await?;
-    board(db, now, blocking).await
+    board_timed(db, now, blocking).await
 }

@@ -5,6 +5,10 @@ Status: proposed (2026-11-13, Task `2d9`, steps 2 and 3). The shape was ruled by
 for the user to overrule. Step 1 (the `/board` profile) is recorded on the Task, and its quick wins
 landed as #195.
 
+Note (ADR 0017, built): in Client mode the app's own Replica runs the publisher on the device, so the
+windows hear that publication (its own epoch, `seq` and hash) and the server's derived `changes` are no
+longer relayed to them.
+
 ## Context
 
 Every write ends in a whole-board reload. The window that wrote reloads on the way back from its

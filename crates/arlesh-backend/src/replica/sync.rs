@@ -23,6 +23,7 @@ use arlesh_core::{
 use tokio::{sync::watch, time::Instant};
 
 use super::{
+    cache::SharedCache,
     queue::{Command, OnDropped, Queue},
     source::{Incoming, SharedSource, SourceEvent},
 };
@@ -84,6 +85,8 @@ pub struct Shared {
     pub local: watch::Sender<Option<Arc<SqliteBackend>>>,
     /// What has been applied.
     pub applied: watch::Sender<Applied>,
+    /// Where the time of the last presses went.
+    pub presses: std::sync::Mutex<std::collections::VecDeque<super::press::PressTiming>>,
 }
 
 /// Why a session with the server ended.
@@ -111,6 +114,8 @@ pub struct Wiring {
     pub runtime: tokio::runtime::Handle,
     /// When the Replica doubts its rows.
     pub timings: Timings,
+    /// Where the last run's board is kept.
+    pub cache: Option<SharedCache>,
 }
 
 /// The task that keeps the Replica current.
@@ -122,6 +127,11 @@ pub struct Syncer {
     pub(super) commands: mpsc::UnboundedReceiver<Command>,
     pub(super) commands_tx: mpsc::UnboundedSender<Command>,
     pub(super) on_dropped: OnDropped,
+    cache: Option<SharedCache>,
+    /// Whether this run has taken a board from the server yet: the first is what the cache keeps.
+    fetched_once: bool,
+    last_body: Option<String>,
+    pub(super) paused: bool,
     pub(super) queue: Queue,
     /// Whether the Replica holds the server's board and the server answers: writes are allowed.
     pub(super) live: bool,
@@ -158,6 +168,7 @@ impl Syncer {
             sink,
             runtime,
             timings,
+            cache,
         } = wiring;
         Self {
             factory,
@@ -167,6 +178,10 @@ impl Syncer {
             commands,
             commands_tx,
             on_dropped,
+            cache,
+            fetched_once: false,
+            last_body: None,
+            paused: false,
             queue: Queue::default(),
             live: false,
             down_reason: ReadOnlyReason::Syncing,
@@ -188,8 +203,13 @@ impl Syncer {
     /// Connects, follows the server and, whenever the connection is lost, starts again, for as
     /// long as the app runs.
     pub async fn run(mut self) {
-        let mut backoff = Duration::from_secs(1);
+        self.show_cached_board().await;
+        let mut backoff = self.timings.tick;
         loop {
+            if self.paused {
+                self.wait_for_resume().await;
+                backoff = self.timings.tick;
+            }
             match self.session().await {
                 SessionEnd::Closed => tracing::info!("the change stream ended; reconnecting"),
                 SessionEnd::Failed(error) => {
@@ -202,9 +222,54 @@ impl Syncer {
                 }
             }
             self.live = false;
+            if self.fetched_once {
+                self.down_reason = ReadOnlyReason::ServerUnreachable;
+            }
             self.serve_for(backoff).await;
             backoff = (backoff * 2).min(self.timings.max_backoff);
         }
+    }
+
+    /// Installs the board kept from the last run, read-only, so the windows have one at once.
+    async fn show_cached_board(&mut self) {
+        let Some(body) = self.cache.as_ref().and_then(|cache| cache.load()) else {
+            return;
+        };
+        let Ok(parsed) = wire::parse_snapshot(&body) else {
+            tracing::warn!("the cached board could not be read; it is ignored");
+            return;
+        };
+        let current = replica::schema_version(&self.factory).await.ok();
+        if current != Some(parsed.snapshot.schema_version) {
+            tracing::info!("the cached board is of another schema; it is ignored");
+            return;
+        }
+        if replica::install_snapshot(&self.factory, &parsed.snapshot).await.is_err() {
+            return;
+        }
+        self.source.hold(Some(ReadOnlyReason::Syncing));
+        self.announce();
+    }
+
+    /// Serves commands until the app is in front again.
+    async fn wait_for_resume(&mut self) {
+        while self.paused {
+            let Some(command) = self.commands.recv().await else {
+                return;
+            };
+            let _ = self.on_command(command).await;
+        }
+    }
+
+    /// The confirmed board as a snapshot body, for the cache.
+    pub(super) async fn confirmed_body(&mut self) -> Option<String> {
+        if self.epoch.is_empty() {
+            return None;
+        }
+        let mut db = self.factory.begin_read().await.ok()?;
+        let snapshot = replication::snapshot(&mut db).await.ok()?;
+        let revision = self.shared.applied.borrow().revision;
+        wire::snapshot_body(&snapshot, &self.epoch, revision).ok()
     }
 
     /// Answers writes with a refusal until `wait` has passed: there is no server to send them to.
@@ -248,6 +313,9 @@ impl Syncer {
                     if let Err(error) = self.on_command(command).await {
                         return SessionEnd::Failed(error);
                     }
+                    if self.paused {
+                        return SessionEnd::Closed;
+                    }
                 }
                 _ = tick.tick() => {
                     if let Err(error) = self.on_tick().await {
@@ -268,6 +336,7 @@ impl Syncer {
         let body = self.source.snapshot().await?;
         let parsed = wire::parse_snapshot(&body)
             .map_err(|error| WireError::internal(error.to_string()))?;
+        self.last_body = Some(body);
         let ours = replica::schema_version(&self.factory)
             .await
             .map_err(|error| WireError::internal(error.to_string()))?;
@@ -313,6 +382,14 @@ impl Syncer {
             .await
             .map_err(|error| SessionEnd::Failed(WireError::internal(error.to_string())))?;
         self.reseed(&parsed);
+        if !self.fetched_once {
+            self.fetched_once = true;
+            if let (Some(cache), Some(body)) = (&self.cache, &self.last_body) {
+                if let Err(error) = cache.store(body) {
+                    tracing::warn!(error = %error, "the board could not be cached");
+                }
+            }
+        }
         self.live = true;
         self.agent_origin = true;
         self.source.hold(None);

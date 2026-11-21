@@ -9,9 +9,11 @@
 //! Every board change reaches the windows the one way a Standalone write does: through the local
 //! backend's publisher, which derives the board on the device.
 
+pub mod cache;
 mod forward;
 mod http_source;
 pub mod mint;
+pub mod press;
 mod ports;
 pub mod queue;
 pub mod source;
@@ -69,6 +71,8 @@ pub struct ReplicaConfig {
     pub runtime: tokio::runtime::Handle,
     /// When the Replica doubts its rows.
     pub timings: sync::Timings,
+    /// The board kept from the last run, shown until the server's arrives; `None` keeps none.
+    pub cache: Option<cache::SharedCache>,
 }
 
 fn unreachable() -> WireError {
@@ -110,6 +114,7 @@ pub struct ReplicaBackend {
     shared: Arc<Shared>,
     remote: Arc<dyn Backend>,
     commands: mpsc::UnboundedSender<queue::Command>,
+    cache: Option<cache::SharedCache>,
 }
 
 impl ReplicaBackend {
@@ -120,7 +125,9 @@ impl ReplicaBackend {
         let shared = Arc::new(Shared {
             local: watch::channel(None).0,
             applied,
+            presses: std::sync::Mutex::default(),
         });
+        let cache = config.cache.clone();
         let (commands_tx, commands) = mpsc::unbounded_channel();
         let syncer = Syncer::new(
             factory,
@@ -134,6 +141,7 @@ impl ReplicaBackend {
                 sink: config.sink,
                 runtime: config.runtime.clone(),
                 timings: config.timings,
+                cache: config.cache,
             },
         );
         config.runtime.spawn(syncer.run());
@@ -141,6 +149,7 @@ impl ReplicaBackend {
             shared,
             remote: config.remote,
             commands: commands_tx,
+            cache,
         }))
     }
 
@@ -157,6 +166,48 @@ impl ReplicaBackend {
         match waited {
             Ok(Ok(local)) => local.clone().ok_or_else(unreachable),
             _ => Err(unreachable()),
+        }
+    }
+
+    /// Stops following the server and drops the connection, as a phone does in the background.
+    /// Writes not yet answered are taken back.
+    pub fn suspend(&self) {
+        let _ = self.commands.send(queue::Command::Pause(true));
+    }
+
+    /// Follows the server again: connects and takes a whole board in.
+    pub fn resume(&self) {
+        let _ = self.commands.send(queue::Command::Pause(false));
+    }
+
+    /// The board as the server last confirmed it, as a snapshot body for the cache: writes not yet
+    /// answered are taken back first. `None` when no board is in yet.
+    pub async fn confirmed_board(&self) -> Option<String> {
+        let (reply, answer) = oneshot::channel();
+        self.commands.send(queue::Command::Persist(reply)).ok()?;
+        answer.await.ok().flatten()
+    }
+
+    /// Where the time of the last presses went, oldest first: what the `arlesh::press` log line
+    /// says, kept for a test or a debug view to read.
+    pub fn press_timings(&self) -> Vec<press::PressTiming> {
+        self.shared
+            .presses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .copied()
+            .collect()
+    }
+
+    /// Writes the board the server last confirmed to the cache, for the next start: what a normal
+    /// quit does, and a suspend on a phone.
+    pub async fn save_board(&self) {
+        let (Some(cache), Some(body)) = (&self.cache, self.confirmed_board().await) else {
+            return;
+        };
+        if let Err(error) = cache.store(&body) {
+            tracing::warn!(error = %error, "the board could not be cached");
         }
     }
 
@@ -202,6 +253,7 @@ impl ReplicaBackend {
             remote,
             fail: Some(Box::new(move |error| fail_slot.send(Err(error)))),
             args,
+            submitted: std::time::Instant::now(),
             undo: None,
         })?;
         answer.await.unwrap_or_else(|_| Err(unreachable()))
@@ -221,6 +273,7 @@ impl ReplicaBackend {
             remote: delivering(slot, operation),
             fail: Some(Box::new(move |error| fail_slot.send(Err(error)))),
             args,
+            submitted: std::time::Instant::now(),
             undo: None,
         })?;
         answer.await.unwrap_or_else(|_| Err(unreachable()))
@@ -247,6 +300,7 @@ impl ReplicaBackend {
             remote: delivering(slot, operation),
             fail: Some(Box::new(move |error| fail_slot.send(Err(error)))),
             args,
+            submitted: std::time::Instant::now(),
             undo: is_undo.then(|| queue::UndoAnswer {
                 answer: Box::new(move |summary| cancel_slot.send(Ok(summary))),
             }),

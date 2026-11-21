@@ -314,3 +314,18 @@ async fn undo_after_sent_waits_then_goes_to_the_server() {
     let _ = rig.replica.undo_status().await;
     let _: Option<&dyn Backend> = None;
 }
+
+#[tokio::test]
+async fn a_press_records_where_its_time_went() {
+    let rig = settled().await;
+
+    rig.replica
+        .create_task(task("Timed", "project", project(&rig).await))
+        .await
+        .expect("shown at once");
+    until("the timing is kept", || !rig.replica.press_timings().is_empty()).await;
+
+    let timing = rig.replica.press_timings().pop().expect("a timing");
+    assert!(timing.turn.derive > Duration::ZERO || timing.turn.read > Duration::ZERO);
+    rig.converge().await;
+}

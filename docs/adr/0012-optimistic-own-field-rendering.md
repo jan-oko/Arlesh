@@ -12,7 +12,8 @@ none, and every write reloads"). Everything outside that set still writes and th
 
 ## Status
 
-proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settled. Decisions 13 to
+superseded by [ADR 0017](0017-client-board-replica.md) (2026-11, Task `ccc`): the frontend lane is
+removed. Originally proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settled. Decisions 13 to
 16 record the user's rulings on the questions the design left open, decided with the user,
 2026-11-01. Decision 17 was added on 2026-11-02, at the user's request.
 

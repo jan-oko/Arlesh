@@ -132,11 +132,11 @@ shell emits it to every window. The port's board reads are `current_board` (the 
 publication), `board_fence` and `board_head` (both answered from memory, *Live sync*), and
 `load_mindmap`, which derives at a given `now` for Python scripts.
 
-**`now` is the device's for reads, and the server's for the board.** A read that derives at an
-instant (the lists, the lifecycles, the dependency picker) is sent the device's clock in the
-device's time zone. The board the windows hold is the server's latest publication, derived at the
-server's clock (*Live sync*), and a write is stamped by the server's clock, as it would be by any
-other writer. So the server must keep the user's time zone: it is a server setting (`--time-zone`
+**`now` is the device's.** A read that derives at an instant (the lists, the lifecycles, the
+dependency picker) is sent the device's clock in the device's time zone, and so is the board the
+windows hold: the Replica derives it on the device (*The Replica*). The server stamps the rows it
+writes with its own clock, and its rows replace the Replica's predicted stamps when the write
+settles, so a stamp can differ by seconds until then. The server must keep the user's time zone: it is a server setting (`--time-zone`
 or `ARLESH_TIME_ZONE`, an IANA name; see [HTTP API](http-api.md), *Running*), and unset it is the server
 machine's own zone.
 
@@ -147,9 +147,11 @@ machine's own zone.
 shared Rust one.*
 
 **The port and both backends live in their own crate, `arlesh-backend`** (`crates/arlesh-backend`),
-which the app and the Python package both depend on. It has two cargo features, `sqlite` and `http`,
-both on by default. The app's `standalone` feature turns on `sqlite`, so a Client-only build (Android,
-`--no-default-features`) compiles no `SqliteBackend`. The crate knows nothing of Tauri: it reports a
+which the app and the Python package both depend on. It has three cargo features, `sqlite`, `http` and
+`replica` (`ReplicaBackend`, which needs the other two); `sqlite` and `http` are on by default. The
+app builds the crate with all three, in every build: the Client-mode app keeps a Replica, so Android
+too ships the core with SQLite. The app's `standalone` feature now gates only the local-file mode
+and the local MCP endpoint. The crate knows nothing of Tauri: it reports a
 change of the server's status and a change of the board through callbacks, and the app's callbacks
 tell the windows. The change-stream follower runs on a tokio runtime handle its host gives it. What
 stays in the app is everything that knows what a window is: `AppBackend`, the commands, `mode.json`,
@@ -443,7 +445,7 @@ which covers the derived board.
   and `replication::board_hash` (over a database's rows): the server's publisher and a Replica call
   the same code.
 
-**Catching up.** The server keeps its last 64 change events. A stream that reconnects with
+**Catching up.** *(Apps before the Replica only: the Replica never asks for missed events, it fetches a snapshot.)* The server keeps its last 64 change events. A stream that reconnects with
 `Last-Event-ID` is sent the ones it missed; if they are gone, or the epoch changed, it is sent one
 `reload` event. So a dropped connection costs the events, not the board.
 
@@ -494,118 +496,92 @@ The frontend's prompts (the clamp-or-cancel question, the Plan clamp, the reconc
 asked before the request, from reads, so the request carries the answers. Quick dependency is one
 write already, and needs no operation of its own.
 
-## Offline
+## The Replica
 
-When the server cannot be reached, each window keeps showing the board it holds, **read-only**
-(a window that loads meanwhile gets the last full load `HttpBackend` kept), under a
-*Server unreachable* banner with the time of the last sync. A write is refused, writing nothing,
-with `not_permitted` and `details.reason = "server_unreachable"`, which the window shows as any
-refusal; nothing is queued. Offline writes are a later feature. Any call that gets through, or the
-change stream reconnecting, makes the board writable again. Writes already pending when the server
-drops are rolled back, not kept (see *Pending writes*, below).
+*Task `ccc`, [ADR 0017](../adr/0017-client-board-replica.md), built in PR 3.* In Client mode the app
+keeps **the whole board in memory**, as the same SQLite schema the server has (an in-memory database
+of one connection that never closes), and every command is served from it. The shell builds a
+`ReplicaBackend` (the `replica` feature of the Backend crate) that implements the whole Backend port:
 
-## Pending writes
+- **Reads** are answered by a local core over that database, as fast as Standalone's. A window hears
+  of a change only from the Replica's own publisher, derived on the device at the device's clock
+  (`board-changed` carries the Replica's own epoch, `seq` and hash), so the one event path of
+  Standalone serves both modes. The server's derived `changes` are no longer relayed.
+- **Writes are predicted.** The app's own command runs on the Replica first, derived values included
+  (a lifecycle's resolution, a parent's rollup), so the board changes before the server has been
+  asked; the caller is answered from there. The write is then queued and sent to the server, **one at
+  a time, in order**. The journal of the Replica (the undo journal's triggers, which already record
+  every row a command wrote, cascades and triggers included) is what takes a prediction back.
+- **Settling.** While any write is pending, the rows the server's events carry are held back. When
+  every pending write has been answered and the events have reached the highest revision those
+  answers carry (the **fence**; 5 s without it, a snapshot is fetched instead), the predictions are
+  replayed away and the held rows applied in one transaction, so the screen never flickers back
+  between the answer and its event. Rows a trigger or cascade made come back in those events.
+- **A refusal** settles the same way and then runs again, from the server's board and with the same
+  seeds, the writes queued behind it; those that no longer apply are dropped. The shell emits one
+  `replica-dropped {count, reason}` event, which a window shows as one notice saying how many changes
+  were not made. A server refusal of an editor Save is that notice only.
+- **A local refusal** (the Replica's own rules refuse the write) sends nothing and touches nothing.
+- **A lost connection** takes every prediction back, drops what was never sent (nothing is queued
+  across a disconnect: the user's ruling that there is no offline queue), reports
+  `replica-dropped {reason: "unreachable"}` and leaves the board read-only; the reconnect fetches a
+  snapshot, which shows whether an in-flight write landed.
+- **Ids.** A create carries the id of the row it makes (chosen on the device, a UUID v7 the server
+  accepts), so the Replica and the server make the row under the same id. Rows a write makes that its
+  arguments never name (a Flow's started copies, a duplicate's children, a spawned wait) get their ids
+  from the write's **seed**: the app puts a fresh UUID in `X-Arlesh-Request-Id` on every write, and
+  both the Replica's run and the server's run draw their ids from it, so the two agree whenever
+  both ran the same code over the same state. When they do not, a press that names such a row waits
+  until the Replica is settled (the **provisional guard**), so it never names an id the server lacks.
+- **Press on a node that is not confirmed.** See the guard above.
+- **Plan triage, parenting and take-out** are rules of the board, answered by pure Rust commands
+  (`plan_triage`, `plan_refusals`, `rule_tables`) from data, and the per-Task `status_blocks` fact
+  rides the board; the frontend holds no copy of a rule (no wasm either).
+- **`agent_account_usage`** is server-only but `agents::service::blocking` reads it, so a Replica
+  copies the usage from `list_agents` (a read only the server answers) into its own unreplicated
+  table.
 
-*Task `288`, [ADR 0012](../adr/0012-optimistic-own-field-rendering.md). This section describes both
-modes: Standalone runs the same path, only faster.*
+### Keeping the Replica in step
 
-A few actions show their result **on the node at once**, before the write is answered, instead of
-waiting for the write and its changed nodes. Until the answer comes, the board holds a **pending write**: the
-action's **patch**, a set of the node's own fields, drawn over the loaded board.
+Every connect opens `GET /events/changes?rows=true` (never `Last-Event-ID`) and then fetches
+`GET /board/snapshot`; the events heard meanwhile wait. A snapshot whose `schema_version` is not the
+app's is never installed: the board stays read-only, naming the side to update (`update_app` or
+`update_server`). Each event is applied by position (*The source rows*): held, applied, or a gap that
+fetches a snapshot; an event of another epoch, or with no `source`, fetches one; after applying, the
+Replica's hash must equal the event's, or it fetches one. A `board-head` ahead of the rows for 10 s,
+of another epoch, or stating another hash at the position held, fetches one (the row changed behind
+the feed); and the Replica checks its own rows against its tracker 5 s after the last event and every
+10 minutes. **A gap is always repaired with a whole board**, never by asking for the events again.
 
-### Which actions
+### The cache
 
-- **The status family:** the status step (a click on the glyph, `Enter`) on a Task or a Goal,
-  `Alt+Enter`, the Commitment verdict (Kept, Broken, the cycle key) and the wait release. A
-  Compound Task's step is refused locally, with today's toast and no write. The step, `Alt+Enter`,
-  the Compound refusal and the verdict are predicted by a TypeScript copy pinned to the Rust rules
-  by `conformance/task-gestures.json` (ADR 0012, decision 13).
-- **Rename and the editors' Save:** the Task, Goal, Commitment, wait, Project, Domain, Tag and Info
-  editors. The editor closes as soon as its own prompts are answered. The Flow and flow-item
-  editors stay write-then-settle in v1 (ADR 0012, decision 16).
-- **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
-  with no prompt.
-- **Planning in the Plan View:** planning an item into the scope being filled, or into one of its
-  parts, and taking it out (a swipe on the phone, the move-across key, a drag between the panes).
-  Only the row's own Plan is patched; which pane it sits in is read from it by the pinned triage
-  rule. A batch is still one gesture and one undo step, and a step the backend refuses puts that
-  row back with a toast. When the Plan would leave Tasks below outside it, the row goes back and
-  the clamp-or-cancel prompt opens, as for a completion that needs a confirmation (ADR 0012,
-  decision 17). The quick plan picker and the editor's Plan field are as before.
-
-Move, reorder, archive, delete, Plan elsewhere, paste, the Agentic key and every other write stay
-**write-then-settle**: the result shows when the write's changed nodes arrive (*Live sync*, above).
-
-### What a patch may change
-
-Only the touched node's **own** fields, the ones read straight off its stored row: its title,
-status, verdict, wait status, Agentic flag, Asynchronous flag, Time Scope, Plan, due, on scope exit,
-tags, block reasons, delegate, brief and notes. Nothing **derived** is patched: not an inherited
-Plan or Agentic reading, Timing, Overdue, Resolution, Expired, Archived, Review, a Compound Task's
-status, a rollup, Blocked, or a dependent's *met*. Those change when the write's changed nodes
-arrive. A patch is worked out locally only from a rule already pinned by a corpus under
-`conformance/` (ADR 0012, decision 12). The views' per-render rules (the presets, the list
-sections, Zen's contents, the Habit fold) read the patched board as they read any board, so a Task
-marked Done leaves Start at once. The focus exemption still keeps the selected node on screen.
-
-### The cue
-
-A node with an unanswered write shows a **faint pulse**, or a **dotted outline** under reduced
-motion, on the Mindmap node, the List and Steps row, and the Zen card alike. It starts after a short
-delay, so a write answered within it never flickers, and it stops when the server answers.
-
-### Order
-
-The window's pending writes form one **lane**, in the order the user acted. Each action patches on
-top of the ones before it at once, so two quick presses show two steps. The writes go out **one at a
-time, in order**, the next when the last is answered. A write outside the lane (a move, an archive,
-undo) **waits for the lane to empty** before it is sent, so it never overtakes an earlier action.
-
-### When the server answers
-
-- **Written.** The node's cue stops. Where the response carries the written row, its own fields
-  replace the predicted ones, so the server's value shows before the changed nodes arrive. The
-  answer's **revision** is the response's, or else the fence read as the answer arrives (*Live
-  sync*). Nothing is reloaded: the derived values come with the write's changed nodes.
-- **Reconcile: the server wins.** Each board the window takes in, a full load or an applied event,
-  is drawn with the still-pending patches applied over it. An answered write's patch is dropped once
-  the board's revision has reached the write's in the same epoch, in the same step that puts that
-  board on screen, so the screen never shows the old value in between. After a server restart (the
-  answer's epoch is not the board's) it is dropped by a full load begun after the answer: a
-  committed write survives a restart. An answer with no revision (the fence could not be read) is
-  dropped by the first board taken in at least 5 seconds after it. A full load alone no longer
-  retires a write of the same epoch, because it serves the latest publication, which may not yet
-  hold it.
-- **Refused.** That write's patch, and every later one on the **same node**, are rolled back. Those
-  later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
-  other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
-  reason on its error line (ADR 0012, decision 14).
-- **Asks first.** Marking a Goal occurrence achieved over unfinished children rolls back quietly and
-  opens the occurrence prompt. Confirming applies the patch again and sends the write with the
-  confirmation. A Task occurrence over open work is refused outright, with a toast.
-- **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
-  goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
-  says whether it did. A write the server had already answered stays until a board reflects it. While the
-  board is read-only no action is patched at all.
-- **A new epoch** (the server restarted) makes a full load, as every epoch change does. Queued
-  writes carry on to the restarted server.
-
-### New nodes
-
-A created node is drawn at once as a **placeholder** with a temporary id: the kind and title the
-user gave and nothing derived, placed where the gesture meant (after the sibling, or as the
-parent's last child). A kind the parent may not hold is refused before anything is drawn. Actions
-on the placeholder, a rename or a child of its own, queue behind its create. When the create is
-answered, they are rewritten to the real id and sent. The selection, the inline editor and any other
-place the temporary id was held move to the real node, and the server's position replaces the
-placeholder's when the create's changed nodes arrive. A refused create removes the placeholder and everything queued
-on it or under it, with one toast. Nothing about this reaches the server: it only ever sees real
-ids.
+The board last seen is kept as the snapshot's JSON in `<app data>/replica/<16 hex digits of the url>.json`.
+It is written **when the first board of a run arrives and when the app quits normally** (predictions
+are taken back first); on Android a suspend counts as the normal quit. At the next start, if the
+cache's schema is the app's, it is installed at once and the windows show it **read-only** under a
+*Syncing* banner while the app connects and fetches the server's board, which replaces it.
 
 ### Undo
 
-See [Undo](undo.md), *Undo with writes pending*. In short, `Ctrl+Z` cancels the newest action
-locally while it is still queued, and otherwise waits for the lane and undoes on the server.
+See [Undo](undo.md), *Undo with writes pending*. `Ctrl+Z` on a newest write that has not been sent
+cancels it locally (its journal range is replayed away and it is sent nowhere); otherwise it waits
+until the Replica is settled and is asked of the server, whose rows then arrive as any others. A
+press whose awaited write was refused is spent: it answers nothing and sends nothing.
+
+### Where the time of a press goes
+
+One `tracing` line per press on target `arlesh::press` gives the queue wait, the local write and the
+publisher's read, derive, diff, serialize and emit; the window adds `ipc_apply_ms` through
+`report_press_timing`. On a phone build read them with `adb logcat -s arlesh::press` (or the app
+log). A test reads the last presses from `ReplicaBackend::press_timings()`.
+
+## Offline
+
+When the server cannot be reached the windows keep showing the board the Replica holds, **read-only**,
+under a *Server unreachable* banner with the time of the last sync. A write is refused, writing
+nothing, with `not_permitted` and `details.reason = "server_unreachable"`; nothing is queued. Writes
+in flight when the connection drops are taken back (*The Replica*). The change stream reconnecting
+fetches a whole board and makes the board writable again.
 
 ## Shared and local state
 
@@ -637,8 +613,8 @@ data directory, readable by its owner only (mode 0600); it is not stored until t
 ## Android
 
 The Android app (Task `3d6`) is the Client-mode app on a phone, built with the cargo `standalone`
-feature **off**: it has no SQLite core and no local MCP endpoint, and agents use the server's
-`/mcp`. It ships as `arlesh-android-arm64.apk` on the GitHub release, signed with the project's
+feature **off**: it has no local-board mode and no local MCP endpoint, and agents use the server's
+`/mcp`; it does ship the core with SQLite, for the Replica. It ships as `arlesh-android-arm64.apk` on the GitHub release, signed with the project's
 release key; there is no Play Store.
 
 - **First run** goes straight to *Connect to a server*. There is no Standalone option, and the
@@ -651,9 +627,10 @@ release key; there is no Play Store.
 - **System back** closes the topmost sheet; otherwise leaves the stepped-into node; otherwise goes
   up a scope in the Plan View; and only at the root leaves the app. It never deselects.
 - **Foreground only.** When the app is suspended the change stream is dropped, so no connection is
-  held in the background. When it resumes the stream is opened again with the last event id it
-  had, `/health` is checked, and the server sends the events missed meanwhile, or one `reload`
-  event when it no longer has them all (*Live sync*); the windows are not reloaded otherwise.
+  held in the background, and the board the server last confirmed is written to the cache (a phone
+  never quits, so a suspend is the normal quit; writes still pending are taken back first). When
+  it resumes the Replica connects again and takes **a whole board in**, never the events missed
+  (*The Replica*).
 - **The soft keyboard** shrinks the page (the activity pads its content by the keyboard's inset),
   so sheets resize above it. Enter confirms in the editors, as on the desktop.
 - **Box builds** (`com.atai.arlesh.box.*`, from `npm run box`) are handed their server and token by

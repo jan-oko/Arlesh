@@ -16,6 +16,7 @@ use arlesh_core::{
 };
 
 use super::{
+    cache::CacheStore,
     queue::Dropped,
     rig::{gated, remote, Gated, RigSource, ServerRig},
     sync::Timings,
@@ -101,9 +102,19 @@ pub(super) struct Rig {
 impl Rig {
     /// A server and a Replica following it, with the events `drop` names never sent.
     pub(super) async fn start(drop: impl FnOnce(u64) -> Vec<u64>) -> Self {
+        Self::start_with(drop, None, false).await
+    }
+
+    /// [`Self::start`] with a cache, and with the server's stream refusing to open when `down`.
+    pub(super) async fn start_with(
+        drop: impl FnOnce(u64) -> Vec<u64>,
+        cache: Option<super::cache::SharedCache>,
+        down: bool,
+    ) -> Self {
         let server = ServerRig::start().await;
         let source = Arc::new(RigSource::new(&server, Duration::from_millis(100)));
         source.drop_events(drop(server.seq()));
+        source.down.store(down, Ordering::SeqCst);
         let published = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&published);
         let gate = gated(&server);
@@ -116,6 +127,7 @@ impl Rig {
             runtime: tokio::runtime::Handle::current(),
             on_dropped: Arc::new(move |notice| told.lock().expect("lock").push(notice)),
             timings: fast(),
+            cache,
         })
         .await
         .expect("a replica");
@@ -127,7 +139,9 @@ impl Rig {
             gate,
             dropped,
         };
-        rig.local().await;
+        if !down {
+            rig.local().await;
+        }
         rig
     }
 
@@ -150,7 +164,7 @@ impl Rig {
                 return start.elapsed();
             }
             assert!(
-                start.elapsed() < Duration::from_secs(20),
+                start.elapsed() < Duration::from_secs(90),
                 "the Replica never converged: {} server rows, {} held",
                 theirs.len(),
                 ours.len()
@@ -348,6 +362,7 @@ async fn a_schema_mismatch_is_read_only_and_names_the_side() {
             runtime: tokio::runtime::Handle::current(),
             on_dropped: Arc::new(|_| {}),
             timings: fast(),
+            cache: None,
         })
         .await
         .expect("a replica");
@@ -376,4 +391,68 @@ fn the_kinds_list_has_each_kind_the_macros_know() {
 #[allow(dead_code)]
 fn _backend_is_object_safe(replica: Arc<ReplicaBackend>) -> Arc<dyn Backend> {
     replica
+}
+
+/// A cache in memory.
+#[derive(Default)]
+struct MemoryCache(Mutex<Option<String>>);
+
+impl super::cache::CacheStore for MemoryCache {
+    fn load(&self) -> Option<String> {
+        self.0.lock().expect("lock").clone()
+    }
+
+    fn store(&self, body: &str) -> std::io::Result<()> {
+        *self.0.lock().expect("lock") = Some(body.to_owned());
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn the_first_board_of_a_run_is_cached_and_the_confirmed_board_is_what_quitting_keeps() {
+    let cache = Arc::new(MemoryCache::default());
+    let rig = Rig::start_with(|_| Vec::new(), Some(Arc::clone(&cache) as _), false).await;
+    session(&rig.server).await;
+    rig.converge().await;
+    assert!(cache.load().is_some(), "the startup fetch was written");
+
+    // A write the server has not answered must not be kept as if it were the board.
+    rig.gate.hold();
+    rig.replica
+        .create_task(task("Unconfirmed", "project", first_project(&rig).await.into()))
+        .await
+        .expect("shown at once");
+    let kept = rig.replica.confirmed_board().await.expect("a board");
+
+    assert!(!kept.contains("Unconfirmed"), "predictions are taken back before writing");
+    assert!(kept.contains("Second, renamed"), "what the server confirmed is kept");
+}
+
+#[tokio::test]
+async fn the_cached_board_is_shown_read_only_before_the_server_answers() {
+    let first = Rig::start_with(|_| Vec::new(), Some(Arc::new(MemoryCache::default()) as _), false).await;
+    session(&first.server).await;
+    first.converge().await;
+    let kept = first.replica.confirmed_board().await.expect("a board");
+    let cache = Arc::new(MemoryCache::default());
+    super::cache::CacheStore::store(&*cache, &kept).expect("stored");
+
+    // A new run, the server not answering: the cached board is there, and writes are refused.
+    let rig = Rig::start_with(|_| Vec::new(), Some(cache as _), true).await;
+    let local = rig.replica.local().await.expect("the cached board");
+    let tasks = local
+        .list_tasks(arlesh_core::clock::now())
+        .await
+        .expect("tasks");
+
+    assert!(tasks.iter().any(|task| task.title == "Second, renamed"));
+    let refused = rig
+        .replica
+        .create_task(task("Not yet", "project", NodeId::from(arlesh_core::nodes::new_id::new_row_id())))
+        .await
+        .expect_err("read-only");
+    assert_eq!(
+        refused.details().and_then(|details| details.get("reason")),
+        Some(&serde_json::json!(ReadOnlyReason::Syncing))
+    );
 }

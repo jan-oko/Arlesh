@@ -21,6 +21,7 @@ pub mod mindmap;
 pub mod node_gestures;
 pub mod notifications;
 pub mod push;
+pub mod replica;
 pub mod rules;
 pub mod scopes;
 pub mod tasks;

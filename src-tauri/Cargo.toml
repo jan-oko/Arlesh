@@ -22,7 +22,7 @@ test = false
 # app only: it opens no local database and always runs against a server.
 [features]
 default = ["standalone"]
-standalone = ["arlesh-backend/sqlite"]
+standalone = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -32,7 +32,7 @@ arlesh-core = { path = "../crates/arlesh-core" }
 # The Backend port and its backends. `http` is Client mode, always built; `sqlite` is Standalone mode,
 # behind this crate's `standalone` feature, so the Android build (`--no-default-features`) carries no
 # `SqliteBackend`.
-arlesh-backend = { path = "../crates/arlesh-backend", default-features = false, features = ["http"] }
+arlesh-backend = { path = "../crates/arlesh-backend", default-features = false, features = ["http", "sqlite", "replica"] }
 # `tray-icon` is what puts Arlesh in the system tray, so closing the window can hide it there
 # and leave the MCP endpoint answering. On Linux it needs libappindicator and libxdo at build
 # time; CI installs them.

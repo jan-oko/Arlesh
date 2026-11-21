@@ -61,6 +61,8 @@ pub struct Op {
     pub fail: Option<Fail>,
     /// The write's arguments as JSON: what it names.
     pub args: Value,
+    /// When the caller asked: the press timing log's `queue_wait` runs from here.
+    pub submitted: std::time::Instant,
     /// Set for an undo: what it does with its answer when it cancels an unsent write instead.
     pub undo: Option<UndoAnswer>,
 }
@@ -75,6 +77,10 @@ pub struct UndoAnswer {
 pub enum Command {
     /// A write, or a request to the server that waits its turn.
     Submit(Op),
+    /// Stops (`true`) or starts following the server.
+    Pause(bool),
+    /// Answers the board as the server last confirmed it, as a snapshot body.
+    Persist(tokio::sync::oneshot::Sender<Option<String>>),
     /// The server answered the write `ticket`, with the newest revision it had stamped by then.
     Answered {
         /// Which write.
@@ -213,6 +219,20 @@ impl Syncer {
                 self.submit(op).await;
                 Ok(())
             }
+            Command::Pause(paused) => {
+                self.paused = paused;
+                if paused {
+                    self.abandon_pending(&read_only_error(ReadOnlyReason::ServerUnreachable))
+                        .await;
+                }
+                Ok(())
+            }
+            Command::Persist(reply) => {
+                self.abandon_pending(&read_only_error(ReadOnlyReason::ServerUnreachable))
+                    .await;
+                let _ = reply.send(self.confirmed_body().await);
+                Ok(())
+            }
             Command::Answered {
                 ticket,
                 outcome,
@@ -274,8 +294,11 @@ impl Syncer {
                 ..Buffer::default()
             };
         }
+        let queue_wait = op.submitted.elapsed();
+        let written = std::time::Instant::now();
         let seed = arlesh_core::nodes::new_id::new_row_id();
         let outcome = super::seeded(seed, local(Arc::clone(&backend) as Arc<dyn Backend>)).await;
+        let write = written.elapsed();
         let Ok(through) = replica::journal_mark(&self.factory).await else {
             return;
         };
@@ -294,7 +317,7 @@ impl Syncer {
             None => Vec::new(),
         };
         let provisional = provisional_ids(inserted, &op.args);
-        backend.record_write();
+        super::press::announce(&self.shared, &backend, queue_wait, write);
         self.enqueue(op, seed, range, provisional);
     }
 
@@ -601,31 +624,8 @@ impl Syncer {
     pub(super) async fn lose_connection(&mut self, error: WireError) -> Result<(), WireError> {
         self.live = false;
         self.down_reason = ReadOnlyReason::ServerUnreachable;
-        if self.queue.holding() {
-            let buffer = std::mem::take(&mut self.queue.buffer);
-            let mark = self.queue.mark;
-            let rows = if buffer.needs_snapshot { Vec::new() } else { buffer.rows };
-            let _ = replica::settle(&self.factory, mark, &rows).await;
-            let items: Vec<Pending> = self.queue.pending.drain(..).collect();
-            let count = items.len();
-            for mut item in items {
-                if let Some(fail) = item.op.fail.take() {
-                    fail(error.clone());
-                }
-                if let Some(undo) = item.op.undo.take() {
-                    (undo.answer)(None);
-                }
-            }
-            for mut op in std::mem::take(&mut self.queue.parked) {
-                if let Some(fail) = op.fail.take() {
-                    fail(error.clone());
-                }
-            }
-            self.queue.fence = None;
-            self.queue.waiting_since = None;
-            if let Some(local) = self.shared.local.borrow().clone() {
-                local.record_write();
-            }
+        let count = self.abandon_pending(&error).await;
+        if count > 0 {
             (self.on_dropped)(Dropped {
                 count,
                 reason: DropReason::Unreachable,
@@ -633,6 +633,41 @@ impl Syncer {
         }
         self.source.reachable(false);
         Err(error)
+    }
+
+    /// Takes every pending write back, applying the rows already heard, and tells each caller still
+    /// waiting that it was refused with `error`. Answers how many writes there were.
+    pub(super) async fn abandon_pending(&mut self, error: &WireError) -> usize {
+        if !self.queue.holding() {
+            return 0;
+        }
+        let buffer = std::mem::take(&mut self.queue.buffer);
+        let mark = self.queue.mark;
+        let rows = if buffer.needs_snapshot { Vec::new() } else { buffer.rows };
+        let _ = replica::settle(&self.factory, mark, &rows).await;
+        // The rows applied were not run through the tracker: the next look at them is a snapshot.
+        self.needs_snapshot = true;
+        let items: Vec<Pending> = self.queue.pending.drain(..).collect();
+        let count = items.len();
+        for mut item in items {
+            if let Some(fail) = item.op.fail.take() {
+                fail(error.clone());
+            }
+            if let Some(undo) = item.op.undo.take() {
+                (undo.answer)(None);
+            }
+        }
+        for mut op in std::mem::take(&mut self.queue.parked) {
+            if let Some(fail) = op.fail.take() {
+                fail(error.clone());
+            }
+        }
+        self.queue.fence = None;
+        self.queue.waiting_since = None;
+        if let Some(local) = self.shared.local.borrow().clone() {
+            local.record_write();
+        }
+        count
     }
 
     /// The press on undo while the newest write is still unsent: cancels it on the Replica and

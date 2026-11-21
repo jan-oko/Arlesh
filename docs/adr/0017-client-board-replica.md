@@ -10,9 +10,13 @@ drift from the server, and the port's traits make it impossible to add a write t
 
 ## Status
 
-proposed (2026-11-05, Task `ccc`). Settled with the user. It supersedes ADR 0012 once the Replica
-lands. Timings for the press cycle, `invoke` and the phone are still being taken, and they gate the
-third step of the delivery below.
+accepted, built (PR 3 of Task `ccc`, 2026-11). Settled with the user. It supersedes ADR 0012. Two
+answers were taken while building it: **plan triage** answers the Plan View through a pure command
+keyed on the target and the board's `seq` (the scope the view is filling is window state, so it
+cannot ride the board), with the parenting and take-out tables loaded once; and the Replica copies
+`agent_account_usage` from `list_agents` into its own unreplicated table, since capacity blocks read
+it. The press is built without a preview publication; its timing log (`arlesh::press`) is the
+instrument to decide one from a real phone.
 
 ## Decisions
 
