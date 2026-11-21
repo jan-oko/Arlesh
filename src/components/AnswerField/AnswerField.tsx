@@ -128,6 +128,7 @@ export default function AnswerField({ question, staged, actions, compact = false
         <div className={styles.buttons}>
           <button
             type="button"
+            data-gesture-skip=""
             className={styles.secondary}
             aria-pressed={staged}
             aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined}
@@ -137,7 +138,7 @@ export default function AnswerField({ question, staged, actions, compact = false
           >
             {t("answerStage")}
           </button>
-          <button type="button" className={styles.send} disabled={!canSend} onClick={() => void send()}>
+          <button type="button" data-gesture-skip="" className={styles.send} disabled={!canSend} onClick={() => void send()}>
             {t("answerSend")}
           </button>
         </div>

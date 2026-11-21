@@ -207,6 +207,7 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
             <button
               key={option}
               type="button"
+              data-gesture-skip=""
               role="radio"
               className={styles.option}
               aria-checked={verdict === option}
@@ -220,10 +221,10 @@ export default function ReviewAnswer({ review, staged, actions, compact = false 
             </button>
           ))}
         </div>
-        <button type="button" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} title={staged ? formatChord(UNSTAGE_CHORD) : undefined} disabled={!canStage} onClick={() => void toggleStage()}>
+        <button type="button" data-gesture-skip="" className={styles.secondary} aria-pressed={staged} aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined} title={staged ? formatChord(UNSTAGE_CHORD) : undefined} disabled={!canStage} onClick={() => void toggleStage()}>
           {t("answerStage")}
         </button>
-        <button type="button" className={styles.send} disabled={!canSend} onClick={() => void send()}>
+        <button type="button" data-gesture-skip="" className={styles.send} disabled={!canSend} onClick={() => void send()}>
           {t("answerSend")}
         </button>
       </div>
