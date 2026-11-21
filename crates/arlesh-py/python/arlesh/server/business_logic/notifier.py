@@ -141,20 +141,17 @@ class Notifier:
 
     async def _run(self) -> None:
         seen = await self._revision()
-        origin = ChangeOrigin.time
+        reached = seen
         while True:
+            origin = self._board.origin_between(seen, reached)
             try:
                 await self.look(origin)
-                looked = True
-            except Exception:
-                logger.exception("A look at the board for pushes failed")
-                looked = False
-            reached = await self._wait(seen)
-            # A look that failed leaves `seen` where it was, so the next one still knows who
-            # wrote what it has not yet looked at.
-            origin = self._board.origin_between(seen, reached)
-            if looked:
                 seen = reached
+            except Exception:
+                # `seen` stays where it was, so the retry still knows who wrote what this look
+                # has not yet told.
+                logger.exception("A look at the board for pushes failed")
+            reached = await self._wait(seen)
 
     async def _revision(self) -> int:
         while True:
