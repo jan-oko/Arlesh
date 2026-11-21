@@ -1,5 +1,5 @@
-import { cleanup, afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import HotkeysModal from "./HotkeysModal";
 import { TOUCH_ONLY_QUERY } from "@/hooks/use-media-query";
 
