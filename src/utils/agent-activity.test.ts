@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agentActivityFrom, NO_AGENT_ACTIVITY } from "./agent-activity";
+import { agentActivityFrom, NO_AGENT_ACTIVITY, stagedWaitIdsFrom } from "./agent-activity";
 
 describe("agentActivityFrom", () => {
   it("reads the counts the board load sent", () => {
@@ -13,5 +13,19 @@ describe("agentActivityFrom", () => {
 
   it("reads nothing when the load sent no counts", () => {
     expect(agentActivityFrom(undefined)).toEqual(NO_AGENT_ACTIVITY);
+  });
+});
+
+describe("stagedWaitIdsFrom", () => {
+  it("collects every Task's staged questions off the facts, in a stable order", () => {
+    expect(stagedWaitIdsFrom({
+      "task-b": { staged_questions: ["w3"] },
+      "task-a": { staged_questions: ["w1", "w2"], open_questions: ["w1", "w2", "w9"] },
+      "task-c": { open_questions: ["w8"] },
+    })).toEqual(["w1", "w2", "w3"]);
+  });
+
+  it("is empty when the load sent no facts", () => {
+    expect(stagedWaitIdsFrom(undefined)).toEqual([]);
   });
 });

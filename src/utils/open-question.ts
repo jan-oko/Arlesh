@@ -22,3 +22,17 @@ export function isReviewWait(wait: MindmapNode): boolean {
 export function isSendableAnswer(answer: string): boolean {
   return answer.trim() !== "";
 }
+
+/** Whether `wait` is **staged**: an answer is written and not yet sent. The backend's rule, read off
+ * the Task's `stagedQuestionIds` (`tasks::rules::answer_drafts`); a draft on a wait that is not open
+ * is stale and marks nothing. */
+export function isWaitStaged(task: MindmapNode, wait: MindmapNode): boolean {
+  return wait.rowId !== undefined && (task.stagedQuestionIds ?? []).includes(wait.rowId);
+}
+
+/** Whether the Task is marked staged: it has open questions or reviews, and **every** one is
+ * staged, so nothing is left for the user but Send. Each wait is marked on its own either way. */
+export function isTaskStaged(task: MindmapNode): boolean {
+  const waits = openWaits(task);
+  return waits.length > 0 && waits.every((wait) => isWaitStaged(task, wait));
+}

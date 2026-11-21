@@ -1,3 +1,4 @@
+import { answerActions } from "@/test/answer-actions";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import NodeEditorModals from "./NodeEditorModals";
@@ -66,7 +67,7 @@ function editorOn(node: MindmapNode): NodeEditorHandles {
     availableForDep: [],
     onDoubleClick: vi.fn(),
     onTaskSave: vi.fn(() => resolved),
-    onAnswer: vi.fn().mockResolvedValue(true),
+    answers: answerActions(),
     onGoalSave: vi.fn(() => resolved),
     onCommitmentSave: vi.fn(() => resolved),
     onExpectationSave: vi.fn(() => resolved),

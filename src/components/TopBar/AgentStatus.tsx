@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgentStatus } from "@/hooks/use-agent-status";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useStagedSender } from "@/hooks/use-answer-drafts";
 import AgentHeadIcon from "./AgentHeadIcon";
 import AgentCapacityIcon from "./AgentCapacityIcon";
 import AgentQuestionIcon from "./AgentQuestionIcon";
@@ -16,6 +17,10 @@ import styles from "./AgentStatus.module.css";
  * never while the "Show agent status in the top bar" setting is off. The
  * tooltip spells each out with its count; a click opens a small menu with one line each — Open on
  * the padlock (Settings, on the Agents section), Show on the others.
+ *
+ * Beside it, while any answer is **staged** (ADR 0021), a Send button with the number staged: it sends
+ * them all. It is drawn whether or not the status itself is, since a staged answer is the user's own
+ * and waits on nothing but this press.
  */
 export default function AgentStatus() {
   const { t } = useTranslation("common");
@@ -30,7 +35,9 @@ export default function AgentStatus() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!shown || !status.isActive) return null;
+  const sender = useStagedSender();
+  const showHead = shown && status.isActive;
+  if (!showHead && sender.count === 0) return null;
 
   const lines: string[] = [
     ...(status.atCapacity ? [t("agentStatus.capacity", { count: status.capacityCount })] : []),
@@ -43,6 +50,7 @@ export default function AgentStatus() {
 
   return (
     <div className={styles.anchor}>
+      {showHead && (<>
       <button
         className={styles.agent}
         type="button"
@@ -78,6 +86,19 @@ export default function AgentStatus() {
             )}
           </div>
         </>
+      )}
+      </>)}
+      {sender.count > 0 && (
+        <button
+          type="button"
+          className={styles.sendStaged}
+          aria-label={t("agentStatus.sendStaged", { count: sender.count })}
+          title={t("agentStatus.sendStaged", { count: sender.count })}
+          onClick={() => void sender.send()}
+        >
+          {t("agentStatus.send")}
+          <span className={styles.stagedCount} aria-hidden="true">{sender.count}</span>
+        </button>
       )}
     </div>
   );

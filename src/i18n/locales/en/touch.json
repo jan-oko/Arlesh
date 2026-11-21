@@ -41,6 +41,8 @@
   "actionMore": "More",
   "paletteTitle": "Commands",
   "paletteSearch": "Search commands",
+  "paletteSendStaged_one": "Send {{count}} staged answer",
+  "paletteSendStaged_other": "Send {{count}} staged answers",
   "paletteEmpty": "Nothing can act here right now",
   "commandNewTask": "Create a Task child here",
   "commandCheckDone": "Check done",

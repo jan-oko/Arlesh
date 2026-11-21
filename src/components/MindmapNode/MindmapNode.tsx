@@ -12,7 +12,8 @@ import type { ContextMenuAction } from "@/components/NodeContextMenu/context-act
 import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
 import NodeRect from "./NodeRect";
 import NodeLabel from "./NodeLabel";
-import { openWaits } from "@/utils/open-question";
+import { useTranslation } from "react-i18next";
+import { isTaskStaged, isWaitStaged, openWaits } from "@/utils/open-question";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 
 interface Props {
@@ -56,9 +57,17 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   }
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
-  const openWaitsText = openWaits(node)
-    .map((wait) => (wait.agentWaiting?.note ? `${wait.title}\n${wait.agentWaiting.note}` : wait.title))
-    .join("\n\n");
+  const { t: tExpectation } = useTranslation("expectation");
+  // Each wait says it is staged on its own; the Task says so only when every open wait is (ADR 0021).
+  const stagedMark = (wait: MindmapNodeData): string => (isWaitStaged(node, wait) ? ` (${tExpectation("answerStaged")})` : "");
+  const openWaitsText = [
+    ...(isTaskStaged(node) ? [tExpectation("taskStagedTitle")] : []),
+    ...openWaits(node).map((wait) => (
+      wait.agentWaiting?.note
+        ? `${wait.title}${stagedMark(wait)}\n${wait.agentWaiting.note}`
+        : `${wait.title}${stagedMark(wait)}`
+    )),
+  ].join("\n\n");
 
   const iconR = (iconWidth - 8) / 2;
   const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, overdue, nodeOpacity } = computeNodeAppearance(node, position.depth);

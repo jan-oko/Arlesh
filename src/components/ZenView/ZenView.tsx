@@ -323,7 +323,7 @@ export default function ZenView() {
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onCycleStatus={onCycleStatus}
-                onAnswer={nodeEditor.onAnswer}
+                answers={nodeEditor.answers}
               />
             ))}
           </div>

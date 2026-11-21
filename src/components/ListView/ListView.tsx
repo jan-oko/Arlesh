@@ -106,7 +106,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onAnswer, onCommitmentSave, onExpectationSave, checkScopeClamp,
+    onTaskSave, answers, onCommitmentSave, onExpectationSave, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -608,7 +608,7 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
                 onContextMenu={openRowMenu}
-                onAnswer={onAnswer}
+                answers={answers}
               />
             );
           })}
@@ -631,7 +631,7 @@ export default function ListView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
-          onAnswer={onAnswer}
+          answers={answers}
           onCheckScopeClamp={checkScopeClamp}
           openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={() => setEditorModal(null)}

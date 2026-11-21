@@ -1,4 +1,5 @@
-import type { AgentActivityCounts } from "@/api/mindmap";
+import type { AgentActivityCounts, NodeFacts } from "@/api/mindmap";
+import type { RowId } from "@/api/node-id";
 
 /**
  * What the agents are doing on the **whole board**, as the top bar's agent status reads it: the
@@ -24,4 +25,13 @@ export const NO_AGENT_ACTIVITY: AgentActivity = { review: 0, waits: 0, onAgent: 
 export function agentActivityFrom(counts: AgentActivityCounts | undefined): AgentActivity {
   if (counts === undefined) return NO_AGENT_ACTIVITY;
   return { review: counts.review, waits: counts.waits, onAgent: counts.on_agent, staged: counts.staged ?? 0 };
+}
+
+/** The waits with a staged answer on the whole board, read off the load's facts: the staged open
+ * questions of every Task, in a stable order. What a Send sends, and what the screen shows as staged. */
+export function stagedWaitIdsFrom(facts: Readonly<Record<string, NodeFacts>> | undefined): RowId[] {
+  const ids = Object.entries(facts ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .flatMap(([, fact]) => fact.staged_questions ?? []);
+  return ids;
 }

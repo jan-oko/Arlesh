@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { RowId } from "@/api/node-id";
 import { clearAnswerDraft, saveAnswerDraft, sendAnswerDrafts } from "@/api/answer-drafts";
@@ -6,6 +6,11 @@ import type { SendOutcome, SkippedDraft } from "@/api/answer-drafts";
 import { withGesture } from "@/api/gesture";
 import { getErrorMessage } from "@/api/errors";
 import type { WaitReply } from "@/hooks/use-answer-question";
+import type { MindmapNode } from "@/utils/tree-layout";
+import { rowIdOf } from "@/utils/node-identity";
+import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { useBoardStore } from "@/stores/use-board-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 interface Options {
   settle: () => Promise<void>;
@@ -106,6 +111,64 @@ export function useAnswerDrafts({ settle, showToast }: Options): AnswerDrafts {
     [settle, showToast, failed, t, tUndo],
   );
 
-  return { stage, unstage, send };
+  return useMemo(() => ({ stage, unstage, send }), [stage, unstage, send]);
 }
 
+
+/** What an answer's controls do with the wait they sit on (ADR 0021). */
+export interface AnswerActions {
+  /** Stages the reply on `wait`. */
+  stage: (wait: MindmapNode, reply: WaitReply) => Promise<boolean>;
+  /** Unstages `wait`. */
+  unstage: (wait: MindmapNode) => Promise<boolean>;
+  /** Sends every staged answer on the board. Given a `reply` — the field's text, not staged yet —
+   * it is staged first, in a call of its own, so the first Ctrl+Z undoes the send and the answer
+   * returns to staged. */
+  send: (wait: MindmapNode, reply?: WaitReply) => Promise<boolean>;
+}
+
+/** Releases the keyboard from a text field that is about to leave: a field still holding focus
+ * when its wait is released would answer the next Ctrl+Z with the browser's own undo, not the
+ * board's (docs/spec/undo.md). */
+export function releaseFocus(): void {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
+/** {@link useAnswerDrafts} as the answer controls use it: by the wait's node. */
+export function useAnswerActions(options: Options): AnswerActions {
+  const drafts = useAnswerDrafts(options);
+  const stage = useCallback<AnswerActions["stage"]>((wait, reply) => drafts.stage(wait.id, rowIdOf(wait), reply), [drafts]);
+  const unstage = useCallback<AnswerActions["unstage"]>((wait) => drafts.unstage(wait.id, rowIdOf(wait)), [drafts]);
+  const send = useCallback<AnswerActions["send"]>(
+    async (wait, reply) => {
+      const id = rowIdOf(wait);
+      if (reply !== undefined && !(await drafts.stage(wait.id, id, reply))) return false;
+      const shown = useAgentActivityStore.getState().stagedWaitIds;
+      return drafts.send(wait.id, shown.includes(id) ? shown : [...shown, id]);
+    },
+    [drafts],
+  );
+  return useMemo(() => ({ stage, unstage, send }), [stage, unstage, send]);
+}
+
+/** The board-wide Send: the top bar's button and the palette's entry. */
+export interface StagedSender {
+  /** How many answers are staged on the whole board. */
+  count: number;
+  /** Sends them all, saying any that were skipped. */
+  send: () => Promise<boolean>;
+}
+
+export function useStagedSender(): StagedSender {
+  const settle = useBoardStore((s) => s.settle);
+  const showToast = useMindmapStore((s) => s.showToast);
+  const drafts = useAnswerDrafts({ settle, showToast });
+  const ids = useAgentActivityStore((s) => s.stagedWaitIds);
+  const send = useCallback(async () => {
+    const shown = useAgentActivityStore.getState().stagedWaitIds;
+    const landed = await drafts.send("", shown);
+    releaseFocus();
+    return landed;
+  }, [drafts]);
+  return { count: ids.length, send };
+}
