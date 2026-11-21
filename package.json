@@ -7,7 +7,7 @@
     "dev": "npm run wasm -- --check && vite",
     "build": "npm run wasm && tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src && node scripts/check-source-text.mjs",
+    "lint": "eslint src && node scripts/check-source-text.mjs && node scripts/check-tauri-versions.mjs",
     "changelog": "node scripts/assemble-changelog.mjs",
     "changelog:check": "node scripts/assemble-changelog.mjs --check",
     "test": "vitest run",

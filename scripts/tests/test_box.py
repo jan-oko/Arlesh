@@ -3092,6 +3092,21 @@ class PruneBranchData(OpenPrFixture):
         self.assertFalse((box.instance_dir("ghost-old") / "arlesh").exists())
 
 
+class TauriVersionCheck(IsolatedEnv):
+    def test_a_drifted_branch_stops_with_the_checks_message_and_an_old_one_passes(self) -> None:
+        wt = self.tmp / "wt"
+        (wt / "scripts").mkdir(parents=True)
+        box.check_tauri_versions(wt)  # no script: let through
+        bad = subprocess.CompletedProcess([], 1, "", "Found version mismatched Tauri packages.\n")
+        with mock.patch.object(box, "capture", return_value=bad):
+            (wt / "scripts" / "check-tauri-versions.mjs").write_text("")
+            with self.assertRaisesRegex(box.BoxError, "mismatched Tauri packages"):
+                box.check_tauri_versions(wt)
+        ok = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(box, "capture", return_value=ok):
+            box.check_tauri_versions(wt)
+
+
 class NodeModules(IsolatedEnv):
     """Each worktree installs its own `node_modules`; nothing is shared with the main checkout."""
 

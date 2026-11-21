@@ -3668,10 +3668,23 @@ def apply_android_patch(gradle: Path, strings: Path, package: str, label: str) -
     strings.write_text(xml_string_file(label))
 
 
+def check_tauri_versions(wt: Path) -> None:
+    """Stop early, with the Tauri CLI's own message, when an `@tauri-apps/*` package and its Rust crate
+    are on different minors: `tauri android build` would refuse after the slow steps. A branch from
+    before the check existed has no script and is let through."""
+    script = wt / "scripts" / "check-tauri-versions.mjs"
+    if not script.is_file():
+        return
+    res = capture(["node", str(script)], cwd=wt)
+    if res.returncode != 0:
+        raise die(res.stderr.strip() or "Tauri npm packages and Rust crates are on different versions.")
+
+
 def build_android(name: str, wt: Path, firebase: bool) -> None:
     package, label = box_package(name), box_label(name)
     android_env()
     need_cmd("npx", "Install Node.")
+    check_tauri_versions(wt)
     need_cmd("rustup", "Install Rust via rustup.")
     require_space()
     signing = choose_signing()
