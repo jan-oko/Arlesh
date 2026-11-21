@@ -117,6 +117,7 @@ from arlesh.models import (
     VerdictPress,
     ViolatingDescendant,
 )
+from arlesh.seed import request_seed
 
 NodeId = str
 """A node's id: a UUID string (a stored row's, or a derived Habit occurrence's)."""
@@ -1099,6 +1100,9 @@ class Arlesh(Database):
     async def _call_raw(self, op: str, **arguments: Any) -> str:
         """Runs the operation ``op`` and answers its result as the core's JSON text."""
         request = {"op": op, **{name: _wire(value) for name, value in arguments.items()}}
+        seed = request_seed.get()
+        if seed is not None:
+            request["seed"] = seed
         try:
             return await self._native.call(to_json(request).decode())
         except _native.NativeError as error:
