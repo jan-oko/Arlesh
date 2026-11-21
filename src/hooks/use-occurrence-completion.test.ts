@@ -4,10 +4,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useOccurrenceCompletion } from "./use-occurrence-completion";
 import type { GuardedAction } from "./use-occurrence-completion";
 import type { MindmapNode } from "@/utils/tree-layout";
-import type { WriteResult } from "@/stores/use-pending-writes-store";
 import { occurrenceRow } from "@/test/occurrence";
-import { lane } from "@/test/lane-helpers";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
 const OCCURRENCE: MindmapNode = {
   id: "habit-3-0",
@@ -21,12 +18,9 @@ const OCCURRENCE: MindmapNode = {
 
 const MILK = [{ child_type: "task" as const, child_id: storedRowId(12), title: "buy milk" }];
 const HOLDING = { kind: "needs_confirmation", message: "still holds work", details: { children: MILK } };
-const WRITTEN: WriteResult = { outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } };
 
 function action(send: GuardedAction["send"]): GuardedAction {
   return {
-    label: "status change",
-    patch: { kind: "fields", fields: { status: "done" } },
     send,
     refuseReadOnly: vi.fn(),
   };
@@ -37,24 +31,21 @@ function setup() {
   return { ...renderHook(() => useOccurrenceCompletion({ showToast })), showToast };
 }
 
-beforeEach(() => {
-  usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
-});
+beforeEach(() => { vi.clearAllMocks(); });
 
 describe("useOccurrenceCompletion", () => {
   it("writes straight through when the occurrence holds nothing unfinished", async () => {
-    const send = vi.fn((_confirmed: boolean) => Promise.resolve(WRITTEN));
+    const send = vi.fn((_confirmed: boolean) => Promise.resolve());
     const { result, showToast } = setup();
 
-    act(() => { result.current.submit(OCCURRENCE, action(send)); });
+    await act(async () => { await result.current.submit(OCCURRENCE, action(send)); });
 
-    await waitFor(() => { expect(send).toHaveBeenCalledWith(false); });
+    expect(send).toHaveBeenCalledWith(false);
     expect(result.current.prompt).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("rolls the patch back and raises a prompt naming the unfinished children, with no toast", async () => {
+  it("raises a prompt naming the unfinished children, with no toast", async () => {
     const send = vi.fn((_confirmed: boolean) => Promise.reject(HOLDING));
     const { result, showToast } = setup();
 
@@ -63,12 +54,11 @@ describe("useOccurrenceCompletion", () => {
     await waitFor(() => { expect(result.current.prompt).not.toBeNull(); });
     expect(result.current.prompt?.title).toBe("Groceries Mon");
     expect(result.current.prompt?.children).toEqual(MILK);
-    expect(lane()).toEqual([]);
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("confirming sends the same write again, acknowledged, patch and all, and closes the prompt", async () => {
-    const send = vi.fn((confirmed: boolean) => (confirmed ? new Promise<WriteResult>(() => undefined) : Promise.reject(HOLDING)));
+  it("confirming sends the same write again, acknowledged, and closes the prompt", async () => {
+    const send = vi.fn((confirmed: boolean) => (confirmed ? new Promise<void>(() => undefined) : Promise.reject(HOLDING)));
     const { result } = setup();
     act(() => { result.current.submit(OCCURRENCE, action(send)); });
     await waitFor(() => { expect(result.current.prompt).not.toBeNull(); });
@@ -77,10 +67,9 @@ describe("useOccurrenceCompletion", () => {
 
     expect(result.current.prompt).toBeNull();
     expect(send).toHaveBeenLastCalledWith(true);
-    expect(lane().map((write) => write.patch)).toEqual([{ kind: "fields", fields: { status: "done" } }]);
   });
 
-  it("declining sends nothing more, so there is nothing to take back", async () => {
+  it("declining sends nothing more", async () => {
     const send = vi.fn((_confirmed: boolean) => Promise.reject(HOLDING));
     const { result } = setup();
     act(() => { result.current.submit(OCCURRENCE, action(send)); });

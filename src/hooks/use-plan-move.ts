@@ -1,11 +1,10 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { usePendingWrite } from "@/hooks/use-pending-write";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
 import { usePlanClampStore } from "@/stores/use-plan-clamp-store";
 import { planContainmentConflicts } from "@/api/tasks";
 import type { DescendantPlans, PlanClampTarget } from "@/api/tasks";
-import { writtenWith } from "@/utils/answer-fields";
 import type { ScopeKey } from "@/api/scopes";
 import { keyForRef } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
@@ -82,9 +81,9 @@ function emptyOutcome(): BatchOutcome {
  * The Plan View's one write: a task's Plan, set to a scope — the one being filled, one of its parts,
  * or the rung a take-out sends it back to — or cleared.
  *
- * **It is shown at once** (ADR 0012, decision 17): each row's own Plan is patched through the
- * window's lane, so the row appears in its new pane with the pending cue before the write is
- * answered, and a refusal puts it back with one toast.
+ * **It is one awaited call**: the backend answers at once from the Replica's own prediction and the
+ * board that shows each row in its new pane follows through the ordinary event. A step the backend
+ * refuses is said in one toast.
  *
  * **A whole selection is one Gesture**, so planning five rows is one `Ctrl+Z`. It is a plain
  * {@link withGesture} rather than an atomic one deliberately: a batch that plans five of six has
@@ -108,7 +107,6 @@ export function usePlanMove({
 }: PlanMoveOptions): PlanMoveHandles {
   const { t } = useTranslation(["planView", "undo"]);
   const askPlanClamp = usePlanClampStore((state) => state.ask);
-  const enqueue = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
 
   /**
@@ -165,96 +163,74 @@ export function usePlanMove({
   );
 
   /**
-   * Puts one plan value for a batch in the window's lane, one write per row (ADR 0012, decision 17).
+   * Writes one plan value for a batch, one `update_task` step per row.
    *
-   * Each row shows in its new pane at once, with the cue, by patching only its own `plan`: which
-   * pane a row sits in is `effectivePlan`'s call, pinned by `plan-triage.json`, so nothing is copied.
-   * The batch is still **one gesture**: the first write to go out runs it, the rest read their own
-   * step's answer from the same run, so five rows are one request and one `Ctrl+Z`. A step the
-   * backend refuses rolls back that row alone, with one toast.
+   * The batch is **one gesture**, so five rows are one request and one `Ctrl+Z`. A step the backend
+   * refuses is said in one toast and does not move its row.
    *
-   * The clamp prompt cannot be asked before the patch without a read in front of it, so the
-   * containment read runs in the write's closure. When it finds Tasks below that would be left
-   * outside, the batch is held (decision 7: rolled back without a toast), the prompt opens, and on
-   * its answer the same batch goes in again, acknowledged.
+   * The clamp prompt cannot be asked before the write without a read in front of it, so the
+   * containment read runs first. When it finds Tasks below that would be left outside, nothing is
+   * written, the prompt opens, and on its answer the same batch goes in again, acknowledged.
    *
-   * Returns the ids of the rows that were put in the lane: what the view's cursor walks on from.
+   * Returns the ids of the rows the batch was sent for: what the view's cursor walks on from.
    */
   const write = useCallback(
-    (
+    async (
       rows: readonly TaskListRow[], plan: { start_id: ScopeKey; end_id: ScopeKey } | null, gesture: PlanGestureKey,
       refused: BatchOutcome["refused"], label: string, leftPane: boolean,
-    ): string[] => {
+    ): Promise<string[]> => {
       const planned = rows.flatMap((row) => (row.node.rowId === undefined ? [] : [{ row, id: row.node.rowId }]));
       if (planned.length === 0) {
         report({ ...emptyOutcome(), refused }, label, leftPane);
         return [];
       }
+      if (currentReadOnlyReason() !== null) {
+        const head = planned[0]?.row;
+        if (head !== undefined) {
+          showToast({ nodeId: head.node.id, message: t("planView:moveFailed", { title: head.node.title, message: readOnlyNotice() }) });
+        }
+        return [];
+      }
 
-      const attempt = (settle: DescendantPlans | null): void => {
-        let run: Promise<unknown[]> | null = null;
-        let held: PlanClampTarget[] = [];
-        let asked = false;
-
-        /** The batch's one gesture, started by whichever of its writes goes out first. */
-        const gestureOnce = (): Promise<unknown[]> => {
-          run ??= (async () => {
-            if (settle === null && plan !== null) {
-              const found = await Promise.all(planned.map(({ id }) => planContainmentConflicts(id, plan)));
-              held = found.flat();
-              if (held.length > 0) throw Object.assign(new Error("Plans below would be left outside"), { kind: "needs_confirmation" });
+      const attempt = async (settle: DescendantPlans | null): Promise<void> => {
+        try {
+          if (settle === null && plan !== null) {
+            const found = await Promise.all(planned.map(({ id }) => planContainmentConflicts(id, plan)));
+            const held: PlanClampTarget[] = found.flat();
+            if (held.length > 0) {
+              void askPlanClamp(held).then((choice) => { if (choice !== null) void attempt(choice); });
+              return;
             }
-            const steps: GestureStep[] = planned.map(({ id }) => ({
-              op: "update_task", id, request: { plan },
-              ...(settle === null ? {} : { descendant_plans: settle }),
-              may_be_refused: true,
-            }));
-            // Not `withGesture`: it waits for the lane to empty, and this runs from inside it. Nothing is
-            // lost by the atomic one: the steps are `may_be_refused`, so a refusal still does not abort.
-            const answers = await withAtomicGesture(t(gesture, { count: rows.length }), () => runGesture("plan-move", steps));
-            // What the backend refused is rolled back and toasted by the lane, one row at a time.
-            const outcome: BatchOutcome = { ...emptyOutcome(), refused };
-            planned.forEach(({ row }, index) => {
-              if (isRefusedStep(answers[index])) return;
-              outcome.moved.push(row.node.id);
-              if (plan !== null && row.node.backlogged === true) outcome.unbacklogged.push(row);
-            });
-            report(outcome, label, leftPane);
-            return answers;
-          })();
-          return run;
-        };
-
-        const onConfirmation = (): void => {
-          if (asked) return;
-          asked = true;
-          void askPlanClamp(held).then((choice) => { if (choice !== null) attempt(choice); });
-        };
-
-        planned.forEach(({ row }, index) => {
-          const nodeId = row.node.id;
-          enqueue({
-            nodeId,
-            label: "plan",
-            patch: { kind: "fields", fields: { plan } },
-            refuseReadOnly: () => {
-              showToast({ nodeId, message: t("planView:moveFailed", { title: row.node.title, message: readOnlyNotice() }) });
-            },
-            refusalToast: (message) => t("planView:moveFailed", { title: row.node.title, message }),
-            onConfirmation,
-            send: async () => {
-              const answer = (await gestureOnce())[index];
-              if (isRefusedStep(answer)) return { outcome: "refused", message: answer.refused.message };
-              return writtenWith({ plan });
-            },
+          }
+          const steps: GestureStep[] = planned.map(({ id }) => ({
+            op: "update_task", id, request: { plan },
+            ...(settle === null ? {} : { descendant_plans: settle }),
+            may_be_refused: true,
+          }));
+          const answers = await withAtomicGesture(t(gesture, { count: rows.length }), () => runGesture("plan-move", steps));
+          const outcome: BatchOutcome = { ...emptyOutcome(), refused };
+          planned.forEach(({ row }, index) => {
+            const answer = answers[index];
+            if (isRefusedStep(answer)) {
+              outcome.failed.push({ row, message: answer.refused.message });
+              return;
+            }
+            outcome.moved.push(row.node.id);
+            if (plan !== null && row.node.backlogged === true) outcome.unbacklogged.push(row);
           });
-        });
+          report(outcome, label, leftPane);
+        } catch (error: unknown) {
+          const head = planned[0]?.row;
+          if (head !== undefined) {
+            showToast({ nodeId: head.node.id, message: t("planView:moveFailed", { title: head.node.title, message: getErrorMessage(error) }) });
+          }
+        }
       };
 
-      attempt(null);
+      await attempt(null);
       return planned.map(({ row }) => row.node.id);
     },
-    [askPlanClamp, enqueue, readOnlyNotice, report, showToast, t],
+    [askPlanClamp, readOnlyNotice, report, showToast, t],
   );
 
   /** Splits a batch on the two containment rules, then writes the half that passed. */

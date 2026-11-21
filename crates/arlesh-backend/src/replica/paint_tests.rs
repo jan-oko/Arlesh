@@ -12,21 +12,24 @@ use arlesh_core::{
     domains::model::{CreateDomainRequest, DomainSubtype, UpdateDomainRequest},
     error::WireError,
     flows::model::{
-        CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType, SetRecurrenceRequest,
-        StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
+        CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+        SetRecurrenceRequest, StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
     },
     infos::model::{CreateInfoRequest, UpdateInfoRequest},
     nodes::{
-        gestures::{steps::{GestureStep, StepEntry}, GestureName, GestureNode},
+        gestures::{
+            steps::{GestureStep, StepEntry},
+            GestureName, GestureNode,
+        },
         id::{NodeId, RowId},
     },
     tasks::{
         answer_drafts::model::{DraftRequest, SendRequest},
         model::{
-            CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest, CreateTaskRequest,
-            AsyncTemplate, Dependency, DescendantPlans, DurationSpec, TaskAgentic, UpdateCommitmentRequest,
-            UpdateExpectationRequest, UpdateGoalRequest, UpdateSpawnedWaitRequest,
-            UpdateTaskRequest,
+            AsyncTemplate, CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
+            CreateTaskRequest, Dependency, DescendantPlans, DurationSpec, TaskAgentic,
+            UpdateCommitmentRequest, UpdateExpectationRequest, UpdateGoalRequest,
+            UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
         rules::gestures::{StatusStep, VerdictPress},
     },
@@ -88,8 +91,16 @@ async fn latest_check(
     wait: arlesh_core::tasks::waits::WaitRef,
 ) -> Result<chrono::NaiveDateTime, WireError> {
     let local = replica.local().await?;
-    let mut db = local.factory().connect().await.map_err(WireError::from_error)?;
-    let checks = db.tasks().wait_checks(&wait).await.map_err(WireError::from_error)?;
+    let mut db = local
+        .factory()
+        .connect()
+        .await
+        .map_err(WireError::from_error)?;
+    let checks = db
+        .tasks()
+        .wait_checks(&wait)
+        .await
+        .map_err(WireError::from_error)?;
     checks
         .last()
         .map(|check| check.due_at)
@@ -103,7 +114,13 @@ fn row(id: &NodeId) -> RowId {
 async fn fixture(rig: &Rig) -> Fx {
     let server = &rig.server.bracketed;
     let aspect = {
-        let mut db = rig.server.backend.factory().connect().await.expect("a session");
+        let mut db = rig
+            .server
+            .backend
+            .factory()
+            .connect()
+            .await
+            .expect("a session");
         db.domains()
             .list(Some(DomainSubtype::Aspect))
             .await
@@ -141,7 +158,11 @@ async fn fixture(rig: &Rig) -> Fx {
         ..Default::default()
     };
     let goal = server.create_goal(goal_of("Goal")).await.expect("goal").id;
-    let goal2 = server.create_goal(goal_of("Goal two")).await.expect("goal").id;
+    let goal2 = server
+        .create_goal(goal_of("Goal two"))
+        .await
+        .expect("goal")
+        .id;
     let commit = |title: &str| CreateCommitmentRequest {
         title: title.into(),
         parent_type: "project".into(),
@@ -149,8 +170,16 @@ async fn fixture(rig: &Rig) -> Fx {
         time_scope: Some(time_scope()),
         ..Default::default()
     };
-    let commitment = server.create_commitment(commit("Promise")).await.expect("commitment").id;
-    let commitment2 = server.create_commitment(commit("Promise two")).await.expect("commitment").id;
+    let commitment = server
+        .create_commitment(commit("Promise"))
+        .await
+        .expect("commitment")
+        .id;
+    let commitment2 = server
+        .create_commitment(commit("Promise two"))
+        .await
+        .expect("commitment")
+        .id;
     let agentic = server
         .create_task(CreateTaskRequest {
             agentic: Some(TaskAgentic::Yes),
@@ -188,16 +217,33 @@ async fn fixture(rig: &Rig) -> Fx {
         title: title.into(),
         parent_type: "task".into(),
         parent_id: task2.clone(),
-        check_every: Some(DurationSpec { n: 1, kind: "day".into() }),
+        check_every: Some(DurationSpec {
+            n: 1,
+            kind: "day".into(),
+        }),
         check_starting: Some(started),
         ..Default::default()
     };
     server
-        .save_answer_draft(wait2.clone(), DraftRequest { answer: Some("Draft".into()), verdict: None })
+        .save_answer_draft(
+            wait2.clone(),
+            DraftRequest {
+                answer: Some("Draft".into()),
+                verdict: None,
+            },
+        )
         .await
         .expect("a draft");
-    let check = server.create_expectation(checking("Heard back?")).await.expect("check").id;
-    let check2 = server.create_expectation(checking("Heard again?")).await.expect("check").id;
+    let check = server
+        .create_expectation(checking("Heard back?"))
+        .await
+        .expect("check")
+        .id;
+    let check2 = server
+        .create_expectation(checking("Heard again?"))
+        .await
+        .expect("check")
+        .id;
     let task4 = server.create_task(mk_task("Four")).await.expect("task").id;
     let mut spawned = Vec::new();
     for title in ["Awaiting one", "Awaiting two", "Awaiting three"] {
@@ -206,7 +252,10 @@ async fn fixture(rig: &Rig) -> Fx {
                 asynchronous: Some(true),
                 async_template: Some(AsyncTemplate {
                     title: "Did it land?".into(),
-                    check_every: Some(DurationSpec { n: 1, kind: "day".into() }),
+                    check_every: Some(DurationSpec {
+                        n: 1,
+                        kind: "day".into(),
+                    }),
                     ..Default::default()
                 }),
                 ..mk_task(title)
@@ -215,8 +264,12 @@ async fn fixture(rig: &Rig) -> Fx {
             .expect("an asynchronous task")
             .id;
         let done: UpdateTaskRequest =
-            serde_json::from_value(json!({"status": {"kind": "ordinary", "status": "done"}})).expect("a status");
-        server.update_task(waiting.clone(), done, None).await.expect("done");
+            serde_json::from_value(json!({"status": {"kind": "ordinary", "status": "done"}}))
+                .expect("a status");
+        server
+            .update_task(waiting.clone(), done, None)
+            .await
+            .expect("done");
         server
             .set_task_done_at(waiting.clone(), started)
             .await
@@ -225,8 +278,14 @@ async fn fixture(rig: &Rig) -> Fx {
     }
     let spawned: [NodeId; 3] = spawned.try_into().expect("three");
     // Two waits with a completed check, for the scripts that reopen one.
-    server.complete_expectation_check(row(&check2)).await.expect("a check");
-    server.complete_spawned_wait_check(row(&spawned[2])).await.expect("a check");
+    server
+        .complete_expectation_check(row(&check2))
+        .await
+        .expect("a check");
+    server
+        .complete_spawned_wait_check(row(&spawned[2]))
+        .await
+        .expect("a check");
     let info = server
         .create_info(CreateInfoRequest {
             id: None,
@@ -245,9 +304,21 @@ async fn fixture(rig: &Rig) -> Fx {
         parent_id: project,
         ..Default::default()
     };
-    let flow = server.create_flow(flow_of("Routine")).await.expect("flow").id;
-    let flow2 = server.create_flow(flow_of("Routine two")).await.expect("flow").id;
-    let flow3 = server.create_flow(flow_of("Routine three")).await.expect("flow").id;
+    let flow = server
+        .create_flow(flow_of("Routine"))
+        .await
+        .expect("flow")
+        .id;
+    let flow2 = server
+        .create_flow(flow_of("Routine two"))
+        .await
+        .expect("flow")
+        .id;
+    let flow3 = server
+        .create_flow(flow_of("Routine three"))
+        .await
+        .expect("flow")
+        .id;
     server
         .create_flow_task(CreateFlowItemRequest {
             flow_id: flow3,
@@ -265,10 +336,22 @@ async fn fixture(rig: &Rig) -> Fx {
         parent_id: flow,
         ..Default::default()
     };
-    let flow_task = server.create_flow_task(item("Step")).await.expect("item").id;
+    let flow_task = server
+        .create_flow_task(item("Step"))
+        .await
+        .expect("item")
+        .id;
     let flow_goal = server.create_flow_goal(item("Aim")).await.expect("item").id;
-    let flow_commitment = server.create_flow_commitment(item("Vow")).await.expect("item").id;
-    let flow_expectation = server.create_flow_expectation(item("Hope")).await.expect("item").id;
+    let flow_commitment = server
+        .create_flow_commitment(item("Vow"))
+        .await
+        .expect("item")
+        .id;
+    let flow_expectation = server
+        .create_flow_expectation(item("Hope"))
+        .await
+        .expect("item")
+        .id;
     Fx {
         aspect,
         project,
@@ -316,101 +399,394 @@ fn at() -> chrono::NaiveDateTime {
 
 fn table() -> Vec<(&'static str, Script)> {
     vec![
-        script!("create_task", |r, f| r.create_task(task("Painted", "project", NodeId::from(f.project)))),
-        script!("update_task", |r, f| r.update_task(f.task.clone(), UpdateTaskRequest { title: Some("Retitled".into()), ..Default::default() }, None)),
-        script!("update_task_settling_plans", |r, f| r.update_task_settling_plans(f.task3.clone(), UpdateTaskRequest { title: Some("Retitled three".into()), ..Default::default() }, None, DescendantPlans::Clear)),
-        script!("step_task_status", |r, f| r.step_task_status(f.task2.clone(), StatusStep::Advance, None)),
-        script!("toggle_task_agentic", |r, f| r.toggle_task_agentic(f.task3.clone())),
-        script!("duplicate_task", |r, f| r.duplicate_task(row(&f.task3), "project".into(), f.project, 0)),
-        script!("add_task_dependency", |r, f| r.add_task_dependency(f.task.clone(), Dependency::Task { id: f.task3.clone() })),
-        script!("remove_task_dependency", |r, f| r.remove_task_dependency(f.task.clone(), Dependency::Task { id: f.task3.clone() })),
-        script!("add_tag_to_task", |r, f| r.add_tag_to_task(f.task.clone(), f.tag)),
-        script!("remove_tag_from_task", |r, f| r.remove_tag_from_task(f.task.clone(), f.tag)),
+        script!("create_task", |r, f| r.create_task(task(
+            "Painted",
+            "project",
+            NodeId::from(f.project)
+        ))),
+        script!("update_task", |r, f| r.update_task(
+            f.task.clone(),
+            UpdateTaskRequest {
+                title: Some("Retitled".into()),
+                ..Default::default()
+            },
+            None
+        )),
+        script!("update_task_settling_plans", |r, f| r
+            .update_task_settling_plans(
+                f.task3.clone(),
+                UpdateTaskRequest {
+                    title: Some("Retitled three".into()),
+                    ..Default::default()
+                },
+                None,
+                DescendantPlans::Clear
+            )),
+        script!("step_task_status", |r, f| r.step_task_status(
+            f.task2.clone(),
+            StatusStep::Advance,
+            None
+        )),
+        script!("toggle_task_agentic", |r, f| r
+            .toggle_task_agentic(f.task3.clone())),
+        script!("duplicate_task", |r, f| r.duplicate_task(
+            row(&f.task3),
+            "project".into(),
+            f.project,
+            0
+        )),
+        script!("add_task_dependency", |r, f| r.add_task_dependency(
+            f.task.clone(),
+            Dependency::Task {
+                id: f.task3.clone()
+            }
+        )),
+        script!("remove_task_dependency", |r, f| r.remove_task_dependency(
+            f.task.clone(),
+            Dependency::Task {
+                id: f.task3.clone()
+            }
+        )),
+        script!("add_tag_to_task", |r, f| r
+            .add_tag_to_task(f.task.clone(), f.tag)),
+        script!("remove_tag_from_task", |r, f| r
+            .remove_tag_from_task(f.task.clone(), f.tag)),
         script!("set_task_done_at", |r, f| async move {
-            let done: UpdateTaskRequest = serde_json::from_value(json!({"status": {"kind": "ordinary", "status": "done"}}))
-                .map_err(|error| WireError::invalid_request(error.to_string()))?;
+            let done: UpdateTaskRequest =
+                serde_json::from_value(json!({"status": {"kind": "ordinary", "status": "done"}}))
+                    .map_err(|error| WireError::invalid_request(error.to_string()))?;
             r.update_task(f.task.clone(), done, None).await?;
             r.set_task_done_at(f.task.clone(), at()).await
         }),
-        script!("create_goal", |r, f| r.create_goal(CreateGoalRequest { title: "New goal".into(), parent_type: "project".into(), parent_id: NodeId::from(f.project), ..Default::default() })),
-        script!("update_goal", |r, f| r.update_goal(f.goal.clone(), UpdateGoalRequest { title: Some("Goal, renamed".into()), ..Default::default() }, None)),
-        script!("duplicate_goal", |r, f| r.duplicate_goal(row(&f.goal), "project".into(), f.project, 0)),
-        script!("add_tag_to_goal", |r, f| r.add_tag_to_goal(f.goal.clone(), f.tag)),
-        script!("remove_tag_from_goal", |r, f| r.remove_tag_from_goal(f.goal.clone(), f.tag)),
-        script!("create_commitment", |r, f| r.create_commitment(CreateCommitmentRequest { title: "Another".into(), parent_type: "project".into(), parent_id: NodeId::from(f.project), time_scope: Some(time_scope()), ..Default::default() })),
-        script!("update_commitment", |r, f| r.update_commitment(f.commitment.clone(), UpdateCommitmentRequest { title: Some("Promise, renamed".into()), ..Default::default() })),
-        script!("press_commitment_verdict", |r, f| r.press_commitment_verdict(f.commitment2.clone(), VerdictPress::Kept)),
-        script!("add_tag_to_commitment", |r, f| r.add_tag_to_commitment(f.commitment.clone(), f.tag)),
-        script!("remove_tag_from_commitment", |r, f| r.remove_tag_from_commitment(f.commitment.clone(), f.tag)),
-        script!("create_expectation", |r, f| r.create_expectation(CreateExpectationRequest { title: "New wait".into(), parent_type: "task".into(), parent_id: f.task3.clone(), ..Default::default() })),
-        script!("update_expectation", |r, f| r.update_expectation(f.check.clone(), UpdateExpectationRequest { title: Some("Heard back, renamed".into()), ..Default::default() })),
-        script!("complete_expectation_check", |r, f| r.complete_expectation_check(row(&f.check))),
+        script!("create_goal", |r, f| r.create_goal(CreateGoalRequest {
+            title: "New goal".into(),
+            parent_type: "project".into(),
+            parent_id: NodeId::from(f.project),
+            ..Default::default()
+        })),
+        script!("update_goal", |r, f| r.update_goal(
+            f.goal.clone(),
+            UpdateGoalRequest {
+                title: Some("Goal, renamed".into()),
+                ..Default::default()
+            },
+            None
+        )),
+        script!("duplicate_goal", |r, f| r.duplicate_goal(
+            row(&f.goal),
+            "project".into(),
+            f.project,
+            0
+        )),
+        script!("add_tag_to_goal", |r, f| r
+            .add_tag_to_goal(f.goal.clone(), f.tag)),
+        script!("remove_tag_from_goal", |r, f| r
+            .remove_tag_from_goal(f.goal.clone(), f.tag)),
+        script!("create_commitment", |r, f| r.create_commitment(
+            CreateCommitmentRequest {
+                title: "Another".into(),
+                parent_type: "project".into(),
+                parent_id: NodeId::from(f.project),
+                time_scope: Some(time_scope()),
+                ..Default::default()
+            }
+        )),
+        script!("update_commitment", |r, f| r.update_commitment(
+            f.commitment.clone(),
+            UpdateCommitmentRequest {
+                title: Some("Promise, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("press_commitment_verdict", |r, f| r
+            .press_commitment_verdict(
+                f.commitment2.clone(),
+                VerdictPress::Kept
+            )),
+        script!("add_tag_to_commitment", |r, f| r
+            .add_tag_to_commitment(f.commitment.clone(), f.tag)),
+        script!("remove_tag_from_commitment", |r, f| r
+            .remove_tag_from_commitment(f.commitment.clone(), f.tag)),
+        script!("create_expectation", |r, f| r.create_expectation(
+            CreateExpectationRequest {
+                title: "New wait".into(),
+                parent_type: "task".into(),
+                parent_id: f.task3.clone(),
+                ..Default::default()
+            }
+        )),
+        script!("update_expectation", |r, f| r.update_expectation(
+            f.check.clone(),
+            UpdateExpectationRequest {
+                title: Some("Heard back, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("complete_expectation_check", |r, f| r
+            .complete_expectation_check(row(&f.check))),
         script!("reopen_expectation_check", |r, f| async move {
-            let due = latest_check(&r, arlesh_core::tasks::waits::WaitRef::Stored(row(&f.check2))).await?;
+            let due = latest_check(
+                &r,
+                arlesh_core::tasks::waits::WaitRef::Stored(row(&f.check2)),
+            )
+            .await?;
             r.reopen_expectation_check(row(&f.check2), due).await
         }),
-        script!("add_tag_to_expectation", |r, f| r.add_tag_to_expectation(f.check.clone(), f.tag)),
-        script!("remove_tag_from_expectation", |r, f| r.remove_tag_from_expectation(f.check.clone(), f.tag)),
+        script!("add_tag_to_expectation", |r, f| r
+            .add_tag_to_expectation(f.check.clone(), f.tag)),
+        script!("remove_tag_from_expectation", |r, f| r
+            .remove_tag_from_expectation(f.check.clone(), f.tag)),
         script!("clear_answer_draft", |r, f| async move {
             r.clear_answer_draft(f.wait2.clone()).await
         }),
-        script!("save_answer_draft", |r, f| r.save_answer_draft(f.wait.clone(), DraftRequest { answer: Some("The second".into()), verdict: None })),
-        script!("send_answer_drafts", |r, f| r.send_answer_drafts(SendRequest { shown: vec![f.wait.clone()] })),
-        script!("update_spawned_wait", |r, f| r.update_spawned_wait(row(&f.spawned[0]), serde_json::from_value::<UpdateSpawnedWaitRequest>(json!({"archival": "archived"})).expect("a request"))),
-        script!("complete_spawned_wait_check", |r, f| r.complete_spawned_wait_check(row(&f.spawned[1]))),
+        script!("save_answer_draft", |r, f| r.save_answer_draft(
+            f.wait.clone(),
+            DraftRequest {
+                answer: Some("The second".into()),
+                verdict: None
+            }
+        )),
+        script!("send_answer_drafts", |r, f| r.send_answer_drafts(
+            SendRequest {
+                shown: vec![f.wait.clone()]
+            }
+        )),
+        script!("update_spawned_wait", |r, f| r.update_spawned_wait(
+            row(&f.spawned[0]),
+            serde_json::from_value::<UpdateSpawnedWaitRequest>(json!({"archival": "archived"}))
+                .expect("a request")
+        )),
+        script!("complete_spawned_wait_check", |r, f| r
+            .complete_spawned_wait_check(row(&f.spawned[1]))),
         script!("reopen_spawned_wait_check", |r, f| async move {
-            let due = latest_check(&r, arlesh_core::tasks::waits::WaitRef::Spawned(row(&f.spawned[2]))).await?;
+            let due = latest_check(
+                &r,
+                arlesh_core::tasks::waits::WaitRef::Spawned(row(&f.spawned[2])),
+            )
+            .await?;
             r.reopen_spawned_wait_check(row(&f.spawned[2]), due).await
         }),
-        script!("create_info", |r, f| r.create_info(CreateInfoRequest { id: None, body: "Another note".into(), details: None, parent_type: "task".into(), parent_id: f.task.clone(), position: 1 })),
-        script!("update_info", |r, f| r.update_info(f.info, UpdateInfoRequest { body: Some("A note, edited".into()), ..Default::default() })),
-        script!("duplicate_info", |r, f| r.duplicate_info(f.info, "task".into(), row(&f.task2), 0)),
-        script!("create_domain", |r, f| r.create_domain(CreateDomainRequest { id: None, title: "A second project".into(), description: None, subtype: DomainSubtype::Project, parent_id: Some(f.aspect), status: None, knowledge_base_directory: None })),
-        script!("update_domain", |r, f| r.update_domain(f.project, UpdateDomainRequest { title: Some("Painting, renamed".into()), ..Default::default() })),
-        script!("duplicate_domain", |r, f| r.duplicate_domain(f.project, f.aspect, 0)),
-        script!("create_flow", |r, f| r.create_flow(CreateFlowRequest { title: "New flow".into(), parent_type: "domain".into(), parent_id: f.project, ..Default::default() })),
-        script!("update_flow", |r, f| r.update_flow(f.flow, UpdateFlowRequest { title: Some("Routine, renamed".into()), ..Default::default() })),
-        script!("create_flow_task", |r, f| r.create_flow_task(CreateFlowItemRequest { flow_id: f.flow, title: "More".into(), parent_type: "flow".into(), parent_id: f.flow, ..Default::default() })),
-        script!("create_flow_goal", |r, f| r.create_flow_goal(CreateFlowItemRequest { flow_id: f.flow, title: "More aims".into(), parent_type: "flow".into(), parent_id: f.flow, ..Default::default() })),
-        script!("create_flow_commitment", |r, f| r.create_flow_commitment(CreateFlowItemRequest { flow_id: f.flow, title: "More vows".into(), parent_type: "flow".into(), parent_id: f.flow, ..Default::default() })),
-        script!("create_flow_expectation", |r, f| r.create_flow_expectation(CreateFlowItemRequest { flow_id: f.flow, title: "More hopes".into(), parent_type: "flow".into(), parent_id: f.flow, ..Default::default() })),
-        script!("update_flow_task", |r, f| r.update_flow_task(f.flow_task, UpdateFlowItemRequest { title: Some("Step, renamed".into()), ..Default::default() })),
-        script!("update_flow_goal", |r, f| r.update_flow_goal(f.flow_goal, UpdateFlowItemRequest { title: Some("Aim, renamed".into()), ..Default::default() })),
-        script!("update_flow_commitment", |r, f| r.update_flow_commitment(f.flow_commitment, UpdateFlowItemRequest { title: Some("Vow, renamed".into()), ..Default::default() })),
-        script!("update_flow_expectation", |r, f| r.update_flow_expectation(f.flow_expectation, UpdateFlowItemRequest { title: Some("Hope, renamed".into()), ..Default::default() })),
-        script!("add_flow_dependency", |r, f| r.add_flow_dependency(f.flow, FlowItemType::FlowTask, f.flow_task, FlowItemType::FlowGoal, f.flow_goal)),
-        script!("remove_flow_dependency", |r, f| r.remove_flow_dependency(FlowItemType::FlowTask, f.flow_task, FlowItemType::FlowGoal, f.flow_goal)),
-        script!("set_flow_item_cycles", |r, f| r.set_flow_item_cycles(f.flow, FlowItemType::FlowTask, f.flow_task, vec![FlowCycleInput::default()], None, None)),
+        script!("create_info", |r, f| r.create_info(CreateInfoRequest {
+            id: None,
+            body: "Another note".into(),
+            details: None,
+            parent_type: "task".into(),
+            parent_id: f.task.clone(),
+            position: 1
+        })),
+        script!("update_info", |r, f| r.update_info(
+            f.info,
+            UpdateInfoRequest {
+                body: Some("A note, edited".into()),
+                ..Default::default()
+            }
+        )),
+        script!("duplicate_info", |r, f| r.duplicate_info(
+            f.info,
+            "task".into(),
+            row(&f.task2),
+            0
+        )),
+        script!("create_domain", |r, f| r.create_domain(
+            CreateDomainRequest {
+                id: None,
+                title: "A second project".into(),
+                description: None,
+                subtype: DomainSubtype::Project,
+                parent_id: Some(f.aspect),
+                status: None,
+                knowledge_base_directory: None
+            }
+        )),
+        script!("update_domain", |r, f| r.update_domain(
+            f.project,
+            UpdateDomainRequest {
+                title: Some("Painting, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("duplicate_domain", |r, f| r
+            .duplicate_domain(f.project, f.aspect, 0)),
+        script!("create_flow", |r, f| r.create_flow(CreateFlowRequest {
+            title: "New flow".into(),
+            parent_type: "domain".into(),
+            parent_id: f.project,
+            ..Default::default()
+        })),
+        script!("update_flow", |r, f| r.update_flow(
+            f.flow,
+            UpdateFlowRequest {
+                title: Some("Routine, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("create_flow_task", |r, f| r.create_flow_task(
+            CreateFlowItemRequest {
+                flow_id: f.flow,
+                title: "More".into(),
+                parent_type: "flow".into(),
+                parent_id: f.flow,
+                ..Default::default()
+            }
+        )),
+        script!("create_flow_goal", |r, f| r.create_flow_goal(
+            CreateFlowItemRequest {
+                flow_id: f.flow,
+                title: "More aims".into(),
+                parent_type: "flow".into(),
+                parent_id: f.flow,
+                ..Default::default()
+            }
+        )),
+        script!("create_flow_commitment", |r, f| r.create_flow_commitment(
+            CreateFlowItemRequest {
+                flow_id: f.flow,
+                title: "More vows".into(),
+                parent_type: "flow".into(),
+                parent_id: f.flow,
+                ..Default::default()
+            }
+        )),
+        script!("create_flow_expectation", |r, f| r.create_flow_expectation(
+            CreateFlowItemRequest {
+                flow_id: f.flow,
+                title: "More hopes".into(),
+                parent_type: "flow".into(),
+                parent_id: f.flow,
+                ..Default::default()
+            }
+        )),
+        script!("update_flow_task", |r, f| r.update_flow_task(
+            f.flow_task,
+            UpdateFlowItemRequest {
+                title: Some("Step, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("update_flow_goal", |r, f| r.update_flow_goal(
+            f.flow_goal,
+            UpdateFlowItemRequest {
+                title: Some("Aim, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("update_flow_commitment", |r, f| r.update_flow_commitment(
+            f.flow_commitment,
+            UpdateFlowItemRequest {
+                title: Some("Vow, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("update_flow_expectation", |r, f| r.update_flow_expectation(
+            f.flow_expectation,
+            UpdateFlowItemRequest {
+                title: Some("Hope, renamed".into()),
+                ..Default::default()
+            }
+        )),
+        script!("add_flow_dependency", |r, f| r.add_flow_dependency(
+            f.flow,
+            FlowItemType::FlowTask,
+            f.flow_task,
+            FlowItemType::FlowGoal,
+            f.flow_goal
+        )),
+        script!("remove_flow_dependency", |r, f| r.remove_flow_dependency(
+            FlowItemType::FlowTask,
+            f.flow_task,
+            FlowItemType::FlowGoal,
+            f.flow_goal
+        )),
+        script!("set_flow_item_cycles", |r, f| r.set_flow_item_cycles(
+            f.flow,
+            FlowItemType::FlowTask,
+            f.flow_task,
+            vec![FlowCycleInput::default()],
+            None,
+            None
+        )),
         script!("set_flow_recurrence", |r, f| async move {
             let request: SetRecurrenceRequest = serde_json::from_value(json!({
                 "start_scope_id": {"kind": "day", "date": "2026-12-01"},
                 "gap_n": 1, "gap_kind": "week", "clock": "interval"
-            })).map_err(|error| WireError::invalid_request(error.to_string()))?;
+            }))
+            .map_err(|error| WireError::invalid_request(error.to_string()))?;
             r.set_flow_recurrence(f.flow, request).await
         }),
-        script!("delete_flow_recurrence", |r, f| r.delete_flow_recurrence(f.flow)),
-        script!("start_flow", |r, f| r.start_flow(f.flow3, StartFlowRequest { title: "Started".into(), target_type: "domain".into(), target_id: f.project, anchor_date: at().date() })),
+        script!("delete_flow_recurrence", |r, f| r
+            .delete_flow_recurrence(f.flow)),
+        script!("start_flow", |r, f| r.start_flow(
+            f.flow3,
+            StartFlowRequest {
+                title: "Started".into(),
+                target_type: "domain".into(),
+                target_id: f.project,
+                anchor_date: at().date()
+            }
+        )),
         script!("fork_flow", |r, f| r.fork_flow(f.flow, at())),
-        script!("duplicate_flow", |r, f| r.duplicate_flow(f.flow, "project".into(), f.project, 0)),
-        script!("duplicate_flow_item", |r, f| r.duplicate_flow_item(FlowItemType::FlowTask, f.flow_task, "flow".into(), f.flow, 0)),
-        script!("clear_habit_modifications", |r, f| r.clear_habit_modifications(f.flow)),
-        script!("convert_to_flow", |r, f| r.convert_to_flow("task".into(), row(&f.task4), false, false)),
-        script!("set_block_reasons", |r, f| r.set_block_reasons("task".into(), f.task.clone(), vec!["waiting on paint".into()])),
-        script!("add_mcp_root", |r, f| r.add_mcp_root(arlesh_core::access::model::NodeTable::Task, row(&f.task2))),
-        script!("remove_mcp_root", |r, f| r.remove_mcp_root(arlesh_core::access::model::NodeTable::Task, row(&f.task2))),
-        script!("set_agent_account_locked", |r, _f| r.set_agent_account_locked("default".into(), true)),
-        script!("apply_agent_action", |r, _f| r.apply_agent_action(1, AgentAction::Lock { locked: true })),
-        script!("run_gesture", |r, f| r.run_gesture(GestureName::SaveTask, vec![StepEntry {
-            step: GestureStep::CreateTask { request: task("By gesture", "project", NodeId::from(f.project)) },
-            may_be_refused: false,
+        script!("duplicate_flow", |r, f| r.duplicate_flow(
+            f.flow,
+            "project".into(),
+            f.project,
+            0
+        )),
+        script!("duplicate_flow_item", |r, f| r.duplicate_flow_item(
+            FlowItemType::FlowTask,
+            f.flow_task,
+            "flow".into(),
+            f.flow,
+            0
+        )),
+        script!("clear_habit_modifications", |r, f| r
+            .clear_habit_modifications(f.flow)),
+        script!("convert_to_flow", |r, f| r.convert_to_flow(
+            "task".into(),
+            row(&f.task4),
+            false,
+            false
+        )),
+        script!("set_block_reasons", |r, f| r.set_block_reasons(
+            "task".into(),
+            f.task.clone(),
+            vec!["waiting on paint".into()]
+        )),
+        script!("add_mcp_root", |r, f| r.add_mcp_root(
+            arlesh_core::access::model::NodeTable::Task,
+            row(&f.task2)
+        )),
+        script!("remove_mcp_root", |r, f| r.remove_mcp_root(
+            arlesh_core::access::model::NodeTable::Task,
+            row(&f.task2)
+        )),
+        script!("set_agent_account_locked", |r, _f| r
+            .set_agent_account_locked("default".into(), true)),
+        script!("apply_agent_action", |r, _f| r
+            .apply_agent_action(1, AgentAction::Lock { locked: true })),
+        script!("run_gesture", |r, f| r.run_gesture(
+            GestureName::SaveTask,
+            vec![StepEntry {
+                step: GestureStep::CreateTask {
+                    request: task("By gesture", "project", NodeId::from(f.project))
+                },
+                may_be_refused: false,
+            }]
+        )),
+        script!("delete_nodes", |r, f| r.delete_nodes(vec![GestureNode {
+            kind: "task".into(),
+            id: f.task2.clone()
         }])),
-        script!("delete_nodes", |r, f| r.delete_nodes(vec![GestureNode { kind: "task".into(), id: f.task2.clone() }])),
         script!("delete_task", |r, f| r.delete_task(f.task3.clone())),
         script!("delete_goal", |r, f| r.delete_goal(f.goal2.clone())),
-        script!("delete_commitment", |r, f| r.delete_commitment(f.commitment2.clone())),
-        script!("delete_expectation", |r, f| r.delete_expectation(f.wait.clone())),
+        script!("delete_commitment", |r, f| r
+            .delete_commitment(f.commitment2.clone())),
+        script!("delete_expectation", |r, f| r
+            .delete_expectation(f.wait.clone())),
         script!("delete_info", |r, f| r.delete_info(f.info)),
-        script!("delete_flow_item", |r, f| r.delete_flow_item(FlowItemType::FlowExpectation, f.flow_expectation)),
+        script!("delete_flow_item", |r, f| r.delete_flow_item(
+            FlowItemType::FlowExpectation,
+            f.flow_expectation
+        )),
         script!("delete_flow", |r, f| r.delete_flow(f.flow2)),
         script!("delete_domain", |r, f| r.delete_domain(f.tag)),
     ]
@@ -509,7 +885,12 @@ async fn every_board_write_paints_before_the_server_answers() {
         }
     }
 
-    assert!(failures.is_empty(), "{} of the writes did not paint:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} of the writes did not paint:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[tokio::test]
@@ -533,13 +914,20 @@ async fn replica_and_server_end_byte_identical_after_a_mixed_session() {
         if index == half {
             rig.server
                 .bracketed
-                .create_task(task("From another client", "project", NodeId::from(fx.project)))
+                .create_task(task(
+                    "From another client",
+                    "project",
+                    NodeId::from(fx.project),
+                ))
                 .await
                 .expect("another client's write");
         }
     }
     rig.converge().await;
-    assert!(rig.dropped.lock().expect("lock").is_empty(), "nothing was refused");
+    assert!(
+        rig.dropped.lock().expect("lock").is_empty(),
+        "nothing was refused"
+    );
 
     use crate::undo::UndoPort;
     rig.replica.undo().await.expect("an undo");

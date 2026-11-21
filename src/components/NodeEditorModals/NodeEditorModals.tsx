@@ -65,8 +65,6 @@ export default function NodeEditorModals({ tree, editor }: Props) {
   // the copy that makes the component honest about what it can draw.
   if (!hasNodeEditor(node)) return null;
   const close = () => setEditorModal(null);
-  // A Save the server refused opens the editor again on what was typed, with the reason on its error line.
-  const reopened = editorModal.reopened;
 
   switch (node.kind) {
     case "task":
@@ -74,7 +72,6 @@ export default function NodeEditorModals({ tree, editor }: Props) {
         <TaskEditorModal
           node={node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep}
           onSave={onTaskSave} answers={answers}
-          reopened={reopened?.kind === "task" ? reopened : undefined}
           onCheckScopeClamp={checkScopeClamp} openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={close}
         />
@@ -83,7 +80,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <GoalEditorModal
           node={node} allTags={allTags} domainNames={domainNames}
-          onSave={onGoalSave} reopened={reopened?.kind === "goal" ? reopened : undefined}
+          onSave={onGoalSave}
           onCheckScopeClamp={checkScopeClamp} onClose={close}
         />
       );
@@ -91,40 +88,38 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <CommitmentEditorModal
           node={node} allTags={allTags} domainNames={domainNames}
-          onSave={onCommitmentSave} reopened={reopened?.kind === "commitment" ? reopened : undefined}
+          onSave={onCommitmentSave}
           onClose={close}
         />
       );
     case "expectation":
       return (
         <ExpectationEditorModal
-          node={node} allTags={allTags} domainNames={domainNames} onSave={onExpectationSave} reopened={reopened?.kind === "expectation" ? reopened : undefined} onClose={close}
+          node={node} allTags={allTags} domainNames={domainNames} onSave={onExpectationSave} onClose={close}
         />
       );
     case "domain":
       return (
         <TitleEditorModal
           heading={t("editor:editDomain")} title={node.title}
-          isPrivate={node.isPrivate ?? false} archived={isArchivedByHand(node)} onSave={onSimpleSave}
-          reopened={reopened?.kind === "simple" ? reopened : undefined} onClose={close}
+          isPrivate={node.isPrivate ?? false} archived={isArchivedByHand(node)} onSave={onSimpleSave} onClose={close}
         />
       );
     case "tag":
       return (
         <TitleEditorModal
           heading={t("editor:editTag")} title={node.title}
-          isPrivate={node.isPrivate ?? false} onSave={onSimpleSave}
-          reopened={reopened?.kind === "simple" ? reopened : undefined} onClose={close}
+          isPrivate={node.isPrivate ?? false} onSave={onSimpleSave} onClose={close}
         />
       );
     case "project":
       return (
         <ProjectEditorModal
-          node={node} onSave={onProjectSave} reopened={reopened?.kind === "project" ? reopened : undefined} onClose={close}
+          node={node} onSave={onProjectSave} onClose={close}
         />
       );
     case "info":
-      return <InfoEditorModal node={node} onSave={onInfoSave} reopened={reopened?.kind === "info" ? reopened : undefined} onClose={close} />;
+      return <InfoEditorModal node={node} onSave={onInfoSave} onClose={close} />;
     case "flow":
       return (
         <FlowEditorModal

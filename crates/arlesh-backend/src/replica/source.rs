@@ -43,13 +43,15 @@ impl SourceEvent {
     /// as one with none, so the Replica fetches a snapshot.
     pub fn parse(data: &str) -> Result<Self, serde_json::Error> {
         let event: EventIn = serde_json::from_str(data)?;
-        let source = event.source.and_then(|raw| match wire::parse_source(raw.get()) {
-            Ok(delta) => Some(delta),
-            Err(error) => {
-                tracing::warn!(error = %error, "an event's source rows could not be read");
-                None
-            }
-        });
+        let source = event
+            .source
+            .and_then(|raw| match wire::parse_source(raw.get()) {
+                Ok(delta) => Some(delta),
+                Err(error) => {
+                    tracing::warn!(error = %error, "an event's source rows could not be read");
+                    None
+                }
+            });
         Ok(Self {
             epoch: event.epoch,
             revision: event.revision,

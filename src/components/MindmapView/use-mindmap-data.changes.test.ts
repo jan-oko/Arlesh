@@ -43,7 +43,7 @@ function changes(text: string): BoardChanges {
 function shared(board: MindmapLoad): SharedBoard {
   return {
     load: board, now: "2026-11-13T12:00:00", personNames: new Map(),
-    stamp: { read: 1, epoch: "e", seq: 1, revision: 1, at: 0 }, digests: indexBoard(board).digests,
+    stamp: { epoch: "e", seq: 1, revision: 1 }, digests: indexBoard(board).digests,
   };
 }
 

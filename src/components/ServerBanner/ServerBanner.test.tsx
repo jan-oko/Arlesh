@@ -50,4 +50,11 @@ describe("ServerBanner", () => {
     render(<ServerBanner />);
     expect(screen.getByRole("status")).toHaveTextContent(/Update the server/);
   });
+
+  it("says the board is from the last visit while the server's board is fetched", () => {
+    useClientModeStore.setState({ status: client({ read_only: "syncing" }) });
+    render(<ServerBanner />);
+    expect(screen.getByRole("status")).toHaveTextContent(/from your last visit/);
+    expect(screen.getByRole("status")).not.toHaveTextContent(/Last synced/);
+  });
 });

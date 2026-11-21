@@ -45,12 +45,25 @@ fn kinds() -> Vec<(String, String)> {
             let mut words = line.trim().splitn(2, ' ');
             let kind = words.next()?;
             let rest = words.next()?;
-            if !["read", "option_read", "write", "create", "remote", "remote_read", "local", "undo", "refused"]
-                .contains(&kind)
+            if ![
+                "read",
+                "option_read",
+                "write",
+                "create",
+                "remote",
+                "remote_read",
+                "local",
+                "undo",
+                "refused",
+            ]
+            .contains(&kind)
             {
                 return None;
             }
-            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
             rest.contains('(').then(|| (name, kind.to_owned()))
         })
         .collect()
@@ -63,7 +76,9 @@ fn every_non_get_route_is_a_write_kind() {
     let kinds = kinds();
     assert!(kinds.len() > 120, "the port list was read: {}", kinds.len());
     for (name, kind) in kinds {
-        let Some(verbs) = routes.get(&name) else { continue };
+        let Some(verbs) = routes.get(&name) else {
+            continue;
+        };
         let writes = verbs
             .as_array()
             .expect("verbs")
@@ -75,7 +90,10 @@ fn every_non_get_route_is_a_write_kind() {
         } else if name == "undo_status" || name == "list_agents" {
             assert_eq!(kind, "remote_read", "{name}: the server alone answers");
         } else {
-            assert_eq!(writes, predicted, "{name} is {kind} but its routes are {verbs}");
+            assert_eq!(
+                writes, predicted,
+                "{name} is {kind} but its routes are {verbs}"
+            );
         }
     }
 }
@@ -152,7 +170,10 @@ impl Rig {
     pub(super) async fn replica_rows(&self) -> Vec<StoredRow> {
         let local = self.local().await;
         let mut db = local.factory().begin_read().await.expect("a read");
-        arlesh_core::replication::snapshot(&mut db).await.expect("rows").rows
+        arlesh_core::replication::snapshot(&mut db)
+            .await
+            .expect("rows")
+            .rows
     }
 
     /// Waits until the Replica holds the server's rows, and answers how long it took.
@@ -250,8 +271,15 @@ async fn a_replica_ends_with_the_servers_rows_and_publishes_for_each_event() {
     rig.converge().await;
 
     assert_eq!(seqs.len(), 7);
-    assert!(rig.published.lock().expect("lock").len() > before, "its windows heard of it");
-    assert_eq!(rig.source.told.snapshots.load(Ordering::SeqCst), 1, "no repair was needed");
+    assert!(
+        rig.published.lock().expect("lock").len() > before,
+        "its windows heard of it"
+    );
+    assert_eq!(
+        rig.source.told.snapshots.load(Ordering::SeqCst),
+        1,
+        "no repair was needed"
+    );
 }
 
 #[tokio::test]
@@ -279,14 +307,19 @@ async fn a_row_changed_behind_the_feed_is_caught_by_the_checksum() {
     let snapshots = rig.source.told.snapshots.load(Ordering::SeqCst);
 
     // The capture is lost, then the database changes: no log entry says so.
-    rig.server.sql("UPDATE change_capture SET leased_until = 0").await;
+    rig.server
+        .sql("UPDATE change_capture SET leased_until = 0")
+        .await;
     rig.server
         .sql("UPDATE tasks SET title = 'Edited behind the feed' WHERE title = 'Child'")
         .await;
     rig.server.backend.record_write();
     rig.converge().await;
 
-    assert!(rig.source.told.snapshots.load(Ordering::SeqCst) > snapshots, "a snapshot repaired it");
+    assert!(
+        rig.source.told.snapshots.load(Ordering::SeqCst) > snapshots,
+        "a snapshot repaired it"
+    );
 }
 
 #[tokio::test]
@@ -300,7 +333,9 @@ async fn a_row_changed_behind_the_feed_is_caught_when_the_event_that_said_so_is_
     let next = rig.server.seq() + 1;
     rig.source.drop_events(next..next + 3);
     rig.server
-        .sql("INSERT INTO retired_beads_ids (table_name, row_id, beads_id) VALUES ('tasks', 1, 'x')")
+        .sql(
+            "INSERT INTO retired_beads_ids (table_name, row_id, beads_id) VALUES ('tasks', 1, 'x')",
+        )
         .await;
     rig.server.sql("DELETE FROM change_log").await;
     rig.server.ticks.notify_one();
@@ -331,7 +366,11 @@ async fn a_new_epoch_refetches() {
     restarted.publisher().current().await;
     rig.source.restart_server(Arc::clone(&restarted));
     restarted
-        .create_task(task("After the restart", "project", NodeId::from(first_project(&rig).await)))
+        .create_task(task(
+            "After the restart",
+            "project",
+            NodeId::from(first_project(&rig).await),
+        ))
         .await
         .expect("a write");
     restarted.record_write();
@@ -341,7 +380,13 @@ async fn a_new_epoch_refetches() {
 }
 
 pub(super) async fn first_project(rig: &Rig) -> arlesh_core::nodes::id::RowId {
-    let mut db = rig.server.backend.factory().connect().await.expect("a session");
+    let mut db = rig
+        .server
+        .backend
+        .factory()
+        .connect()
+        .await
+        .expect("a session");
     db.domains()
         .list(Some(DomainSubtype::Project))
         .await
@@ -351,7 +396,10 @@ pub(super) async fn first_project(rig: &Rig) -> arlesh_core::nodes::id::RowId {
 
 #[tokio::test]
 async fn a_schema_mismatch_is_read_only_and_names_the_side() {
-    for (skew, reason) in [(1, ReadOnlyReason::UpdateApp), (-1, ReadOnlyReason::UpdateServer)] {
+    for (skew, reason) in [
+        (1, ReadOnlyReason::UpdateApp),
+        (-1, ReadOnlyReason::UpdateServer),
+    ] {
         let server = ServerRig::start().await;
         let source = Arc::new(RigSource::new(&server, Duration::from_millis(100)));
         source.schema_skew.store(skew, Ordering::SeqCst);
@@ -368,12 +416,27 @@ async fn a_schema_mismatch_is_read_only_and_names_the_side() {
         .expect("a replica");
 
         let start = Instant::now();
-        while !source.told.holds.lock().expect("lock").contains(&Some(reason)) {
-            assert!(start.elapsed() < Duration::from_secs(10), "no {reason:?} hold");
+        while !source
+            .told
+            .holds
+            .lock()
+            .expect("lock")
+            .contains(&Some(reason))
+        {
+            assert!(
+                start.elapsed() < Duration::from_secs(10),
+                "no {reason:?} hold"
+            );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(
-            source.told.holds.lock().expect("lock").iter().all(|hold| hold != &None),
+            source
+                .told
+                .holds
+                .lock()
+                .expect("lock")
+                .iter()
+                .all(|hold| hold != &None),
             "a board of another schema was never let through"
         );
     }
@@ -384,7 +447,17 @@ fn the_kinds_list_has_each_kind_the_macros_know() {
     let names: BTreeSet<String> = kinds().into_iter().map(|(_, kind)| kind).collect();
     assert_eq!(
         names.into_iter().collect::<Vec<_>>(),
-        ["create", "local", "option_read", "read", "refused", "remote", "remote_read", "undo", "write"]
+        [
+            "create",
+            "local",
+            "option_read",
+            "read",
+            "refused",
+            "remote",
+            "remote_read",
+            "undo",
+            "write"
+        ]
     );
 }
 
@@ -419,18 +492,33 @@ async fn the_first_board_of_a_run_is_cached_and_the_confirmed_board_is_what_quit
     // A write the server has not answered must not be kept as if it were the board.
     rig.gate.hold();
     rig.replica
-        .create_task(task("Unconfirmed", "project", first_project(&rig).await.into()))
+        .create_task(task(
+            "Unconfirmed",
+            "project",
+            first_project(&rig).await.into(),
+        ))
         .await
         .expect("shown at once");
     let kept = rig.replica.confirmed_board().await.expect("a board");
 
-    assert!(!kept.contains("Unconfirmed"), "predictions are taken back before writing");
-    assert!(kept.contains("Second, renamed"), "what the server confirmed is kept");
+    assert!(
+        !kept.contains("Unconfirmed"),
+        "predictions are taken back before writing"
+    );
+    assert!(
+        kept.contains("Second, renamed"),
+        "what the server confirmed is kept"
+    );
 }
 
 #[tokio::test]
 async fn the_cached_board_is_shown_read_only_before_the_server_answers() {
-    let first = Rig::start_with(|_| Vec::new(), Some(Arc::new(MemoryCache::default()) as _), false).await;
+    let first = Rig::start_with(
+        |_| Vec::new(),
+        Some(Arc::new(MemoryCache::default()) as _),
+        false,
+    )
+    .await;
     session(&first.server).await;
     first.converge().await;
     let kept = first.replica.confirmed_board().await.expect("a board");
@@ -448,7 +536,11 @@ async fn the_cached_board_is_shown_read_only_before_the_server_answers() {
     assert!(tasks.iter().any(|task| task.title == "Second, renamed"));
     let refused = rig
         .replica
-        .create_task(task("Not yet", "project", NodeId::from(arlesh_core::nodes::new_id::new_row_id())))
+        .create_task(task(
+            "Not yet",
+            "project",
+            NodeId::from(arlesh_core::nodes::new_id::new_row_id()),
+        ))
         .await
         .expect_err("read-only");
     assert_eq!(

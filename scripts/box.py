@@ -123,7 +123,7 @@ builds (`cargo test`) agree too, except for the dev-only features (`arlesh-rules
 Tauri's `test`), which are separate units by design. Three things stay outside hakari's reach and
 are done by hand: the hack names `quote`'s default features itself (a line above hakari's section in
 its Cargo.toml, with the reason), `arlesh-py` names `arlesh-backend`'s `sqlite` feature (a workspace crate's own feature is not
-a third-party one), and `arlesh-rules` has no hack dependency (it compiles to wasm and may not
+a third-party one), and `arlesh-rules` has no hack dependency (it is a pure crate and may not
 name tokio) and gets the unified features through whatever depends on it. Tauri and the crates only
 it reaches are excluded from the hack, so the server's module does not compile them. CI
 (`scripts/check-workspace-hack.sh`, with `scripts/check-shared-features.py`, which compares the unit

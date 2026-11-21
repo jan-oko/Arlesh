@@ -8,7 +8,7 @@ import { listenHere, unsubscribed } from "./board";
  */
 
 /** Why the board is read-only, when it is. */
-export type ReadOnlyReason = "server_unreachable" | "update_app" | "update_server";
+export type ReadOnlyReason = "server_unreachable" | "syncing" | "update_app" | "update_server";
 
 /** The server, as the backend last found it. */
 export interface ServerStatus {

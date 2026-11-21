@@ -86,7 +86,6 @@ export default function TaskRow({
       // How the list's scroller finds this row to bring it into view when it becomes the selection.
       data-row-id={node.id}
       data-cutout-row=""
-      data-pending={node.pending === true ? "" : undefined}
       aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
       onClick={() => onSelect(node.id)}

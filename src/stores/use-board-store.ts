@@ -8,12 +8,10 @@ import { loadMindmap } from "@/api/mindmap";
 import type { CurrentBoard, MindmapLoad } from "@/api/mindmap";
 import { listPeople } from "@/api/people";
 import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { watchBoardChanges } from "@/stores/watch-board-changes";
 import { applyBoardChanges, differingCollections, digestsOf, indexBoard } from "@/utils/board-changes";
 import type { BoardDigests } from "@/utils/board-changes";
 import { localNowIso } from "@/utils/local-now";
-import type { BoardStamp } from "@/utils/pending-writes";
 
 /**
  * How long a writer waits to hold the board its write brought about before it gives up on the
@@ -24,6 +22,16 @@ export const SETTLE_TIMEOUT_MS = 5000;
 
 /** How long a head seen ahead of the window may stay ahead before the window decides it missed an event. */
 export const BEHIND_GRACE_MS = 10000;
+
+/**
+ * Which publication a held board is: the run, the sequence number and the revision it brings the
+ * board to. Each is `null` for a board read from a server that predates changed nodes.
+ */
+export interface BoardStamp {
+  epoch: string | null;
+  seq: number | null;
+  revision: number | null;
+}
 
 /**
  * The board as the producer published it, before any view has drawn it: the whole board, the
@@ -146,10 +154,9 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
     });
   };
 
-  /** Puts a board the window just took in on screen, and lets the lane and the writers know, in one step. */
+  /** Puts a board the window just took in on screen, and lets the writers know, in one step. */
   const hold = (board: SharedBoard): void => {
     set({ board });
-    usePendingWritesStore.getState().reportBoard(board.stamp);
     releaseSettlers();
   };
 
@@ -158,7 +165,6 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
     loading = true;
     try {
       const now = localNowIso();
-      const read = usePendingWritesStore.getState().beginRead();
       const data: CurrentBoard = await loadMindmap();
       // People are read only when a Task is delegated to one: their names are what a Person
       // delegate's badge and wait are labelled with, and nothing else on the board needs them.
@@ -169,11 +175,9 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       if (views === 0) return;
       const held = indexBoard(data.load);
       const stamp: BoardStamp = {
-        read,
         epoch: data.revision?.epoch ?? null,
         seq: data.seq ?? null,
         revision: data.revision?.revision ?? null,
-        at: Date.now(),
       };
       const board: SharedBoard = { load: data.load, now: data.now ?? now, personNames, stamp, digests: held.digests };
       if (hashChecks && data.hash !== undefined && held.digests.total !== data.hash) {
@@ -232,12 +236,11 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       return;
     }
     const applied = applyBoardChanges({ load: held.load, digests: held.digests }, change.changes);
-    const read = usePendingWritesStore.getState().beginRead();
     const board: SharedBoard = {
       load: applied.load,
       now: change.now ?? held.now,
       personNames: held.personNames,
-      stamp: { read, epoch: change.epoch, seq: change.seq, revision: change.revision, at: Date.now() },
+      stamp: { epoch: change.epoch, seq: change.seq, revision: change.revision },
       digests: applied.digests,
     };
     if (hashChecks && change.hash !== undefined && applied.digests.total !== change.hash) {
@@ -346,7 +349,6 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
         // A window that had no view heard nothing in the meantime: what it held is not to be trusted.
         behind = null;
         set({ board: null, isLoading: true, error: null });
-        usePendingWritesStore.getState().reportBoard(null);
         stopListening = listen();
       }
       // A later view finds the load under way, or the board there: it does not ask for another.
@@ -362,7 +364,6 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
         buffered = [];
         settlers.splice(0).forEach((settler) => settler.done());
         set({ board: null, isLoading: true, error: null });
-        usePendingWritesStore.getState().reportBoard(null);
       };
     },
   };

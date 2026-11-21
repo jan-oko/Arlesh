@@ -35,8 +35,8 @@ use crate::{
     error::AppError,
 };
 
-pub use replica::ReplicaError;
 pub use model::{Drained, RowChange, Snapshot, SourceDelta, SourceHead, StoredRow};
+pub use replica::ReplicaError;
 pub use rules::{is_replicated, SourceTracker, REDACTED_COLUMNS, UNREPLICATED_TABLES};
 
 /// Reads and writes the change log and the replicated rows, on a session's connection.
@@ -171,7 +171,9 @@ impl<'session> ReplicationOperator<'session> {
 
     /// Runs `statement` as it stands.
     async fn execute(&mut self, statement: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(statement).execute(&mut *self.connection).await?;
+        sqlx::query(statement)
+            .execute(&mut *self.connection)
+            .await?;
         Ok(())
     }
 
@@ -183,24 +185,25 @@ impl<'session> ReplicationOperator<'session> {
         } else {
             "PRAGMA foreign_keys = OFF"
         };
-        sqlx::query(statement).execute(&mut *self.connection).await?;
+        sqlx::query(statement)
+            .execute(&mut *self.connection)
+            .await?;
         Ok(())
     }
 
     /// Writes `image` as the row `rowid` of `table`, replacing whatever held that rowid or the
     /// row's unique keys. Only a Replica calls it, with foreign keys off and the journal
     /// suppressed, so the replacement cascades nowhere and is logged nowhere.
-    async fn put_row(
-        &mut self,
-        table: &str,
-        rowid: i64,
-        image: &str,
-    ) -> Result<(), ReplicaError> {
+    async fn put_row(&mut self, table: &str, rowid: i64, image: &str) -> Result<(), ReplicaError> {
         check_table(table)?;
         let value: serde_json::Value = serde_json::from_str(image)
             .map_err(|error| ReplicaError::malformed(table, rowid, error.to_string()))?;
         let serde_json::Value::Object(columns) = value else {
-            return Err(ReplicaError::malformed(table, rowid, "an image is not an object"));
+            return Err(ReplicaError::malformed(
+                table,
+                rowid,
+                "an image is not an object",
+            ));
         };
         let mut names = Vec::with_capacity(columns.len());
         let mut values = Vec::with_capacity(columns.len());

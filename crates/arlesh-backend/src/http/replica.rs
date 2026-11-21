@@ -31,9 +31,11 @@ impl HttpBackend {
             WireError::internal(format!("could not read the server's snapshot: {error}"))
         })?;
         if !status.is_success() {
-            return Err(serde_json::from_str::<WireError>(&body).unwrap_or_else(|_| {
-                WireError::internal(format!("the server answered {status} to the snapshot"))
-            }));
+            return Err(
+                serde_json::from_str::<WireError>(&body).unwrap_or_else(|_| {
+                    WireError::internal(format!("the server answered {status} to the snapshot"))
+                }),
+            );
         }
         Ok(body)
     }

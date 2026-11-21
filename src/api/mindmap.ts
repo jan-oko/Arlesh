@@ -1,5 +1,4 @@
 import { invoke } from "./gesture";
-import type { SubItemsWire } from "@/wasm/rules";
 import type { BoardRevision } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
@@ -37,6 +36,16 @@ export interface DependencyBlock {
   short_id?: string;
   /** The target's title. */
   title: string;
+}
+
+/**
+ * What a Task's sub-items say about it: the status they make it read at least (`floor`) and how
+ * many of them are not Done (`open`). Mirrors the Rust wire shape (`SubItemsWire` in
+ * `crates/arlesh-rules`).
+ */
+export interface SubItemsWire {
+  floor: "todo" | "in_progress" | "started" | "done";
+  open: number;
 }
 
 /**

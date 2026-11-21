@@ -1,4 +1,3 @@
-import { useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isDerivedId, storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
@@ -101,11 +100,6 @@ export default function MindmapView() {
   const startFromSearch = useSearchStart(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  // The inline editor follows a created node to its real id, and closes on a placeholder that is gone.
-  useTemporaryIds({
-    onResolved: (temporaryId, realId) => { setEditingNodeId((id) => (id === temporaryId ? realId : id)); },
-    onRemoved: (removed) => { setEditingNodeId((id) => (removed.some((node) => node.id === id) ? null : id)); },
-  });
   const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
     useDismissableLoadCondition(loadCondition);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);

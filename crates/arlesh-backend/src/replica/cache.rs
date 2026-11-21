@@ -61,7 +61,8 @@ mod tests {
     use super::*;
 
     fn directory(name: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!("arlesh-cache-{name}-{}", std::process::id()));
+        let directory =
+            std::env::temp_dir().join(format!("arlesh-cache-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         directory
     }

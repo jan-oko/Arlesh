@@ -15,9 +15,7 @@ use super::{
     queue::{DropReason, Dropped},
     tests::{first_project, session, task, Rig},
 };
-use crate::{
-    http::ReadOnlyReason, tasks::TasksPort, undo::UndoPort, Backend,
-};
+use crate::{http::ReadOnlyReason, tasks::TasksPort, undo::UndoPort, Backend};
 
 async fn tasks(rig: &Rig) -> Vec<Task> {
     rig.replica
@@ -58,7 +56,10 @@ fn retitle(title: &str) -> UpdateTaskRequest {
 async fn until(what: &str, mut ready: impl FnMut() -> bool) {
     let start = Instant::now();
     while !ready() {
-        assert!(start.elapsed() < Duration::from_secs(10), "{what}: it did not happen");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "{what}: it did not happen"
+        );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
@@ -76,7 +77,10 @@ async fn a_write_shows_on_the_replica_before_the_server_answers_and_then_settles
         .expect("a local answer");
 
     assert_eq!(created.title, "Shown at once");
-    until("the board paints", || rig.published.lock().expect("lock").len() > before).await;
+    until("the board paints", || {
+        rig.published.lock().expect("lock").len() > before
+    })
+    .await;
     assert!(named(&rig, "Shown at once").await == created.id);
     assert!(
         rig.server.rows().await != rig.replica_rows().await,
@@ -101,7 +105,10 @@ async fn a_local_refusal_sends_nothing() {
     assert!(refused.is_err(), "no such task");
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(rig.gate.calls.load(Ordering::SeqCst), sent);
-    assert!(rig.dropped.lock().expect("lock").is_empty(), "nothing was taken back");
+    assert!(
+        rig.dropped.lock().expect("lock").is_empty(),
+        "nothing was taken back"
+    );
     rig.converge().await;
 }
 
@@ -120,16 +127,25 @@ async fn a_server_refusal_rolls_back_reruns_and_toasts_once() {
     );
     rig.gate.hold();
     // Behind the replica's back, another client deletes the task the first write edits.
-    let first = rig.replica.update_task(doomed.clone(), retitle("Too late"), None);
-    let second = rig.replica.update_task(kept.clone(), retitle("Still wanted"), None);
-    let third = rig.replica.update_task(doomed.clone(), retitle("Too late again"), None);
+    let first = rig
+        .replica
+        .update_task(doomed.clone(), retitle("Too late"), None);
+    let second = rig
+        .replica
+        .update_task(kept.clone(), retitle("Still wanted"), None);
+    let third = rig
+        .replica
+        .update_task(doomed.clone(), retitle("Too late again"), None);
     let (first, second, third) = (
         first.await.expect("shown at once"),
         second.await.expect("shown at once"),
         third.await.expect("shown at once"),
     );
     assert_eq!(first.title, "Too late");
-    assert_eq!((second.title.as_str(), third.title.as_str()), ("Still wanted", "Too late again"));
+    assert_eq!(
+        (second.title.as_str(), third.title.as_str()),
+        ("Still wanted", "Too late again")
+    );
     rig.server
         .bracketed
         .delete_task(doomed.clone())
@@ -138,7 +154,10 @@ async fn a_server_refusal_rolls_back_reruns_and_toasts_once() {
 
     rig.gate.release();
     rig.converge().await;
-    until("the notice", || !rig.dropped.lock().expect("lock").is_empty()).await;
+    until("the notice", || {
+        !rig.dropped.lock().expect("lock").is_empty()
+    })
+    .await;
 
     let notices = rig.dropped.lock().expect("lock").clone();
     assert_eq!(
@@ -176,7 +195,10 @@ async fn a_lost_connection_rolls_back_drops_unsent_and_goes_read_only() {
     rig.source.break_streams();
 
     rig.gate.release();
-    until("the notice", || !rig.dropped.lock().expect("lock").is_empty()).await;
+    until("the notice", || {
+        !rig.dropped.lock().expect("lock").is_empty()
+    })
+    .await;
 
     assert_eq!(
         rig.dropped.lock().expect("lock").clone(),
@@ -185,7 +207,11 @@ async fn a_lost_connection_rolls_back_drops_unsent_and_goes_read_only() {
             reason: DropReason::Unreachable
         }]
     );
-    assert_eq!(rig.replica_rows().await, confirmed, "the predictions are gone");
+    assert_eq!(
+        rig.replica_rows().await,
+        confirmed,
+        "the predictions are gone"
+    );
     let refused = rig
         .replica
         .create_task(task("Not now", "project", parent))
@@ -211,7 +237,10 @@ async fn a_lost_connection_rolls_back_drops_unsent_and_goes_read_only() {
         {
             break;
         }
-        assert!(start.elapsed() < Duration::from_secs(10), "writes never came back");
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "writes never came back"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     rig.converge().await;
@@ -238,10 +267,17 @@ async fn a_press_on_a_provisional_node_waits_until_settled() {
 
     let press = tokio::spawn({
         let replica = std::sync::Arc::clone(&rig.replica);
-        async move { replica.update_task(copied, retitle("On the copy"), None).await }
+        async move {
+            replica
+                .update_task(copied, retitle("On the copy"), None)
+                .await
+        }
     });
     tokio::time::sleep(Duration::from_millis(400)).await;
-    assert!(!press.is_finished(), "the press waits while the copy is unconfirmed");
+    assert!(
+        !press.is_finished(),
+        "the press waits while the copy is unconfirmed"
+    );
 
     rig.gate.release();
     let answered = tokio::time::timeout(Duration::from_secs(10), press)
@@ -273,12 +309,22 @@ async fn undo_cancels_an_unsent_action_locally() {
 
     let undone = rig.replica.undo().await.expect("an answer");
 
-    assert!(undone.is_some_and(|summary| summary.inserted >= 1), "it says what it undid");
+    assert!(
+        undone.is_some_and(|summary| summary.inserted >= 1),
+        "it says what it undid"
+    );
     assert!(tasks(&rig).await.iter().all(|task| task.title != "Unsent"));
     rig.gate.release();
     rig.converge().await;
-    assert_eq!(rig.gate.calls.load(Ordering::SeqCst), 1, "the cancelled write was never sent");
-    assert!(tasks(&rig).await.iter().any(|task| task.title == "In flight"));
+    assert_eq!(
+        rig.gate.calls.load(Ordering::SeqCst),
+        1,
+        "the cancelled write was never sent"
+    );
+    assert!(tasks(&rig)
+        .await
+        .iter()
+        .any(|task| task.title == "In flight"));
 }
 
 #[tokio::test]
@@ -299,7 +345,10 @@ async fn undo_after_sent_waits_then_goes_to_the_server() {
         async move { replica.undo().await }
     });
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(!undo.is_finished(), "the undo waits for the write it follows");
+    assert!(
+        !undo.is_finished(),
+        "the undo waits for the write it follows"
+    );
 
     rig.gate.release();
     let undone = tokio::time::timeout(Duration::from_secs(10), undo)
@@ -323,7 +372,10 @@ async fn a_press_records_where_its_time_went() {
         .create_task(task("Timed", "project", project(&rig).await))
         .await
         .expect("shown at once");
-    until("the timing is kept", || !rig.replica.press_timings().is_empty()).await;
+    until("the timing is kept", || {
+        !rig.replica.press_timings().is_empty()
+    })
+    .await;
 
     let timing = rig.replica.press_timings().pop().expect("a timing");
     assert!(timing.turn.derive > Duration::ZERO || timing.turn.read > Duration::ZERO);

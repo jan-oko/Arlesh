@@ -96,5 +96,8 @@
   "startNotATask": "Alt+S starts a task — this is not one.",
   "startBlocked": "“{{title}}” is blocked, so it cannot be started.",
   "startUnsettled": "“{{title}}” is still being created — try again in a moment.",
-  "pendingWritesUnreachable": "The server can't be reached. Your pending changes were not saved."
+  "replicaRefused_one": "{{count}} change the server refused was taken back",
+  "replicaRefused_other": "{{count}} changes the server refused were taken back",
+  "replicaUnreachable_one": "{{count}} change could not be sent: the server cannot be reached",
+  "replicaUnreachable_other": "{{count}} changes could not be sent: the server cannot be reached"
 }

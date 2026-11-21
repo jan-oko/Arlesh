@@ -12,7 +12,10 @@ fn a_write_names_the_ids_in_its_arguments_however_deep() {
 
     assert_eq!(
         found,
-        ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect::<HashSet<_>>()
+        ["a", "b", "c", "d"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<HashSet<_>>()
     );
 }
 

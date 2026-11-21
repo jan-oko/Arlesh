@@ -460,7 +460,9 @@ pub fn read_only_error(reason: ReadOnlyReason) -> WireError {
         ReadOnlyReason::UpdateServer => {
             "the server is older than this app: update the server to edit"
         }
-        ReadOnlyReason::Syncing => "the server's board is still being fetched, so the board is read-only",
+        ReadOnlyReason::Syncing => {
+            "the server's board is still being fetched, so the board is read-only"
+        }
     };
     WireError::new(
         WireErrorKind::NotPermitted,

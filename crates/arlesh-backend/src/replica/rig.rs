@@ -16,7 +16,7 @@ use arlesh_core::{
     error::WireError,
     mindmap::publisher::{Clock, Tick},
     replication::{self, replica},
-    undo::{stacks::UndoStacks, GestureAbort, GestureClose, model::GestureId},
+    undo::{model::GestureId, stacks::UndoStacks, GestureAbort, GestureClose},
 };
 use tokio::sync::{mpsc, Notify};
 
@@ -153,7 +153,9 @@ impl Gated {
         let mut open = self.open.subscribe();
         let _ = open.wait_for(|open| *open).await;
         if self.unreachable.load(Ordering::SeqCst) {
-            return Err(crate::http::read_only_error(ReadOnlyReason::ServerUnreachable));
+            return Err(crate::http::read_only_error(
+                ReadOnlyReason::ServerUnreachable,
+            ));
         }
         Ok(())
     }

@@ -24,11 +24,7 @@ use arlesh_core::{
 use serde_json::Value;
 use tokio::time::Instant;
 
-use super::{
-    source::SourceEvent,
-    sync::Syncer,
-    BoxFuture,
-};
+use super::{source::SourceEvent, sync::Syncer, BoxFuture};
 use crate::{
     http::{read_only_error, ReadOnlyReason},
     revision::BoardRevision,
@@ -271,7 +267,12 @@ impl Syncer {
         }
         match op.local.clone() {
             Some(local) => self.predict(op, local).await,
-            None => self.enqueue(op, arlesh_core::nodes::new_id::new_row_id(), None, HashSet::new()),
+            None => self.enqueue(
+                op,
+                arlesh_core::nodes::new_id::new_row_id(),
+                None,
+                HashSet::new(),
+            ),
         }
         self.send_next();
     }
@@ -321,7 +322,13 @@ impl Syncer {
         self.enqueue(op, seed, range, provisional);
     }
 
-    fn enqueue(&mut self, op: Op, seed: RowId, range: Option<JournalRange>, provisional: HashSet<String>) {
+    fn enqueue(
+        &mut self,
+        op: Op,
+        seed: RowId,
+        range: Option<JournalRange>,
+        provisional: HashSet<String>,
+    ) {
         let ticket = self.queue.next_ticket;
         self.queue.next_ticket += 1;
         self.queue.pending.push_back(Pending {
@@ -480,11 +487,9 @@ impl Syncer {
         if busy || (unfinished && !refused) {
             return Ok(());
         }
-        let caught_up = self
-            .queue
-            .fence
-            .as_ref()
-            .is_none_or(|fence| fence.epoch == self.epoch && self.queue.buffer.revision >= fence.revision);
+        let caught_up = self.queue.fence.as_ref().is_none_or(|fence| {
+            fence.epoch == self.epoch && self.queue.buffer.revision >= fence.revision
+        });
         let waited = self
             .queue
             .waiting_since
@@ -643,7 +648,11 @@ impl Syncer {
         }
         let buffer = std::mem::take(&mut self.queue.buffer);
         let mark = self.queue.mark;
-        let rows = if buffer.needs_snapshot { Vec::new() } else { buffer.rows };
+        let rows = if buffer.needs_snapshot {
+            Vec::new()
+        } else {
+            buffer.rows
+        };
         let _ = replica::settle(&self.factory, mark, &rows).await;
         // The rows applied were not run through the tracker: the next look at them is a snapshot.
         self.needs_snapshot = true;
@@ -703,7 +712,6 @@ impl Syncer {
         }
         true
     }
-
 }
 
 fn is_unreachable(error: &WireError) -> bool {

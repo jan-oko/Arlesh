@@ -4,10 +4,9 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import type { VerdictPress } from "@/api/node-gestures";
 import { pressCommitmentVerdict } from "@/api/node-gestures";
-import { usePendingWrite } from "@/hooks/use-pending-write";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
+import { getErrorMessage } from "@/api/errors";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
-import { commitmentAnswerFields, writtenWith } from "@/utils/answer-fields";
-import { verdictAfter } from "@/utils/task-gestures";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -32,14 +31,11 @@ interface Result {
  * moves straight from one verdict to the other. `cycleVerdict` is the keyboard's route through all
  * three in one key, offered beside them rather than in place of them.
  *
- * A press is shown at once and sent through the window's lane (ADR 0012): the verdict it leaves is
- * predicted by `utils/task-gestures.ts`, a pinned copy of `tasks::rules::gestures::verdict_after`,
- * and once the server has answered the board shows the returned row's verdict. Nothing else is
- * derived here: `met` and the rest wait for the board that follows.
+ * A press is one awaited call: the backend works the verdict out (`tasks::rules::gestures::verdict_after`)
+ * and the board that shows it follows through the ordinary event. Nothing is derived here.
  */
 export function useCommitmentVerdict({ findNode, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
-  const enqueue = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
 
   const record = useCallback(
@@ -50,17 +46,15 @@ export function useCommitmentVerdict({ findNode, showToast }: Options): Result {
       // is written like any other's; clearing it back to Unresolved leaves nothing recorded on
       // the occurrence, which is what "you have not said" is.
       const id = rowIdOf(node);
-      enqueue({
-        nodeId,
-        label: "verdict",
-        patch: { kind: "fields", fields: { verdict: verdictAfter(press, node.verdict ?? "unresolved") } },
-        refuseReadOnly: () => {
-          showToast({ nodeId, message: t("verdictFailed", { message: readOnlyNotice() }) });
-        },
-        send: async () => writtenWith(commitmentAnswerFields(await pressCommitmentVerdict(id, press))),
+      if (currentReadOnlyReason() !== null) {
+        showToast({ nodeId, message: t("verdictFailed", { message: readOnlyNotice() }) });
+        return;
+      }
+      pressCommitmentVerdict(id, press).catch((error: unknown) => {
+        showToast({ nodeId, message: t("verdictFailed", { message: getErrorMessage(error) }) });
       });
     },
-    [findNode, enqueue, showToast, t, readOnlyNotice],
+    [findNode, showToast, t, readOnlyNotice],
   );
 
   return {

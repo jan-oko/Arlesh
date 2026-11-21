@@ -94,16 +94,19 @@ pub(super) fn check_table(table: &str) -> Result<(), ReplicaError> {
 }
 
 /// A column name that is safe to put in SQL.
-pub(super) fn check_identifier(
-    table: &str,
-    rowid: i64,
-    column: &str,
-) -> Result<(), ReplicaError> {
-    let plain = !column.is_empty() && column.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+pub(super) fn check_identifier(table: &str, rowid: i64, column: &str) -> Result<(), ReplicaError> {
+    let plain = !column.is_empty()
+        && column
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_');
     if plain {
         return Ok(());
     }
-    Err(ReplicaError::malformed(table, rowid, "an unsafe column name"))
+    Err(ReplicaError::malformed(
+        table,
+        rowid,
+        "an unsafe column name",
+    ))
 }
 
 /// Creates the Replica's database: in memory, one connection that never closes, built from the
@@ -135,7 +138,12 @@ async fn unconstrained<T>(
     factory: &SessionFactory,
     write: impl AsyncFnOnce(&mut Db<Transactional>) -> Result<T, ReplicaError>,
 ) -> Result<T, ReplicaError> {
-    factory.connect().await?.replication().set_foreign_keys(false).await?;
+    factory
+        .connect()
+        .await?
+        .replication()
+        .set_foreign_keys(false)
+        .await?;
     let outcome = transaction(factory, write).await;
     let restored = factory
         .connect()
@@ -163,7 +171,11 @@ async fn transaction<T>(
 async fn put_all(db: &mut Db<Transactional>, rows: &[RowChange]) -> Result<(), ReplicaError> {
     for row in rows {
         match &row.image {
-            Some(image) => db.replication().put_row(&row.table, row.rowid, image).await?,
+            Some(image) => {
+                db.replication()
+                    .put_row(&row.table, row.rowid, image)
+                    .await?
+            }
             None => db.replication().delete_row(&row.table, row.rowid).await?,
         }
     }
@@ -187,7 +199,9 @@ pub async fn install_snapshot(
 async fn install_rows(db: &mut Db<Transactional>, snapshot: &Snapshot) -> Result<(), ReplicaError> {
     db.replication().clear_rows().await?;
     for row in &snapshot.rows {
-        db.replication().put_row(&row.table, row.rowid, &row.image).await?;
+        db.replication()
+            .put_row(&row.table, row.rowid, &row.image)
+            .await?;
     }
     Ok(())
 }
@@ -262,7 +276,10 @@ pub async fn inserted_ids(
     range: JournalRange,
 ) -> Result<Vec<String>, ReplicaError> {
     let mut db = factory.connect().await?;
-    let entries = db.undo().entries_between(range.after, range.through).await?;
+    let entries = db
+        .undo()
+        .entries_between(range.after, range.through)
+        .await?;
     Ok(entries
         .iter()
         .filter(|entry| entry.operation == RowOperation::Insert)
@@ -283,7 +300,12 @@ pub async fn execute_for_tests(
     factory: &SessionFactory,
     statement: &str,
 ) -> Result<(), ReplicaError> {
-    factory.connect().await?.replication().execute(statement).await?;
+    factory
+        .connect()
+        .await?
+        .replication()
+        .execute(statement)
+        .await?;
     Ok(())
 }
 

@@ -91,8 +91,14 @@ async fn a_snapshot_is_fetched_on_every_connect() {
     .await;
 
     let paths = server.paths();
-    let opens = paths.iter().filter(|line| line.contains("/events/changes")).count();
-    let snapshots = paths.iter().filter(|line| line.contains("/board/snapshot")).count();
+    let opens = paths
+        .iter()
+        .filter(|line| line.contains("/events/changes"))
+        .count();
+    let snapshots = paths
+        .iter()
+        .filter(|line| line.contains("/board/snapshot"))
+        .count();
     assert!(
         snapshots >= opens,
         "every connect takes a snapshot: {opens} streams, {snapshots} snapshots"

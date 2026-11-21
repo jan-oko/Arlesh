@@ -6,6 +6,7 @@
     "server_unreachable": "Server unreachable — showing the board as it was, read-only.",
     "lastSync": "Last synced {{time}}.",
     "neverSynced": "Not synced yet.",
+    "syncing": "Showing the board from your last visit while the server's board is fetched.",
     "update_app": "The server is newer than this app. Update the app to edit — until then the board is read-only.",
     "update_server": "The server is older than this app. Update the server to edit — until then the board is read-only."
   },

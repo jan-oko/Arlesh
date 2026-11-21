@@ -606,9 +606,7 @@ fn publish(
     let written = event_json(&publication, (!too_large).then_some(&changes)).and_then(|data| {
         let source = match delta {
             Some(delta)
-                if !too_large
-                    && !delta.resynced
-                    && wire::event_len(delta) <= MAX_CHANGES_BYTES =>
+                if !too_large && !delta.resynced && wire::event_len(delta) <= MAX_CHANGES_BYTES =>
             {
                 Some(Arc::<str>::from(wire::event_source(delta)?))
             }
@@ -619,8 +617,7 @@ fn publish(
     let (data, source) = match written {
         Ok(written) => written,
         Err(error) => {
-            lock(&inner.state).digests =
-                BoardDigests::seed(&previous.load).unwrap_or_default();
+            lock(&inner.state).digests = BoardDigests::seed(&previous.load).unwrap_or_default();
             return Err(error);
         }
     };

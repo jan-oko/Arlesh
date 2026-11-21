@@ -5,10 +5,7 @@
 //! and the publisher's read, derive, diff, serialize and emit; the window adds its own
 //! `ipc_apply_ms` through the shell's `report_press_timing` command.
 
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use arlesh_core::mindmap::publisher::TurnTimings;
 

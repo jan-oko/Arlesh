@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
@@ -7,10 +7,7 @@ import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal"
 import { runGesture } from "@/api/multi-node-gestures";
 import { updateInfo } from "@/api/infos";
 import { updateDomain } from "@/api/domains";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
-import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
-import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
 import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
@@ -69,102 +66,30 @@ function setup(node: MindmapNode) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
-  useMindmapStore.getState().clearToast();
   useClientModeStore.setState({ status: null });
 });
 
-describe("useNodeEditor — a Save through the lane", () => {
-  it("closes the editor and shows the saved own fields before the write resolves", async () => {
-    const held = deferred<unknown[]>();
-    vi.mocked(runGesture).mockReturnValue(held.promise);
-    const { result, settle } = setup(taskNode);
-
-    await act(async () => { await result.current.onTaskSave(taskSave); });
-
-    expect(result.current.editorModal).toBeNull();
-    expect(patchedFields()[0]).toMatchObject({
-      title: "New title", status: "in_progress", taskStatus: { kind: "ordinary", status: "in_progress" },
-    });
-    // No derived field is in the patch, and nothing reloaded yet.
-    expect(patchedFields()[0]).not.toHaveProperty("overdue");
-    expect(patchedFields()[0]).not.toHaveProperty("inheritedPlan");
-    expect(settle).not.toHaveBeenCalled();
-    await waitFor(() => expect(runGesture).toHaveBeenCalledTimes(1));
-
-    held.resolve([]);
-    await settleLane();
-    expect(lane().every((write) => write.state === "answered")).toBe(true);
-  });
-
-  it("rolls back, toasts once and reopens the editor on the user's input and the reason", async () => {
-    vi.mocked(runGesture).mockRejectedValue(new Error("Plan must sit inside the Time Scope"));
-    const { result } = setup(taskNode);
-
-    await act(async () => { await result.current.onTaskSave(taskSave); });
-    await settleLane();
-
-    expect(lane()).toEqual([]);
-    expect(useMindmapStore.getState().pendingToast).toMatchObject({
-      nodeId: `task-${storedRowId(5)}`, message: "saveFailed: Plan must sit inside the Time Scope",
-    });
-    expect(result.current.editorModal).toMatchObject({
-      nodeId: `task-${storedRowId(5)}`,
-      reopened: { kind: "task", draft: taskSave, error: "Plan must sit inside the Time Scope" },
-    });
-  });
-
-  it("does not reopen over an editor the user opened meanwhile", async () => {
-    const held = deferred<unknown[]>();
-    vi.mocked(runGesture).mockReturnValue(held.promise);
-    const { result } = setup(taskNode);
-    await act(async () => { await result.current.onTaskSave(taskSave); });
-    act(() => result.current.setEditorModal({ nodeId: goalNode.id, node: goalNode }));
-
-    held.reject(new Error("refused"));
-    await settleLane();
-
-    expect(result.current.editorModal?.nodeId).toBe(`goal-${storedRowId(2)}`);
-    expect(result.current.editorModal?.reopened).toBeUndefined();
-  });
-
-  it("sends a Save queued behind a pending write on the same node after it", async () => {
-    const first = deferred<{ outcome: "written"; response: { epoch: null; revision: null; fields: null; createdId: null } }>();
-    usePendingWritesStore.getState().enqueue({
-      nodeId: `task-${storedRowId(5)}`, label: "status change", patch: { kind: "fields", fields: { status: "started" } },
-      send: () => first.promise, showToast: vi.fn(), unreachableMessage: "unreachable",
-    });
+describe("useNodeEditor: a Save is one awaited write", () => {
+  it("writes the Save and closes the editor once the backend has answered", async () => {
     vi.mocked(runGesture).mockResolvedValue([]);
     const { result } = setup(taskNode);
 
     await act(async () => { await result.current.onTaskSave(taskSave); });
+
+    expect(runGesture).toHaveBeenCalledTimes(1);
     expect(result.current.editorModal).toBeNull();
-    expect(runGesture).not.toHaveBeenCalled();
-    expect(lane()).toHaveLength(2);
-
-    first.resolve({ outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } });
-    await waitFor(() => expect(runGesture).toHaveBeenCalledTimes(1));
   });
 
-  it("leaves a Save queued behind a refused write unsent, and reopens its editor too", async () => {
-    const first = deferred<never>();
-    usePendingWritesStore.getState().enqueue({
-      nodeId: `task-${storedRowId(5)}`, label: "status change", patch: { kind: "fields", fields: { status: "started" } },
-      send: () => first.promise, showToast: vi.fn(), unreachableMessage: "unreachable",
-    });
+  it("keeps the editor open and passes the reason on when the write is refused", async () => {
+    vi.mocked(runGesture).mockRejectedValue(new Error("Plan must sit inside the Time Scope"));
     const { result } = setup(taskNode);
-    await act(async () => { await result.current.onTaskSave(taskSave); });
 
-    first.reject(new Error("Compound tasks have no status"));
-    await settleLane();
+    await expect(act(async () => { await result.current.onTaskSave(taskSave); })).rejects.toThrow("Plan must sit inside the Time Scope");
 
-    expect(runGesture).not.toHaveBeenCalled();
-    expect(lane()).toEqual([]);
-    expect(result.current.editorModal?.reopened).toMatchObject({ kind: "task", error: "Compound tasks have no status" });
+    expect(result.current.editorModal?.nodeId).toBe(`task-${storedRowId(5)}`);
   });
 
-  it("keeps the editor open with the board's notice on a read-only board, and patches nothing", async () => {
+  it("keeps the editor open with the board's notice on a read-only board, and sends nothing", async () => {
     useClientModeStore.setState({
       status: { mode: "client", server: { read_only: "server_unreachable" } },
     } as never);
@@ -173,7 +98,6 @@ describe("useNodeEditor — a Save through the lane", () => {
     await expect(act(async () => { await result.current.onTaskSave(taskSave); })).rejects.toThrow("banner.server_unreachable");
 
     expect(result.current.editorModal?.nodeId).toBe(`task-${storedRowId(5)}`);
-    expect(lane()).toEqual([]);
     expect(runGesture).not.toHaveBeenCalled();
   });
 
@@ -187,19 +111,16 @@ describe("useNodeEditor — a Save through the lane", () => {
     const goal = setup(goalNode);
     await act(async () => { await goal.result.current.onGoalSave(goalSave); });
     expect(goal.result.current.editorModal).toBeNull();
-    expect(patchedFields()[0]).toMatchObject({ title: "Renamed goal", status: "achieved" });
-    await settleLane();
+    expect(runGesture).toHaveBeenCalledTimes(1);
 
     const info = setup(infoNode);
     await act(async () => { await info.result.current.onInfoSave({ body: "New body", details: "trace", isPrivate: false }); });
     expect(info.result.current.editorModal).toBeNull();
-    await settleLane();
     expect(updateInfo).toHaveBeenCalledWith(storedRowId(3), { body: "New body", details: "trace", is_private: false });
 
     const tag = setup(tagNode);
     await act(async () => { await tag.result.current.onSimpleSave("Renamed tag", false, undefined); });
     expect(tag.result.current.editorModal).toBeNull();
-    await settleLane();
     expect(updateDomain).toHaveBeenCalledWith(storedRowId(4), { title: "Renamed tag", is_private: false });
   });
 });

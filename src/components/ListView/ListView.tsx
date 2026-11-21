@@ -1,5 +1,4 @@
 import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
-import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
@@ -70,7 +69,6 @@ import { OPEN_EDITOR_IDS } from "@/utils/touch/command-ids";
 import touchStyles from "@/styles/touch-surface.module.css";
 
 export default function ListView() {
-  const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "listView", "editor", "expectation", "touch"]);
   const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease,
     allTasksAndGoals, isLoading, error, settle, onCycleStatus, onToggleStarted, renameNode,
@@ -599,7 +597,7 @@ export default function ListView() {
             }
             return (
               <TaskRow
-                key={stableKey(entry.row.node.id)}
+                key={entry.row.node.id}
                 row={entry.row}
                 visibleDepth={entry.visibleDepth}
                 isSelected={entry.row.node.id === activeSelectedId}

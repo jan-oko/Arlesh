@@ -12,18 +12,18 @@
 pub mod cache;
 mod forward;
 mod http_source;
-pub mod mint;
-pub mod press;
-mod ports;
-pub mod queue;
-pub mod source;
-pub mod sync;
 #[cfg(test)]
 mod http_tests;
+pub mod mint;
 #[cfg(test)]
 mod paint_tests;
+mod ports;
+pub mod press;
+pub mod queue;
 #[cfg(test)]
 mod rig;
+pub mod source;
+pub mod sync;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -83,7 +83,10 @@ fn unreachable() -> WireError {
 const FIRST_BOARD_WAIT: Duration = Duration::from_secs(30);
 
 /// The caller's end of a write: it receives the answer once.
-struct Slot<T>(Arc<std::sync::Mutex<Option<oneshot::Sender<Result<T, WireError>>>>>);
+struct Slot<T>(Arc<std::sync::Mutex<Option<Answer<T>>>>);
+
+/// The sender of a write's answer.
+type Answer<T> = oneshot::Sender<Result<T, WireError>>;
 
 impl<T> Clone for Slot<T> {
     fn clone(&self) -> Self {
@@ -94,7 +97,10 @@ impl<T> Clone for Slot<T> {
 impl<T> Slot<T> {
     fn new() -> (Self, oneshot::Receiver<Result<T, WireError>>) {
         let (sender, receiver) = oneshot::channel();
-        (Self(Arc::new(std::sync::Mutex::new(Some(sender)))), receiver)
+        (
+            Self(Arc::new(std::sync::Mutex::new(Some(sender)))),
+            receiver,
+        )
     }
 
     fn send(&self, answer: Result<T, WireError>) {

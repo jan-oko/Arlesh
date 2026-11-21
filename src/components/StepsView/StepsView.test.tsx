@@ -11,7 +11,6 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { fixtureRowId } from "@/test/node-fixture";
 import { ordinary } from "@/utils/status-mapping";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -129,7 +128,6 @@ function press(code: string): void {
 }
 
 beforeEach(() => {
-  usePendingWritesStore.getState().reset();
   vi.clearAllMocks();
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({
@@ -943,18 +941,5 @@ describe("an Overdue card", () => {
     expect(selectedCardId()).toBe(`task-${storedRowId(1)}`);
     expect(stepCard(`task-${storedRowId(1)}`).className).toMatch(/overdue/);
     expect(stepCard(`task-${storedRowId(1)}`).className).toMatch(/selected/);
-  });
-});
-
-describe("the pending-write cue", () => {
-  it("marks a card whose node has an unanswered write, and clears it on the answer", () => {
-    mockTree([n(`task-${storedRowId(1)}`, "task", { pending: true }), n(`task-${storedRowId(2)}`, "task")]);
-    const { rerender } = render(<StepsView />);
-    expect(document.querySelector(`[data-step-card="task-${storedRowId(1)}"]`)).toHaveAttribute("data-pending");
-    expect(document.querySelector(`[data-step-card="task-${storedRowId(2)}"]`)).not.toHaveAttribute("data-pending");
-
-    mockTree([n(`task-${storedRowId(1)}`, "task"), n(`task-${storedRowId(2)}`, "task")]);
-    rerender(<StepsView />);
-    expect(document.querySelector(`[data-step-card="task-${storedRowId(1)}"]`)).not.toHaveAttribute("data-pending");
   });
 });

@@ -393,9 +393,9 @@ fn setup_client(
             on_dropped: commands::replica::dropped_notifier(app.handle()),
             runtime: tauri::async_runtime::handle().inner().clone(),
             timings: backend::replica::sync::Timings::default(),
-            cache: Some(std::sync::Arc::new(backend::replica::cache::FileCache::for_server(
-                app_dir, url,
-            ))),
+            cache: Some(std::sync::Arc::new(
+                backend::replica::cache::FileCache::for_server(app_dir, url),
+            )),
         },
     ))?;
     app.manage(backend::AppBackend::shared(replica.clone()));

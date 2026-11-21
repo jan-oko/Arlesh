@@ -43,7 +43,6 @@ import { updateGoal } from "@/api/goals";
 import { stepTaskStatus } from "@/api/node-gestures";
 import { fixtureRowId } from "@/test/node-fixture";
 import { ordinary } from "@/utils/status-mapping";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { storedRowId } from "@/test/stored-id";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -141,7 +140,6 @@ const WRITTEN = { id: storedRowId(5), title: "task-5", parent_type: "project", p
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    usePendingWritesStore.getState().reset();
     vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "written", task: WRITTEN, backlog_cleared: null });
   });
 
@@ -243,8 +241,6 @@ describe("useNodeActions — onStatusClick", () => {
 });
 
 describe("useNodeActions — onStatusClick failures", () => {
-  beforeEach(() => { usePendingWritesStore.getState().reset(); });
-
   it("says so when the backend refuses a task's status cycle", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(stepTaskStatus).mockRejectedValueOnce(new Error("database is locked"));

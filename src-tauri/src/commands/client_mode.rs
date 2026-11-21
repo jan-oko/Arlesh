@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{Emitter, Runtime, State};
 use tauri::Manager;
+use tauri::{Emitter, Runtime, State};
 
 use crate::{
     backend::http::{

@@ -244,7 +244,10 @@ impl Syncer {
             tracing::info!("the cached board is of another schema; it is ignored");
             return;
         }
-        if replica::install_snapshot(&self.factory, &parsed.snapshot).await.is_err() {
+        if replica::install_snapshot(&self.factory, &parsed.snapshot)
+            .await
+            .is_err()
+        {
             return;
         }
         self.source.hold(Some(ReadOnlyReason::Syncing));
@@ -334,8 +337,8 @@ impl Syncer {
     /// Fetches the device snapshot and checks its schema is this app's.
     pub(super) async fn fetch_snapshot(&mut self) -> Result<ParsedSnapshot, WireError> {
         let body = self.source.snapshot().await?;
-        let parsed = wire::parse_snapshot(&body)
-            .map_err(|error| WireError::internal(error.to_string()))?;
+        let parsed =
+            wire::parse_snapshot(&body).map_err(|error| WireError::internal(error.to_string()))?;
         self.last_body = Some(body);
         let ours = replica::schema_version(&self.factory)
             .await
@@ -524,7 +527,8 @@ impl Syncer {
             return Ok(());
         }
         let quiet = self.last_event.elapsed() >= self.timings.quiet_before_check;
-        let due = (self.unchecked && quiet) || self.last_check.elapsed() >= self.timings.check_every;
+        let due =
+            (self.unchecked && quiet) || self.last_check.elapsed() >= self.timings.check_every;
         if !due || !self.can_check() {
             return Ok(());
         }
@@ -539,7 +543,9 @@ impl Syncer {
             .await
             .map_err(WireError::from_error)?;
         if held != self.tracker.head().hash {
-            tracing::error!("the Replica's own rows do not hash as its tracker; fetching a snapshot");
+            tracing::error!(
+                "the Replica's own rows do not hash as its tracker; fetching a snapshot"
+            );
             self.needs_snapshot = true;
         }
         Ok(())
