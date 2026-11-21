@@ -94,6 +94,17 @@ pub enum TaskError {
     /// A review, or the release of an agentic wait, was refused by the review rules.
     #[error(transparent)]
     Review(#[from] crate::tasks::rules::review::ReviewRefusal),
+    /// A staged answer was refused by the answer-draft rules.
+    #[error(transparent)]
+    AnswerDraft(#[from] crate::tasks::rules::answer_drafts::DraftRefusal),
+    /// Sending the staged answers was refused at one of them; nothing was sent.
+    #[error("the answer to \"{title}\" could not be sent, so none was: {reason}")]
+    DraftSendRefused {
+        /// The title of the wait whose release was refused.
+        title: String,
+        /// Why it was refused.
+        reason: String,
+    },
     /// A verdict was written to a wait that is not a review.
     #[error("only a review takes a verdict")]
     VerdictOnNonReview,
