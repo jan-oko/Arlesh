@@ -68,9 +68,9 @@ async def test_a_reconnect_of_this_run_is_sent_what_it_missed_before_the_head() 
     asked: list[int] = []
     inner = database.board_events_after
 
-    async def recording(after: int, wait: float) -> list[tuple[int, str]]:
+    async def recording(after: int, wait: float, rows: bool) -> list[tuple[int, str]]:
         asked.append(after)
-        answer: list[tuple[int, str]] = await inner(after, wait)
+        answer: list[tuple[int, str]] = await inner(after, wait, rows)
         return answer
 
     database.board_events_after = recording
@@ -90,9 +90,9 @@ async def test_an_id_of_another_run_asks_from_the_start_so_it_is_told_to_reload(
     asked: list[int] = []
     inner = database.board_events_after
 
-    async def recording(after: int, wait: float) -> list[tuple[int, str]]:
+    async def recording(after: int, wait: float, rows: bool) -> list[tuple[int, str]]:
         asked.append(after)
-        answer: list[tuple[int, str]] = await inner(after, wait)
+        answer: list[tuple[int, str]] = await inner(after, wait, rows)
         return answer
 
     database.board_events_after = recording
