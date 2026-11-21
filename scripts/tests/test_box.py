@@ -3189,7 +3189,7 @@ class PruneBranchData(OpenPrFixture):
         self.keep("ghost-old")
         self.hold(box.instance_db("ghost-old").with_name("arlesh.db.lock"))
         self.assertTrue(box.branch_running("ghost-old"))
-        _, out, err = self.run_box("prune", "-y")
+        _, out, _ = self.run_box("prune", "-y")
         self.assertTrue(self.has_data("ghost-old"))
         self.assertIn("its app is running", out)
 
