@@ -10,7 +10,7 @@ import TaskIcon from "@/components/NodeIcon/TaskIcon";
 export type ActionIconName =
   | "child" | "sibling" | "undo" | "redo" | "open" | "filter" | "status" | "plan" | "dependency"
   | "verdict" | "release" | "checkDone" | "edit" | "startFlow" | "archive" | "planInto" | "kind"
-  | "backlog" | "more" | "up"
+  | "backlog" | "more" | "up" | "send" | "approve"
   | "viewZen" | "viewList" | "viewPlan" | "viewSteps" | "viewMap";
 
 const STROKE = 1.8;
@@ -46,6 +46,9 @@ const DRAWINGS: Readonly<Record<Exclude<ActionIconName, "status">, ReactNode>> =
   viewMap: <><circle cx="5" cy="12" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="19" cy="18" r="2" /><path d="M7 12h2c3 0 3-6 8-6M9 12c3 0 3 6 8 6" /></>,
   // An arrow up: out of the subtree, one level.
   up: <><path d="M12 19V5" /><path d="m6 11 6-6 6 6" /></>,
+  // A tick: approve. A paper plane: send.
+  approve: <path d="m5 12.5 4.5 4.5L19 7" />,
+  send: <><path d="M21 3 10 14" /><path d="M21 3l-7 18-4-7-7-4z" /></>,
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
 };
 

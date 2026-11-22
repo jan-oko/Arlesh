@@ -1,14 +1,19 @@
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useTouchLayout } from "@/hooks/use-media-query";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isSendableAnswer } from "@/utils/open-question";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, UNSTAGE_CHORD } from "@/utils/answer-focus";
+import { ANSWER_FIELD, ANSWER_STAGED, handleFieldKey, keepFocusAtEnd, TOUCH_FIELD_ROWS, UNSTAGE_CHORD } from "@/utils/answer-focus";
 import { formatChord, matchesChord } from "@/utils/hotkeys/chord";
 import { releaseFocus } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import ControlFace from "./ControlFace";
+import { iconName } from "@/utils/icon-name";
+import ActionIcon from "@/components/ActionIcon/ActionIcon";
+import AgentStagedIcon from "@/components/TopBar/AgentStagedIcon";
 import styles from "./AnswerField.module.css";
 
 interface Props {
@@ -39,6 +44,7 @@ function isChord(event: KeyboardEvent): boolean {
  */
 export default function AnswerField({ question, staged, actions, compact = false }: Props) {
   const { t } = useTranslation("expectation");
+  const touch = useTouchLayout();
   const fieldId = useId();
   const field = useRef<HTMLTextAreaElement>(null);
   const [typed, setTyped] = useState("");
@@ -85,7 +91,7 @@ export default function AnswerField({ question, staged, actions, compact = false
 
   return (
     <div
-      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}`}
+      className={`${styles.answer}${compact ? ` ${styles.compact}` : ""}${touch ? ` ${styles.touch}` : ""}`}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
@@ -101,11 +107,11 @@ export default function AnswerField({ question, staged, actions, compact = false
           {...{ [ANSWER_FIELD]: "", [ANSWER_STAGED]: String(staged) }}
           className={`${styles.field}${staged ? ` ${styles.staged}` : ""}`}
           dir="auto"
-          rows={compact ? 1 : 2}
+          rows={touch ? TOUCH_FIELD_ROWS : compact ? 1 : 2}
           value={shown}
           readOnly={staged}
           title={staged ? t("answerStagedTitle") : undefined}
-          placeholder={t("answerHint")}
+          placeholder={t(touch ? "answerHintTouch" : "answerHint")}
           onChange={(event) => setTyped(event.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -128,17 +134,18 @@ export default function AnswerField({ question, staged, actions, compact = false
         <div className={styles.buttons}>
           <button
             type="button"
+            data-gesture-skip=""
             className={styles.secondary}
             aria-pressed={staged}
             aria-keyshortcuts={staged ? formatChord(UNSTAGE_CHORD) : undefined}
-            title={staged ? formatChord(UNSTAGE_CHORD) : undefined}
+            {...iconName(touch, t("answerStage"), staged ? formatChord(UNSTAGE_CHORD) : undefined)}
             disabled={!canStage}
             onClick={() => void toggleStage()}
           >
-            {t("answerStage")}
+            <ControlFace touch={touch} label={t("answerStage")} icon={<AgentStagedIcon />} />
           </button>
-          <button type="button" className={styles.send} disabled={!canSend} onClick={() => void send()}>
-            {t("answerSend")}
+          <button type="button" data-gesture-skip="" className={styles.send} {...iconName(touch, t("answerSend"), undefined)} disabled={!canSend} onClick={() => void send()}>
+            <ControlFace touch={touch} label={t("answerSend")} icon={<ActionIcon name="send" />} />
           </button>
         </div>
       </div>

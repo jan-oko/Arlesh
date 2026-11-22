@@ -33,6 +33,8 @@
   "reviewLinks": "Links",
   "reviewHandTests": "Try by hand",
   "reviewNoteLabel": "Your note",
+  "answerHintTouch": "Answer the agent",
+  "reviewNoteHintTouch": "A note for the agent (optional)",
   "reviewNoteHint": "A note for the agent (optional) — Ctrl+Enter stages your verdict, and again sends",
   "reviewVerdict": "Your verdict",
   "reviewApprove": "Approve",
