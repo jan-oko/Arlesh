@@ -109,7 +109,8 @@ pub struct Served {
 /// beneath it — so its reading and its sub-items can be had without deriving the whole board.
 ///
 /// That holds for a stored Task that is not Compound, not Asynchronous (a wait template draws
-/// check Tasks beneath it) and has no row hanging directly beneath it. The board changes a Task's
+/// check Tasks beneath it) and has nothing hanging directly beneath it: no Task, Goal, Commitment or
+/// Expectation row, and no Flow aimed at it (a Habit's occurrences hang there with no row). The board changes a Task's
 /// status in two places only: [`settle`] derives it from what lies beneath, and the Review
 /// derivation raises an On Agent Task from an open question beneath it. Both read only the Task's
 /// sub-items, and a Task with none keeps the status it stores; its [`SubItems`] are then the
@@ -182,6 +183,15 @@ pub async fn require_closed(
     if stored_leaf(db, id).await?.is_some() {
         return Ok(());
     }
+    require_closed_from_board(db, id, now).await
+}
+
+/// [`require_closed`] read off the derived board, whatever the Task is.
+async fn require_closed_from_board(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<(), AppError> {
     let load = crate::mindmap::load(db, now).await?;
     let Some(task) = load.tasks.iter().find(|task| task.id == *id) else {
         return Ok(());

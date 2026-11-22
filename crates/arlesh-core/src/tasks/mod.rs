@@ -1114,7 +1114,8 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Whether anything hangs directly beneath the Task `id`: a Task, Goal, Commitment or
-    /// Expectation row naming it as its parent, archived or not.
+    /// Expectation row naming it as its parent, archived or not, or a Flow aimed at it — a Habit
+    /// that targets a Task hangs each iteration's root under it with no row of its own.
     ///
     /// What [`crate::tasks::compound`] asks before it reads a Task from its own row alone.
     pub async fn has_children(&mut self, id: TaskId) -> Result<bool, TaskError> {
@@ -1122,7 +1123,10 @@ impl<'session> TaskOperator<'session> {
             "SELECT EXISTS(SELECT 1 FROM tasks WHERE parent_type = 'task' AND parent_id = ?1)
                  OR EXISTS(SELECT 1 FROM goals WHERE parent_type = 'task' AND parent_id = ?1)
                  OR EXISTS(SELECT 1 FROM commitments WHERE parent_type = 'task' AND parent_id = ?1)
-                 OR EXISTS(SELECT 1 FROM expectations WHERE parent_type = 'task' AND parent_id = ?1)",
+                 OR EXISTS(SELECT 1 FROM expectations WHERE parent_type = 'task' AND parent_id = ?1)
+                 OR EXISTS(SELECT 1 FROM flows
+                           WHERE (target_type = 'task' AND target_id = ?1)
+                              OR (parent_type = 'task' AND parent_id = ?1))",
         )
         .bind(id.0)
         .fetch_one(&mut *self.connection)
