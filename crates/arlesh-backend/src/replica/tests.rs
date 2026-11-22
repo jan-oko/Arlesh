@@ -42,9 +42,7 @@ fn kinds() -> Vec<(String, String)> {
     PORTS
         .lines()
         .filter_map(|line| {
-            let mut words = line.trim().splitn(2, ' ');
-            let kind = words.next()?;
-            let rest = words.next()?;
+            let (kind, rest) = line.trim().split_once(' ')?;
             if ![
                 "read",
                 "option_read",
@@ -436,7 +434,7 @@ async fn a_schema_mismatch_is_read_only_and_names_the_side() {
                 .lock()
                 .expect("lock")
                 .iter()
-                .all(|hold| hold != &None),
+                .all(|hold| hold.is_some()),
             "a board of another schema was never let through"
         );
     }
