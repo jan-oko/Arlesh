@@ -18,7 +18,6 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/wasm/rules", () => ({}));
 vi.mock("@/api/agents", () => ({
   fetchAgents: vi.fn(),
   issueAgentPin: vi.fn(),

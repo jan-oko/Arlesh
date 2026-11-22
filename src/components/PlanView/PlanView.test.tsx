@@ -2,8 +2,6 @@ import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
-import { settleLane } from "@/test/lane-helpers";
 import PlanView from "./PlanView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -12,6 +10,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeKey } from "@/api/scopes";
+import type { PlanRowInput } from "@/api/rules";
 import { scopeKeyText } from "@/utils/scope-key";
 import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
@@ -128,6 +127,48 @@ vi.mock("@/api/scopes", async (importOriginal) => ({
   getScope: (id: ScopeKey) => getScope(id),
 }));
 
+// The Plan View's triage and refusals are Rust's (`plan_triage`, `plan_refusals`; pinned by
+// `conformance/plan-triage.json` in `src-tauri/src/commands/rules/tests.rs`). This stands in for
+// them over the windows above, in the little this view's tests exercise: where a Plan sits against
+// the scope, and whether a move escapes the Task's own window.
+const windowOf = (key: ScopeKey) => WINDOWS[scopeKeyText(key)];
+function planWindow(plan: { start_id: ScopeKey; end_id: ScopeKey }) {
+  return { start: windowOf(plan.start_id)?.start ?? "", end: windowOf(plan.end_id)?.end ?? "" };
+}
+const inside = (inner: { start: string; end: string }, outer: { start: string; end: string }) =>
+  inner.start >= outer.start && inner.end <= outer.end;
+const overlaps = (a: { start: string; end: string }, b: { start: string; end: string }) =>
+  a.start < b.end && b.start < a.end;
+vi.mock("@/api/rules", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/rules")>()),
+  fetchPlanTriage: (target: ScopeKey, parent: ScopeKey | null, rows: PlanRowInput[]) => {
+    const targetWindow = windowOf(target);
+    const answer = { unplanned: [] as string[], planned: [] as string[], parentPlanned: [] as string[], refusals: {} };
+    for (const row of rows.filter((r) => !r.virtual)) {
+      const plan = row.plan ?? row.inheritedPlan;
+      if (plan !== null) {
+        if (parent !== null && scopeKeyText(plan.start_id) === scopeKeyText(plan.end_id) && scopeKeyText(plan.start_id) === scopeKeyText(parent)) answer.parentPlanned.push(row.id);
+        else if (targetWindow !== undefined && inside(planWindow(plan), targetWindow)) answer.planned.push(row.id);
+        continue;
+      }
+      if (row.emptyPlan) continue;
+      const scope = row.timeScope ?? [...row.ancestors].reverse().find((a) => a.timeScope !== null)?.timeScope ?? null;
+      if (scope === null || (targetWindow !== undefined && overlaps(planWindow(scope), targetWindow))) answer.unplanned.push(row.id);
+    }
+    return Promise.resolve(answer);
+  },
+  fetchPlanRefusals: (target: ScopeKey, rows: PlanRowInput[]) => {
+    const targetWindow = windowOf(target);
+    const refusals: Record<string, "own_time_scope" | "parent_plan"> = {};
+    for (const row of rows) {
+      if (targetWindow === undefined) continue;
+      if (row.timeScope !== null && !row.overdue && !inside(targetWindow, planWindow(row.timeScope))) refusals[row.id] = "own_time_scope";
+      else if (row.inheritedPlan !== null && !inside(targetWindow, planWindow(row.inheritedPlan))) refusals[row.id] = "parent_plan";
+    }
+    return Promise.resolve(refusals);
+  },
+}));
+
 const updateTask = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());
 // A gesture operation's writes reach the same spy, one `update_task` each, so the expectations
 // below read as the writes the plan makes.
@@ -199,7 +240,6 @@ function mockRows(rows: TaskListRow[]): void {
 /** Lets the promise chain behind a write — open the Gesture, write, settle the board — settle. */
 async function settle(): Promise<void> {
   for (let turn = 0; turn < 4; turn++) await act(async () => { await Promise.resolve(); });
-  await settleLane();
 }
 
 /** Renders and lets the scope materialize and resolve before anything is asserted. */
@@ -228,7 +268,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   clearScopeWindowCache();
   clearScopeRowCache();
-  usePendingWritesStore.getState().reset();
   // The kebab switches are set explicitly rather than left at their defaults: a pass opens on
   // *what still needs placing*, which is a different left-hand pane from the one most of these
   // tests are about. The ones that are about it set the switches back.
@@ -280,8 +319,6 @@ describe("moving a task across", () => {
     });
     await settle();
     expect(updateTask).toHaveBeenCalledWith(storedRowId(1), { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
-    // The board reloads on the lane's answer (ADR 0012, decision 15), not from this view.
-    expect(usePendingWritesStore.getState().writes[0]?.answer).not.toBeNull();
   });
 
   it("plans it to the parent scope on the way back", async () => {

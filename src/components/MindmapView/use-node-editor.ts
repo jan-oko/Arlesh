@@ -36,46 +36,14 @@ import { isBegun, storedStatus } from "@/utils/status-mapping";
 import { useAnswerActions } from "@/hooks/use-answer-drafts";
 import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
-import { awaitLane } from "@/stores/use-pending-writes-store";
-import { usePendingWrite } from "@/hooks/use-pending-write";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
-import { writtenWith } from "@/utils/answer-fields";
-import type { OwnFields } from "@/utils/pending-writes";
-import {
-  commitmentSaveFields, expectationSaveFields, goalSaveFields, infoSaveFields, projectSaveFields,
-  simpleSaveFields, taskSaveFields,
-} from "@/utils/editor-save-fields";
-import type { SimpleSaveData } from "@/components/TitleEditorModal/TitleEditorModal";
-
-/** An editor Save the server refused (ADR 0012, decision 14): what the user had typed, and why it was refused. */
-export type ReopenedSave =
-  | { kind: "task"; draft: TaskSaveData; error: string }
-  | { kind: "goal"; draft: GoalSaveData; error: string }
-  | { kind: "commitment"; draft: CommitmentSaveData; error: string }
-  | { kind: "expectation"; draft: ExpectationSaveData; error: string }
-  | { kind: "simple"; draft: SimpleSaveData; error: string }
-  | { kind: "project"; draft: ProjectSaveData; error: string }
-  | { kind: "info"; draft: InfoSaveData; error: string };
 
 export interface EditorModalState {
   nodeId: string;
   node: MindmapNode;
   /** Opens a Task's editor at its Expectation section, Asynchronous switched on — `Shift+W`. */
   focus?: "asyncTemplate";
-  /** Set when the editor was closed by a Save and opened again because the server refused it. */
-  reopened?: ReopenedSave;
-}
-
-/** One editor Save, as it goes to the window's lane. */
-interface LaneSave {
-  /** What the user would call it. */
-  label: string;
-  /** What the node shows meanwhile: the form's own values. */
-  fields: OwnFields;
-  /** The editor's state if the server refuses the Save. */
-  reopen: (error: string) => ReopenedSave;
-  /** Writes it. Runs when the Save's turn comes, not when the editor closes. */
-  write: () => Promise<void>;
 }
 
 /** The writes that clamp every conflicting descendant's Time Scope to `window`, ahead of the
@@ -142,35 +110,19 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<string, string>>(new Map());
   const askScopeClamp = useScopeClampStore((s) => s.ask);
-  const enqueue = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
 
-  // A Save closes its editor at once and goes through the window's lane (ADR 0012, decision 14):
-  // the node shows the form's values, and a refusal rolls them back, says so once, and opens the
-  // editor again on what was typed with the reason on its error line. On a read-only board nothing
-  // is enqueued and the editor stays open with the notice, as a refused write used to leave it.
-  const saveThroughLane = useCallback(
-    (editor: EditorModalState, save: LaneSave): void => {
-      enqueue({
-        nodeId: editor.nodeId,
-        label: save.label,
-        patch: { kind: "fields", fields: save.fields },
-        refuseReadOnly: () => { throw new Error(readOnlyNotice()); },
-        refusalToast: (message) => t("saveFailed", { message }),
-        onRolledBack: (error) => setEditorModal((open) => open !== null ? open : {
-          nodeId: editor.nodeId,
-          node: editor.node,
-          ...(editor.focus !== undefined ? { focus: editor.focus } : {}),
-          reopened: save.reopen(error),
-        }),
-        send: async () => {
-          await save.write();
-          return writtenWith(save.fields);
-        },
-      });
+  // A Save is one awaited write, closing its editor once the backend has answered. A refusal
+  // propagates to the editor, which shows it on its error line and stays open; on a read-only board
+  // nothing is sent and the editor shows the notice. A write the server refuses later is taken back
+  // by the Replica and said once in a toast (`use-replica-toasts.ts`).
+  const saveEditor = useCallback(
+    async ({ write }: { write: () => Promise<void> }): Promise<void> => {
+      if (currentReadOnlyReason() !== null) throw new Error(readOnlyNotice());
+      await write();
       setEditorModal(null);
     },
-    [enqueue, readOnlyNotice, t],
+    [readOnlyNotice],
   );
 
   // One load gives both the tags and the parent-domain titles used to section the tag picker.
@@ -227,10 +179,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = rowIdOf(node);
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: taskSaveFields(node, data),
-        reopen: (error) => ({ kind: "task", draft: data, error }),
+      await saveEditor({
         // The whole Save is one all-or-nothing gesture: the clamps, the update and everything that
         // hangs on the Task, in one request — one transaction and one undo step.
         write: () => withAtomicGesture(tUndo("gestures.editTask"), async () => {
@@ -287,7 +236,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         }),
       });
     },
-    [editorModal, saveThroughLane, tUndo, showToast, t],
+    [editorModal, saveEditor, tUndo, showToast, t],
   );
 
   const answers = useAnswerActions({ settle, showToast });
@@ -297,10 +246,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = rowIdOf(node);
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: goalSaveFields(node, data),
-        reopen: (error) => ({ kind: "goal", draft: data, error }),
+      await saveEditor({
         // One all-or-nothing gesture: the clamps, the update, the block reasons and the tags.
         write: () => withAtomicGesture(tUndo("gestures.editGoal"), async () => {
           const steps: GestureStep[] = [];
@@ -326,7 +272,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         }),
       });
     },
-    [editorModal, saveThroughLane, tUndo],
+    [editorModal, saveEditor, tUndo],
   );
 
   const onExpectationSave = useCallback(
@@ -336,10 +282,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       // A stored wait's id, or a derived one's UUID (a spawned or delegation wait): the backend
       // writes a derived wait's fields into its overlay and its tags as differences, that wait only.
       const dbId = rowIdOf(node);
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: expectationSaveFields(node, data),
-        reopen: (error) => ({ kind: "expectation", draft: data, error }),
+      await saveEditor({
         write: async () => {
           // One gesture operation: the update and the tags.
           const request = {
@@ -358,7 +301,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         },
       });
     },
-    [editorModal, saveThroughLane],
+    [editorModal, saveEditor],
   );
 
   const onCommitmentSave = useCallback(
@@ -366,10 +309,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = rowIdOf(node);
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: commitmentSaveFields(node, data),
-        reopen: (error) => ({ kind: "commitment", draft: data, error }),
+      await saveEditor({
         // Any refusal — most likely clearing the last window above the commitment — is the server's
         // answer: the editor opens again and shows it, rather than closing on a save that did not happen.
         write: () => withAtomicGesture(tUndo("gestures.editCommitment"), async () => {
@@ -391,14 +331,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         }),
       });
     },
-    [editorModal, saveThroughLane, tUndo],
+    [editorModal, saveEditor, tUndo],
   );
 
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
-      // Write-then-reload (ADR 0012, decision 16), behind whatever the window still has pending.
-      await awaitLane();
       const dbId = storedId(rowIdOf(editorModal.node));
       const flowFields = {
         title: data.title,
@@ -453,8 +391,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       const { node } = editorModal;
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
-      // Write-then-reload (ADR 0012, decision 16), behind whatever the window still has pending.
-      await awaitLane();
       const dbId = storedId(rowIdOf(node));
       // One gesture for the whole save. The pairs go first: they are what may refuse — a change
       // that would orphan what occurrences recorded asks the Habit editor's question — and an
@@ -496,11 +432,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = storedId(rowIdOf(node));
-      const draft: SimpleSaveData = { title, isPrivate, archived };
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: simpleSaveFields(node, title),
-        reopen: (error) => ({ kind: "simple", draft, error }),
+      await saveEditor({
         // Domain/tag editors: title, privacy and — a Domain's, when its switch moved — the archive
         // together, in one write.
         write: async () => {
@@ -513,7 +445,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         },
       });
     },
-    [editorModal, saveThroughLane],
+    [editorModal, saveEditor],
   );
 
   const onProjectSave = useCallback(
@@ -521,10 +453,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = storedId(rowIdOf(node));
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: projectSaveFields(node, data),
-        reopen: (error) => ({ kind: "project", draft: data, error }),
+      await saveEditor({
         write: () => withAtomicGesture(tUndo("gestures.editProject"), async () => {
           await runGesture("save-project", [{
             op: "update_domain", id: dbId,
@@ -538,23 +467,20 @@ export function useNodeEditor({ tree, allTasksAndGoals, settle }: Options): Node
         }),
       });
     },
-    [editorModal, saveThroughLane, tUndo],
+    [editorModal, saveEditor, tUndo],
   );
 
   const onInfoSave = useCallback(
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
       const dbId = storedId(rowIdOf(editorModal.node));
-      saveThroughLane(editorModal, {
-        label: "save",
-        fields: infoSaveFields(data),
-        reopen: (error) => ({ kind: "info", draft: data, error }),
+      await saveEditor({
         write: async () => {
           await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
         },
       });
     },
-    [editorModal, saveThroughLane],
+    [editorModal, saveEditor],
   );
 
   return {

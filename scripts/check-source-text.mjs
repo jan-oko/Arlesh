@@ -23,16 +23,13 @@ import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["src", "src-tauri/src", "crates/arlesh-core/src", "crates/arlesh-rules/src", "crates/arlesh-rules-wasm/src", "scripts"];
-/** Generated build output, gitignored and binary by nature (the wasm module `scripts/build-rules-wasm.sh` makes). */
-const GENERATED = "src/wasm/pkg";
+const ROOTS = ["src", "src-tauri/src", "crates/arlesh-core/src", "crates/arlesh-rules/src", "scripts"];
 
 /** Every file under `dir`, recursively, as absolute paths. */
 function filesUnder(dir) {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
-    if (relative(ROOT, path) === GENERATED) continue;
     if (entry.isDirectory()) found.push(...filesUnder(path));
     else if (entry.isFile()) found.push(path);
   }
@@ -44,14 +41,34 @@ function withNulByte(paths) {
   return paths.filter((path) => readFileSync(path).includes(0)).map((path) => relative(ROOT, path));
 }
 
+/**
+ * Paths, relative to the repo root, of the `src` files that import `@/wasm`. The frontend keeps no
+ * copy of the Rust rules, wasm or otherwise: the Client's Replica predicts in Rust, and rule results
+ * come from Rust commands.
+ */
+function importingWasm(paths) {
+  const wasmImport = /(?:from|import)\s*\(?\s*["']@\/wasm(?:\/|["'])/;
+  return paths
+    .filter((path) => relative(ROOT, path).startsWith("src/") && /\.(?:ts|tsx)$/.test(path))
+    .filter((path) => wasmImport.test(readFileSync(path, "utf8")))
+    .map((path) => relative(ROOT, path));
+}
+
 function main() {
   const roots = ROOTS.map((dir) => join(ROOT, dir)).filter((dir) => statSync(dir, { throwIfNoEntry: false })?.isDirectory());
-  const offenders = withNulByte(roots.flatMap(filesUnder));
-  if (offenders.length === 0) return;
-  console.error("Raw NUL (0x00) byte in source — git will treat these files as binary:");
-  for (const path of offenders) console.error(`  ${path}`);
-  console.error('Write the NUL as an escape ("\\u0000") instead of embedding the byte.');
-  process.exit(1);
+  const files = roots.flatMap(filesUnder);
+  const offenders = withNulByte(files);
+  const wasm = importingWasm(files);
+  if (wasm.length > 0) {
+    console.error("The frontend must not import '@/wasm' — the rules run in Rust, not in the webview:");
+    for (const path of wasm) console.error(`  ${path}`);
+  }
+  if (offenders.length > 0) {
+    console.error("Raw NUL (0x00) byte in source — git will treat these files as binary:");
+    for (const path of offenders) console.error(`  ${path}`);
+    console.error('Write the NUL as an escape ("\\u0000") instead of embedding the byte.');
+  }
+  if (offenders.length > 0 || wasm.length > 0) process.exit(1);
 }
 
 main();

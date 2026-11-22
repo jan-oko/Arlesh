@@ -8,7 +8,6 @@ import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
 import { SETTLE_TIMEOUT_MS } from "@/stores/use-board-store";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { HEAD_CHECK_MS, IDLE_HEAD_CHECK_MS } from "@/stores/watch-board-changes";
 import { currentBoard } from "@/test/current-board";
 import { indexBoard } from "@/utils/board-changes";
@@ -149,7 +148,6 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   listeners.clear();
-  usePendingWritesStore.getState().reset();
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });

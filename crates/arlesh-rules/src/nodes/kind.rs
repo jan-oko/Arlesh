@@ -42,6 +42,25 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// Every kind, in declaration order.
+    pub const ALL: [NodeKind; 15] = [
+        Self::Aspect,
+        Self::Project,
+        Self::Domain,
+        Self::Tag,
+        Self::Goal,
+        Self::Task,
+        Self::Commitment,
+        Self::Expectation,
+        Self::Info,
+        Self::Flow,
+        Self::FlowGoal,
+        Self::FlowTask,
+        Self::FlowCommitment,
+        Self::FlowExpectation,
+        Self::HabitGroup,
+    ];
+
     /// Whether this is a structural container: one with no status of its own to be judged on, so
     /// in a filtered preset it shows only as the ancestor of a content match.
     pub fn is_structural(self) -> bool {

@@ -103,5 +103,14 @@ pub fn may_parent(child: NodeKind, parent: NodeKind) -> bool {
     }
 }
 
+/// The kinds a node of kind `child` may hang directly under: one column of the whole table, so a
+/// reader that asks the same question many times can hold the answer as data.
+pub fn parents_of(child: NodeKind) -> Vec<NodeKind> {
+    NodeKind::ALL
+        .into_iter()
+        .filter(|parent| may_parent(child, *parent))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests;

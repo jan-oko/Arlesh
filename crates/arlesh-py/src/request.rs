@@ -8,7 +8,8 @@
 //! where a non-desktop client stamps its name over the journal's context, and a pooled write has
 //! no transaction to hide the stamp in.
 
-use arlesh_core::nodes::id::RowId;
+use arlesh_core::nodes::id::{parse_row_id, RowId};
+use arlesh_core::nodes::new_id::with_seed;
 use std::path::Path;
 
 use arlesh_core::{
@@ -892,12 +893,39 @@ pub(crate) async fn run(
     stacks: &UndoStacks,
     request: &str,
 ) -> Result<String, Raised> {
-    let request: Request = serde_json::from_str(request).map_err(|error| {
+    let (request, seed) = parse_envelope(request)?;
+    match seed {
+        Some(seed) => with_seed(seed, run_request(factory, path, stacks, request)).await,
+        None => run_request(factory, path, stacks, request).await,
+    }
+}
+
+/// Splits the call envelope into the request and the seed it may carry (`seed`, the
+/// `X-Arlesh-Request-Id` the client sent). A seed that is not a UUID is ignored: it only decides
+/// which ids a write mints, and an unseeded write is always correct.
+fn parse_envelope(envelope: &str) -> Result<(Request, Option<RowId>), Failure> {
+    let unreadable = |error: serde_json::Error| {
         Failure::new(
             WireErrorKind::InvalidRequest,
             format!("unreadable request: {error}"),
         )
-    })?;
+    };
+    let mut value: serde_json::Value = serde_json::from_str(envelope).map_err(unreadable)?;
+    let seed = value
+        .as_object_mut()
+        .and_then(|fields| fields.remove("seed"))
+        .and_then(|seed| seed.as_str().and_then(|text| parse_row_id(text).ok()));
+    let request = serde_json::from_value(value).map_err(unreadable)?;
+    Ok((request, seed))
+}
+
+/// Runs the parsed `request`; [`run`] wraps it in the call's seed.
+async fn run_request(
+    factory: &SessionFactory,
+    path: &Path,
+    stacks: &UndoStacks,
+    request: Request,
+) -> Result<String, Raised> {
     if request.writes() && factory.is_read_only() {
         return Err(Failure::new(
             WireErrorKind::InvalidRequest,

@@ -17,19 +17,19 @@ use crate::revision::BoardChange;
 
 /// One request the server heard: its request line and its headers, lower-cased by name.
 #[derive(Clone)]
-struct Heard {
-    line: String,
-    headers: HashMap<String, String>,
+pub(crate) struct Heard {
+    pub(crate) line: String,
+    pub(crate) headers: HashMap<String, String>,
 }
 
-struct Reply {
-    status: u16,
-    headers: Vec<(&'static str, String)>,
-    body: String,
+pub(crate) struct Reply {
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(&'static str, String)>,
+    pub(crate) body: String,
 }
 
 impl Reply {
-    fn ok(body: &str) -> Self {
+    pub(crate) fn ok(body: &str) -> Self {
         Self {
             status: 200,
             headers: Vec::new(),
@@ -37,19 +37,19 @@ impl Reply {
         }
     }
 
-    fn with(mut self, name: &'static str, value: &str) -> Self {
+    pub(crate) fn with(mut self, name: &'static str, value: &str) -> Self {
         self.headers.push((name, value.to_owned()));
         self
     }
 }
 
-struct Server {
-    url: String,
-    heard: Arc<Mutex<Vec<Heard>>>,
+pub(crate) struct Server {
+    pub(crate) url: String,
+    pub(crate) heard: Arc<Mutex<Vec<Heard>>>,
 }
 
 impl Server {
-    fn paths(&self) -> Vec<String> {
+    pub(crate) fn paths(&self) -> Vec<String> {
         self.heard
             .lock()
             .unwrap()
@@ -60,7 +60,7 @@ impl Server {
 }
 
 /// Serves `reply` for every request, one connection each, closing it after the answer.
-async fn serve(reply: impl Fn(&Heard) -> Reply + Send + Sync + 'static) -> Server {
+pub(crate) async fn serve(reply: impl Fn(&Heard) -> Reply + Send + Sync + 'static) -> Server {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let url = format!("http://{}", listener.local_addr().expect("an address"));
     let heard = Arc::new(Mutex::new(Vec::new()));
@@ -108,14 +108,14 @@ async fn serve(reply: impl Fn(&Heard) -> Reply + Send + Sync + 'static) -> Serve
     Server { url, heard }
 }
 
-fn backend(server: &Server) -> Arc<HttpBackend> {
+pub(crate) fn backend(server: &Server) -> Arc<HttpBackend> {
     Arc::new(
         HttpBackend::new(Connection::new(&server.url, "token"), Arc::new(|_| {}))
             .expect("a backend"),
     )
 }
 
-const HEALTH: &str = r#"{"api_version":1,"version":"0","commit":"x"}"#;
+pub(crate) const HEALTH: &str = r#"{"api_version":1,"version":"0","commit":"x"}"#;
 const CHANGE: &str = r#"{"epoch":"run1","seq":3,"revision":2,"now":"2026-11-13T12:00:00","hash":77,"changes":{"tasks":{"set":[["task-1",{"id":1,"title":"A"}]],"del":[]}}}"#;
 
 fn stream_reply(heard: &Heard) -> Reply {
@@ -128,7 +128,7 @@ fn stream_reply(heard: &Heard) -> Reply {
     .with("content-type", "text/event-stream")
 }
 
-async fn until<T>(mut ready: impl FnMut() -> Option<T>) -> T {
+pub(crate) async fn until<T>(mut ready: impl FnMut() -> Option<T>) -> T {
     for _ in 0..200 {
         if let Some(found) = ready() {
             return found;

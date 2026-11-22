@@ -6,11 +6,11 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 use super::{
-    super::model::{RowChange, Snapshot, SourceDelta},
+    super::model::{RowChange, Snapshot, SourceDelta, StoredRow},
     by_table,
 };
 
@@ -133,5 +133,121 @@ pub fn snapshot_body(
             count: snapshot.rows.len(),
         },
         tables,
+    })
+}
+
+/// One row of a snapshot as it is read back.
+#[derive(Deserialize)]
+struct SnapshotRowIn {
+    rowid: i64,
+    image: Box<RawValue>,
+}
+
+/// Where a snapshot's rows stand, as it is read back.
+#[derive(Deserialize)]
+struct SnapshotSourceIn {
+    upto: i64,
+    hash: String,
+}
+
+/// The device snapshot's body, as it is read back.
+#[derive(Deserialize)]
+struct SnapshotBodyIn {
+    epoch: String,
+    revision: u64,
+    schema_version: i64,
+    source: SnapshotSourceIn,
+    tables: BTreeMap<String, Vec<SnapshotRowIn>>,
+}
+
+/// A device snapshot read back: the run and revision it was taken at, and the rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSnapshot {
+    /// The server run the snapshot belongs to.
+    pub epoch: String,
+    /// The revision the snapshot is at least at.
+    pub revision: u64,
+    /// The rows, their position and hash, and the schema version.
+    pub snapshot: Snapshot,
+}
+
+/// Reads the body [`snapshot_body`] wrote. Images keep the exact text they travelled as.
+pub fn parse_snapshot(body: &str) -> Result<ParsedSnapshot, serde_json::Error> {
+    let body: SnapshotBodyIn = serde_json::from_str(body)?;
+    let rows = body
+        .tables
+        .into_iter()
+        .flat_map(|(table, rows)| {
+            rows.into_iter().map(move |row| StoredRow {
+                table: table.clone(),
+                rowid: row.rowid,
+                image: row.image.get().to_owned(),
+            })
+        })
+        .collect();
+    Ok(ParsedSnapshot {
+        epoch: body.epoch,
+        revision: body.revision,
+        snapshot: Snapshot {
+            upto: body.source.upto,
+            hash: body.source.hash,
+            schema_version: body.schema_version,
+            rows,
+        },
+    })
+}
+
+/// One row of a live event's `source.rows`, as it is read back.
+#[derive(Deserialize)]
+struct EventRowIn {
+    table: String,
+    rowid: i64,
+    seq: i64,
+    op: String,
+    image: Option<Box<RawValue>>,
+}
+
+/// A live event's `source`, as it is read back.
+#[derive(Deserialize)]
+struct EventSourceIn {
+    base: i64,
+    upto: i64,
+    hash: String,
+    rows: Vec<EventRowIn>,
+}
+
+/// Reads an event's `source` (the text [`event_source`] wrote) as the delta the publisher made.
+/// A `set` row without an image is refused: it would apply as a row with no columns.
+pub fn parse_source(source: &str) -> Result<SourceDelta, serde_json::Error> {
+    use serde::de::Error;
+    let source: EventSourceIn = serde_json::from_str(source)?;
+    let rows = source
+        .rows
+        .into_iter()
+        .map(|row| {
+            let image = match (row.op.as_str(), row.image) {
+                ("set", Some(image)) => Some(image.get().to_owned()),
+                ("del", _) => None,
+                ("set", None) => return Err(serde_json::Error::custom("a set row has no image")),
+                (other, _) => {
+                    return Err(serde_json::Error::custom(format!(
+                        "unknown row operation {other}"
+                    )))
+                }
+            };
+            Ok(RowChange {
+                seq: row.seq,
+                table: row.table,
+                rowid: row.rowid,
+                image,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SourceDelta {
+        base: source.base,
+        upto: source.upto,
+        hash: source.hash,
+        rows,
+        resynced: false,
     })
 }

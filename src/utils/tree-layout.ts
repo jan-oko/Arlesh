@@ -5,8 +5,7 @@ import type { InstanceType, FirstCheck, FlowItemType, TemplateFields } from "@/a
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
-import type { SubItemsWire } from "@/wasm/rules";
+import type { NodeCapabilities, PlanConflict, StatusBlockFact, SubItemsWire } from "@/api/mindmap";
 import type { Review, ReviewVerdict } from "@/api/expectations";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
@@ -328,6 +327,9 @@ export interface MindmapNode {
   /** What the Task's sub-items say about it, when they say anything — the status they make it read
    * at least and how many are open. The editors grey out the statuses it cannot hold from it. */
   subItems?: SubItemsWire;
+  /** The statuses the Task's sub-items forbid the editors to offer, each with why — served with
+   * the board (`NodeFacts.status_blocks`). */
+  statusBlocks?: StatusBlockFact[];
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */
@@ -397,10 +399,6 @@ export interface MindmapNode {
   capabilities?: NodeCapabilities;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
-  /** Set by `applyPendingWrites` while a write on this node has not been answered: the board shows
-   * the node's patched value, and every view draws the cue (ADR 0012, decision 10). Never set by a
-   * load. */
-  pending?: true;
   position: number;
   tagIds: string[];
   children: MindmapNode[];

@@ -1,6 +1,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { onBoardChanged } from "@/api/board";
 import type { BoardChange } from "@/api/board";
+import { reportPressTiming } from "@/api/replica";
 
 /** How often a mounted, visible window looks at the producer's head. */
 export const HEAD_CHECK_MS = 60_000;
@@ -56,7 +57,10 @@ export function watchBoardChanges(watch: BoardWatch): () => void {
   };
 
   void onBoardChanged((change) => {
+    const received = performance.now();
     watch.applyChange(change);
+    // How long the window took to hold what the event brought: the press timing the backend cannot see.
+    if (change?.seq !== undefined) reportPressTiming(change.seq, performance.now() - received);
     afterEvent();
   }).then((stop) => {
     // The window can drop the board while the subscription is still being set up, in which case

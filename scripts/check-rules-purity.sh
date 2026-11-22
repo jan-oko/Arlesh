@@ -13,7 +13,7 @@
 # And the domain models the rules read, which hold to the same line (ADR 0010, decision 8: domain
 # and database models are separate, so a row type and its codec live in persistence):
 #   - every `model.rs`; `scopes/key.rs` and `nodes/{id,key,origin}.rs` now live in `arlesh-rules`.
-# The `arlesh-rules` crate (ADR 0015) holds the rules that compile to wasm for the frontend, and
+# The `arlesh-rules` crate (ADR 0015) holds the pure rules and models shared by the backend crates, and
 # every source file in it counts: it is pure by construction, and its manifest may not name a
 # database driver, a runtime, a host or a server crate either.
 # Unit-test files (`tests.rs`, `*_tests.rs`) are exempt: a test may build a database to check a

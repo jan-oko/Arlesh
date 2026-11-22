@@ -1,7 +1,5 @@
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, renderHook, act } from "@testing-library/react";
-import { settleLane } from "@/test/lane-helpers";
 import { useNodeEditor } from "./use-node-editor";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
@@ -39,7 +37,7 @@ const ipc = vi.fn((cmd: string, _args?: unknown): Promise<unknown> => {
 
 beforeEach(() => {
   ipc.mockClear();
-  usePendingWritesStore.getState().reset();
+ 
   window.__TAURI_INTERNALS__ = { invoke: ipc };
 });
 
@@ -107,7 +105,6 @@ describe("emptying a field in the editor", () => {
     await act(async () => {
       await result.current.onTaskSave(taskSave);
     });
-    await settleLane();
 
     const request = wireRequest("update_task");
     expect(Object.keys(request)).toContain("time_scope");
@@ -122,7 +119,6 @@ describe("emptying a field in the editor", () => {
     await act(async () => {
       await result.current.onCommitmentSave(commitmentSave);
     });
-    await settleLane();
 
     const request = wireRequest("update_commitment");
     expect(Object.keys(request)).toContain("time_scope");

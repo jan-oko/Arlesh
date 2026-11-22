@@ -5,9 +5,7 @@ import { useSearchStart } from "./use-search-start";
 import { updateTask } from "@/api/tasks";
 import type { Task } from "@/api/tasks";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { fixtureRowId } from "@/test/node-fixture";
-import { patchedFields } from "@/test/lane-helpers";
 import { agentic, ordinary } from "@/utils/status-mapping";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -37,15 +35,12 @@ function press(tree: MindmapNode, id: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(updateTask).mockReturnValue(new Promise<Task>(() => undefined));
-  usePendingWritesStore.getState().reset();
   useMindmapStore.setState({ pendingToast: null });
-  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
 });
 
 describe("useSearchStart", () => {
   it("sets an ordinary Task In Progress through the status write, and names it", () => {
     press(treeOf(node(`task-${storedRowId(5)}`, { title: "Write docs", taskStatus: ordinary("done") })), `task-${storedRowId(5)}`);
-    expect(patchedFields()).toEqual([{ status: "in_progress", taskStatus: ordinary("in_progress") }]);
     expect(updateTask).toHaveBeenCalledWith(storedRowId(5), { status: ordinary("in_progress") });
     expect(toast()).toEqual({ nodeId: `task-${storedRowId(5)}`, message: "startedInProgress|Write docs" });
   });
@@ -69,7 +64,6 @@ describe("useSearchStart", () => {
   ])("refuses %s with a toast and writes nothing", (_name, row, key) => {
     press(treeOf(row), `task-${storedRowId(5)}`);
     expect(updateTask).not.toHaveBeenCalled();
-    expect(patchedFields()).toEqual([]);
     expect(toast()?.message.startsWith(key)).toBe(true);
   });
 });

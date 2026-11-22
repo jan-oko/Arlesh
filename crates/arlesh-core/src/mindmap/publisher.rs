@@ -26,7 +26,6 @@ use crate::{
 };
 
 use super::{
-    current,
     model::MindmapLoad,
     rules::changes::{diff, BoardChanges, BoardDigests, Collection},
 };
@@ -189,7 +188,24 @@ pub struct BoardFence {
     pub revision: u64,
 }
 
+/// Where the time of one publication went: the press timing log's numbers (`arlesh::press`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TurnTimings {
+    /// Reading the tables the board derives from.
+    pub read: Duration,
+    /// Deriving the board from them.
+    pub derive: Duration,
+    /// Finding what changed against the publication before.
+    pub diff: Duration,
+    /// Writing the event's JSON.
+    pub serialize: Duration,
+    /// Handing the event to the sink.
+    pub emit: Duration,
+}
+
 struct State {
+    /// The newest publication's timings, by its `seq`.
+    timings: Option<(u64, TurnTimings)>,
     latest: Option<Arc<Publication>>,
     digests: BoardDigests,
     /// The replicated rows' hash and position, when this publisher publishes them.
@@ -272,6 +288,7 @@ impl BoardPublisher {
             owner: uuid::Uuid::now_v7().to_string(),
             stopped: std::sync::atomic::AtomicBool::new(false),
             state: Mutex::new(State {
+                timings: None,
                 latest: None,
                 digests: BoardDigests::default(),
                 source: None,
@@ -315,6 +332,14 @@ impl BoardPublisher {
                 tokio::task::yield_now().await;
             }
         }
+    }
+
+    /// Where the time of the publication `seq` went, while it is the newest.
+    pub fn timings_of(&self, seq: u64) -> Option<TurnTimings> {
+        lock(&self.inner.state)
+            .timings
+            .filter(|(held, _)| *held == seq)
+            .map(|(_, timings)| timings)
     }
 
     /// The latest publication's identity, if there is one yet.
@@ -405,11 +430,14 @@ fn reload_event(publication: &Publication) -> ChangeEvent {
     }
 }
 
-async fn derive(factory: &SessionFactory, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
+async fn derive(
+    factory: &SessionFactory,
+    now: NaiveDateTime,
+) -> Result<(MindmapLoad, super::DeriveSplit), AppError> {
     let mut db = factory.begin_read().await?;
-    let load = current(&mut db, now).await?;
+    let derived = super::current_timed(&mut db, now).await?;
     db.commit().await?;
-    Ok(load)
+    Ok(derived)
 }
 
 async fn run(
@@ -456,8 +484,8 @@ async fn turn(
     let revision = inner.feed.revision();
     let now = clock.now();
     tracing::debug!(revision, "deriving the board");
-    let load = match derive(factory, now).await {
-        Ok(load) => load,
+    let (load, split) = match derive(factory, now).await {
+        Ok(derived) => derived,
         Err(error) => {
             tracing::error!(error = %error, "the board could not be derived; keeping the last publication");
             return None;
@@ -478,6 +506,7 @@ async fn turn(
                 load,
                 revision,
                 now,
+                split,
             },
             delta.as_ref(),
             trigger,
@@ -498,6 +527,7 @@ struct Derived {
     load: MindmapLoad,
     revision: u64,
     now: NaiveDateTime,
+    split: super::DeriveSplit,
 }
 
 fn source_head(inner: &Inner) -> Option<SourceHead> {
@@ -543,14 +573,20 @@ fn publish(
         load,
         revision,
         now,
+        split,
     } = derived;
+    let diffed = std::time::Instant::now();
     let changes = diff(&previous.load, &load)?;
+    let diff_time = diffed.elapsed();
+    let serialized = std::time::Instant::now();
     let quiet_tick = matches!(trigger, Trigger::Tick) && revision == previous.revision;
     let no_rows = delta.is_none_or(|delta| delta.is_empty() && !delta.resynced);
     if quiet_tick && changes.is_empty() && no_rows {
         return Ok(());
     }
-    let mut digests = lock(&inner.state).digests.clone();
+    // The digests are changed in place, not copied: a failure below rebuilds them from the
+    // publication before, which still stands.
+    let mut digests = std::mem::take(&mut lock(&inner.state).digests);
     digests.apply(&changes);
     let publication = Arc::new(Publication {
         epoch: Arc::clone(&previous.epoch),
@@ -567,15 +603,25 @@ fn publish(
     // that are too large drop `source` from this event alone, which a Replica answers with a
     // snapshot.
     let too_large = changes.wire_len() > MAX_CHANGES_BYTES;
-    let data = event_json(&publication, (!too_large).then_some(&changes))?;
-    let source = match delta {
-        Some(delta)
-            if !too_large && !delta.resynced && wire::event_len(delta) <= MAX_CHANGES_BYTES =>
-        {
-            Some(Arc::<str>::from(wire::event_source(delta)?))
+    let written = event_json(&publication, (!too_large).then_some(&changes)).and_then(|data| {
+        let source = match delta {
+            Some(delta)
+                if !too_large && !delta.resynced && wire::event_len(delta) <= MAX_CHANGES_BYTES =>
+            {
+                Some(Arc::<str>::from(wire::event_source(delta)?))
+            }
+            _ => None,
+        };
+        Ok((data, source))
+    });
+    let (data, source) = match written {
+        Ok(written) => written,
+        Err(error) => {
+            lock(&inner.state).digests = BoardDigests::seed(&previous.load).unwrap_or_default();
+            return Err(error);
         }
-        _ => None,
     };
+    let serialize_time = serialized.elapsed();
     let event = ChangeEvent {
         seq: publication.seq,
         data: data.into(),
@@ -613,7 +659,26 @@ fn publish(
         bytes = event.data.len(),
         "published board changes"
     );
+    let emitted = std::time::Instant::now();
     sink(&event);
+    let timings = TurnTimings {
+        read: split.read,
+        derive: split.derive,
+        diff: diff_time,
+        serialize: serialize_time,
+        emit: emitted.elapsed(),
+    };
+    lock(&inner.state).timings = Some((publication.seq, timings));
+    tracing::info!(
+        target: "arlesh::press",
+        seq = publication.seq,
+        read_ms = timings.read.as_millis() as u64,
+        derive_ms = timings.derive.as_millis() as u64,
+        diff_ms = timings.diff.as_millis() as u64,
+        serialize_ms = timings.serialize.as_millis() as u64,
+        emit_ms = timings.emit.as_millis() as u64,
+        "publication timings"
+    );
     inner.seq.send_replace(publication.seq);
     Ok(())
 }

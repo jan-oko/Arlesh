@@ -6,14 +6,8 @@ import type { TaskStatus } from "@/api/tasks";
 import type { BacklogCleared, StatusRefusal, StatusStep } from "@/api/node-gestures";
 import { stepTaskStatus } from "@/api/node-gestures";
 import { GOAL_STATUS } from "@/utils/status-mapping";
-import { goalAnswerFields, taskAnswerFields, writtenWith } from "@/utils/answer-fields";
-import { statusAfter } from "@/utils/task-gestures";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { rowIdOf, NotRowBackedError } from "@/utils/node-identity";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
-import { isTemporaryId } from "@/utils/pending-writes";
-import type { OwnFields } from "@/utils/pending-writes";
-import type { RowId } from "@/api/node-id";
+import { rowIdOf } from "@/utils/node-identity";
 import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
@@ -34,15 +28,6 @@ const BACKLOG_CLEARED_MESSAGE: Record<BacklogCleared, "backlogClearedByStart" | 
 };
 
 
-/** The row `node` draws at the moment its write is sent: a node still being created has the row its create was answered with. */
-function rowIdAtSend(node: MindmapNode): RowId {
-  if (node.rowId !== undefined) return node.rowId;
-  const { resolveId, rowIdFor } = usePendingWritesStore.getState();
-  const row = rowIdFor(resolveId(node.id));
-  if (row === undefined) throw new NotRowBackedError(node.id);
-  return row;
-}
-
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
   showToast: (toast: { nodeId: string; message: string }) => void;
@@ -55,8 +40,8 @@ interface StatusCycle {
    * Progress; on an Agentic one, hands a Doing Task back to its agent (On Agent), and anywhere
    * else says it cannot. Anything that is not a Task is left alone. */
   toggleStarted: (nodeId: string) => void;
-  /** Sets a Task to exactly `status`, as an edit would (`updateTask`): one write through the same
-   * lane, one Gesture to undo. For the callers that name the status rather than step to it. */
+  /** Sets a Task to exactly `status`, as an edit would (`updateTask`): one awaited write,
+   * one Gesture to undo. For the callers that name the status rather than step to it. */
   setTaskStatus: (nodeId: string, status: TaskStatus) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
@@ -73,19 +58,17 @@ interface StatusCycle {
  * exactly as a stored row, since it is one (ADR 0008). A **Commitment** is excluded: it is kept or broken, never advanced, and its verdict
  * has its own writer.
  *
- * A press is **shown at once** and sent through the window's lane (ADR 0012): the status it writes
- * is predicted by `utils/task-gestures.ts`, a pinned copy of `tasks::rules::gestures`, and the
- * status the board shows after the answer is the returned row's. A Compound Task's press, and
- * `Alt+Enter` on Agentic work that is not Doing, are refused here with their toast and write nothing;
- * so are a press to Done over open sub-items and one that would lower a Task below what its
- * sub-items make it read, which only the backend can tell (it reads them off the board) and answers
- * as a refusal, rolled back with the same toast.
+ * A press is one awaited call, and the backend decides what it writes (`tasks::rules::gestures`);
+ * the board that shows it follows through the ordinary event. A Compound Task's press, `Alt+Enter`
+ * on Agentic work that is not Doing, a press to Done over open sub-items and one that would lower a
+ * Task below what its sub-items make it read are refused by the backend, and said here with their
+ * toast; nothing is written.
  *
  * Two rules travel with the gesture rather than with the caller, which is the whole point of it
  * living here. Marking an occurrence done while it still holds unfinished added children goes
- * through the **completion guard**, which rolls the patch back, asks first and names them. And
- * starting a set-aside Task **takes it out of the Backlog** — read off the row the backend sent back
- * rather than predicted, and said out loud, because a flag that stops being true without a word is
+ * through the **completion guard**, which asks first and names them. And
+ * starting a set-aside Task **takes it out of the Backlog** — read off the row the backend sent back,
+ * and said out loud, because a flag that stops being true without a word is
  * a flag you stop trusting.
  *
  * It lives here because there are now three callers. The Mindmap's `useNodeActions` delegates to
@@ -106,36 +89,22 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
     [showToast, t, readOnlyNotice],
   );
 
-  // One status gesture on a Task. What it writes is predicted by the pinned copy of the backend's
-  // rule, and a refusal that rule makes is said here without a write; the backend still decides
-  // (`tasks::rules::gestures`) and says when it refused anyway, and when the write took a set-aside
-  // Task out of the Backlog. Both are said out loud; neither is predicted.
+  // One status gesture on a Task. The backend decides what it writes, says when it refused it
+  // (`tasks::rules::gestures`) and when the write took a set-aside Task out of the Backlog. Both are
+  // said out loud.
   const stepStatus = useCallback(
     (node: MindmapNode, step: StatusStep) => {
-      // A Task still being created has no status to predict from: its model (ordinary or agentic)
-      // is the server's to say. The press is queued behind the create, shows only the cue, and is
-      // sent with the row the create was answered with (ADR 0012, decision 8).
-      const unpredicted = node.taskStatus === undefined;
-      if (unpredicted && !isTemporaryId(node.id)) return;
-      const prediction = node.taskStatus === undefined ? null : statusAfter(step, node.taskStatus, node.compound === true);
-      if (prediction?.outcome === "refused") {
-        showToast({ nodeId: node.id, message: t(`warnings:${REFUSAL_MESSAGE[prediction.reason]}`) });
-        return;
-      }
-      const fields: OwnFields = prediction === null ? {} : { status: prediction.status.status, taskStatus: prediction.status };
-      submit(node, {
-        label: "status change",
-        patch: { kind: "fields", fields },
+      void submit(node, {
         refuseReadOnly: refuseReadOnly(node.id),
         send: async (confirmed) => {
-          const outcome = await stepTaskStatus(rowIdAtSend(node), step, ...acknowledged(confirmed));
+          const outcome = await stepTaskStatus(rowIdOf(node), step, ...acknowledged(confirmed));
           if (outcome.outcome === "refused") {
-            return { outcome: "refused", message: t(`warnings:${REFUSAL_MESSAGE[outcome.reason]}`) };
+            showToast({ nodeId: node.id, message: t(`warnings:${REFUSAL_MESSAGE[outcome.reason]}`) });
+            return;
           }
           if (outcome.backlog_cleared !== null) {
             showToast({ nodeId: node.id, message: t(`warnings:${BACKLOG_CLEARED_MESSAGE[outcome.backlog_cleared]}`) });
           }
-          return writtenWith(taskAnswerFields(outcome.task));
         },
       });
     },
@@ -153,12 +122,9 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
       if (node.kind === "goal") {
         const dbId = rowIdOf(node);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
-        submit(node, {
-          label: "status change",
-          patch: { kind: "fields", fields: { status: next } },
+        void submit(node, {
           refuseReadOnly: refuseReadOnly(nodeId),
-          send: async (confirmed) =>
-            writtenWith(goalAnswerFields(await updateGoal(dbId, { status: next }, ...acknowledged(confirmed)))),
+          send: async (confirmed) => { await updateGoal(dbId, { status: next }, ...acknowledged(confirmed)); },
         });
         return;
       }
@@ -184,17 +150,14 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
     (nodeId: string, status: TaskStatus) => {
       const node = findNode(nodeId);
       if (node?.kind !== "task") return;
-      submit(node, {
-        label: "status change",
-        patch: { kind: "fields", fields: { status: status.status, taskStatus: status } },
+      void submit(node, {
         refuseReadOnly: refuseReadOnly(nodeId),
         send: async (confirmed) => {
-          const written = await updateTask(rowIdAtSend(node), { status }, ...acknowledged(confirmed));
+          const written = await updateTask(rowIdOf(node), { status }, ...acknowledged(confirmed));
           // The writer takes a set-aside Task out of the Backlog; say so, as the status keys do.
           if (node.backlogged === true && written.archival === "live") {
             showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
           }
-          return writtenWith(taskAnswerFields(written));
         },
       });
     },

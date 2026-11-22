@@ -2,8 +2,8 @@
 //!
 //! Values in, values out: no session, no database driver, no runtime and no host. Every module
 //! here keeps the path it had in `arlesh-core`, which re-exports it, so a caller never learns
-//! which crate a rule lives in. The wasm build (`arlesh-rules-wasm`) hands these same rules to the
-//! frontend.
+//! which crate a rule lives in. The frontend gets rule results from Rust commands; nothing compiles
+//! this crate to wasm any more.
 #![deny(missing_docs)]
 #![deny(clippy::all)]
 

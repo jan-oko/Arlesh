@@ -746,7 +746,7 @@ pub enum Dependency {
 }
 
 /// Request body for creating a task.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateTaskRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -811,7 +811,7 @@ pub enum DescendantPlans {
 }
 
 /// Request body for updating a task.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateTaskRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -903,7 +903,7 @@ pub struct UpdateTaskRequest {
 }
 
 /// Request body for creating a goal.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateGoalRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -934,7 +934,7 @@ pub struct CreateGoalRequest {
 mod tests;
 
 /// Request body for updating a goal.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateGoalRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -1111,7 +1111,7 @@ impl CommitmentArchival {
 }
 
 /// Request body for creating a commitment.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateCommitmentRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -1142,7 +1142,7 @@ pub struct CreateCommitmentRequest {
 }
 
 /// Request body for updating a commitment.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateCommitmentRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -1307,7 +1307,7 @@ pub struct SpawnedWait {
 }
 
 /// Request body for changing a spawned wait: release it, take the release back, or archive it.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateSpawnedWaitRequest {
     /// New status (if provided).
     pub status: Option<ExpectationStatus>,
@@ -1555,7 +1555,7 @@ impl Review {
 }
 
 /// Request body for creating an expectation.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateExpectationRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -1597,7 +1597,7 @@ pub struct CreateExpectationRequest {
 }
 
 /// Request body for updating an expectation.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateExpectationRequest {
     /// New title (if provided).
     pub title: Option<String>,

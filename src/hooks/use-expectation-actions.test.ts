@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
-import { lane, patchedFields } from "@/test/lane-helpers";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -27,8 +25,6 @@ function setup(target: MindmapNode) {
 describe("useExpectationActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    usePendingWritesStore.getState().reset();
-    usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, seq: null, revision: null, at: 0 });
   });
 
   it("releases a pending wait", () => {
@@ -41,10 +37,11 @@ describe("useExpectationActions", () => {
     expect(updateExpectation).toHaveBeenLastCalledWith(storedRowId(3), { status: "pending" });
   });
 
-  it("shows the release at once and the returned row's status after the answer", async () => {
-    setup(node({ rowId: storedRowId(3), status: "pending" })).actions.toggleRelease("x");
-    expect(patchedFields()).toEqual([{ status: "released" }]);
-    await waitFor(() => expect(lane()[0]?.answer?.fields).toEqual({ status: "released" }));
+  it("says so when the backend refuses the release", async () => {
+    updateExpectation.mockRejectedValueOnce(new Error("no"));
+    const { actions, showToast } = setup(node({ rowId: storedRowId(3), status: "pending" }));
+    actions.toggleRelease("x");
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith({ nodeId: "x", message: "actionFailed" }));
   });
 
   it("refuses to release a delegated task's wait by hand, out loud", () => {
@@ -53,7 +50,6 @@ describe("useExpectationActions", () => {
     }));
     actions.toggleRelease("x");
     expect(updateExpectation).not.toHaveBeenCalled();
-    expect(lane()).toEqual([]);
     expect(showToast).toHaveBeenCalledWith({ nodeId: "x", message: "delegationWaitReleasedByTask" });
   });
 

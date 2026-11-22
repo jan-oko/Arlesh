@@ -12,6 +12,7 @@ import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import { runStandalone } from "@/api/client-mode";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { useClientModeSync } from "@/hooks/use-client-mode";
+import { useReplicaToasts } from "@/hooks/use-replica-toasts";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useHelpStore } from "@/stores/use-help-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
@@ -56,6 +57,8 @@ export default function App() {
   useCloseToTraySync();
   // Standalone or Client, and how the server is doing — for the top bar and the banner.
   useClientModeSync();
+  // Changes the Replica made and then had to take back: the server refused them, or was out of reach.
+  useReplicaToasts();
   // The phone's push token, kept registered with the server; a tapped notification opens its Task.
   usePushRegistration();
   useOpenNotifiedTask();

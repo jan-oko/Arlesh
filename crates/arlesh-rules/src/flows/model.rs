@@ -250,7 +250,7 @@ pub struct FlowExpectation {
 }
 
 /// Request body for creating a flow.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -314,7 +314,7 @@ pub struct CreateFlowRequest {
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateFlowRequest {
     /// New title.
     pub title: Option<String>,
@@ -420,7 +420,7 @@ pub struct UpdateFlowRequest {
 }
 
 /// Request body for creating a flow item (goal or task).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowItemRequest {
     /// The new row's id, chosen by the caller (a client that has already shown the row under it);
     /// the server mints one when it is absent. Must be a UUID that is not a derived node's.
@@ -503,7 +503,7 @@ impl FlowItemType {
 }
 
 /// Request body for updating a flow item (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateFlowItemRequest {
     /// New title.
     pub title: Option<String>,
@@ -592,7 +592,7 @@ pub struct FlowCycleInput {
 }
 
 /// Request body for starting a flow (materialising it under a target).
-#[derive(Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct StartFlowRequest {
     /// Title of the materialised root node.
     pub title: String,

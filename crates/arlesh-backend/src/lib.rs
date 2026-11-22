@@ -36,6 +36,8 @@ pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
 pub mod node_gestures;
+#[cfg(feature = "replica")]
+pub mod replica;
 pub mod revision;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;

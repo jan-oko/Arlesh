@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canParentNewTask, validParentKinds } from "@/utils/node-meta";
 import type { TaskAgentic } from "@/api/tasks";
-import { useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { getErrorMessage } from "@/api/errors";
 
 const LOG_PREFIX = "[arlesh]";
@@ -40,7 +39,7 @@ interface ListCreate {
  * a title it abandons an edit, and on one that has never had a title it abandons the **Task** — a
  * mistaken create costs nothing, which it could not promise if the create and the naming were
  * tracked apart. `editingTaskId` and the unnamed Task are kept in lockstep: there is at most one
- * row being named, and it is the new one exactly while a create is still unanswered.
+ * row being named, and it is the new one exactly until it is named or abandoned.
  *
  * Nothing here decides *where* a Task goes. The caller resolves the parent from the selected row
  * (its own parent for a sibling, itself for a child) or from a path header's last segment, and
@@ -53,20 +52,6 @@ export function useListCreate({
   const { t } = useTranslation(["warnings", "nodeKinds"]);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [unnamedTaskId, setUnnamedTaskId] = useState<string | null>(null);
-
-  // The row being named follows a created Task to its real id, and closes if its create is taken back.
-  useTemporaryIds({
-    onResolved: (temporaryId, realId) => {
-      const swap = (id: string | null): string | null => (id === temporaryId ? realId : id);
-      setEditingTaskId(swap);
-      setUnnamedTaskId(swap);
-    },
-    onRemoved: (removed) => {
-      const gone = (id: string | null): string | null => (removed.some((node) => node.id === id) ? null : id);
-      setEditingTaskId(gone);
-      setUnnamedTaskId(gone);
-    },
-  });
 
   const discard = useCallback(
     (id: string) => {

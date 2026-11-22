@@ -44,12 +44,18 @@ mod mindmap;
 mod node_gestures;
 pub mod pairing;
 pub mod push;
+mod replica;
 mod tasks;
 mod undo;
 
 /// The HTTP API version this app speaks: the integer `/health` answers. Pinned to the server's by
 /// `conformance/client-mode.json`.
 pub const API_VERSION: u32 = 2;
+
+/// The header a write carries when it runs under a seed (see `arlesh_core::nodes::new_id`): the
+/// server mints the ids of the rows it creates on its own from the seed, so they equal the ids the
+/// client predicted. A server that does not know the header ignores it.
+const REQUEST_ID_HEADER: &str = "X-Arlesh-Request-Id";
 
 /// How long a connection waits to be made before the attempt counts as a failure.
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -80,6 +86,8 @@ pub enum ReadOnlyReason {
     UpdateApp,
     /// The server speaks an older API than this app: update the server.
     UpdateServer,
+    /// The board shown is the one cached from the last run, and the server's has not arrived yet.
+    Syncing,
 }
 
 /// What the windows show about the server: the top bar's mode and reachability, and the banner.
@@ -138,6 +146,9 @@ struct Link {
     board: Option<BoardLoad>,
     /// The last published board taken in, which a window is shown while the server is away.
     current: Option<CurrentBoard>,
+    /// Why a Replica holds writes although the server answers: its schema differs from the app's,
+    /// or it has not taken the server's board in yet. Set by the Replica, never by a call.
+    hold: Option<ReadOnlyReason>,
 }
 
 /// The Backend port over `arlesh-server`.
@@ -180,6 +191,7 @@ impl HttpBackend {
                 server_api_version: None,
                 board: None,
                 current: None,
+                hold: None,
             }),
             fence: Mutex::new(None),
             head: Mutex::new(None),
@@ -286,6 +298,9 @@ impl HttpBackend {
             .bearer_auth(&self.connection.token)
             .timeout(REQUEST_TIMEOUT)
             .query(&call.query);
+        if let Some(seed) = arlesh_core::nodes::new_id::current_seed() {
+            request = request.header(REQUEST_ID_HEADER, seed.to_string());
+        }
         if let Some(body) = call.body {
             request = request.json(&body);
         }
@@ -413,7 +428,8 @@ fn status_of(connection: &Connection, link: &Link) -> ServerStatus {
     let read_only = if !link.reachable {
         Some(ReadOnlyReason::ServerUnreachable)
     } else {
-        link.server_api_version.and_then(compatibility)
+        link.hold
+            .or_else(|| link.server_api_version.and_then(compatibility))
     };
     ServerStatus {
         url: connection.url.clone(),
@@ -443,6 +459,9 @@ pub fn read_only_error(reason: ReadOnlyReason) -> WireError {
         ReadOnlyReason::UpdateApp => "the server is newer than this app: update the app to edit",
         ReadOnlyReason::UpdateServer => {
             "the server is older than this app: update the server to edit"
+        }
+        ReadOnlyReason::Syncing => {
+            "the server's board is still being fetched, so the board is read-only"
         }
     };
     WireError::new(
@@ -534,6 +553,6 @@ impl Call {
 }
 
 #[cfg(test)]
-mod board_tests;
+pub(crate) mod board_tests;
 #[cfg(test)]
 mod tests;

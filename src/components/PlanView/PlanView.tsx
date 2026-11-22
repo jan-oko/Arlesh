@@ -33,7 +33,8 @@ import type { FilterState } from "@/utils/filter-tree";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
-import { effectivePlan, partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { effectivePlan, referencedScopeIds } from "@/utils/plan-triage";
+import { usePlanPanes } from "@/hooks/use-plan-panes";
 import { scopeKeyText } from "@/utils/scope-key";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
@@ -44,7 +45,6 @@ import {
   EMPTY_PLAN_SELECTION, navigateSelection, pruneSelection, selectOnly, selectRange, selectedInOrder,
   toggleSelected,
 } from "@/utils/plan-selection";
-import type { PlanPanes } from "@/utils/plan-triage";
 import type { PlanPane as PlanPaneSide } from "@/utils/hotkeys/plan-bindings";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
@@ -64,7 +64,6 @@ const UP_TOAST_ANCHOR = "planView:up";
 /** The same, for a status preset key pressed where the preset cannot change. */
 const PRESET_TOAST_ANCHOR = "planView:preset";
 
-const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
 
 /**
  * The **Plan View**: one scope at a time, as a two-pane triage.
@@ -146,10 +145,7 @@ export default function PlanView() {
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
-  const panes = useMemo(
-    () => (targetScopeId === null ? NO_PANES : partitionForScope(visibleRows, targetScopeId, parents.parent?.key ?? null)),
-    [visibleRows, targetScopeId, parents.parent],
-  );
+  const panes = usePlanPanes(visibleRows, targetScopeId, parents.parent?.key ?? null);
 
   const { planInto, planIntoSubscope, takeOut } = usePlanMove({
     targetScopeId, targetWindow, targetLabel: scope.label, showToast,

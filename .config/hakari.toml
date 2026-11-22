@@ -23,7 +23,7 @@ platforms = [
     "aarch64-apple-darwin",
 ]
 
-# `arlesh-rules` stays out of it, on purpose: it must compile to wasm32 (`arlesh-rules-wasm`) and
+# `arlesh-rules` stays out of it, on purpose: it is pure by construction and
 # `scripts/check-rules-purity.sh` bars tokio and the rest from its manifest, and the hack crate
 # names them. Its own dependencies (serde_json, uuid, chrono) are still unified, because the
 # features are resolved over the whole graph of the build that includes it.

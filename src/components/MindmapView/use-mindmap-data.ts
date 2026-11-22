@@ -19,17 +19,12 @@ import { createInfo, updateInfo, duplicateInfo } from "@/api/infos";
 import { leftBehindOf } from "@/api/duplicate";
 import type { LeftBehindChild } from "@/api/duplicate";
 import { withGesture } from "@/api/gesture";
-import { awaitLane, usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useBoardStore } from "@/stores/use-board-store";
 import type { SharedBoard } from "@/stores/use-board-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { usePendingWrite } from "@/hooks/use-pending-write";
-import { useTemporaryIds } from "@/hooks/use-temporary-ids";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
 import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
-import { createdWrite, writtenWith } from "@/utils/answer-fields";
-import { shownTitle } from "@/utils/editor-save-fields";
-import { applyPendingWrites } from "@/utils/apply-pending-writes";
-import type { BoardStamp } from "@/utils/pending-writes";
+import { getErrorMessage } from "@/api/errors";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow,
@@ -193,8 +188,8 @@ interface MindmapData {
    */
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
-  /** Waits for a created node's real row to be on the board; `undefined` when its create was refused. */
-  settleCreated: (placeholder: MindmapNode) => Promise<MindmapNode | undefined>;
+  /** Waits for the board to hold a created node, and answers with it; `undefined` when it does not. */
+  settleCreated: (created: MindmapNode) => Promise<MindmapNode | undefined>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
@@ -417,6 +412,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.expired === true) node.expired = true;
   if (fact.derived_in_progress === true) node.derivedInProgress = true;
   if (fact.sub_items !== undefined) node.subItems = fact.sub_items;
+  if (fact.status_blocks !== undefined) node.statusBlocks = fact.status_blocks;
   if (fact.met === true) node.met = true;
   if (fact.mcp_visible_via !== undefined) node.mcpVisibleVia = fact.mcp_visible_via;
   if (fact.capabilities !== undefined) node.capabilities = fact.capabilities;
@@ -988,8 +984,6 @@ export interface TreeInputs {
   cooldownReason: (until: string) => string;
 }
 
-const NOTHING_STAMP: BoardStamp = { read: 0, epoch: null, seq: null, revision: null, at: 0 };
-
 const builtTrees = new WeakMap<SharedBoard, WeakMap<TreeInputs, MindmapNode>>();
 
 /**
@@ -1026,14 +1020,13 @@ export function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode
  *
  * The board itself is loaded once per window, by `useBoardStore`: any number of views mounted at
  * once share one fetch, one copy and one revision. What a view owns is only what it derives from
- * that copy: its tree (words in the active language, the pending writes drawn over it) and the
+ * that copy: its tree (words in the active language) and the
  * mutations, which write and then wait for the shared store to hold the board their write brought
  * about.
  */
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation", "editor", "habits", "warnings", "nodeKinds"]);
   const showToast = useMindmapStore((s) => s.showToast);
-  const enqueueWrite = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
   const board = useBoardStore((s) => s.board);
   const isLoading = useBoardStore((s) => s.isLoading);
@@ -1055,52 +1048,18 @@ export function useMindmapData(): MindmapData {
     compoundReason: t("editor:compoundBlocked"),
     cooldownReason: (until) => t("editor:cooldownBlocked", { when: formatCooldownUntil(until) }),
   }), [scopeLabels, checkPrefix, t]);
-  const pendingWrites = usePendingWritesStore((s) => s.writes);
-  const pendingAliases = usePendingWritesStore((s) => s.aliases);
-  // What the views get is the board's tree with the window's pending writes drawn over it
-  // (ADR 0012, decision 3).
-  const boardTree = useMemo(() => (board === null ? VIRTUAL_ROOT : treeOfBoard(board, inputs)), [board, inputs]);
-  const stamp = board?.stamp ?? NOTHING_STAMP;
-  const tree = useMemo(
-    () => applyPendingWrites(boardTree, stamp, pendingWrites, pendingAliases),
-    [boardTree, stamp, pendingWrites, pendingAliases],
-  );
+  const tree = useMemo(() => (board === null ? VIRTUAL_ROOT : treeOfBoard(board, inputs)), [board, inputs]);
   const loadCondition = useMemo(() => (board === null ? NO_CONDITIONS : collectLoadConditions(board.load)), [board]);
-  // The tree as of the latest load, read synchronously by the mutations to resolve a node id to
-  // its row. Read from the store rather than from the `tree` closure: a caller that creates a node
-  // and acts on it in the same gesture holds a callback from before the reload that drew it.
-  // It is the **patched** tree, so a second press predicts from the first, and is worked out on
-  // demand from the stores rather than set by an effect, which would lag a gesture's second call.
+  // The tree as of the latest board, read synchronously by the mutations to resolve a node id to its
+  // row. Read from the store rather than from the `tree` closure: a caller that creates a node and
+  // acts on it in the same gesture holds a callback from before the event that drew it.
   const latestInputs = useRef(inputs);
   useEffect(() => { latestInputs.current = inputs; }, [inputs]);
-  const latestPatched = useRef<{ base: MindmapNode; stamp: BoardStamp; writes: unknown; aliases: unknown; tree: MindmapNode } | null>(null);
   const currentTree = useCallback((): MindmapNode => {
-    const { writes, aliases } = usePendingWritesStore.getState();
     const held = useBoardStore.getState().board;
-    const base = held === null ? VIRTUAL_ROOT : treeOfBoard(held, latestInputs.current);
-    const heldStamp = held?.stamp ?? NOTHING_STAMP;
-    const cached = latestPatched.current;
-    if (cached !== null && cached.base === base && cached.stamp === heldStamp && cached.writes === writes && cached.aliases === aliases) {
-      return cached.tree;
-    }
-    const patched = applyPendingWrites(base, heldStamp, writes, aliases);
-    latestPatched.current = { base, stamp: heldStamp, writes, aliases, tree: patched };
-    return patched;
+    return held === null ? VIRTUAL_ROOT : treeOfBoard(held, latestInputs.current);
   }, []);
-  // A temporary id (a node still being created) is looked up under the real one once it has one.
-  const rowIdOfId = useCallback(
-    (nodeId: string): RowId => rowIdOfNodeId(currentTree(), usePendingWritesStore.getState().resolveId(nodeId)),
-    [currentTree],
-  );
-  // This tab's selection and collapsed nodes follow a created node from its temporary id to its real
-  // one, and let go of a placeholder whose create was refused or cancelled (decision 8).
-  useTemporaryIds({
-    onResolved: (temporaryId, realId) => { useMindmapStore.getState().renameNodeId(temporaryId, realId); },
-    onRemoved: (removed) => {
-      const parent = removed[0]?.parentId ?? null;
-      useMindmapStore.getState().dropNodeIds(new Set(removed.map((node) => node.id)), parent);
-    },
-  });
+  const rowIdOfId = useCallback((nodeId: string): RowId => rowIdOfNodeId(currentTree(), nodeId), [currentTree]);
 
   // Mounting a view asks for the window's board; the first of them starts its one load and its
   // listeners (the change events and the checks of the board against the producer's head), the rest
@@ -1144,9 +1103,9 @@ export function useMindmapData(): MindmapData {
   );
 
   /**
-   * What sending one create does: posts it and answers with the real node the server made. The
-   * parent is named by the id the user's gesture held, and resolved to its row when the create is
-   * sent, so a parent that is itself a placeholder has its real id by then (decision 8).
+   * What sending one create does: posts it and answers with the real node the create made, which
+   * the Replica answers at once with its real id. The parent is named by the id the user's gesture
+   * held, and resolved to its row when the create is sent.
    */
   const createSender = useCallback(
     (
@@ -1231,7 +1190,7 @@ export function useMindmapData(): MindmapData {
         return async () => {
           // A flow item's owning flow is the parent flow node, or the parent item's flow.
           const dbParentId = rowIdOfId(parentId);
-          const parent = findNodeInTree(currentTree(), usePendingWritesStore.getState().resolveId(parentId));
+          const parent = findNodeInTree(currentTree(), parentId);
           const flowId = parent?.kind === "flow" ? dbParentId : parent?.flowItem?.flowId;
           if (flowId === undefined) throw new Error(`Cannot create a flow item under "${parentId}"`);
           const parentType = parentKind === "flow" ? "flow" : parentKind;
@@ -1250,12 +1209,11 @@ export function useMindmapData(): MindmapData {
     [rowIdOfId, currentTree],
   );
 
-  // A create shows at once as a placeholder under a temporary id and goes through the window's lane
-  // (ADR 0012, decision 8): a rename, a status step or a child queued behind it names the temporary
-  // id and is sent with the real one. The one rule it runs locally is the pinned parenting rule. It
-  // answers with the placeholder, at once; the lane settles it. A parent that cannot hold the kind,
-  // and a board that is read only, are refused here by throwing, before any patch, as the write
-  // itself was refused before.
+  // A create is one awaited call: the backend answers with the real node at once, and the board that
+  // holds it follows through the ordinary event. The one rule it runs locally is the parenting rule,
+  // read from Rust's table. A parent that cannot hold the kind, and a board that is read only, are
+  // refused here by throwing, before anything is sent. It resolves once the window holds the node,
+  // so a caller may select it.
   const createNode = useCallback(
     async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
       const parent = findNodeInTree(currentTree(), parentId);
@@ -1271,34 +1229,23 @@ export function useMindmapData(): MindmapData {
           parents: validParentKinds(childKind).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
         }));
       }
-      const store = usePendingWritesStore.getState();
-      const placeholder: MindmapNode = {
-        id: store.nextTemporaryId(), kind: childKind, title, position: 0, tagIds: [], children: [], pending: true,
-      };
-      const enqueued = enqueueWrite({
-        nodeId: placeholder.id,
-        label: "create",
-        patch: { kind: "create", parentId, afterId: null, node: { id: placeholder.id, kind: childKind, title } },
-        refuseReadOnly: () => undefined,
-        refusalToast: (message) => t("warnings:createFailed", { message }),
-        send: async () => createdWrite(await sender()),
-      });
-      if (!enqueued) throw new Error(readOnlyNotice());
-      return placeholder;
+      if (currentReadOnlyReason() !== null) throw new Error(readOnlyNotice());
+      const created = await sender();
+      await settle();
+      return created;
     },
-    [createSender, currentTree, enqueueWrite, readOnlyNotice, t],
+    [createSender, currentTree, readOnlyNotice, settle, t],
   );
 
   /**
-   * Waits for a created node's real row to be on the board, and answers with it, or `undefined`
-   * when the create was refused. For a caller that needs the node itself and not its placeholder
-   * (the Steps View's editor), so it stays write-then-reload.
+   * Answers with a created node as the board holds it, or `undefined` when the board does not hold
+   * it. For a caller that needs the node itself and not the slim one the create answered with
+   * (the Steps View's editor).
    */
   const settleCreated = useCallback(
-    async (placeholder: MindmapNode): Promise<MindmapNode | undefined> => {
-      await usePendingWritesStore.getState().whenDrained();
+    async (created: MindmapNode): Promise<MindmapNode | undefined> => {
       await settle();
-      return findNodeInTree(currentTree(), usePendingWritesStore.getState().resolveId(placeholder.id));
+      return findNodeInTree(currentTree(), created.id);
     },
     [settle, currentTree],
   );
@@ -1311,47 +1258,38 @@ export function useMindmapData(): MindmapData {
     [createNode, defaultChildKind],
   );
 
-  // A rename shows at once and goes through the window's lane (ADR 0012): the title is the only
-  // field it writes, so there is no rule to pin. A Flow or a flow item stays write-then-reload
-  // (decision 16), behind whatever the lane still holds. Resolves once the rename is handed on.
+  // A rename is one awaited write: the title is the only field it writes. A Flow or a flow item
+  // reloads the board itself, and its failure propagates; the others say it in a toast.
   const renameNode = useCallback(
     async (id: string, kind: NodeKind, title: string): Promise<void> => {
       if (kind === "flow" || isFlowItemType(kind)) {
-        await awaitLane();
         const dbId = rowIdOfId(id);
         if (kind === "flow") await updateFlow(storedId(dbId), { title });
         else if (isFlowItemType(kind)) await updateFlowItem(kind, storedId(dbId), { title });
         await settle();
         return;
       }
-      const node = findNodeInTree(currentTree(), id);
-      const shown = node === undefined ? title : shownTitle(node, title);
-      enqueueWrite({
-        nodeId: id,
-        label: "rename",
-        patch: { kind: "fields", fields: { title: shown } },
-        refuseReadOnly: () => {
-          showToast({ nodeId: id, message: t("warnings:renameFailed", { message: readOnlyNotice() }) });
-        },
-        refusalToast: (message) => t("warnings:renameFailed", { message }),
-        send: async () => {
-          const dbId = rowIdOfId(id);
-          if (kind === "goal") await updateGoal(dbId, { title });
-          else if (kind === "task") await updateTask(dbId, { title });
-          else if (kind === "commitment") await updateCommitment(dbId, { title });
-          else if (kind === "expectation") await updateExpectation(dbId, { title });
-          else if (kind === "info") await updateInfo(storedId(dbId), { body: title });
-          else await updateDomain(storedId(dbId), { title });
-          return writtenWith({ title: shown });
-        },
-      });
+      if (currentReadOnlyReason() !== null) {
+        showToast({ nodeId: id, message: t("warnings:renameFailed", { message: readOnlyNotice() }) });
+        return;
+      }
+      try {
+        const dbId = rowIdOfId(id);
+        if (kind === "goal") await updateGoal(dbId, { title });
+        else if (kind === "task") await updateTask(dbId, { title });
+        else if (kind === "commitment") await updateCommitment(dbId, { title });
+        else if (kind === "expectation") await updateExpectation(dbId, { title });
+        else if (kind === "info") await updateInfo(storedId(dbId), { body: title });
+        else await updateDomain(storedId(dbId), { title });
+      } catch (error: unknown) {
+        showToast({ nodeId: id, message: t("warnings:renameFailed", { message: getErrorMessage(error) }) });
+      }
     },
-    [settle, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
+    [settle, rowIdOfId, showToast, readOnlyNotice, t],
   );
 
   const reorderNode = useCallback(
     async (id: string, direction: 1 | -1): Promise<void> => {
-      await awaitLane();
       const parent = findParentInTree(tree, id);
       if (parent === undefined) return;
 
@@ -1392,7 +1330,6 @@ export function useMindmapData(): MindmapData {
 
   const moveNode = useCallback(
     async (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number): Promise<void> => {
-      await awaitLane();
       const dbId = rowIdOfId(id);
       const dbParentId = rowIdOfId(newParentId);
       // Exhaustive over NodeKind on purpose. Node ids are polymorphic — a flow and a domain can
@@ -1471,7 +1408,6 @@ export function useMindmapData(): MindmapData {
    */
   const duplicateNode = useCallback(
     async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<readonly LeftBehindChild[]> => {
-      await awaitLane();
       // A copy is a stored row made from a stored one: an occurrence is its template's, in its
       // iteration, and has no copy of its own to make; and none is pasted onto one.
       const dbId = storedId(rowIdOfId(id));
@@ -1544,7 +1480,6 @@ export function useMindmapData(): MindmapData {
    */
   const insertParent = useCallback(
     async (nodeId: string, kind: NodeKind, parentId: string, parentKind: NodeKind): Promise<string> => {
-      await awaitLane();
       const childKind = defaultChildKind(parentId, parentKind);
       const parent = rowIdOfId(parentId);
       const link = kindToParentType(parentKind);
@@ -1585,7 +1520,6 @@ export function useMindmapData(): MindmapData {
       items: ReadonlyArray<{ id: string; kind: NodeKind }>, targetId: string, targetKind: NodeKind,
       position: number, copy: boolean,
     ): Promise<readonly LeftBehindChild[]> => {
-      await awaitLane();
       const target = rowIdOfId(targetId);
       const steps: GestureStep[] = items.map(({ id, kind }, index) => copy
         ? { op: "duplicate", kind, id: storedId(rowIdOfId(id)), parent_kind: targetKind, parent_id: storedId(target), position: position + index }
@@ -1599,7 +1533,6 @@ export function useMindmapData(): MindmapData {
 
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      await awaitLane();
       // One gesture operation for the lot — a multi-selection, or the subtree the confirm dialog
       // expanded into its nodes — so it comes back in a single press, and against a server it is
       // one request. The Aspects are the board's fixed roots and are never deleted.
@@ -1628,8 +1561,6 @@ export function useMindmapData(): MindmapData {
    */
   const createCommitmentNode = useCallback(
     async (parentId: string, parentKind: NodeKind, data: CommitmentSaveData): Promise<void> => {
-      // Stays write-then-reload (ADR 0012): behind a create still in the lane, whose row it may hang on.
-      await awaitLane();
       const commitmentId = await createCommitmentUnderNode(rowIdOfId(parentId), parentKind, data);
       for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
       await settle();
@@ -1639,7 +1570,6 @@ export function useMindmapData(): MindmapData {
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
-      await awaitLane();
       const flow = await createFlow(request);
       await settle();
       return flow;

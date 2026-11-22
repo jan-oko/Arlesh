@@ -19,6 +19,7 @@
 //! The rules live in [`rules`] (pure); this module is the reads and writes that feed them.
 
 pub mod model;
+pub mod replica;
 pub mod rules;
 #[cfg(test)]
 mod session_tests;
@@ -27,12 +28,15 @@ mod tests;
 
 use sqlx::SqliteConnection;
 
+use replica::{check_identifier, check_table};
+
 use crate::{
     database::session::{Db, SessionFactory, Transactional},
     error::AppError,
 };
 
 pub use model::{Drained, RowChange, Snapshot, SourceDelta, SourceHead, StoredRow};
+pub use replica::ReplicaError;
 pub use rules::{is_replicated, SourceTracker, REDACTED_COLUMNS, UNREPLICATED_TABLES};
 
 /// Reads and writes the change log and the replicated rows, on a session's connection.
@@ -163,6 +167,82 @@ impl<'session> ReplicationOperator<'session> {
                 image,
             })
             .collect())
+    }
+
+    /// Runs `statement` as it stands.
+    async fn execute(&mut self, statement: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(statement)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Turns foreign-key enforcement on or off for the connection. SQLite ignores the pragma
+    /// inside a transaction, so a Replica sets it before one begins.
+    async fn set_foreign_keys(&mut self, enforced: bool) -> Result<(), sqlx::Error> {
+        let statement = if enforced {
+            "PRAGMA foreign_keys = ON"
+        } else {
+            "PRAGMA foreign_keys = OFF"
+        };
+        sqlx::query(statement)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Writes `image` as the row `rowid` of `table`, replacing whatever held that rowid or the
+    /// row's unique keys. Only a Replica calls it, with foreign keys off and the journal
+    /// suppressed, so the replacement cascades nowhere and is logged nowhere.
+    async fn put_row(&mut self, table: &str, rowid: i64, image: &str) -> Result<(), ReplicaError> {
+        check_table(table)?;
+        let value: serde_json::Value = serde_json::from_str(image)
+            .map_err(|error| ReplicaError::malformed(table, rowid, error.to_string()))?;
+        let serde_json::Value::Object(columns) = value else {
+            return Err(ReplicaError::malformed(
+                table,
+                rowid,
+                "an image is not an object",
+            ));
+        };
+        let mut names = Vec::with_capacity(columns.len());
+        let mut values = Vec::with_capacity(columns.len());
+        for column in columns.keys() {
+            check_identifier(table, rowid, column)?;
+            names.push(format!("\"{column}\""));
+            values.push(format!("json_extract(?1, '$.\"{column}\"')"));
+        }
+        let sql = format!(
+            "INSERT OR REPLACE INTO \"{table}\" (rowid, {}) VALUES (?2, {})",
+            names.join(", "),
+            values.join(", ")
+        );
+        sqlx::query(&sql)
+            .bind(image)
+            .bind(rowid)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Deletes the row `rowid` of `table`, if it is there.
+    async fn delete_row(&mut self, table: &str, rowid: i64) -> Result<(), ReplicaError> {
+        check_table(table)?;
+        sqlx::query(&format!("DELETE FROM \"{table}\" WHERE rowid = ?"))
+            .bind(rowid)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// Deletes every row of every replicated table.
+    async fn clear_rows(&mut self) -> Result<(), sqlx::Error> {
+        for table in self.tables().await? {
+            sqlx::query(&format!("DELETE FROM \"{table}\""))
+                .execute(&mut *self.connection)
+                .await?;
+        }
+        Ok(())
     }
 
     async fn all_rows(&mut self) -> Result<Vec<StoredRow>, sqlx::Error> {

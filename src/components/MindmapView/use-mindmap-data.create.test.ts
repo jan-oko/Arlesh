@@ -6,10 +6,8 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useStatusCycle } from "@/hooks/use-status-cycle";
-import { settleLane } from "@/test/lane-helpers";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
 import { currentBoard } from "@/test/current-board";
@@ -79,15 +77,11 @@ function find(root: MindmapNode, id: string): MindmapNode | undefined {
   return undefined;
 }
 
-const store = () => usePendingWritesStore.getState();
-
 /** The server: every Task it holds, and the writes it was sent, in order. */
 let serverTasks: Task[];
 let calls: Array<[string, unknown]>;
 let refuseCreate: string | null;
 let nextId: number;
-/** While set, the server holds every create until the test opens the gate. */
-let gate: Promise<void> | null;
 /** The writes the server has committed: its revision, and the publication the board is at. */
 let revision: number;
 let seq: number;
@@ -111,13 +105,11 @@ function board(): MindmapLoad {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  store().reset();
   useMindmapStore.setState({ selectedNodeId: null, selectedNodeIds: new Set(), collapsedNodeIds: new Set(), pendingToast: null });
   serverTasks = [];
   calls = [];
   refuseCreate = null;
   nextId = 10;
-  gate = null;
   revision = 0;
   seq = 1;
   listeners.clear();
@@ -126,7 +118,7 @@ beforeEach(() => {
     if (command === "board_fence") return Promise.resolve({ epoch: EPOCH, revision });
     calls.push([command, args]);
     if (["create_task", "update_task", "step_task_status"].includes(command)) { revision += 1; seq += 1; }
-    if (command === "create_task") return (gate ?? Promise.resolve()).then(() => createTask(args));
+    if (command === "create_task") return createTask(args);
     if (command === "step_task_status") {
       const { id } = args as { id: string };
       const task = serverTasks.find((t) => t.id === id);
@@ -161,120 +153,83 @@ async function mounted() {
 
 const names = () => calls.map(([command]) => command).filter((command) => command.endsWith("_task"));
 
-describe("creating through the lane", () => {
-  it("Child, a title typed at once, then Child again: two nested placeholders, three writes in order, the real ids named", async () => {
-    const { result } = await mounted();
-    let open: () => void = () => undefined;
-    gate = new Promise<void>((resolve) => { open = resolve; });
-    let first: MindmapNode | undefined;
-    let second: MindmapNode | undefined;
-    await act(async () => {
-      first = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
-      await result.current.renameNode(first.id, "task", "Buy milk");
-      second = await result.current.createNode(first.id, "task", "task", "");
-    });
-    if (first === undefined || second === undefined) throw new Error("no placeholders");
-    expect(first.id).toMatch(/^tmp:/);
-    const outer = find(result.current.tree, first.id);
-    expect(outer).toMatchObject({ title: "Buy milk", pending: true });
-    expect(outer?.children.map((c) => c.id)).toEqual([second.id]);
+/** One create: the server commits it and publishes, and the call resolves once the window holds the node. */
+async function create(
+  result: { current: ReturnType<typeof useMindmapData> },
+  parentId: string, parentKind: "goal" | "task", title: string,
+): Promise<MindmapNode> {
+  const before = calls.length;
+  const pending = result.current.createNode(parentId, parentKind, "task", title);
+  await waitFor(() => expect(calls.length).toBeGreaterThan(before));
+  await published();
+  return pending;
+}
 
-    expect(names()).toEqual(["create_task"]);
-    open();
-    await settleLane();
+describe("creating is one awaited call", () => {
+  it("answers with the real node, and the board holds it once the call resolves", async () => {
+    const { result } = await mounted();
+
+    const created = await create(result, `goal-${storedRowId(1)}`, "goal", "Buy milk");
+
+    expect(created.id).toBe(`task-${storedRowId(11)}`);
+    expect(created.rowId).toBe(storedRowId(11));
+    expect(find(result.current.tree, created.id)).toMatchObject({ title: "Buy milk" });
+    expect(find(result.current.tree, created.id)).not.toHaveProperty("pending");
+  });
+
+  it("names the real id of a new node to the next write: a rename, then a child under it", async () => {
+    const { result } = await mounted();
+
+    const first = await create(result, `goal-${storedRowId(1)}`, "goal", "");
+    await act(async () => { await result.current.renameNode(first.id, "task", "Buy milk"); });
     await published();
-    await waitFor(() => expect(store().writes).toHaveLength(0));
+    const second = await create(result, first.id, "task", "");
 
     expect(calls.filter(([command]) => command.endsWith("_task"))).toEqual([
       ["create_task", { request: { title: "", parent_type: "goal", parent_id: storedRowId(1) } }],
       ["update_task", { id: storedRowId(11), request: { title: "Buy milk" } }],
       ["create_task", { request: { title: "", parent_type: "task", parent_id: storedRowId(11) } }],
     ]);
-    const board = result.current.tree;
-    expect(find(board, `task-${storedRowId(11)}`)?.children.map((c) => c.id)).toEqual([`task-${storedRowId(12)}`]);
-    expect(find(board, `task-${storedRowId(11)}`)?.title).toBe("Buy milk");
-    // No duplicate: the placeholders are gone, the real nodes are the only ones.
-    expect(find(board, first.id)).toBeUndefined();
-    expect(find(board, second.id)).toBeUndefined();
+    expect(second.id).toBe(`task-${storedRowId(12)}`);
+    expect(find(result.current.tree, first.id)?.children.map((c) => c.id)).toEqual([second.id]);
   });
 
-  it("rewrites the selection and the collapsed nodes to the real id when the create is answered", async () => {
+  it("lets the caller select the new node at once: the board already holds it", async () => {
     const { result } = await mounted();
-    let placeholder: MindmapNode | undefined;
-    await act(async () => {
-      placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
-      useMindmapStore.getState().selectNode(placeholder.id);
-      useMindmapStore.getState().toggleCollapsed(placeholder.id);
-    });
-    await settleLane();
+
+    const created = await create(result, `goal-${storedRowId(1)}`, "goal", "");
+    act(() => { useMindmapStore.getState().selectNode(created.id); });
+
     expect(useMindmapStore.getState().selectedNodeId).toBe(`task-${storedRowId(11)}`);
-    expect([...useMindmapStore.getState().selectedNodeIds]).toEqual([`task-${storedRowId(11)}`]);
-    expect([...useMindmapStore.getState().collapsedNodeIds]).toEqual([`task-${storedRowId(11)}`]);
+    expect(find(result.current.tree, useMindmapStore.getState().selectedNodeId ?? "")).toBeDefined();
   });
 
-  it("a refused create removes the placeholder and what hangs under it, sends nothing more, and toasts once", async () => {
+  it("a refused create rejects, changes nothing on the board and sends nothing more", async () => {
     const { result } = await mounted();
     refuseCreate = "No window above";
-    await act(async () => {
-      const first = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", "");
-      await result.current.renameNode(first.id, "task", "Lost");
-      await result.current.createNode(first.id, "task", "task", "");
-    });
-    await settleLane();
+
+    await expect(act(async () => { await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", ""); }))
+      .rejects.toMatchObject({ message: "No window above" });
 
     expect(names()).toEqual(["create_task"]);
-    expect(store().writes).toHaveLength(0);
     expect(find(result.current.tree, `goal-${storedRowId(1)}`)?.children.map((c) => c.id)).toEqual([`task-${storedRowId(1)}`]);
-    expect(useMindmapStore.getState().pendingToast).toMatchObject({ nodeId: `goal-${storedRowId(1)}` });
   });
 
-  it("an undo of a still-queued create takes the placeholder off and calls nothing", async () => {
-    const { result } = await mounted();
-    let release: () => void = () => undefined;
-    store().enqueue({
-      nodeId: `task-${storedRowId(1)}`, label: "rename", patch: { kind: "fields", fields: { title: "Held" } },
-      send: () => new Promise((resolve) => {
-        release = () => resolve({ outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } });
-      }),
-      showToast: vi.fn(), unreachableMessage: "unreachable",
-    });
-    let placeholder: MindmapNode | undefined;
-    await act(async () => { placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", ""); });
-    if (placeholder === undefined) throw new Error("no placeholder");
-    expect(find(result.current.tree, placeholder.id)).toBeDefined();
-
-    act(() => { store().cancelTail(); });
-    expect(find(result.current.tree, placeholder.id)).toBeUndefined();
-    await act(async () => { release(); await store().whenDrained(); });
-    expect(names()).toEqual([]);
-  });
-
-  it("refuses a kind the parent may not hold before any patch", async () => {
+  it("refuses a kind the parent may not hold before anything is sent", async () => {
     const { result } = await mounted();
     await expect(result.current.createNode(`task-${storedRowId(1)}`, "task", "domain", "x")).rejects.toThrow();
-    expect(store().writes).toHaveLength(0);
     expect(names()).toEqual([]);
   });
 
-  it("a quick status step on a new node waits for its create and is sent with the real row", async () => {
+  it("a status step on a new node is sent with the real row", async () => {
     const { result } = await mounted();
-    let open: () => void = () => undefined;
-    gate = new Promise<void>((resolve) => { open = resolve; });
-    let placeholder: MindmapNode | undefined;
-    await act(async () => { placeholder = await result.current.createNode(`goal-${storedRowId(1)}`, "goal", "task", ""); });
-    if (placeholder === undefined) throw new Error("no placeholder");
-    const id = placeholder.id;
+    const created = await create(result, `goal-${storedRowId(1)}`, "goal", "");
     const cycle = renderHook(() => useStatusCycle({ findNode: (nodeId) => find(result.current.tree, nodeId), showToast: vi.fn() }));
-    act(() => { cycle.result.current.cycleStatus(id); });
-    expect(store().writes.map((write) => write.nodeId)).toEqual([id, id]);
 
-    open();
-    await settleLane();
-    await published();
-    await waitFor(() => expect(store().writes).toHaveLength(0));
-    expect(calls.filter(([command]) => command === "step_task_status")).toEqual([
+    act(() => { cycle.result.current.cycleStatus(created.id); });
+
+    await waitFor(() => expect(calls.filter(([command]) => command === "step_task_status")).toEqual([
       ["step_task_status", { id: storedRowId(11), step: "advance", confirmed: undefined }],
-    ]);
-    expect(find(result.current.tree, `task-${storedRowId(11)}`)?.taskStatus).toEqual({ kind: "ordinary", status: "in_progress" });
+    ]));
   });
 });

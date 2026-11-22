@@ -1788,6 +1788,25 @@ class StatusAgentic(BaseModel):
     status: AgenticStatus
 
 
+class StatusBlock(StrEnum):
+    """
+    Why an editor may not offer a status on a Task.
+    """
+
+    compound = "compound"
+    """
+    The Task consists purely of its sub-items: no status is set by hand.
+    """
+    below_sub_items = "below_sub_items"
+    """
+    The status is below the floor its sub-items derive, so it would change nothing.
+    """
+    open_sub_items = "open_sub_items"
+    """
+    Done while a counted sub-item is not.
+    """
+
+
 class StatusRefusal(StrEnum):
     """
     Why a status gesture writes nothing.
@@ -4177,6 +4196,21 @@ class StatusAfter(RootModel[StatusAfterWritten | StatusAfterRefused]):
     """
 
 
+class StatusBlockFact(BaseModel):
+    """
+    One status an editor may not offer on a Task, and why.
+    """
+
+    block: StatusBlock
+    """
+    Why not.
+    """
+    status: StatusOrdinary | StatusAgentic
+    """
+    The status that cannot be chosen.
+    """
+
+
 class StepEntryMove(BaseModel):
     """
     Moves a node under a new parent at `position`: its parent link is rewritten as its own
@@ -5666,6 +5700,13 @@ class NodeFacts(BaseModel):
     """
     The open questions beneath a Task that are **staged**: an answer is written and not yet
     sent. A subset of [`Self::open_questions`]; the wait still reads Review.
+    """
+    status_blocks: list[StatusBlockFact] | None = None
+    """
+    The statuses a Task's sub-items forbid the editors to offer, each with why: Done over an open
+    sub-item, an ordinary status below the floor they derive. Compound is not listed: it is the
+    Task's own flag and blocks every status, so a reader that has the flag has the answer.
+    Absent when its sub-items forbid nothing.
     """
     sub_items: SubItems | None = None
     """

@@ -108,7 +108,6 @@ export default function ZenTaskCard({
     <div
       className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}${fitsContent ? ` ${styles.cardFits}` : ""}`}
       data-row-id={node.id}
-      data-pending={node.pending === true ? "" : undefined}
       aria-describedby={overdue ? overdueNoteId : undefined}
       data-zen-card="task"
       data-zen-corners={corners === "" ? undefined : corners}

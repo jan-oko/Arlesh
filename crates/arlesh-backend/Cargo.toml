@@ -15,6 +15,8 @@ default = ["sqlite", "http"]
 sqlite = []
 # `HttpBackend` and the change stream: Client mode, calling `arlesh-server`.
 http = ["dep:reqwest", "dep:rustls"]
+# `ReplicaBackend`: the board kept in memory on the device and served from there (Client mode).
+replica = ["sqlite", "http"]
 
 [dependencies]
 arlesh-core = { path = "../arlesh-core" }

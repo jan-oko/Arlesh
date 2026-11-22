@@ -1,5 +1,4 @@
 import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
-import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
@@ -70,7 +69,6 @@ const PHONE_REFERENCE_CARD_HEIGHT_PX = 96;
  * hooks, on a selection of its own.
  */
 export default function ZenView() {
-  const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "zenView", "listView"]);
   const {
     tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, settle,
@@ -312,7 +310,7 @@ export default function ZenView() {
           <div className={`${styles.grid}${isPhone ? ` ${styles.gridStacked}` : ""}`} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
             {contents.tasks.rows.map((row, index) => (
               <ZenTaskCard
-                key={stableKey(row.node.id)}
+                key={row.node.id}
                 row={row}
                 corners={zenCardCorners(index, contents.tasks.rows.length, layout.columns)}
                 width={layout.cardWidth}

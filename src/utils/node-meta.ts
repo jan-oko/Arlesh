@@ -1,8 +1,7 @@
-import { isTemporaryId } from "@/utils/pending-writes";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { isOccurrence } from "@/utils/node-identity";
 import { ALL_NODE_KINDS } from "./tree-layout";
-import { mayParent } from "@/wasm/rules";
+import { mayParent } from "@/utils/rule-tables";
 
 export interface NodeSize {
   width: number;
@@ -132,7 +131,7 @@ export function isFlowKind(kind: NodeKind): boolean {
 
 /**
  * Returns true if `sourceKind` is a valid child of `targetKind`. There is no TypeScript copy of the
- * table: this asks `nodes::rules::parenting::may_parent`, compiled to wasm (`src/wasm/rules.ts`), the
+ * table: this reads the table `nodes::rules::parenting::may_parent` answers (`src/utils/rule-tables.ts`), the
  * one every writer asks. `conformance/parenting.json` writes the whole matrix down.
  *
  * Parent rules:
@@ -238,9 +237,7 @@ function parentCapacity(node: MindmapNode): ParentCapacity {
   if (node.habitGroup !== undefined) return "drawing";
   if (isOccurrence(node)) return "occurrence";
   // The synthetic root and any other virtual node: nothing a parent link could point at.
-  // A node still being created has no row yet and is about to: it holds children like the row it
-  // will be (ADR 0012, decision 8).
-  if (node.rowId === undefined && !isTemporaryId(node.id)) return "drawing";
+  if (node.rowId === undefined) return "drawing";
   return "row";
 }
 

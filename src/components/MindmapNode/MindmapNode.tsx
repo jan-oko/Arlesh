@@ -1,4 +1,3 @@
-import styles from "./MindmapNode.module.css";
 import { useCallback, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, NodeKind, Position } from "@/utils/tree-layout";
@@ -105,8 +104,6 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   return (
     <g
       data-node-id={node.id}
-      data-pending={node.pending === true ? "" : undefined}
-      className={styles.node}
       transform={`translate(${position.x - width / 2}, ${position.y - activeHeight / 2})`}
       role="treeitem"
       aria-selected={isSelected}

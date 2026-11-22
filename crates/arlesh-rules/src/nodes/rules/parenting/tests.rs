@@ -119,3 +119,13 @@ fn a_parent_with_no_subtype_is_the_kind_its_spelling_says() {
     assert_eq!(parent_kind("domain", None), Some(NodeKind::Domain));
     assert_eq!(parent_kind("goal", Some("tag")), Some(NodeKind::Goal));
 }
+
+#[test]
+fn the_parents_of_a_kind_are_the_kinds_that_may_hold_it() {
+    for child in NodeKind::ALL {
+        let parents = parents_of(child);
+        for parent in NodeKind::ALL {
+            assert_eq!(parents.contains(&parent), may_parent(child, parent));
+        }
+    }
+}

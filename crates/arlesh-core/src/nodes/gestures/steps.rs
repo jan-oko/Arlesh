@@ -59,7 +59,7 @@ pub enum StepTarget {
 }
 
 /// One write of a gesture. Written too, by the app's Client mode sending it on to a server.
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum GestureStep {
     /// Moves a node under a new parent at `position`: its parent link is rewritten as its own
@@ -303,7 +303,7 @@ pub enum GestureStep {
 }
 
 /// One step as a gesture lists it: the write, and whether the gesture goes on without it.
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StepEntry {
     /// The write.
     #[serde(flatten)]

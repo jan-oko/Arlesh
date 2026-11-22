@@ -339,19 +339,19 @@ precondition for calling them.
 
 ## Undo with writes pending
 
-Some actions show on the board before their write is answered, as **pending writes** queued in
-order in one lane per window ([Client Mode](client-mode.md), *Pending writes*;
-[ADR 0012](../adr/0012-optimistic-own-field-rendering.md)). `Ctrl+Z` asks that lane first:
+In Client mode every board write is predicted on the device's Replica and queued in order for the
+server ([Client Mode](client-mode.md), *The Replica*; [ADR 0017](../adr/0017-client-board-replica.md)).
+The queue is Rust's, not the window's, and `Ctrl+Z` asks it first:
 
-- **The newest action is still queued** (not sent): it is **cancelled locally**. Its patch is
-  removed, and for a create so is everything queued on the placeholder. The undo notice names it, as
-  it names any undone Gesture, and nothing is sent. Each further press cancels the next queued
-  action the same way.
-- **Otherwise** the press **waits** until the lane is empty, then undoes on the server as above,
-  from this device's own stack. The action that was in flight is by then the newest Gesture there.
+- **The newest write is still queued** (not sent): it is **cancelled locally**. Its range of the
+  Replica's journal is replayed away, the undo notice names it as it names any undone Gesture, and
+  nothing is sent. Each further press cancels the next queued write the same way.
+- **Otherwise** the press **waits** until the Replica is settled, then undoes on the server as above,
+  from this device's own stack. The write that was in flight is by then the newest Gesture there; the
+  undo's rows arrive as any other and nothing is predicted.
 - **The write it waited for was refused:** the refusal already took the change back, so the press
-  is **spent on it** and nothing is sent. Sending it would undo the Gesture before, which the user
-  did not ask about.
+  is **spent on it** and nothing is sent (it answers "nothing to undo"). Sending it would undo the
+  Gesture before, which the user did not ask about.
 
-A cancelled action never reached the backend, so it is on neither stack and cannot be redone.
-`Ctrl+Shift+Z` always waits for the lane and then asks the backend.
+A cancelled write never reached the server, so it is on neither stack and cannot be redone.
+`Ctrl+Shift+Z` always waits until the Replica is settled and then asks the server.

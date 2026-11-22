@@ -369,10 +369,10 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** every rule the frontend must answer per render or per pointer move has one definition, in a Rust `rules` module, and reaches the frontend one of two ways: a TypeScript copy pinned by a shared case file under `conformance/`, run against both ends ([ADR 0010](adr/0010-business-rules-layer.md)), or — for the rules the optimistic lane predicts a write with — the Rust rule itself, compiled to wasm from the `arlesh-rules` crate (`arlesh-rules-wasm`, `src/wasm/rules.ts`; [ADR 0012](adr/0012-optimistic-own-field-rendering.md) decision 13), with the same corpus replayed through the wasm. The wasm-backed rules are the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`), the parenting table (`parenting.json`), and the Plan View's triage, refusal and take-out (`plan-triage.json`). The pinned TypeScript copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Is:** every rule the frontend must answer per render or per pointer move has one definition, in a Rust `rules` module, and reaches the frontend one of two ways: a TypeScript copy pinned by a shared case file under `conformance/`, run against both ends ([ADR 0010](adr/0010-business-rules-layer.md)), or the Rust rule itself, answered through a Tauri command from data (the parenting and take-out tables, Plan View triage and refusal, and each Task's refused statuses on the board's facts), so the frontend holds no copy of it; the same corpus is replayed in Rust. The pinned TypeScript copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
 - **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
-- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy or wasm call and by the Rust tests under `src-tauri/tests/`; the wasm lives in `crates/arlesh-rules`, `crates/arlesh-rules-wasm` and `src/wasm/`.
+- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`; the rules the Replica also runs live in `crates/arlesh-rules` (no wasm consumer any more).
 - **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
 
 ### Pills and the focus exemption
@@ -441,60 +441,25 @@ How the presets read them:
 - **Lives:** `crates/arlesh-backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
 - **Spec:** [Client Mode](spec/client-mode.md).
 
-### Pending writes
-- **Is:** an action the board shows before the server has answered it: a status step, `Alt+Enter`, a verdict, a wait release, a rename, an editor's Save, or a new child or sibling.
-  - Its **patch** sets only the node's own fields. Nothing derived is patched; derived values follow the answer's reload.
-  - The window's pending writes are one **lane**, sent one at a time in order. Every other write waits for the lane to empty.
-  - A pending node pulses faintly (a dotted outline under reduced motion) until the server answers.
-  - The server wins: each fresh board is drawn with the unanswered patches over it, and a patch is dropped once a board that reflects its write is on screen.
-  - A refusal rolls back that patch and every later one on the same node, with one toast. An unreachable server rolls back the lane.
-  - A new node is a placeholder with a temporary id, and writes queued on it are rewritten to the real id before they are sent.
-  - `Ctrl+Z` cancels a still-queued action locally, and otherwise waits for the lane and undoes on the server.
-- **Why:** in Client mode every write is a round trip plus a whole-board reload, and a press that shows nothing for that long feels broken.
-- **Without:** every press waits on the network. Or, with patches drawn some other way, a board that computes derived values the server never agreed to, or flashes the old value between the answer and the reload.
+### Replica and Prediction
+- **Is:** in Client mode the app keeps the whole board in memory, as the same SQLite schema the server has, and serves every command from it. A write is a **Prediction**: it runs on the Replica first, derived values included, so the board changes at once, and then goes to the server.
+  - Writes are sent one at a time, in order. While any is pending the server's rows are held back; when every write is answered and the events have reached the answers, the Predictions are replayed away and the server's rows applied in one step (**Settling**). A correct Prediction changes nothing on screen.
+  - A refusal settles the same way, runs the writes queued behind it again from the server's board, and says once how many changes were not made. A lost connection takes every Prediction back and leaves the board read-only; nothing is queued across a disconnect.
+  - A create carries the id of its row; the other rows a write makes take their ids from the write's seed, which the server draws from too. A press on a row the two sides may have named differently waits until settled.
+  - The board last seen is kept on disk (when the first board of a run arrives, and when the app quits normally) and shown read-only on the next start while the server's is fetched.
+  - A gap, an epoch change or a hash that differs is always repaired with a whole board, never by asking for events again.
+  - `Ctrl+Z` cancels a still-unsent write locally, and otherwise waits until settled and undoes on the server.
+- **Why:** every write is a round trip, and a press that shows nothing for that long feels broken. Running the real core on the device means a Prediction cannot drift from the server's rules and no write needs a hand-kept prediction.
+- **Without:** every press waits on the network. Or, with patches drawn by the frontend, a board that computes derived values the server never agreed to, and a second copy of every rule.
 - **Lives:**
-  - `ts:utils/pending-writes.ts` (the lane's reducer), `ts:utils/apply-pending-writes.ts` (the patch over the built tree), `ts:stores/use-pending-writes-store.ts` (the lane and its sender), `ts:hooks/use-pending-write.ts`.
-  - `ts:components/MindmapView/use-mindmap-data.ts` returns the patched tree.
-  - [ADR 0012](adr/0012-optimistic-own-field-rendering.md) covers it; it reverses ADR 0010's answer 2 for these actions only.
-- **Spec:** [Client Mode](spec/client-mode.md), *Pending writes*; [Undo](spec/undo.md), *Undo with writes pending*.
-
-## 8. Keeping it honest
-
-### The undo journal
-- **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's, and another client's writes as that client's; neither is undoable from the app.
-- `answer_drafts` is journaled, and one `Ctrl+Z` undoes a whole sent batch: the drafts come back and the waits read Review again.
-- **Why:** a trigger can't be forgotten by a command that doesn't know it exists.
-- **Without:** an inverse to write for every one of eighty-odd commands, with the next one missing it.
-- **Lives:**
-  - `rs:undo/`, and `scripts/generate-undo-triggers.sh`, which a test compares against the schema.
-  - [ADR 0006](adr/0006-undo-via-a-trigger-written-row-journal.md) covers the trigger-written journal.
-- **Spec:** [Undo](spec/undo.md).
-
-### Clients and a second writer
-- **Is:** every write is journaled with the client it came through: the desktop app is `desktop`, and anything else that opens the database to write (a Python session through the bindings) names itself.
-  - The client is a second axis beside the source: source is who acted (you or an agent), client is which program carried it. An MCP write is source `mcp` from client `desktop`.
-  - The app's Ctrl+Z takes only `user` entries from `desktop`.
-  - The app holds the database while it runs (a lock file beside it). Another writer is refused unless it forces; reading is never refused.
-  - A write-open migrates; a read-only open never does, and refuses a schema that is behind. A schema newer than the build is refused either way.
-- **Why:** more than one program writes the board now, and each must be able to tell its own changes from another's.
-- **Without:** Ctrl+Z in the app would reverse what a script did, and a script could rewrite rows under the app's open windows without anyone being warned.
-- **Lives:**
-  - `rs:database/client.rs`, `rs:database/hold.rs`, `rs:database/open.rs` and `rs:database/rules.rs`; `SessionFactory::begin` stamps the client.
-  - Migration 0092 adds the column and the stamping trigger; `rs:undo/` filters the stack by client.
-  - `crates/arlesh-py/` is the Python host.
-- **Spec:** [Undo](spec/undo.md), *Clients, and a second writer*.
-
-### Migrations
-- **Is:** numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped; for example, `retired_beads_ids` from 0091.
-- **Why:** your real database must reach every new shape without losing anything.
-- **Without:** upgrades that refuse to start, or quietly discard history.
-- **Lives:** `crates/arlesh-core/migrations/`, run by sqlx at startup (`rs:database/`).
-- **Spec:** the migration notes in each area file.
+  - `crates/arlesh-core/src/replication/replica.rs` (the in-memory database, apply and rollback by the undo journal), `crates/arlesh-backend/src/replica/` (the port wrapper, the queue, the sync, the cache).
+  - [ADR 0017](adr/0017-client-board-replica.md) covers it; it supersedes ADR 0012.
+- **Spec:** [Client Mode](spec/client-mode.md), *The Replica*; [Undo](spec/undo.md), *Undo with writes pending*.
 
 ### A truthful board
 - **Is:** three habits keep the board true:
   - Nothing derived is stored, so nothing derived goes stale.
-  - A pending write shows only its own node's own fields, and only until a board that reflects it arrives.
+  - A Prediction shows on the board only until the server's rows for its write arrive, and then the server's rows are what is shown.
   - Every window hears about every change.
   - An agent whose next step is yours must say so with a question.
 - **Why:** you act on what the board says, and a board that lies costs more than none.

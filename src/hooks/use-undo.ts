@@ -4,7 +4,6 @@ import type { TFunction } from "i18next";
 import { getErrorMessage } from "@/api/errors";
 import { gestureName, redo, undo } from "@/api/gesture";
 import type { GestureSummary } from "@/api/gesture";
-import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { describeChanges } from "@/utils/gesture-label";
 import type { GestureVerb } from "@/utils/gesture-label";
 
@@ -30,19 +29,6 @@ interface Options {
   settle: () => Promise<void>;
   /** The app's existing anchored notice. */
   showToast: (toast: { nodeId: string; message: string }) => void;
-}
-
-/**
- * Waits for the window's pending writes to be answered, so the server undoes or redoes the newest
- * thing the user did. Resolves `true` when a write it waited for was refused: that refusal already
- * took the change back, so the press is spent on it and the server is not asked (ADR 0012,
- * decision 9).
- */
-async function waitForLane(): Promise<boolean> {
-  const { whenDrained, rollbacks } = usePendingWritesStore.getState();
-  const before = rollbacks;
-  await whenDrained();
-  return usePendingWritesStore.getState().rollbacks > before;
 }
 
 /** The two hotkey handlers. */
@@ -86,13 +72,10 @@ export function useUndo({ settle, showToast }: Options): UndoActions {
       if (isApplying.current) return;
       isApplying.current = true;
       const reverse = direction === "undo" ? undo : redo;
-      // With nothing pending, the backend is asked in the same tick, as it was before the lane.
-      void (usePendingWritesStore.getState().isBusy()
-        ? waitForLane().then((spent) => (spent ? undefined : reverse()))
-        : reverse())
-        .then(async (summary: GestureSummary | null | undefined) => {
-          // The press was spent on a write that was refused (see `waitForLane`).
-          if (summary === undefined) return;
+      // The backend is asked once. Rust decides whether the newest change is still unsent and can
+      // be cancelled, or has to be waited for and undone.
+      void reverse()
+        .then(async (summary: GestureSummary | null) => {
           if (summary === null) {
             showToast({
               nodeId: UNDO_TOAST_ANCHOR,
@@ -119,16 +102,7 @@ export function useUndo({ settle, showToast }: Options): UndoActions {
     [settle, showToast, t],
   );
 
-  // Ctrl+Z asks the window's pending writes first (ADR 0012, decision 9): a newest write that has
-  // not been sent is cancelled here, and nothing is asked of the server.
-  const onUndo = useCallback(() => {
-    const cancelled = usePendingWritesStore.getState().cancelTail();
-    if (cancelled === null) {
-      apply("undo");
-      return;
-    }
-    showToast({ nodeId: UNDO_TOAST_ANCHOR, message: t("undid", { gesture: cancelled.label }) });
-  }, [apply, showToast, t]);
+  const onUndo = useCallback(() => apply("undo"), [apply]);
   const onRedo = useCallback(() => apply("redo"), [apply]);
 
   return { onUndo, onRedo };

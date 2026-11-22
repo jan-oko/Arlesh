@@ -1,0 +1,1 @@
+- **Every change on a client shows at once.** In Client mode the app keeps the whole board in memory and makes each change there first, derived values included, then sends it to the server; a change the server refuses is taken back with one notice saying how many were not made. The board you last saw opens at once, read-only, while the app fetches the server's.

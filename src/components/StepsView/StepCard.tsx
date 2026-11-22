@@ -135,7 +135,6 @@ export default function StepCard({
       className={className}
       style={cardStyle}
       data-step-card={node.id}
-      data-pending={node.pending === true ? "" : undefined}
       aria-current={isSelected ? "true" : undefined}
       aria-describedby={overdue ? overdueNoteId : undefined}
       // A folded run of Habit history names its day span here, as its Mindmap node does.

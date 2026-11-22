@@ -194,13 +194,15 @@ How the board travels from where it is derived to the windows that draw it ([Cli
 
 ## Replication
 
-Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Built so far: UUID identity, and the server's sync surface (Change Log rows on each event, Device Snapshot, Source Hash). The Replica itself is not.
+Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Built: UUID identity, the server's sync surface (Change Log rows on each event, Device Snapshot, Source Hash) and the Replica itself.
 
 **Replica** — A client's own copy of the board, running the same core as the server, in memory. It is written to storage on the startup fetch and when the app quits normally, and a launch shows that stored board first, then fetches a whole one. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
 
 **Prediction** — A write run on the Replica before the server has answered it. What it shows is what the board will look like if the server agrees. _Avoid_: optimistic patch, speculation.
 
-**Settling** — The moment the queue of writes drains: the Replica drops its Predictions and takes the server's rows. A correct Prediction changes nothing on screen.
+**Settling** — The moment the queue of writes drains: the Replica drops its Predictions and takes the server's rows. It waits for the **fence** (the newest revision the server answered with) to be in the events first, so the screen never shows the Prediction gone and the answer not yet in. A correct Prediction changes nothing on screen.
+
+**Seeded Id** — An id a write's run draws from the write's seed (`X-Arlesh-Request-Id`) instead of at random, so the Replica's run and the server's make the same ids for the rows the request never named (a Flow's copies, a duplicate's children). A press that names a row they may have made differently waits until Settling.
 
 **Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
 

@@ -1,8 +1,8 @@
 // The Plan View's whole decision: which Tasks are candidates for the scope being filled, which are
-// already in it, and which bound a move would break. There is no TypeScript copy of the rule: the
-// triage and the refusal are `tasks::rules::plan` compiled to wasm (`src/wasm/rules.ts`), which
-// resolves the scope's window itself, so nothing here reaches for the network and the two panes
-// re-derive synchronously as the scope is walked. This file reads rows into the rule's shape.
+// already in it, and which bounds a move would break. There is no rule here: the triage and the
+// refusal are `tasks::rules::plan`, asked of Rust through the `plan_triage` and `plan_refusals`
+// commands (`src/api/rules.ts`), which resolve the scope's window themselves. This file reads rows
+// into the rule's shape and the answer back into rows.
 
 import type { ScopeKey } from "@/api/scopes";
 import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
@@ -11,8 +11,8 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
 
 import { isOverdue } from "@/utils/overdue";
-import { planRefusal as wasmPlanRefusal, planTriage } from "@/wasm/rules";
-import type { PlanRowInput } from "@/wasm/rules";
+import { fetchPlanRefusals, fetchPlanTriage } from "@/api/rules";
+import type { PlanRefusalWire, PlanRowInput } from "@/api/rules";
 
 /** Every scope id resolved to its window, keyed by the key's canonical text. */
 export type ScopeWindows = ReadonlyMap<ScopeKeyText, ScopeInterval>;
@@ -52,7 +52,7 @@ function inheritsNothing(row: TaskListRow): boolean {
 
 /** The row, in the shape the rule reads. A node that draws no row (`virtual`) has nowhere to write a
  * Plan and the rule leaves it out. */
-function planRowOf(row: TaskListRow): PlanRowInput {
+export function planRowOf(row: TaskListRow): PlanRowInput {
   const { node } = row;
   return {
     id: node.id,
@@ -119,6 +119,15 @@ export interface PlanPanes {
   parentPlanned: TaskListRow[];
 }
 
+/** The rows the answer's ids name, in the answer's order. */
+export function rowsNamed(rows: readonly TaskListRow[], wanted: readonly string[]): TaskListRow[] {
+  const byId = new Map(rows.map((row) => [row.node.id, row]));
+  return wanted.flatMap((id) => {
+    const row = byId.get(id);
+    return row === undefined ? [] : [row];
+  });
+}
+
 /**
  * Splits the rows into the heaps for `target`, whose parent scope is `parent` — none for a Season.
  *
@@ -128,26 +137,29 @@ export interface PlanPanes {
  * somewhere else entirely is in none of them. A Habit occurrence is triaged like a Task, by its
  * Plan. See `tasks::rules::plan::triage`, which this asks.
  */
-export function partitionForScope(rows: readonly TaskListRow[], target: ScopeKey, parent: ScopeKey | null): PlanPanes {
-  const ids = planTriage({ target, parent, rows: rows.map(planRowOf) });
-  const byId = new Map(rows.map((row) => [row.node.id, row]));
-  const pick = (wanted: readonly string[]): TaskListRow[] =>
-    wanted.flatMap((id) => {
-      const row = byId.get(id);
-      return row === undefined ? [] : [row];
-    });
-  return { unplanned: pick(ids.unplanned), planned: pick(ids.planned), parentPlanned: pick(ids.parentPlanned) };
+export async function partitionForScope(rows: readonly TaskListRow[], target: ScopeKey, parent: ScopeKey | null): Promise<PlanPanes> {
+  const answer = await fetchPlanTriage(target, parent, rows.map(planRowOf));
+  return {
+    unplanned: rowsNamed(rows, answer.unplanned),
+    planned: rowsNamed(rows, answer.planned),
+    parentPlanned: rowsNamed(rows, answer.parentPlanned),
+  };
+}
+
+function named(refusal: PlanRefusalWire): PlanRefusal {
+  switch (refusal) {
+    case "own_time_scope": return "ownTimeScope";
+    case "parent_plan": return "parentPlan";
+  }
 }
 
 /**
- * Which bound planning `row` into `target` would break, or `null` when the move is allowed: the
- * write-time rules, in the order the writer reads them, so the view's refusal and the writer's
- * cannot disagree about *which* bound a doomed move breaks (`tasks::rules::plan`).
+ * Which bound planning each of `rows` into `target` would break, by row id; a row absent from the
+ * result may be planned there. The write-time rules, in the order the writer reads them, so the
+ * view's refusal and the writer's cannot disagree about *which* bound a doomed move breaks
+ * (`tasks::rules::plan`).
  */
-export function planRefusal(row: TaskListRow, target: ScopeKey): PlanRefusal | null {
-  switch (wasmPlanRefusal({ row: planRowOf(row), target })) {
-    case "own_time_scope": return "ownTimeScope";
-    case "parent_plan": return "parentPlan";
-    case null: return null;
-  }
+export async function planRefusals(rows: readonly TaskListRow[], target: ScopeKey): Promise<ReadonlyMap<string, PlanRefusal>> {
+  const answer = await fetchPlanRefusals(target, rows.map(planRowOf));
+  return new Map(Object.entries(answer).map(([id, refusal]) => [id, named(refusal)]));
 }

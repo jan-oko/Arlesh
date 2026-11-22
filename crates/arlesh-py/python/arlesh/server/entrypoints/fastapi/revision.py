@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from starlette.datastructures import MutableHeaders
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from arlesh.seed import read_seed, request_seed
 from arlesh.server.business_logic.board import BoardNotOpen
 
 REVISION_HEADER = "X-Arlesh-Revision"
@@ -103,3 +104,28 @@ class GzipExceptEventsMiddleware:
             await self._app(scope, receive, send)
         else:
             await self._compressed(scope, receive, send)
+
+
+REQUEST_ID_HEADER = "X-Arlesh-Request-Id"
+"""The seed a client ran its prediction of this write under (``docs/spec/http-api.md``)."""
+
+
+class RequestSeedMiddleware:
+    """Puts the request's seed where the core's call can read it.
+
+    A pure ASGI middleware, so the ContextVar it sets is the one the route's task reads. A header
+    that is absent or not a UUID leaves the request unseeded, as an older client's is."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        header = Headers(scope=scope).get(REQUEST_ID_HEADER)
+        token = request_seed.set(read_seed(header))
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            request_seed.reset(token)
