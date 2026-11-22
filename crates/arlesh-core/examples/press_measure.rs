@@ -2,7 +2,7 @@
 //! (task `ccc`, sizing the client Replica). It takes a copy of any Arlesh database as its first
 //! argument, so nothing private is compiled in.
 //!
-//! `DUMP_BOARD=<file>` writes the derived board at a fixed instant instead of measuring, to compare
+//! `DUMP_BOARD=<file>` (with `HABITS_ALONE=1` to read each Habit by itself) writes the derived board at a fixed instant instead of measuring, to compare
 //! before and after a change to the board read byte for byte. `EACH=1` prints every press.
 //! Build it for a phone with `--target aarch64-linux-android` and run it from `adb shell`.
 //!
@@ -347,7 +347,14 @@ async fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("bad date"))?;
         let mut db = factory.begin_read().await?;
         let blocking = arlesh_core::agents::service::blocking(&mut db, fixed).await?;
-        let sources = BoardSources::read(&mut db).await?;
+        let mut sources = BoardSources::read(&mut db).await?;
+        if std::env::var("HABITS_ALONE").is_ok() {
+            // Read every Habit by itself, as the board read did before it shared the Flow lists.
+            for flow in sources.flows.iter().filter(|flow| flow.is_habit) {
+                let alone = arlesh_core::flows::occurrences::HabitSource::read(&mut db, flow).await;
+                sources.habits.insert(flow.id, alone);
+            }
+        }
         db.commit().await?;
         let load = mrules::derive_board(sources, fixed, Horizon::default(), blocking)?;
         std::fs::write(&out, serde_json::to_vec_pretty(&load)?)?;

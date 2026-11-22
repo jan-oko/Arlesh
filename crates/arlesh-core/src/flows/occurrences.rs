@@ -13,14 +13,17 @@ use chrono::NaiveDateTime;
 
 use super::{
     error::FlowError,
-    model::{Flow, FlowGoal, FlowId},
+    model::{
+        Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle,
+        FlowTask,
+    },
     parse_clock, target_parent_type,
 };
 use crate::{
     database::session::{Db, SessionMode},
     nodes::key::{OccurrenceKey, TemplateKind},
     scopes::key::ScopeKey,
-    tasks::waits::WaitRef,
+    tasks::waits::{CheckRecord, WaitRef},
 };
 
 pub(crate) use super::rules::occurrences::effective_tags;
@@ -65,25 +68,118 @@ async fn load_template<M: SessionMode>(
 }
 
 /// When each of a Habit's wait item occurrences was last checked on, by its node key.
-async fn last_checks<M: SessionMode>(
-    db: &mut Db<M>,
+fn last_checks_in(
+    checks_by_wait: &HashMap<WaitRef, Vec<CheckRecord>>,
     template: &Template,
-) -> Result<HashMap<String, NaiveDateTime>, FlowError> {
+) -> HashMap<String, NaiveDateTime> {
     let mut latest = HashMap::new();
-    for (wait, checks) in db.tasks().all_wait_checks().await? {
+    for (wait, checks) in checks_by_wait {
         let WaitRef::Occurrence(key) = wait else {
             continue;
         };
-        let Some(occurrence) = OccurrenceKey::parse(&key) else {
+        let Some(occurrence) = OccurrenceKey::parse(key) else {
             continue;
         };
         let ours = occurrence.item.item_type == TemplateKind::FlowExpectation
             && template.expectations.contains_key(&occurrence.item.item_id);
         if let (true, Some(last)) = (ours, checks.iter().map(|check| check.resolved_at).max()) {
-            latest.insert(key, last);
+            latest.insert(key.clone(), last);
         }
     }
-    Ok(latest)
+    latest
+}
+
+/// What a board load reads of every Flow once, for every Habit's read to take its own share of:
+/// the item lists, cycle pairs and template edges it already holds, and the two tables each
+/// Habit's read used to read whole again — the edges occurrences removed and every wait's checks.
+pub struct HabitShared<'rows> {
+    goals: &'rows [FlowGoal],
+    tasks: &'rows [FlowTask],
+    commitments: &'rows [FlowCommitment],
+    expectations: &'rows [FlowExpectation],
+    cycles: &'rows [FlowItemCycle],
+    dependencies: &'rows [FlowDependency],
+    removed_edges: HashSet<(String, String)>,
+    checks: HashMap<WaitRef, Vec<CheckRecord>>,
+}
+
+/// The Flow-wide lists a board load has read, as [`HabitShared::read`] takes them.
+pub struct FlowLists<'rows> {
+    /// Every Flow's goal items.
+    pub goals: &'rows [FlowGoal],
+    /// Every Flow's task items.
+    pub tasks: &'rows [FlowTask],
+    /// Every Flow's Commitment items.
+    pub commitments: &'rows [FlowCommitment],
+    /// Every Flow's wait items.
+    pub expectations: &'rows [FlowExpectation],
+    /// Every item's cycle pairs.
+    pub cycles: &'rows [FlowItemCycle],
+    /// Every Flow's template edges.
+    pub dependencies: &'rows [FlowDependency],
+}
+
+impl<'rows> HabitShared<'rows> {
+    /// Reads the two tables the lists do not carry.
+    pub async fn read<M: SessionMode>(
+        db: &mut Db<M>,
+        lists: FlowLists<'rows>,
+    ) -> Result<Self, FlowError> {
+        Ok(Self {
+            goals: lists.goals,
+            tasks: lists.tasks,
+            commitments: lists.commitments,
+            expectations: lists.expectations,
+            cycles: lists.cycles,
+            dependencies: lists.dependencies,
+            removed_edges: db.relations().removed_template_edges().await?,
+            checks: db.tasks().all_wait_checks().await?,
+        })
+    }
+
+    fn goals_of(&self, flow_id: RowId) -> Vec<FlowGoal> {
+        of_flow(self.goals, |goal| goal.flow_id == flow_id)
+    }
+
+    fn template_of(&self, flow_id: RowId, goals: Vec<FlowGoal>) -> Template {
+        let mut cycles: HashMap<(String, RowId), Vec<FlowItemCycle>> = HashMap::new();
+        for cycle in self.cycles.iter().filter(|cycle| cycle.flow_id == flow_id) {
+            cycles
+                .entry((cycle.item_type.clone(), cycle.item_id))
+                .or_default()
+                .push(cycle.clone());
+        }
+        Template {
+            goals: goals.into_iter().map(|goal| (goal.id, goal)).collect(),
+            tasks: keyed(self.tasks, |task| task.flow_id == flow_id, |task| task.id),
+            commitments: keyed(
+                self.commitments,
+                |item| item.flow_id == flow_id,
+                |item| item.id,
+            ),
+            expectations: keyed(
+                self.expectations,
+                |item| item.flow_id == flow_id,
+                |item| item.id,
+            ),
+            cycles,
+        }
+    }
+}
+
+fn of_flow<T: Clone>(rows: &[T], ours: impl Fn(&T) -> bool) -> Vec<T> {
+    rows.iter().filter(|row| ours(row)).cloned().collect()
+}
+
+fn keyed<T: Clone>(
+    rows: &[T],
+    ours: impl Fn(&T) -> bool,
+    id: impl Fn(&T) -> RowId,
+) -> HashMap<RowId, T> {
+    rows.iter()
+        .filter(|row| ours(row))
+        .map(|row| (id(row), row.clone()))
+        .collect()
 }
 
 /// Reads what one Habit's rows are drawn from, or `None` when there is nothing to draw: a flow
@@ -93,7 +189,7 @@ pub(super) async fn load_habit<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
 ) -> Result<Option<LoadedHabit>, FlowError> {
-    let Some(mut habit) = read_habit(db, flow).await? else {
+    let Some(mut habit) = read_habit(db, flow, None).await? else {
         return Ok(None);
     };
     habit.host_agentic =
@@ -106,29 +202,48 @@ pub(super) async fn load_habit<M: SessionMode>(
 async fn read_habit<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
+    shared: Option<&HabitShared<'_>>,
 ) -> Result<Option<LoadedHabit>, FlowError> {
     let flow_id = FlowId(flow.id);
     let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
         return Ok(None);
     };
-    let goals = db.flows().list_goals(flow_id).await?;
+    let goals = match shared {
+        Some(shared) => shared.goals_of(flow.id),
+        None => db.flows().list_goals(flow_id).await?,
+    };
     if flow.instance_type == "commitment" && !goals.is_empty() {
         return Ok(None);
     }
-    let template = load_template(db, flow_id, goals).await?;
-    let last_checks = last_checks(db, &template).await?;
+    let template = match shared {
+        Some(shared) => shared.template_of(flow.id, goals),
+        None => load_template(db, flow_id, goals).await?,
+    };
+    let last_checks = match shared {
+        Some(shared) => last_checks_in(&shared.checks, &template),
+        None => last_checks_in(&db.tasks().all_wait_checks().await?, &template),
+    };
     let overlays = db.overlays().for_habit(flow.id).await?;
-    let relations = HabitRelations {
-        tags: db.relations().tags_for_habit(flow.id).await?,
-        block_reasons: db.relations().block_reasons_for_habit(flow.id).await?,
-        removed_edges: db.relations().removed_template_edges().await?,
-        template_edges: db
-            .flows()
-            .list_all_dependencies()
-            .await?
+    let (removed_edges, all_edges) = match shared {
+        Some(shared) => (shared.removed_edges.clone(), None),
+        None => (
+            db.relations().removed_template_edges().await?,
+            Some(db.flows().list_all_dependencies().await?),
+        ),
+    };
+    let template_edges = match (shared, all_edges) {
+        (Some(shared), _) => of_flow(shared.dependencies, |edge| edge.flow_id == flow.id),
+        (None, all) => all
+            .unwrap_or_default()
             .into_iter()
             .filter(|edge| edge.flow_id == flow.id)
             .collect(),
+    };
+    let relations = HabitRelations {
+        tags: db.relations().tags_for_habit(flow.id).await?,
+        block_reasons: db.relations().block_reasons_for_habit(flow.id).await?,
+        removed_edges,
+        template_edges,
     };
     let touched = touched_iterations(db, flow.id).await?;
     let instance_items = db.flows().instance_items(flow_id).await?;
@@ -154,7 +269,19 @@ impl HabitSource {
     /// Reads what the Habit `flow` draws its rows from.
     pub async fn read<M: SessionMode>(db: &mut Db<M>, flow: &Flow) -> Result<Self, FlowError> {
         Ok(Self {
-            habit: read_habit(db, flow).await?,
+            habit: read_habit(db, flow, None).await?,
+        })
+    }
+
+    /// [`Self::read`], taking what `shared` already holds of every Flow instead of reading it
+    /// again for this Habit.
+    pub async fn read_shared<M: SessionMode>(
+        db: &mut Db<M>,
+        flow: &Flow,
+        shared: &HabitShared<'_>,
+    ) -> Result<Self, FlowError> {
+        Ok(Self {
+            habit: read_habit(db, flow, Some(shared)).await?,
         })
     }
 }
@@ -210,3 +337,6 @@ pub(super) async fn completion_inputs<M: SessionMode>(
     }
     Ok(inputs)
 }
+
+#[cfg(test)]
+mod tests;
