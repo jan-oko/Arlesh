@@ -2,10 +2,9 @@
   "about": [
     "Which kinds may hold which, written as data: the whole kind \u00d7 kind matrix.",
     "",
-    "Both evaluators replay it. `src-tauri/tests/operations/parenting_conformance.rs` asks",
-    "`nodes::rules::parenting::may_parent` of every pair; `src/utils/parenting-conformance.test.ts`",
-    "asks the frontend's `isValidDropTarget`, which the Mindmap asks per pointer move. Neither side",
-    "generates this file.",
+    "Rust replays it: `src-tauri/tests/operations/parenting_conformance.rs` asks",
+    "`nodes::rules::parenting::may_parent` of every pair; the frontend reads the same table from the",
+    "`rule_tables` command. Nothing generates this file.",
     "",
     "`parents` names, for each child kind, every parent kind it may hang under; every pair not",
     "named is refused. A Flow item's parent is in the Flow's own world, and a folded run of Habit",
