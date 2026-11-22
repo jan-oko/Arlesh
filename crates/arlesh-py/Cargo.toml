@@ -19,7 +19,7 @@ arlesh-core = { path = "../arlesh-core" }
 # the desktop app's feature set: a crate built with other features is another cargo unit, and the
 # two builds share one target (scripts/box.py, "Shared target"), so without it `arlesh-backend`
 # compiled once for the app and once for this module. The unused module adds no code to the wheel.
-arlesh-backend = { path = "../arlesh-backend", default-features = false, features = ["http", "sqlite"] }
+arlesh-backend = { path = "../arlesh-backend", default-features = false, features = ["http", "sqlite", "replica"] }
 pyo3 = { version = "0.29", features = ["abi3-py311"] }
 pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 serde = { version = "1", features = ["derive"] }
