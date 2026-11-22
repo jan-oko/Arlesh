@@ -408,9 +408,15 @@ impl<'session> ExpectationOperator<'session> {
         ))
         .fetch_all(&mut *self.connection)
         .await?;
+        let mut tags = super::tags_by_owner(
+            &mut *self.connection,
+            "tags_on_expectations",
+            "expectation_id",
+        )
+        .await?;
         let mut expectations = Vec::with_capacity(rows.len());
         for row in rows {
-            let tag_ids = self.tag_ids(ExpectationId(row.id)).await?;
+            let tag_ids = tags.remove(&row.id).unwrap_or_default();
             expectations.push(Expectation {
                 tag_ids,
                 ..row.into()

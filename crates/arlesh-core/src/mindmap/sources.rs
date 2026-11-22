@@ -17,7 +17,7 @@ use crate::{
             Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle,
             FlowTask, TargetRef,
         },
-        occurrences::HabitSource,
+        occurrences::{FlowLists, HabitShared, HabitSource},
     },
     nodes::{board::StoredBoard, relations::DerivedEdge},
     tasks::model::TaskDependencyEdge,
@@ -63,19 +63,38 @@ impl BoardSources {
         let domains = db.domains().list(None).await?;
         let stored = StoredBoard::read(db).await?;
         let flows = db.flows().list().await?;
+        let flow_goals = db.flows().list_all_goals().await?;
+        let flow_tasks = db.flows().list_all_tasks().await?;
+        let flow_commitments = db.flows().list_commitment_items(None).await?;
+        let flow_expectations = db.flows().list_expectation_items(None).await?;
+        let flow_cycles = db.flows().list_all_cycles().await?;
+        let flow_dependencies = db.flows().list_all_dependencies().await?;
         let mut habits = HashMap::new();
+        let shared = HabitShared::read(
+            db,
+            FlowLists {
+                goals: &flow_goals,
+                tasks: &flow_tasks,
+                commitments: &flow_commitments,
+                expectations: &flow_expectations,
+                cycles: &flow_cycles,
+                dependencies: &flow_dependencies,
+            },
+        )
+        .await?;
         for flow in flows.iter().filter(|flow| flow.is_habit) {
-            habits.insert(flow.id, HabitSource::read(db, flow).await);
+            habits.insert(flow.id, HabitSource::read_shared(db, flow, &shared).await);
         }
+        drop(shared);
         Ok(Self {
             domains,
             stored,
-            flow_goals: db.flows().list_all_goals().await?,
-            flow_tasks: db.flows().list_all_tasks().await?,
-            flow_commitments: db.flows().list_commitment_items(None).await?,
-            flow_expectations: db.flows().list_expectation_items(None).await?,
-            flow_cycles: db.flows().list_all_cycles().await?,
-            flow_dependencies: db.flows().list_all_dependencies().await?,
+            flow_goals,
+            flow_tasks,
+            flow_commitments,
+            flow_expectations,
+            flow_cycles,
+            flow_dependencies,
             block_reasons: db.block_reasons().list_all().await?,
             task_dependencies: db.tasks().list_all_dependencies().await?,
             flow_instance_nodes: db.flows().list_instance_node_refs().await?,

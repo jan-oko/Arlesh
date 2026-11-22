@@ -119,3 +119,134 @@ fn a_durations_columns_round_trip() {
     assert_eq!(duration_columns(None), (None, None));
     assert_eq!(duration(Some(1), None), None);
 }
+
+mod narrowed_reads {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn seeded_pool() -> crate::database::DatabasePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("open");
+        crate::database::run_migrations(&pool)
+            .await
+            .expect("migrations");
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&pool)
+            .await
+            .expect("pragma");
+        for n in 1..=4 {
+            sqlx::query(
+                "INSERT INTO flow_tasks (id, flow_id, title, parent_type, parent_id, asynchronous)
+                 VALUES (?, ?, 't', 'flow', ?, ?)",
+            )
+            .bind(tid(n))
+            .bind(tid(90))
+            .bind(tid(90))
+            .bind(i64::from(n == 2))
+            .execute(&pool)
+            .await
+            .expect("item");
+        }
+        for (item, tag) in [(1, 7), (1, 3), (2, 5), (3, 8), (4, 1)] {
+            sqlx::query(
+                "INSERT INTO template_tags (item_type, item_id, tag_id) VALUES ('flow_task', ?, ?)",
+            )
+            .bind(tid(item))
+            .bind(tid(tag))
+            .execute(&pool)
+            .await
+            .expect("tag");
+        }
+        for (item, reason, position) in [(1, "b", 1), (1, "a", 0), (3, "c", 0)] {
+            sqlx::query(
+                "INSERT INTO template_block_reasons (item_type, item_id, reason, position)
+                 VALUES ('flow_task', ?, ?, ?)",
+            )
+            .bind(tid(item))
+            .bind(reason)
+            .bind(position)
+            .execute(&pool)
+            .await
+            .expect("reason");
+        }
+        sqlx::query(
+            "INSERT INTO template_agentic_briefs (item_type, item_id, priority, spec)
+             VALUES ('flow_task', ?, 1, 'spec')",
+        )
+        .bind(tid(3))
+        .execute(&pool)
+        .await
+        .expect("brief");
+        sqlx::query(
+            "INSERT INTO flow_task_async_templates
+                (flow_task_id, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind)
+             VALUES (?, 'wait', 1, 'day', 1, 'hour')",
+        )
+        .bind(tid(2))
+        .execute(&pool)
+        .await
+        .expect("wait template");
+        sqlx::query(
+            "INSERT INTO tags_on_flow_task_async_templates (flow_task_id, tag_id) VALUES (?, ?)",
+        )
+        .bind(tid(2))
+        .bind(tid(6))
+        .execute(&pool)
+        .await
+        .expect("wait tag");
+        pool
+    }
+
+    #[tokio::test]
+    async fn the_rows_asked_for_read_as_they_do_in_the_whole_table() {
+        let pool = seeded_pool().await;
+        let mut connection = pool.acquire().await.expect("connection");
+        let mut templates = TemplateOperator::new(&mut connection);
+
+        let everything = templates.all(TemplateTable::FlowTask).await.expect("all");
+        assert_eq!(everything.len(), 4);
+        let some = templates
+            .of(TemplateTable::FlowTask, &[tid(1), tid(2), tid(3)])
+            .await
+            .expect("of");
+
+        assert_eq!(some.len(), 3);
+        for id in [tid(1), tid(2), tid(3)] {
+            assert_eq!(some.get(&id), everything.get(&id));
+        }
+        assert!(!some.contains_key(&tid(4)));
+        let first = some.get(&tid(1)).expect("item 1");
+        assert_eq!(first.tag_ids, vec![tid(3), tid(7)]);
+        assert_eq!(first.block_reasons, vec!["a", "b"]);
+        assert!(some.get(&tid(2)).expect("item 2").async_template.is_some());
+        assert!(some.get(&tid(3)).expect("item 3").agentic_brief.is_some());
+    }
+
+    #[tokio::test]
+    async fn no_rows_asked_for_reads_nothing() {
+        let pool = seeded_pool().await;
+        let mut connection = pool.acquire().await.expect("connection");
+        let mut templates = TemplateOperator::new(&mut connection);
+        assert!(templates
+            .of(TemplateTable::FlowTask, &[])
+            .await
+            .expect("of")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn one_row_reads_as_it_does_in_the_whole_table() {
+        let pool = seeded_pool().await;
+        let mut connection = pool.acquire().await.expect("connection");
+        let mut templates = TemplateOperator::new(&mut connection);
+        let everything = templates.all(TemplateTable::FlowTask).await.expect("all");
+        let one = templates
+            .one(TemplateTable::FlowTask, tid(2))
+            .await
+            .expect("one");
+        assert_eq!(Some(&one), everything.get(&tid(2)));
+    }
+}
