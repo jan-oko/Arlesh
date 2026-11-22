@@ -165,7 +165,10 @@ fn a_clicked_question_opens_the_review_list_at_its_task() {
     let question = notice(Channel::AgentQuestion, Some("task-12"));
     assert_eq!(
         question.review_target(),
-        Some(ReviewTarget { task: "task-12", wait: Some("w-1") })
+        Some(ReviewTarget {
+            task: "task-12",
+            wait: Some("w-1")
+        })
     );
 }
 
