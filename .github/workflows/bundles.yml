@@ -526,7 +526,12 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # Arlesh-linux-x86_64.AppImage -> Arlesh-0.3.0-linux-x86_64.AppImage,
             # and the same for the Windows installers and the Android APK.
-            for f in *; do mv "$f" "$(sed -E "s/-(linux|windows|android)-/-$VERSION-\1-/" <<<"$f")"; done
+            # A wheel's name already carries the version and matches nothing here:
+            # moving a file onto itself is an error, so only rename what changes.
+            for f in *; do
+              new=$(sed -E "s/-(linux|windows|android)-/-$VERSION-\1-/" <<<"$f")
+              if [ "$new" != "$f" ]; then mv "$f" "$new"; fi
+            done
             ls -la
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               gh release create "$TAG" --verify-tag \
