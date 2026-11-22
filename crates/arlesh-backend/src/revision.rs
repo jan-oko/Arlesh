@@ -11,7 +11,10 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use arlesh_core::mindmap::{model::MindmapLoad, publisher::ChangeEvent};
+use arlesh_core::{
+    board::ChangeOrigin,
+    mindmap::{model::MindmapLoad, publisher::ChangeEvent},
+};
 use serde_json::value::RawValue;
 
 pub use arlesh_core::mindmap::publisher::BoardHead;
@@ -145,6 +148,9 @@ pub struct BoardChange {
     /// Whether the window must load the whole board instead.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reload: bool,
+    /// Who caused the publication's changes; absent from an older host's events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ChangeOrigin>,
 }
 
 impl BoardChange {

@@ -37,8 +37,11 @@ Settled with the user on 2026-10-31 and 2026-11-04.
 ## Consequences
 
 - The tables are server-only, like `server_tokens`: not read by the desktop app, not journaled.
-- A device is not told of an event it caused. It is told of everything, by design: the server does
-  not know which device is looking at the board.
+- A device is told of everything an agent or time did, by design: the server does not know which
+  device is looking at the board. It is told of nothing the user did, from any device: each look
+  knows who caused what happened since the last one (the board's change feed counts a write with its
+  origin), and after a user's own changes records the facts as told without sending them
+  (task `43c`, 2026-11-21; [Notifications](../spec/notifications.md#own-actions)).
 - Several quick changes between two looks collapse: a lock set and cleared inside the quiet window is
   never sent.
 - A generated task that is already Overdue is two notifications, one on each channel.

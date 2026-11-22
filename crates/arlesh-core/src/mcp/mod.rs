@@ -396,7 +396,7 @@ pub fn handler(
     let feed = streams.feed.clone();
     let announce: Announce = Arc::new(move |origin: Option<&str>| {
         announce(origin);
-        feed.bump();
+        feed.bump(crate::board::WriteOrigin::Agent);
     });
     ArleshMcp::new(factory)
         .announcing(announce)

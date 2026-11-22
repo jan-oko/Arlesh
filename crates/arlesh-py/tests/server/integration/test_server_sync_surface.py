@@ -73,5 +73,5 @@ def test_a_write_reaches_a_device_as_the_rows_it_changed_and_the_head_agrees(
     # An app that predates the Replica reads exactly what it always did: no `source` anywhere.
     old_event = plain.next_change()
     assert "source" not in old_event
-    assert set(old_event) == {"epoch", "seq", "revision", "now", "hash", "changes"}
+    assert set(old_event) == {"epoch", "seq", "revision", "now", "hash", "origin", "changes"}
     assert "source" not in plain.heads.get(timeout=10)

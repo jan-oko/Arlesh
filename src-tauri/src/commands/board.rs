@@ -9,7 +9,7 @@
 //! Tauri `board-changed` event, and the commands a window asks the backend through.
 
 use serde::Deserialize;
-use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
+use tauri::{Emitter, Runtime, State, WebviewWindow};
 
 use crate::backend::{
     revision::{BoardChange, BoardHead, BoardRevision},
@@ -43,20 +43,10 @@ pub fn board_change_sink<R: Runtime>(app: &tauri::AppHandle<R>) -> crate::mindma
 
 /// The newest revision a write is known to have reached: what a window settles on after its own.
 #[tauri::command]
-pub async fn board_fence<R: Runtime>(
+pub async fn board_fence(
     backend: State<'_, AppBackend>,
-    notifications: tauri::AppHandle<R>,
 ) -> Result<Option<BoardRevision>, WireError> {
-    let fence = backend.board_fence().await;
-    // A window asks for the fence to settle on a write of its own: that is how the notifications
-    // learn which writes are the user's.
-    if let (Some(fence), Some(service)) = (
-        &fence,
-        notifications.try_state::<std::sync::Arc<crate::notifications::Notifications>>(),
-    ) {
-        service.note_own_write(fence);
-    }
-    Ok(fence)
+    Ok(backend.board_fence().await)
 }
 
 /// The latest publication's identity, for a window to check its board against.

@@ -167,7 +167,7 @@ async fn the_change_stream_says_connected_then_tells_of_each_write() {
     let first = read_until(&mut stream, ": connected").await;
     assert!(first.contains("text/event-stream"), "{first}");
     assert!(!first.contains("event: board-changed"), "{first}");
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     let heard = read_until(&mut stream, "event: board-changed").await;
 
     assert!(heard.contains("\"revision\":1"), "{heard}");
@@ -178,7 +178,7 @@ async fn the_change_stream_says_connected_then_tells_of_each_write() {
 async fn a_change_stream_reconnecting_behind_is_told_at_once() {
     let (factory, directory) = scratch().await;
     let feed = ChangeFeed::new();
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     let address = serve(
         factory,
         EventStreams {
@@ -277,7 +277,7 @@ async fn a_long_poll_with_nothing_new_answers_empty_when_its_wait_is_up() {
         poll: Some(Duration::from_millis(50)),
         ..EventStreams::default()
     };
-    streams.feed.bump();
+    streams.feed.bump(crate::board::WriteOrigin::User);
     let epoch = streams.feed.epoch().to_owned();
     let address = serve(factory, streams).await;
     let baseline = body(&answer(address, "/events/expectations?wait=0").await);
@@ -301,7 +301,7 @@ async fn a_long_poll_answers_the_moment_a_wait_is_released() {
     let (factory, directory) = scratch().await;
     let id = raise_a_wait(&directory).await;
     let feed = ChangeFeed::new();
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     let epoch = feed.epoch().to_owned();
     let address = serve(
         factory.clone(),
@@ -318,7 +318,7 @@ async fn a_long_poll_answers_the_moment_a_wait_is_released() {
 
     tokio::time::sleep(Duration::from_millis(200)).await;
     release(&directory, id).await;
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     let heard = body(&poll.await.unwrap());
 
     assert_eq!(heard["changes"][0]["change"], "released", "{heard}");
@@ -446,7 +446,7 @@ async fn poll_after(
     after: u64,
 ) -> serde_json::Value {
     let epoch = feed.epoch().to_owned();
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     body(
         &answer(
             address,
@@ -463,7 +463,7 @@ async fn a_staged_answer_is_no_change_and_a_send_is_one_revision_with_a_release_
     let asked = three_questions(&factory, &directory).await;
     let stacks = crate::undo::stacks::UndoStacks::new();
     let feed = ChangeFeed::new();
-    feed.bump();
+    feed.bump(crate::board::WriteOrigin::User);
     let address = serve(
         factory.clone(),
         EventStreams {

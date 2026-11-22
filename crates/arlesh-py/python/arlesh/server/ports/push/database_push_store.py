@@ -14,7 +14,13 @@ from pydantic import TypeAdapter
 
 from arlesh import _native
 from arlesh.errors import from_native
-from arlesh.server.ports.push.push_store import DevicePlan, PushDevice, PushStore, SentEntry
+from arlesh.server.ports.push.push_store import (
+    ChangeOrigin,
+    DevicePlan,
+    PushDevice,
+    PushStore,
+    SentEntry,
+)
 
 _DEVICES = TypeAdapter(list[PushDevice])
 _PLANS = TypeAdapter(list[DevicePlan])
@@ -39,8 +45,10 @@ class DatabasePushStore(PushStore):
     def devices(self) -> list[PushDevice]:
         return _DEVICES.validate_python(self._call("devices"))
 
-    def plan(self, *, now: datetime | None = None) -> list[DevicePlan]:
-        return _PLANS.validate_python(self._call("plan", now=_at(now)))
+    def plan(
+        self, *, origin: ChangeOrigin = ChangeOrigin.time, now: datetime | None = None
+    ) -> list[DevicePlan]:
+        return _PLANS.validate_python(self._call("plan", origin=origin.value, now=_at(now)))
 
     def record(self, client: str, entries: list[SentEntry], *, now: datetime | None = None) -> None:
         self._call(

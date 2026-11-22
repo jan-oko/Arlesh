@@ -10,6 +10,7 @@ from typing import Any
 from arlesh.server.business_logic.notifier import Notifier
 from arlesh.server.ports.push.push_sender import Delivery, PushSender
 from arlesh.server.ports.push.push_store import (
+    ChangeOrigin,
     Channel,
     DevicePlan,
     PushDevice,
@@ -35,7 +36,10 @@ class FakeStore(PushStore):
         self.told: set[str] = set()
         self.registered = True
         self.failing = False
+        self.failures = 0
         self.looks = 0
+        self.succeeded = 0
+        self.origins: list[ChangeOrigin] = []
 
     def register(self, client: str, fcm_token: str, *, now: datetime | None = None) -> bool:
         return True
@@ -47,10 +51,17 @@ class FakeStore(PushStore):
     def devices(self) -> list[PushDevice]:
         return [PushDevice(client="phone", fcm_token="t")] if self.registered else []
 
-    def plan(self, *, now: datetime | None = None) -> list[DevicePlan]:
+    def plan(
+        self, *, origin: ChangeOrigin = ChangeOrigin.time, now: datetime | None = None
+    ) -> list[DevicePlan]:
         self.looks += 1
+        self.origins.append(origin)
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError("the database blinked")
         if self.failing:
             raise RuntimeError("the database is away")
+        self.succeeded += 1
         assert now is not None
         if not self.registered or now < self.due or "overdue:1" in self.told:
             return []
@@ -80,16 +91,26 @@ class FakeReader:
 
     def __init__(self) -> None:
         self.revision = 0
+        self.agent_writes: set[int] = set()
         self._moved = asyncio.Condition()
 
     @property
     def reader(self) -> FakeReader:
         return self
 
-    async def write(self) -> None:
+    async def write(self, *, by_agent: bool = False) -> None:
         async with self._moved:
             self.revision += 1
+            if by_agent:
+                self.agent_writes.add(self.revision)
             self._moved.notify_all()
+
+    def origin_between(self, previous: int, reached: int) -> ChangeOrigin:
+        if reached <= previous:
+            return ChangeOrigin.time
+        if any(previous < revision <= reached for revision in self.agent_writes):
+            return ChangeOrigin.agent
+        return ChangeOrigin.user
 
     async def next_change(self, after: int) -> int:
         async with self._moved:
@@ -181,3 +202,50 @@ async def test_without_a_sender_nothing_is_looked_at() -> None:
     assert store.looks == 0
     assert not pushes.enabled
     assert pushes.project_id is None
+
+
+async def test_a_look_after_a_write_knows_who_made_it() -> None:
+    board = FakeReader()
+    store = FakeStore(due=datetime(2026, 1, 1))
+    store.told.add("overdue:1")
+    pushes = notifier(board, store, FakeSender(), Clock("2026-11-04T08:00:00"), tick=300.0)
+    pushes.start()
+    try:
+        await until(lambda: store.looks == 1)
+        await board.write()
+        await until(lambda: store.looks == 2)
+        await board.write(by_agent=True)
+        await until(lambda: store.looks == 3)
+    finally:
+        await pushes.stop()
+
+    assert store.origins == [ChangeOrigin.time, ChangeOrigin.user, ChangeOrigin.agent]
+
+
+async def test_a_look_with_no_write_is_the_work_of_time() -> None:
+    store = FakeStore(due=datetime(2026, 1, 1))
+    pushes = notifier(FakeReader(), store, FakeSender(), Clock("2026-11-04T08:00:00"), tick=0.02)
+    pushes.start()
+    try:
+        await until(lambda: store.looks >= 3)
+    finally:
+        await pushes.stop()
+
+    assert set(store.origins) == {ChangeOrigin.time}
+
+
+async def test_a_look_that_failed_still_knows_who_wrote_what_it_missed() -> None:
+    board = FakeReader()
+    store = FakeStore(due=datetime(2026, 1, 1))
+    store.told.add("overdue:1")
+    pushes = notifier(board, store, FakeSender(), Clock("2026-11-04T08:00:00"), tick=300.0)
+    pushes.start()
+    try:
+        await until(lambda: store.looks == 1)
+        store.failures = 1
+        await board.write()
+        await until(lambda: store.succeeded >= 2)
+    finally:
+        await pushes.stop()
+
+    assert store.origins == [ChangeOrigin.time, ChangeOrigin.user, ChangeOrigin.user]
