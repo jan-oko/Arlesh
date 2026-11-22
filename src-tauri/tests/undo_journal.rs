@@ -14,6 +14,8 @@
 
 mod helpers;
 
+use arlesh_lib::nodes::id::RowId;
+
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::mcp::params;
 use arlesh_lib::undo::{model::WriteSource, EXCLUDED_TABLES};
@@ -73,8 +75,8 @@ async fn trigger_sql(pool: &sqlx::SqlitePool, table: &str, operation: &str) -> O
         .expect("failed to read sqlite_master")
 }
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -85,6 +87,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .expect("connect")
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Journal Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -97,8 +100,8 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_tag(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -109,6 +112,7 @@ async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
         .expect("connect")
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "journal-tag".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -121,8 +125,9 @@ async fn make_tag(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
+fn task_request(project_id: RowId, title: &str) -> CreateTaskRequest {
     CreateTaskRequest {
+        id: None,
         title: title.into(),
         parent_type: "project".into(),
         parent_id: project_id.into(),
@@ -432,6 +437,7 @@ async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it()
 
     let result = mcp
         .infos(Parameters(params::InfosOperation::Create {
+            id: None,
             task_id: task.id.sid().into(),
             body: "a note from the agent".into(),
             details: None,

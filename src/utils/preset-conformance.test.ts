@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/preset-filters.json";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -34,6 +35,7 @@ interface CorpusFilter {
   preset: ListPreset;
   unblock?: boolean;
   expectations?: boolean;
+  review?: boolean;
   includeFlows?: boolean;
   tags?: TagFilter[];
   showInfo?: boolean;
@@ -84,11 +86,11 @@ const OVERRIDE_MODES: readonly string[] = ["inactive", "include", "exclude"];
 
 function parseTagFilter(value: unknown, what: string): TagFilter {
   const raw = record(value, what);
-  if (typeof raw.tagId !== "number") fail(`${what}.tagId is not a number`);
+  if (typeof raw.tagId !== "number" && typeof raw.tagId !== "string") fail(`${what}.tagId is not an id`);
   const mode = str(raw.mode, `${what}.mode`);
   if (!TAG_MODES.includes(mode)) fail(`${what}.mode is not a tag mode: ${mode}`);
   const narrowed = TAG_MODES.find((candidate): candidate is TagFilterMode => candidate === mode) ?? fail(what);
-  return { tagId: raw.tagId, mode: narrowed };
+  return { tagId: typeof raw.tagId === "number" ? storedRowId(raw.tagId) : raw.tagId, mode: narrowed };
 }
 
 function parseOverride(value: unknown, what: string): ArchivedMode {
@@ -138,6 +140,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     tags,
     ...flag(raw.unblock, "unblock", what),
     ...flag(raw.expectations, "expectations", what),
+    ...flag(raw.review, "review", what),
     ...flag(raw.includeFlows, "includeFlows", what),
     ...flag(raw.showInfo, "showInfo", what),
     ...flag(raw.showFlow, "showFlow", what),
@@ -218,7 +221,8 @@ const STATUS_MODES: readonly StatusMode[] = ["all", "plan", "start", "do", "back
 function toListFilter(filter: CorpusFilter): ListFilterState {
   const preset: ListPreset = filter.unblock === true ? "unblock"
     : filter.expectations === true ? "expectations"
-      : filter.preset;
+      : filter.review === true ? "review"
+        : filter.preset;
   return {
     preset,
     kinds: filter.kinds ?? [...LIST_ROW_KINDS],

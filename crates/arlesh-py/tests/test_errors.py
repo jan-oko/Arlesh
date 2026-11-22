@@ -22,6 +22,9 @@ from arlesh.models import (
     WireErrorKind,
 )
 
+MISSING = "5b0d3c2e-8f4a-4c1e-9a7b-2d6e1f0a3b4c"
+"""A well-formed id no row has."""
+
 EXCEPTIONS = {
     "not_found": arlesh.NotFound,
     "containment_violated": arlesh.ContainmentViolated,
@@ -65,12 +68,12 @@ def test_a_kind_this_package_does_not_know_keeps_its_kind() -> None:
 
 async def test_a_missing_node_is_not_found(db: arlesh.Database) -> None:
     with pytest.raises(arlesh.NotFound) as raised:
-        await db.get_goal(424242)
+        await db.get_goal(MISSING)
     assert raised.value.kind == "not_found"
 
 
 async def test_a_child_window_outside_its_parent_is_a_containment_violation(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     goal = await db.create_goal(
         CreateGoalRequest(
@@ -93,7 +96,7 @@ async def test_a_child_window_outside_its_parent_is_a_containment_violation(
 
 
 async def test_a_dependency_cycle_is_an_invalid_request(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     first = await db.create_task(
         CreateTaskRequest(title="First", parent_type="domain", parent_id=domain_id)
@@ -107,7 +110,7 @@ async def test_a_dependency_cycle_is_an_invalid_request(
 
 
 async def test_backlogging_a_planned_task_needs_confirmation(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     task = await db.create_task(
         CreateTaskRequest(
@@ -124,7 +127,7 @@ async def test_backlogging_a_planned_task_needs_confirmation(
 
 
 async def test_a_commitment_with_no_window_needs_a_time_scope(
-    db: arlesh.Database, domain_id: int
+    db: arlesh.Database, domain_id: str
 ) -> None:
     with pytest.raises(arlesh.NeedsTimeScope) as raised:
         await db.create_commitment(

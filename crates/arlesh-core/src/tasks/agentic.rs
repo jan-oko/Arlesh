@@ -15,6 +15,7 @@
 //! - An **agentic wait** (an Expectation an agent raised: "the agent is waiting on you") can only
 //!   hang directly under a Task that reads as Agentic.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use std::collections::VecDeque;
@@ -33,7 +34,7 @@ use crate::nodes::rules::parenting::stored_reference;
 
 #[derive(sqlx::FromRow)]
 struct BriefRow {
-    task_id: i64,
+    task_id: RowId,
     priority: Option<i64>,
     spec: String,
     design: String,
@@ -58,7 +59,7 @@ impl From<BriefRow> for AgenticBrief {
 struct AgenticStepRow {
     agentic: Option<bool>,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
 }
 
 const BRIEF_SELECT: &str =
@@ -75,7 +76,7 @@ impl TaskOperator<'_> {
     }
 
     /// Every stored brief, by task id — one query for a whole board load.
-    pub async fn agentic_briefs(&mut self) -> Result<HashMap<i64, AgenticBrief>, TaskError> {
+    pub async fn agentic_briefs(&mut self) -> Result<HashMap<RowId, AgenticBrief>, TaskError> {
         let rows = sqlx::query_as::<_, BriefRow>(BRIEF_SELECT)
             .fetch_all(&mut *self.connection)
             .await?;
@@ -125,7 +126,7 @@ impl TaskOperator<'_> {
     async fn occurrence_holding(
         &mut self,
         kind: &str,
-        id: i64,
+        id: RowId,
     ) -> Result<Option<String>, TaskError> {
         Ok(sqlx::query_scalar(
             "SELECT parent_key FROM derived_children WHERE child_type = ? AND child_id = ?",
@@ -183,7 +184,7 @@ impl TaskOperator<'_> {
             TemplateKind::FlowCommitment => "flow_commitments",
             TemplateKind::FlowExpectation => "flow_expectations",
             TemplateKind::FlowRoot => {
-                let row: Option<(Option<String>, Option<i64>, String, i64)> = sqlx::query_as(
+                let row: Option<(Option<String>, Option<RowId>, String, RowId)> = sqlx::query_as(
                     "SELECT target_type, target_id, parent_type, parent_id FROM flows WHERE id = ?",
                 )
                 .bind(item.item_id)
@@ -204,7 +205,7 @@ impl TaskOperator<'_> {
                 }));
             }
         };
-        let row: Option<(String, i64)> = sqlx::query_as(&format!(
+        let row: Option<(String, RowId)> = sqlx::query_as(&format!(
             "SELECT parent_type, parent_id FROM {table} WHERE id = ?"
         ))
         .bind(item.item_id)
@@ -240,7 +241,7 @@ impl TaskOperator<'_> {
 
     /// The Habits whose occurrences render under the node `(kind, id)`: its Target Node, or —
     /// with none — its parent.
-    async fn habits_hosted_on(&mut self, kind: &str, id: i64) -> Result<Vec<i64>, TaskError> {
+    async fn habits_hosted_on(&mut self, kind: &str, id: RowId) -> Result<Vec<RowId>, TaskError> {
         Ok(sqlx::query_scalar(
             "SELECT id FROM flows
               WHERE COALESCE(target_type, parent_type) = ? AND COALESCE(target_id, parent_id) = ?",
@@ -252,7 +253,7 @@ impl TaskOperator<'_> {
     }
 
     /// The stored rows hung on one Habit's occurrences, as `(kind, id)`.
-    async fn hung_on_habit(&mut self, flow: i64) -> Result<Vec<(String, i64)>, TaskError> {
+    async fn hung_on_habit(&mut self, flow: RowId) -> Result<Vec<(String, RowId)>, TaskError> {
         Ok(
             sqlx::query_as("SELECT child_type, child_id FROM derived_children WHERE flow_id = ?")
                 .bind(flow)
@@ -262,7 +263,7 @@ impl TaskOperator<'_> {
     }
 
     /// A Habit's title, to name one of its occurrences in a refusal.
-    async fn habit_title(&mut self, flow: i64) -> Result<String, TaskError> {
+    async fn habit_title(&mut self, flow: RowId) -> Result<String, TaskError> {
         Ok(
             sqlx::query_scalar::<_, String>("SELECT title FROM flows WHERE id = ?")
                 .bind(flow)
@@ -301,7 +302,7 @@ impl TaskOperator<'_> {
 pub(crate) async fn reads_agentic<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
-    node_id: i64,
+    node_id: RowId,
 ) -> Result<bool, TaskError> {
     climb(db, Cursor::Stored(node_type.to_string(), node_id)).await
 }
@@ -395,7 +396,7 @@ pub(crate) async fn resolves_agentic<M: SessionMode>(
     db: &mut Db<M>,
     task: Option<TaskId>,
     own: Option<bool>,
-    parent: (&str, i64),
+    parent: (&str, RowId),
 ) -> Result<bool, TaskError> {
     if let Some(flag) = own {
         return Ok(flag);
@@ -418,11 +419,11 @@ pub(crate) async fn resolves_agentic<M: SessionMode>(
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Reach {
     /// Everything stored beneath a Task, Goal or Commitment, and every Habit hosted on it.
-    Below(String, i64),
+    Below(String, RowId),
     /// One stored Task that inherits its kind: itself, then everything beneath it.
-    Task(i64),
+    Task(RowId),
     /// One Habit's occurrences, and the stored rows hung on them.
-    Habit(i64),
+    Habit(RowId),
 }
 
 /// Re-reads the kind of every Task a change of kind can reach from `start` — a flag changed, a
@@ -496,7 +497,7 @@ pub(crate) async fn reconcile<M: SessionMode>(
 /// is To Do in either model and needs nothing.
 async fn reconcile_occurrences<M: SessionMode>(
     db: &mut Db<M>,
-    flow: i64,
+    flow: RowId,
     refused: &mut Vec<String>,
 ) -> Result<(), TaskError> {
     let overlays = db.overlays().for_habit(flow).await?.tasks;
@@ -532,7 +533,7 @@ async fn reconcile_occurrences<M: SessionMode>(
 pub(crate) async fn require_agentic_parent<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<(), TaskError> {
     if parent_type == "task" && reads_agentic(db, parent_type, parent_id).await? {
         return Ok(());

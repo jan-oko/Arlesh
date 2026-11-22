@@ -43,12 +43,19 @@ async fn tamper(path: &Path, sql: &str) {
     pool.close().await;
 }
 
+/// The first seeded aspect: a migrated database names it by the id its integer row id became.
+fn first_aspect() -> crate::nodes::id::RowId {
+    crate::nodes::id::parse_row_id(&crate::database::row_ids::new_id("domain", 1))
+        .expect("a seeded aspect's id is a UUID")
+}
+
 fn new_domain(title: &str) -> CreateDomainRequest {
     CreateDomainRequest {
+        id: None,
         title: title.to_string(),
         description: None,
         subtype: DomainSubtype::Domain,
-        parent_id: Some(1),
+        parent_id: Some(first_aspect()),
         status: None,
         knowledge_base_directory: None,
     }

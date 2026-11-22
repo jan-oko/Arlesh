@@ -1,31 +1,27 @@
 //! Full ids and short ids: how an agent names a node, and how a name is read back.
 //!
-//! Nothing here is stored. A node's **full id** is a UUID-v5 in the one namespace every derived
-//! row's id already lives in (`nodes::id`): a derived row keeps the UUID it has, and a stored row's
-//! is the UUID-v5 of `{kind}:{row id}` — deterministic, so it never needs keeping. Its **short id**
-//! is the shortest prefix of that UUID's hex digits, 3 at least, that no other node the MCP can see
-//! **right now** shares and that is not any visible node's row id written in decimal — worked out
-//! from a sorted list at each read.
+//! A node's **full id** is its id: the UUID a stored row is stored under, or the derived UUID of a
+//! Habit occurrence (`nodes::id`). Nothing is hashed here any more (ADR 0017, decision 9): a row
+//! that predates UUID identity kept, as its id, the full id it was always shown under. Its **short
+//! id** is the shortest prefix of that UUID's hex digits, 3 at least, that no other node the MCP can
+//! see **right now** shares — worked out from a sorted list at each read.
 //!
-//! Every id an agent gives is read as a string, and matched two ways at once: as a visible node's
-//! row id in decimal, exactly, and as a prefix (3 characters or more) of a visible node's full id.
-//! One match is that node; several are refused as `ambiguous_id`, listing them — row 269 and a UUID
-//! starting `269` alike (settled with the user on 2026-09-25).
+//! Every id an agent gives is read as a string and matched as a prefix (3 characters or more) of a
+//! visible node's full id. One match is that node; several are refused as `ambiguous_id`, listing
+//! them. Row numbers no longer exist, so an id is never read as one: before UUID identity a short id
+//! also had to avoid every row number written in decimal, and since the rule had nothing left to
+//! avoid it went, which lets a short id that once needed a fourth character read three.
 //!
 //! The trade-off, accepted with the user on 2026-09-24: a prefix an agent saw earlier can become
 //! ambiguous as nodes are added. It then refuses as `ambiguous_id`, listing the candidates, rather
 //! than ever naming the wrong node.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{
-    access::model::NodeTable,
-    mindmap::model::MindmapLoad,
-    nodes::id::{uuid_v5, NodeId, NODE_NAMESPACE},
-};
+use crate::{access::model::NodeTable, mindmap::model::MindmapLoad, nodes::id::NodeId};
 
 /// The fewest hex characters a short id has.
 const SHORTEST: usize = 3;
@@ -33,12 +29,9 @@ const SHORTEST: usize = 3;
 /// How many ancestors a candidate's path names before eliding the rest.
 const PATH_SEGMENTS: usize = 3;
 
-/// A node's full id: its derived UUID, or the UUID-v5 of `{kind}:{row id}` for a stored row.
-pub(super) fn full_id(table: NodeTable, id: &NodeId) -> String {
-    match id {
-        NodeId::Stored(row) => uuid_v5(&NODE_NAMESPACE, &format!("{}:{row}", table.as_str())),
-        NodeId::Derived(derived) => derived.as_str().to_string(),
-    }
+/// A node's full id: its id as a string.
+pub(super) fn full_id(_table: NodeTable, id: &NodeId) -> String {
+    id.to_string()
 }
 
 /// The hex digits of an id or a prefix of one, lower-cased — `None` when it holds anything else.
@@ -93,8 +86,6 @@ pub(super) struct NodeNames {
     /// Sorted by hex digits.
     nodes: Vec<Named>,
     by_node: HashMap<(NodeTable, NodeId), usize>,
-    /// Every visible stored node's row id, in decimal — what no short id may equal.
-    rows: HashSet<String>,
 }
 
 /// A node by table and id.
@@ -273,25 +264,12 @@ impl NodeNames {
             node.short_id =
                 node.hex[..(before.max(after) + 1).max(SHORTEST).min(node.hex.len())].to_string();
         }
-        // A short id never reads as a visible row id, so neither can be taken for the other.
-        let rows: HashSet<String> = nodes
-            .iter()
-            .filter_map(|node| node.node_id.stored().map(|row| row.to_string()))
-            .collect();
-        for node in &mut nodes {
-            node.short_id = clear_of_rows(&node.hex, node.short_id.len(), &rows, &node.id);
-        }
-
         let by_node = nodes
             .iter()
             .enumerate()
             .map(|(index, node)| ((node.table, node.node_id.clone()), index))
             .collect();
-        Self {
-            nodes,
-            by_node,
-            rows,
-        }
+        Self { nodes, by_node }
     }
 
     /// Stamps a node's JSON with the ids it goes by — `short_id` and `full_id` beside its `id`.
@@ -376,7 +354,7 @@ impl NodeNames {
             .find(|node| node.hex != hex)
             .map_or(0, |node| common_prefix(&node.hex, &hex));
         let length = (before.max(after) + 1).max(SHORTEST).min(hex.len());
-        clear_of_rows(&hex, length, &self.rows, full)
+        hex[..length].to_string()
     }
 
     /// The one node the MCP can see that `text` names, of any kind — see [`resolve_as`].
@@ -389,28 +367,18 @@ impl NodeNames {
 
     /// The one node the MCP can see that `text` names, as a node of `table` when one is given.
     ///
-    /// `text` is matched two ways and the matches are pooled: as a node's **row id** in decimal,
-    /// exactly, and as a **prefix** — 3 characters or more, hyphens optional — of a node's full id.
-    /// An exact full id wins outright. Only nodes of `table` count; when none does but a node of
+    /// `text` is matched as a **prefix** — 3 characters or more, hyphens optional — of a node's full
+    /// id. An exact full id wins outright. Only nodes of `table` count; when none does but a node of
     /// another kind would, the refusal says which.
     pub fn resolve_as(&self, text: &str, table: Option<NodeTable>) -> Result<&Named, IdRefusal> {
         let text = text.trim();
         let wanted = hex_digits(text).filter(|wanted| wanted.len() >= SHORTEST);
-        let by_row = |node: &&Named| {
-            node.node_id
-                .stored()
-                .is_some_and(|row| row.to_string() == text)
-        };
         let by_prefix = |node: &&Named| {
             wanted
                 .as_deref()
                 .is_some_and(|wanted| node.hex.starts_with(wanted))
         };
-        let all: Vec<&Named> = self
-            .nodes
-            .iter()
-            .filter(|node| by_row(node) || by_prefix(node))
-            .collect();
+        let all: Vec<&Named> = self.nodes.iter().filter(by_prefix).collect();
         let fits = |node: &&&Named| table.is_none_or(|table| node.table == table);
         let matches: Vec<&Named> = all.iter().filter(fits).copied().collect();
         if let Some(exact) = matches
@@ -428,17 +396,6 @@ impl NodeNames {
             )),
         }
     }
-}
-
-/// `hex`'s first `length` characters, lengthened until they are not one of `rows` — a visible row
-/// id in decimal — so that no short id can be read as a row id. Only an all-digit prefix can
-/// collide, and on a board of hundreds of nodes a collision is rare and costs a character or two.
-/// A full id whose every prefix collides, vanishingly unlikely, goes by `full`.
-fn clear_of_rows(hex: &str, length: usize, rows: &HashSet<String>, full: &str) -> String {
-    (length..=hex.len())
-        .map(|length| &hex[..length])
-        .find(|prefix| !rows.contains(*prefix))
-        .map_or_else(|| full.to_string(), str::to_string)
 }
 
 fn common_prefix(left: &str, right: &str) -> usize {

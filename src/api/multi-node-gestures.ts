@@ -32,7 +32,7 @@ export type GestureName =
  * that replaces `id` in the Habit an earlier write forked (`forked` names its kind: `flow` or a
  * Flow item kind), `id` itself when that write forked nothing.
  */
-export type StepTarget = RowId | { step: number } | { step: number; forked: string; id: number };
+export type StepTarget = RowId | { step: number } | { step: number; forked: string; id: string };
 
 /**
  * One write of a gesture: `op` names it and the rest are its arguments, as the backend's

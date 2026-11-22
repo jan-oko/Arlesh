@@ -14,8 +14,8 @@ import org.json.JSONObject
 
 /**
  * What the page can call, as `window.ArleshPush`: whether this build can receive push, the
- * notification permission, the FCM token, the system notification settings, and the Task a tapped
- * notification asked to open. The page calls from a background thread. Answers that arrive later
+ * notification permission, the FCM token, the system notification settings, and what a tapped
+ * notification asked to open (its Task and channel). The page calls from a background thread. Answers that arrive later
  * reach the page as window events: `arlesh-push-token` and `arlesh-open-task`, each with the value
  * as `detail`. Kept by `proguard-rules.pro`: nothing in Kotlin calls it by name.
  */
@@ -54,27 +54,36 @@ class PushBridge(private val activity: MainActivity) {
     activity.startActivity(settings)
   }
 
-  /** The board key of the Task a tapped notification opened the app for, once; else an empty string. */
+  /**
+   * What a tapped notification opened the app for, once, as JSON `{"task": "task-12", "wait":
+   * "<id>", "channel": "agent_question"}` (`task` and `wait` empty when it names none); else an empty string.
+   */
   @JavascriptInterface
-  fun takeOpenedTask(): String {
-    val task = pendingTask
-    pendingTask = null
-    return task ?: ""
+  fun takeOpenedNotification(): String {
+    val opened = pendingOpened
+    pendingOpened = null
+    return opened ?: ""
   }
 
   companion object {
     const val TASK_EXTRA = "arlesh_task"
+    const val CHANNEL_EXTRA = "arlesh_channel"
+    const val WAIT_EXTRA = "arlesh_wait"
     private const val REQUEST = 4721
 
-    /** A tapped notification's Task that the page has not taken yet (a cold start). */
-    @Volatile private var pendingTask: String? = null
+    /** A tapped notification's Task and channel (as JSON) that the page has not taken yet (a cold start). */
+    @Volatile private var pendingOpened: String? = null
     @Volatile private var onToken: ((String) -> Unit)? = null
 
-    /** Remembers the Task a launch intent names; true when it named one. */
+    /** Remembers the notification a launch intent was tapped from; true when it was one. */
     fun remember(intent: Intent?): Boolean {
-      val task = intent?.getStringExtra(TASK_EXTRA) ?: return false
+      val channel = intent?.getStringExtra(CHANNEL_EXTRA) ?: return false
+      val task = intent.getStringExtra(TASK_EXTRA) ?: ""
+      val wait = intent.getStringExtra(WAIT_EXTRA) ?: ""
+      intent.removeExtra(CHANNEL_EXTRA)
       intent.removeExtra(TASK_EXTRA)
-      pendingTask = task
+      intent.removeExtra(WAIT_EXTRA)
+      pendingOpened = JSONObject().put("task", task).put("wait", wait).put("channel", channel).toString()
       return true
     }
 

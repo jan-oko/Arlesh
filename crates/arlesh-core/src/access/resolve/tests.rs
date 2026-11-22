@@ -1,5 +1,6 @@
 use super::*;
 use crate::access::model::{NodeKey, NodeTable};
+use crate::nodes::id::tid;
 
 // A small board:
 //
@@ -18,22 +19,22 @@ use crate::access::model::{NodeKey, NodeTable};
 //   └── Run (task 110)
 
 fn domain(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Domain, id)
+    NodeKey::new(NodeTable::Domain, tid(id))
 }
 fn goal(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Goal, id)
+    NodeKey::new(NodeTable::Goal, tid(id))
 }
 fn task(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Task, id)
+    NodeKey::new(NodeTable::Task, tid(id))
 }
 fn info(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Info, id)
+    NodeKey::new(NodeTable::Info, tid(id))
 }
 fn flow(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::Flow, id)
+    NodeKey::new(NodeTable::Flow, tid(id))
 }
 fn flow_task(id: i64) -> NodeKey {
-    NodeKey::new(NodeTable::FlowTask, id)
+    NodeKey::new(NodeTable::FlowTask, tid(id))
 }
 
 fn node(key: NodeKey, parent: Option<NodeKey>) -> StoredNode {
@@ -258,22 +259,25 @@ fn effective_names_the_nearest_root_each_node_is_seen_through() {
     let entries = map.effective();
     let proofread = entries
         .iter()
-        .find(|entry| entry.node_kind == NodeTable::Task && entry.node_id == 101)
+        .find(|entry| entry.node_kind == NodeTable::Task && entry.node_id == tid(101))
         .expect("the proofread task is visible");
     assert_eq!(
         (proofread.root_kind, proofread.root_id),
-        (NodeTable::Task, 100)
+        (NodeTable::Task, tid(100))
     );
 
     let launch = entries
         .iter()
         .find(|entry| entry.node_kind == NodeTable::Flow)
         .expect("the flow is visible");
-    assert_eq!((launch.root_kind, launch.root_id), (NodeTable::Domain, 1));
+    assert_eq!(
+        (launch.root_kind, launch.root_id),
+        (NodeTable::Domain, tid(1))
+    );
     assert!(
         !entries
             .iter()
-            .any(|entry| entry.node_kind == NodeTable::Task && entry.node_id == 102),
+            .any(|entry| entry.node_kind == NodeTable::Task && entry.node_id == tid(102)),
         "a private node is not listed"
     );
     assert_eq!(map.root_of(flow(20)), Some(domain(1)));

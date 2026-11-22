@@ -25,6 +25,7 @@ use crate::error::WireError;
 /// changed, and a window that missed the event finds the gap at the next one or at its next check
 /// of the head, and loads the board whole.
 pub fn emit_board_change<R: Runtime>(app: &tauri::AppHandle<R>, change: &BoardChange) {
+    crate::commands::notifications::follow(app, change);
     if let Err(error) = app.emit(BOARD_CHANGED, change) {
         tracing::warn!(error = %error, "could not tell the windows the board changed");
     }

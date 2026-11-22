@@ -1,4 +1,6 @@
 import { useTranslation } from "react-i18next";
+import Switch from "@/components/Switch/Switch";
+import { useNotificationSwitches } from "@/hooks/use-notification-switches";
 import { usePushSettings } from "@/hooks/use-push-settings";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { isAndroid } from "@/utils/platform";
@@ -8,17 +10,44 @@ import styles from "./SettingsModal.module.css";
 const CHANNELS = ["agent_question", "task_overdue", "task_generated", "capacity_locked", "capacity_cleared"] as const;
 
 /**
- * Settings → Notifications: which events the phone is told of, and whether it can be. Each event is
- * an Android notification channel, switched in the system's own settings, so this page says what
- * they are, asks for the permission and links there. Client mode on Android only.
+ * Settings → Notifications: which events the device is told of. On the phone (Client mode on
+ * Android) each event is an Android notification channel, switched in the system's own settings, so
+ * this page says what they are, asks for the permission and links there. On the desktop, in either
+ * mode, each event is a switch kept on this device.
  */
 export default function NotificationsPage() {
   const { t } = useTranslation("server");
   const mode = useClientModeStore((s) => s.status?.mode);
-  if (mode !== "client" || !isAndroid()) {
+  if (!isAndroid()) return <DesktopNotifications />;
+  if (mode !== "client") {
     return <div className={styles.page}><p className={styles.note}>{t("notifications.notAvailable")}</p></div>;
   }
   return <PhoneNotifications />;
+}
+
+function DesktopNotifications() {
+  const { t } = useTranslation("server");
+  const { switches, error, toggle } = useNotificationSwitches();
+
+  return (
+    <div className={styles.page}>
+      <p className={styles.note}>{t("notifications.desktopIntro")}</p>
+      {error !== null && <p role="alert" className={styles.note}>{error}</p>}
+      {switches === null ? (
+        <p className={styles.note}>{t("notifications.loading")}</p>
+      ) : (
+        switches.map(({ channel, enabled }) => (
+          <Switch
+            key={channel}
+            checked={enabled}
+            onChange={() => { toggle(channel, !enabled); }}
+            label={t(`notifications.channel.${channel}`)}
+          />
+        ))
+      )}
+      <p className={styles.note}>{t("notifications.desktopClick")}</p>
+    </div>
+  );
 }
 
 function PhoneNotifications() {

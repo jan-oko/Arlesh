@@ -1,19 +1,20 @@
 {
   "name": "arlesh",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "npm run wasm -- --check && vite",
     "build": "npm run wasm && tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src && node scripts/check-source-text.mjs",
+    "lint": "eslint src && node scripts/check-source-text.mjs && node scripts/check-tauri-versions.mjs",
     "changelog": "node scripts/assemble-changelog.mjs",
     "changelog:check": "node scripts/assemble-changelog.mjs --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
     "box": "uv run --script scripts/box.py",
+    "cargo": "uv run --script scripts/box.py cargo",
     "wasm": "bash scripts/build-rules-wasm.sh"
   },
   "dependencies": {

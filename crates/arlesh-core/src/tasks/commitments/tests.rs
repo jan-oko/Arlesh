@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 use crate::scopes::key::test_key;
 
 fn stored() -> Commitment {
@@ -17,7 +18,7 @@ fn stored() -> Commitment {
             n: 2,
             kind: "day".to_string(),
         }),
-        tag_ids: vec![3],
+        tag_ids: vec![tid(3)],
         position: 100,
         is_private: false,
         archival: Default::default(),
@@ -32,7 +33,7 @@ fn an_empty_request_writes_the_stored_row_back_unchanged() {
     let write = CommitmentWrite::merge(stored(), UpdateCommitmentRequest::default()).unwrap();
     assert!(write.reparent.is_none());
     assert_eq!(write.parent_type, "project");
-    assert_eq!(write.parent_id, 7);
+    assert_eq!(write.parent_id, tid(7));
     assert_eq!(write.title, "Asleep by 23:00");
     assert_eq!(write.verdict, Verdict::Unresolved);
     assert_eq!(write.position, 100);
@@ -145,9 +146,9 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
         },
     )
     .unwrap();
-    assert_eq!(full.reparent, Some(("commitment".to_string(), 42)));
+    assert_eq!(full.reparent, Some(("commitment".to_string(), tid(42))));
     assert_eq!(full.parent_type, "commitment");
-    assert_eq!(full.parent_id, 42);
+    assert_eq!(full.parent_id, tid(42));
 }
 
 #[test]

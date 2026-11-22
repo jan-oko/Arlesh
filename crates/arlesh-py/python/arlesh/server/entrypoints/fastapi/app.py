@@ -37,6 +37,7 @@ from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.devices import DevicesRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
+from arlesh.server.entrypoints.fastapi.routers.drafts import DraftsRouter
 from arlesh.server.entrypoints.fastapi.routers.events import EventsRouter
 from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
@@ -80,7 +81,9 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
   the build commit: the desktop app's handshake before it uses the server.
 * **`/events/changes`** streams `board-changed` (Server-Sent Events) after every committed write,
   carrying the changed nodes, and a `board-head` when quiet. **`/board/current`** is the latest
-  published board, as it is, for a client's full load.
+  published board, as it is, for a client's full load. Each event also carries the replicated
+  source rows it changed (`source`), and **`/board/snapshot`** is every replicated row with the
+  revision, epoch and schema version it is at, for a client that keeps a Replica.
 * **`/events/expectations`** is a long poll over the changes to the waits the MCP can see
   (`?agentic=true` keeps the agentic ones): what an agent's notifications follow. The core
   computes the answer.
@@ -136,6 +139,7 @@ class AppRouter(APIRouter):
         self.include_router(GoalsRouter(*routed, tag="goals"), prefix="/goals")
         self.include_router(CommitmentsRouter(*routed, tag="commitments"), prefix="/commitments")
         self.include_router(WaitsRouter(*routed, tag="waits"), prefix="/waits")
+        self.include_router(DraftsRouter(*routed, tag="waits"), prefix="/drafts")
         self.include_router(InfosRouter(*routed, tag="infos"), prefix="/infos")
         self.include_router(DomainsRouter(*routed, tag="domains"), prefix="/domains")
         self.include_router(FlowsRouter(*routed, tag="flows"), prefix="/flows")

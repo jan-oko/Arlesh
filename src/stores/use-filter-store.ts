@@ -19,11 +19,11 @@ export interface FilterStore {
   /** Sets or clears (`null`) the Plan preset's scope narrowing. */
   setPlanScope: (scope: ScopeKey | null) => void;
   /** Adds a tag filter in `mode`; no-op when the tag is already filtered. */
-  addTagFilter: (tagId: number, mode: TagFilterMode) => void;
-  setTagFilterMode: (tagId: number, mode: TagFilterMode) => void;
+  addTagFilter: (tagId: string, mode: TagFilterMode) => void;
+  setTagFilterMode: (tagId: string, mode: TagFilterMode) => void;
   /** Moves a tag filter one step along All → Any → Not. */
-  cycleTagFilter: (tagId: number) => void;
-  removeTagFilter: (tagId: number) => void;
+  cycleTagFilter: (tagId: string) => void;
+  removeTagFilter: (tagId: string) => void;
   toggleShowInfo: () => void;
   toggleShowFlow: () => void;
   /** Shows or hides Agentic Tasks an agent holds (On Agent) under Start, Do and the Zen View. */

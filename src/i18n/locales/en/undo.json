@@ -39,6 +39,8 @@
     "nameWait": "create an expectation",
     "editTemplate": "edit what a task will wait on",
     "newHabit": "create a habit",
-    "newFlow": "create a flow"
+    "newFlow": "create a flow",
+    "sendAnswers_one": "send 1 answer",
+    "sendAnswers_other": "send {{count}} answers"
   }
 }

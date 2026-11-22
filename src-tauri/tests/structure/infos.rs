@@ -1,4 +1,5 @@
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     commands::infos::update_info,
@@ -12,8 +13,8 @@ use arlesh_lib::{
 };
 use tauri::Manager;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -24,6 +25,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Info Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -61,6 +63,7 @@ async fn create_info_under_goal() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Important detail".into(),
             details: None,
             parent_type: "goal".into(),
@@ -100,6 +103,7 @@ async fn create_info_under_task() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Task note".into(),
             details: None,
             parent_type: "task".into(),
@@ -116,7 +120,7 @@ async fn create_info_under_task() {
 #[tokio::test]
 async fn create_info_under_domain() {
     let pool = helpers::test_pool().await;
-    let aspect_id: i64 =
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(&pool)
             .await
@@ -127,6 +131,7 @@ async fn create_info_under_domain() {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "My Domain".into(),
             description: None,
             subtype: DomainSubtype::Domain,
@@ -142,6 +147,7 @@ async fn create_info_under_domain() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Domain note".into(),
             details: None,
             parent_type: "domain".into(),
@@ -165,6 +171,7 @@ async fn create_nested_info_under_info() {
     let parent_info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Parent note".into(),
             details: None,
             parent_type: "project".into(),
@@ -177,6 +184,7 @@ async fn create_nested_info_under_info() {
     let child_info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Child note".into(),
             details: None,
             parent_type: "info".into(),
@@ -200,6 +208,7 @@ async fn list_infos_returns_all() {
     let a = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Alpha".into(),
             details: None,
             parent_type: "project".into(),
@@ -211,6 +220,7 @@ async fn list_infos_returns_all() {
     let b = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Beta".into(),
             details: None,
             parent_type: "project".into(),
@@ -235,6 +245,7 @@ async fn update_info_body() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Old text".into(),
             details: None,
             parent_type: "project".into(),
@@ -270,6 +281,7 @@ async fn update_info_position() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Note".into(),
             details: None,
             parent_type: "project".into(),
@@ -304,6 +316,7 @@ async fn update_info_private_round_trips() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Note".into(),
             details: None,
             parent_type: "project".into(),
@@ -366,6 +379,7 @@ async fn update_info_parent() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Reparented note".into(),
             details: None,
             parent_type: "project".into(),
@@ -402,6 +416,7 @@ async fn delete_info() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Temporary note".into(),
             details: None,
             parent_type: "project".into(),
@@ -427,6 +442,7 @@ async fn details_round_trip_set_and_clear() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Crash".into(),
             details: Some("stack trace line 1\nline 2".into()),
             parent_type: "project".into(),
@@ -483,6 +499,7 @@ async fn the_update_info_command_commits_every_field_it_touches() {
     let info = db
         .infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "Before".into(),
             details: None,
             parent_type: "project".into(),

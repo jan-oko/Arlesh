@@ -3,11 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { mockCommandOnce, mockGestureProtocol } from "@/test/command-mock";
 import { listDomains, createDomain, updateDomain, deleteDomain } from "./domains";
 import type { Domain, CreateDomainRequest } from "./domains";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockDomain: Domain = {
-  id: 1, title: "Work", description: null, subtype: "aspect",
+  id: storedRowId(1), title: "Work", description: null, subtype: "aspect",
   parent_id: null, color: "#ff0000", status: null, knowledge_base_directory: null, position: 0, is_private: false,
 };
 
@@ -48,8 +49,8 @@ describe("updateDomain", () => {
   it("calls invoke with update_domain, the id, and the partial request", async () => {
     const updated = { ...mockDomain, title: "Personal" };
     mockCommandOnce(updated);
-    const result = await updateDomain(1, { title: "Personal" });
-    expect(invoke).toHaveBeenCalledWith("update_domain", { id: 1, request: { title: "Personal" } });
+    const result = await updateDomain(storedRowId(1), { title: "Personal" });
+    expect(invoke).toHaveBeenCalledWith("update_domain", { id: storedRowId(1), request: { title: "Personal" } });
     expect(result.title).toBe("Personal");
   });
 });
@@ -57,7 +58,7 @@ describe("updateDomain", () => {
 describe("deleteDomain", () => {
   it("calls invoke with delete_domain and the id", async () => {
     mockCommandOnce(undefined);
-    await deleteDomain(7);
-    expect(invoke).toHaveBeenCalledWith("delete_domain", { id: 7 });
+    await deleteDomain(storedRowId(7));
+    expect(invoke).toHaveBeenCalledWith("delete_domain", { id: storedRowId(7) });
   });
 });

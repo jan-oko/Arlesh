@@ -16,20 +16,51 @@ export interface PushBridge {
   fetchToken: () => void;
   /** Opens the system's notification settings for this app. */
   openSettings: () => void;
-  /** The board key of the Task a tapped notification asked to open, once; empty when none. */
-  takeOpenedTask: () => string;
+  /**
+   * What a tapped notification asked to open, once, as JSON `{"task": "task-12", "wait": "<id>",
+   * "channel": "agent_question"}` (`wait` only for a question); empty when none. See {@link readOpenedNotification}.
+   */
+  takeOpenedNotification: () => string;
 }
 
 /** Fired on `window` with the FCM token as `detail`. */
 export const PUSH_TOKEN_EVENT = "arlesh-push-token";
-/** Fired on `window` when a tapped notification asks to open a Task; ask the bridge which. */
+/** Fired on `window` when a tapped notification asks to open something; ask the bridge what. */
 export const OPEN_TASK_EVENT = "arlesh-open-task";
 
 function isBridge(value: unknown): value is PushBridge {
   if (typeof value !== "object" || value === null) return false;
-  return ["available", "allowed", "requestPermission", "fetchToken", "openSettings", "takeOpenedTask"].every(
+  return ["available", "allowed", "requestPermission", "fetchToken", "openSettings", "takeOpenedNotification"].every(
     (name) => typeof Reflect.get(value, name) === "function",
   );
+}
+
+/** A tapped notification: the Task it is about, if it is about one, and the channel it came on. */
+export interface OpenedNotification {
+  task: string | null;
+  /** The open wait a question's notification is about. */
+  wait: string | null;
+  channel: string;
+}
+
+/** What the bridge holds of a tapped notification, taken once; `null` when there is none. */
+export function readOpenedNotification(bridge: PushBridge): OpenedNotification | null {
+  const raw = bridge.takeOpenedNotification();
+  if (raw === "") return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const task: unknown = Reflect.get(parsed, "task");
+    const wait: unknown = Reflect.get(parsed, "wait");
+    const channel: unknown = Reflect.get(parsed, "channel");
+    return {
+      task: typeof task === "string" && task !== "" ? task : null,
+      wait: typeof wait === "string" && wait !== "" ? wait : null,
+      channel: typeof channel === "string" ? channel : "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** The activity's push bridge, or `null` where there is none: the desktop, a browser, a test. */

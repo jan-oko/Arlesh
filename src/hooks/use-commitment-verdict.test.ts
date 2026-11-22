@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -52,7 +53,7 @@ describe("useCommitmentVerdict", () => {
 
     act(() => { result.current.markKept("commitment-5"); });
 
-    await waitFor(() => expect(pressCommitmentVerdict).toHaveBeenCalledWith(5, "kept"));
+    await waitFor(() => expect(pressCommitmentVerdict).toHaveBeenCalledWith(storedRowId(5), "kept"));
   });
 
   it("shows the verdict at once, before the write resolves, and the returned row's after", async () => {

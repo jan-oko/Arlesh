@@ -8,7 +8,7 @@
     "`streams` names the event routes: `changes` is the Server-Sent Event stream the app follows for",
     "live sync (`crates/arlesh-backend/src/http/events.rs`), whose `board-changed` events carry the",
     "changed nodes and whose `board-head` events carry the latest publication's identity; `expectations` is the agents' long poll",
-    "(`arlesh-notify`), which answers JSON and has no Server-Sent Event form.",
+    "(`arlesh`), which answers JSON and has no Server-Sent Event form.",
     "`api_version` is the integer `/health` answers, bumped only on a breaking change.",
     "",
     "Both sides replay it. `crates/arlesh-backend/src/tests.rs` fails when a port method is in neither",
@@ -28,7 +28,7 @@
     "pairing.rs` calls each by the name it is listed under. The server's test replays them with",
     "the `routes`."
   ],
-  "api_version": 1,
+  "api_version": 2,
   "streams": {
     "changes": "GET /events/changes",
     "expectations": "GET /events/expectations"
@@ -201,6 +201,15 @@
     ],
     "reopen_spawned_wait_check": [
       "POST /tasks/{id}/spawned-wait/check/reopen"
+    ],
+    "save_answer_draft": [
+      "PUT /waits/{id}/draft"
+    ],
+    "clear_answer_draft": [
+      "DELETE /waits/{id}/draft"
+    ],
+    "send_answer_drafts": [
+      "POST /drafts/send"
     ],
     "add_tag_to_expectation": [
       "PUT /nodes/{kind}/{id}/tags/{tag_id}"

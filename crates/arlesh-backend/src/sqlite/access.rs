@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `access` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     access::{
         self,
@@ -45,7 +46,7 @@ impl AccessPort for SqliteBackend {
         Ok(map.effective())
     }
 
-    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         db.access()
             .add_root(NodeKey::new(node_kind, node_id))
@@ -54,11 +55,12 @@ impl AccessPort for SqliteBackend {
         db.commit().await.map_err(WireError::from_error)?;
         // The roots decide which nodes the board says an agent can see, and the journal does not
         // see them.
-        self.publisher.record_write();
+        self.publisher
+            .record_write(arlesh_core::board::WriteOrigin::User);
         Ok(())
     }
 
-    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError> {
+    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError> {
         let mut db = self
             .factory
             .connect()
@@ -68,7 +70,8 @@ impl AccessPort for SqliteBackend {
             .remove_root(NodeKey::new(node_kind, node_id))
             .await
             .map_err(WireError::from_error)?;
-        self.publisher.record_write();
+        self.publisher
+            .record_write(arlesh_core::board::WriteOrigin::User);
         Ok(())
     }
 }

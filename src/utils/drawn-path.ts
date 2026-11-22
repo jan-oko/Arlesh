@@ -37,7 +37,7 @@ function foldPathUnder(host: MindmapNode, id: string, reading: FoldReading): rea
 }
 
 /** The drawn path to a fold node: the loaded path to its host, then the fold's own nodes. */
-function pathToFoldNode(tree: MindmapNode, id: string, flowId: number, reading: FoldReading): readonly MindmapNode[] {
+function pathToFoldNode(tree: MindmapNode, id: string, flowId: string, reading: FoldReading): readonly MindmapNode[] {
   const hostPath = pathToHabitHost(tree, flowId);
   const host = hostPath[hostPath.length - 1];
   if (host === undefined) return [];

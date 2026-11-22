@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import MindmapTree from "./MindmapTree";
 import type { MindmapNode, Orientation } from "@/utils/tree-layout";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
@@ -72,7 +73,7 @@ describe("a folded run of Habit iterations", () => {
     title: "14 passed · 9 done, 5 missed",
     virtual: true,
     habitGroup: {
-      flowId: 7, level: "run", passed: 14, done: 9, missed: 5,
+      flowId: storedRowId(7), level: "run", passed: 14, done: 9, missed: 5,
       spanStart: "2026-09-01", spanEnd: "2026-09-14", spanLabel: "01/09/26–14/09/26",
     },
     position: 0,

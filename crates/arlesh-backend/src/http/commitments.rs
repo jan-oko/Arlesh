@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `commitments` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
@@ -21,7 +22,7 @@ impl CommitmentsPort for HttpBackend {
             .await
     }
 
-    async fn get_commitment(&self, id: i64) -> Result<Commitment, WireError> {
+    async fn get_commitment(&self, id: RowId) -> Result<Commitment, WireError> {
         self.read(Call::new(
             Method::GET,
             format!("/commitments/{}", segment(&id)),
@@ -59,7 +60,7 @@ impl CommitmentsPort for HttpBackend {
     async fn add_tag_to_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         self.write(Call::new(
             Method::PUT,
@@ -75,7 +76,7 @@ impl CommitmentsPort for HttpBackend {
     async fn remove_tag_from_commitment(
         &self,
         commitment_id: NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,

@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import McpAccessPage from "./McpAccessPage";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 import type { McpRoots } from "@/hooks/use-mcp-roots";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -48,8 +49,8 @@ describe("McpAccessPage", () => {
   it("lists each root with its path and kind, and flags one the MCP cannot see", () => {
     vi.mocked(useMcpRoots).mockReturnValue(roots({
       roots: [
-        { key: { node_kind: "domain", node_id: 2 }, title: "Arlesh", kind: "project", path: ["Growth"], visible: true },
-        { key: { node_kind: "task", node_id: 7 }, title: "Diary", kind: "task", path: ["Growth", "Self"], visible: false },
+        { key: { node_kind: "domain", node_id: storedRowId(2) }, title: "Arlesh", kind: "project", path: ["Growth"], visible: true },
+        { key: { node_kind: "task", node_id: storedRowId(7) }, title: "Diary", kind: "task", path: ["Growth", "Self"], visible: false },
       ],
     }));
     render(<McpAccessPage />);
@@ -63,14 +64,14 @@ describe("McpAccessPage", () => {
 
   it("removes a root from its ×", () => {
     const state = roots({
-      roots: [{ key: { node_kind: "domain", node_id: 2 }, title: "Arlesh", kind: "project", path: [], visible: true }],
+      roots: [{ key: { node_kind: "domain", node_id: storedRowId(2) }, title: "Arlesh", kind: "project", path: [], visible: true }],
     });
     vi.mocked(useMcpRoots).mockReturnValue(state);
     render(<McpAccessPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "settings:mcp.remove:Arlesh" }));
 
-    expect(state.removeRoot).toHaveBeenCalledWith({ node_kind: "domain", node_id: 2 });
+    expect(state.removeRoot).toHaveBeenCalledWith({ node_kind: "domain", node_id: storedRowId(2) });
   });
 
   it("adds a root picked in the node search", () => {

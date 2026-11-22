@@ -16,6 +16,7 @@
 //! Task (a move is refused), and a delegation wait is released only by its Task being done, so it
 //! takes no status of its own — and has no checks to schedule, so no Check every either.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 
 use super::{
@@ -322,7 +323,7 @@ pub async fn update_delegation_wait(
 pub async fn set_wait_tag(
     db: &mut Db<Transactional>,
     key: &DerivedKey,
-    tag_id: i64,
+    tag_id: RowId,
     present: bool,
     now: NaiveDateTime,
 ) -> Result<(), AppError> {

@@ -19,7 +19,7 @@ async def test_a_write_open_creates_and_migrates_a_fresh_database(database_path:
 
 
 async def test_a_read_only_open_reads_and_names_no_client(
-    db: arlesh.Database, database_path: Path, domain_id: int
+    db: arlesh.Database, database_path: Path, domain_id: str
 ) -> None:
     async with await arlesh.open(database_path) as reader:
         assert reader.client is None
@@ -27,7 +27,7 @@ async def test_a_read_only_open_reads_and_names_no_client(
 
 
 async def test_a_read_only_open_refuses_every_write(
-    db: arlesh.Database, database_path: Path, domain_id: int
+    db: arlesh.Database, database_path: Path, domain_id: str
 ) -> None:
     async with await arlesh.open(database_path) as reader:
         with pytest.raises(arlesh.InvalidRequest) as refusal:
@@ -96,7 +96,7 @@ async def test_a_client_name_outside_the_alphabet_is_refused(
 
 
 async def test_every_write_is_journaled_under_its_client(
-    db: arlesh.Database, database_path: Path, domain_id: int
+    db: arlesh.Database, database_path: Path, domain_id: str
 ) -> None:
     await db.create_task(CreateTaskRequest(title="mine", parent_type="domain", parent_id=domain_id))
     with sqlite3.connect(database_path) as connection:

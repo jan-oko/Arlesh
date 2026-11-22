@@ -7,93 +7,22 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    mindmap::model::MindmapLoad,
-    nodes::origin::Origin,
-    tasks::{
-        lifecycle::{Archival, ItemLifecycle},
-        model::{AgenticStatus, Status, Task, TaskStatus},
-    },
-};
+use crate::mindmap::model::MindmapLoad;
 
 use super::model::{Channel, Observed, Plan, PushEvent, SentEntry, CAPACITY_KEY};
+
+pub mod desktop;
+pub mod view;
+
+pub use view::BoardView;
 
 const LOCKED: &str = "locked";
 const CLEAR: &str = "clear";
 
-/// The facts of `load` a notification could tell of, in key order.
+/// The facts of `load` a notification could tell of, in key order. `at_capacity` is whether the
+/// agent capacity lock is set, which the server reads off its agents and a desktop off the board.
 pub fn observe(load: &MindmapLoad, at_capacity: bool) -> Observed {
-    let by_key: HashMap<String, &Task> = load
-        .tasks
-        .iter()
-        .map(|task| (format!("task-{}", task.id), task))
-        .collect();
-    let lifecycles: HashMap<String, &ItemLifecycle> = load
-        .lifecycles
-        .iter()
-        .filter(|lifecycle| lifecycle.node_type == "task")
-        .map(|lifecycle| (format!("task-{}", lifecycle.node_id), lifecycle))
-        .collect();
-    let about = |key: &str, task: &Task, prefix: &str, id: String, channel| PushEvent {
-        key: format!("{prefix}:{id}"),
-        value: String::new(),
-        channel,
-        task: Some(key.to_owned()),
-        title: Some(task.title.clone()),
-    };
-
-    let mut facts = Vec::new();
-    for (key, node) in &load.facts {
-        let (Some(question), Some(task)) = (&node.open_question, by_key.get(key)) else {
-            continue;
-        };
-        facts.push(about(
-            key,
-            task,
-            "question",
-            question.to_string(),
-            Channel::AgentQuestion,
-        ));
-    }
-    for (key, lifecycle) in &lifecycles {
-        let Some(task) = by_key.get(key) else {
-            continue;
-        };
-        if lifecycle.overdue {
-            facts.push(about(
-                key,
-                task,
-                "overdue",
-                task.id.to_string(),
-                Channel::TaskOverdue,
-            ));
-        }
-        if is_generated(task) && !is_done(task) && lifecycle.archival == Archival::Live {
-            facts.push(about(
-                key,
-                task,
-                "generated",
-                task.id.to_string(),
-                Channel::TaskGenerated,
-            ));
-        }
-    }
-    facts.sort_by(|a, b| a.key.cmp(&b.key));
-    Observed {
-        facts,
-        capacity_locked: at_capacity,
-    }
-}
-
-fn is_generated(task: &Task) -> bool {
-    matches!(task.origin, Origin::Habit(_) | Origin::Check(_))
-}
-
-fn is_done(task: &Task) -> bool {
-    matches!(
-        task.status,
-        Status::Ordinary(TaskStatus::Done) | Status::Agentic(AgenticStatus::Done)
-    )
+    BoardView::from_load(load).observed(at_capacity)
 }
 
 /// What a device that was told `sent` is to be told now.
@@ -123,6 +52,17 @@ pub fn plan(observed: &Observed, sent: &[SentEntry]) -> Plan {
         .map(|entry| entry.key.clone())
         .collect();
     Plan { send, forget }
+}
+
+/// What a device is taken to have been told once `events` are shown, or are as good as shown.
+pub fn told(events: &[PushEvent]) -> Vec<SentEntry> {
+    events
+        .iter()
+        .map(|event| SentEntry {
+            key: event.key.clone(),
+            value: event.value.clone(),
+        })
+        .collect()
 }
 
 /// The lock's change since the device was told, if it changed. A device never told of the lock

@@ -1,6 +1,6 @@
 [package]
 name = "arlesh"
-version = "1.0.0"
+version = "1.1.0"
 description = "Task management and knowledge-base desktop app"
 authors = []
 edition = "2021"
@@ -51,11 +51,15 @@ png = "0.17"
 rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
 axum = "0.8.9"
 schemars = "1.2.2"
+arlesh-workspace-hack = { version = "0.1", path = "../crates/arlesh-workspace-hack" }
 
 # Client mode keeps the server token in the OS keychain: the macOS Keychain, the Windows Credential
 # Manager, or the Secret Service on Linux (through libdbus, which Tauri already links). Android has
 # no keychain this crate reaches, so it keeps the token in a file in app-private storage instead.
 [target.'cfg(not(target_os = "android"))'.dependencies]
+# Native desktop notifications (task 2df). Desktop only: the Android app is told by FCM, and carrying
+# this crate there would add the plugin's Kotlin to the APK and put it in line to notify twice.
+tauri-plugin-notification = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 # Linux's tray is the StatusNotifierItem D-Bus protocol, and `ksni` speaks it directly. Tauri's
@@ -64,6 +68,10 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 # fire. Owning the item is what makes a plain click reach the app. See `commands::tray`.
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3.6"
+# The freedesktop notification service, spoken to directly (the plugin wraps the same crate) so a
+# click on an agent's question can be heard: the plugin reports none on the desktop. The version is
+# the plugin's own, so the build links one copy.
+notify-rust = "4"
 # The same GTK bindings Tauri already links, named so the app can reach the header bar tao draws
 # inside a window on Wayland, whose title does not follow the window's. See `commands::header_bar`.
 gtk = "0.18"
@@ -83,3 +91,5 @@ tauri = { version = "2", features = ["test"] }
 # The same crate sqlx links, named so the test helpers can copy a migrated template database into a
 # test's own with SQLite's backup API (`tests/helpers/mod.rs`). Keep it on sqlx's version.
 libsqlite3-sys = "0.30"
+# Switches on `tid`, `tkey` and `From<i64> for NodeId`, the helpers the integration tests write ids with.
+arlesh-rules = { path = "../crates/arlesh-rules", features = ["test-support"] }

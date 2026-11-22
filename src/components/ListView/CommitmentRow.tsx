@@ -22,7 +22,7 @@ interface Props {
   /** Advances the verdict one step: Unresolved → Kept → Broken → Unresolved. */
   onCycleVerdict: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
-  onAddTagFilter: (tagId: number) => void;
+  onAddTagFilter: (tagId: string) => void;
   /** Opens the row's context menu at the pointer. */
   onContextMenu?: (nodeId: string, x: number, y: number) => void;
 }

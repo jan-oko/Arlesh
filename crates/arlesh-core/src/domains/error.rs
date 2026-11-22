@@ -1,11 +1,13 @@
 //! Domain operation errors.
 
+use crate::nodes::id::RowId;
+
 /// Errors that can occur during domain (Aspect/Project/Domain/Tag) operations.
 #[derive(Debug, thiserror::Error)]
 pub enum DomainError {
     /// The requested domain does not exist.
     #[error("domain {0} not found")]
-    NotFound(i64),
+    NotFound(RowId),
     /// Attempted to create, update, or delete a fixed Aspect.
     #[error("aspects are fixed and cannot be modified")]
     FixedAspect,

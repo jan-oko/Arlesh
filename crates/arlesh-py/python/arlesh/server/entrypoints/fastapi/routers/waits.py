@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from arlesh.models import CreateExpectationRequest, Expectation, UpdateExpectationRequest
+from arlesh.models import (
+    AnswerDraft,
+    CreateExpectationRequest,
+    DraftRequest,
+    Expectation,
+    UpdateExpectationRequest,
+)
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter, node_id
 
 
@@ -18,6 +24,8 @@ class WaitsRouter(BoardRouter):
         self.delete("/{id}", status_code=204)(self._delete)
         self.post("/{id}/check/complete")(self._complete_check)
         self.post("/{id}/check/reopen")(self._reopen_check)
+        self.put("/{id}/draft")(self._save_draft)
+        self.delete("/{id}/draft", status_code=204)(self._clear_draft)
 
     async def _create(self, request: CreateExpectationRequest) -> Expectation:
         """Creates a wait."""
@@ -31,13 +39,22 @@ class WaitsRouter(BoardRouter):
         """Deletes a stored wait. A derived one is refused: it goes with its Task."""
         await (await self._writer()).delete_wait(node_id(id))
 
-    async def _complete_check(self, id: int) -> Expectation:
+    async def _complete_check(self, id: str) -> Expectation:
         """Marks a stored wait's check done."""
         return await (await self._writer()).complete_wait_check(id)
 
-    async def _reopen_check(self, id: int, due_at: datetime) -> Expectation:
+    async def _reopen_check(self, id: str, due_at: datetime) -> Expectation:
         """Reopens a stored wait's check, due again at ``due_at``."""
         return await (await self._writer()).reopen_wait_check(id, due_at)
+
+    async def _save_draft(self, id: str, request: DraftRequest) -> AnswerDraft:
+        """Stages an answer to an open question or review; the last save wins. An agent sees
+        nothing of it until the batch is sent."""
+        return await (await self._writer()).save_answer_draft(node_id(id), request)
+
+    async def _clear_draft(self, id: str) -> None:
+        """Unstages a wait: deletes its draft. Passes when it has none."""
+        await (await self._writer()).clear_answer_draft(node_id(id))
 
     async def _list(self, now: datetime | None = None) -> list[Expectation]:
         """Every wait, derived at ``now`` (default: the server's clock)."""

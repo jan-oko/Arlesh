@@ -21,7 +21,7 @@ import { formatCooldownUntil } from "@/utils/cooldown-until";
 export interface CommitmentSaveData {
   title: string;
   verdict: Verdict;
-  tagIds: number[];
+  tagIds: string[];
   timeScope: TimeScope | null;
   verdictWindow: DurationSpec | null;
   isPrivate: boolean;
@@ -33,7 +33,7 @@ export interface CommitmentSaveData {
 interface Props {
   node: MindmapNode;
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
   /** Overrides the "Edit commitment" title — the create path opens the same fields on a blank node. */
   heading?: string;
   onSave: (data: CommitmentSaveData) => Promise<void>;
@@ -57,7 +57,7 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
   const draft = reopened?.draft;
   const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
   const [verdict, setVerdict] = useState<Verdict>(draft?.verdict ?? node.verdict ?? VERDICT.UNRESOLVED);
-  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [tagIds, setTagIds] = useState<string[]>(draft?.tagIds ?? node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
   const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(draft ? draft.verdictWindow : node.verdictWindow ?? null);
   const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);

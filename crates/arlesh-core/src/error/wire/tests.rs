@@ -1,4 +1,5 @@
 use super::{WireError, WireErrorKind};
+use crate::nodes::id::tid;
 use crate::{
     domains::error::DomainError, error::AppError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
@@ -12,7 +13,10 @@ fn kind_of(error: impl Into<AppError>) -> WireErrorKind {
 
 #[test]
 fn domain_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(DomainError::NotFound(1)), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(DomainError::NotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -51,12 +55,18 @@ fn domain_database_maps_to_database() {
 
 #[test]
 fn task_task_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(TaskError::TaskNotFound(1)), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(TaskError::TaskNotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
 fn task_goal_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(TaskError::GoalNotFound(1)), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(TaskError::GoalNotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -143,7 +153,7 @@ fn scope_unsupported_kind_maps_to_invalid_request() {
 #[test]
 fn knowledge_base_person_not_found_maps_to_not_found() {
     assert_eq!(
-        kind_of(KnowledgeBaseError::PersonNotFound(1)),
+        kind_of(KnowledgeBaseError::PersonNotFound(tid(1))),
         WireErrorKind::NotFound
     );
 }
@@ -151,7 +161,7 @@ fn knowledge_base_person_not_found_maps_to_not_found() {
 #[test]
 fn knowledge_base_event_not_found_maps_to_not_found() {
     assert_eq!(
-        kind_of(KnowledgeBaseError::EventNotFound(1)),
+        kind_of(KnowledgeBaseError::EventNotFound(tid(1))),
         WireErrorKind::NotFound
     );
 }
@@ -159,7 +169,7 @@ fn knowledge_base_event_not_found_maps_to_not_found() {
 #[test]
 fn knowledge_base_thread_not_found_maps_to_not_found() {
     assert_eq!(
-        kind_of(KnowledgeBaseError::ThreadNotFound(1)),
+        kind_of(KnowledgeBaseError::ThreadNotFound(tid(1))),
         WireErrorKind::NotFound
     );
 }
@@ -176,7 +186,10 @@ fn knowledge_base_database_maps_to_database() {
 
 #[test]
 fn flow_not_found_maps_to_not_found() {
-    assert_eq!(kind_of(FlowError::NotFound(1)), WireErrorKind::NotFound);
+    assert_eq!(
+        kind_of(FlowError::NotFound(tid(1))),
+        WireErrorKind::NotFound
+    );
 }
 
 #[test]
@@ -279,19 +292,19 @@ fn kind_serialises_to_expected_snake_case_spellings() {
 
 #[test]
 fn wire_error_preserves_the_source_error_message() {
-    let wire = WireError::from_error(DomainError::NotFound(42));
-    assert_eq!(wire.message, "domain 42 not found");
+    let wire = WireError::from_error(DomainError::NotFound(tid(42)));
+    assert_eq!(wire.message, format!("domain {} not found", tid(42)));
 }
 
 #[test]
 fn wire_error_details_is_none_by_default() {
-    let wire = WireError::from_error(DomainError::NotFound(42));
+    let wire = WireError::from_error(DomainError::NotFound(tid(42)));
     assert_eq!(wire.details, None);
 }
 
 #[test]
 fn wire_error_serialises_without_a_details_field_when_none() {
-    let wire = WireError::from_error(DomainError::NotFound(42));
+    let wire = WireError::from_error(DomainError::NotFound(tid(42)));
     let value = serde_json::to_value(&wire).expect("serialise");
     let object = value
         .as_object()
@@ -299,7 +312,7 @@ fn wire_error_serialises_without_a_details_field_when_none() {
     assert_eq!(object.get("kind"), Some(&serde_json::json!("not_found")));
     assert_eq!(
         object.get("message"),
-        Some(&serde_json::json!("domain 42 not found"))
+        Some(&serde_json::json!(format!("domain {} not found", tid(42))))
     );
     assert!(!object.contains_key("details"));
 }
@@ -379,7 +392,10 @@ fn a_root_on_a_missing_node_is_not_found_and_unreadable_root_data_is_internal() 
     };
 
     assert_eq!(
-        kind_of(AccessError::NodeNotFound(NodeKey::new(NodeTable::Task, 7))),
+        kind_of(AccessError::NodeNotFound(NodeKey::new(
+            NodeTable::Task,
+            tid(7)
+        ))),
         WireErrorKind::NotFound
     );
     assert_eq!(

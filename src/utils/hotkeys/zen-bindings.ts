@@ -13,6 +13,7 @@ import { LIST_PLAN_BINDINGS, type ListPlanContext } from "./list/plan";
 import { LIST_RENAME_BINDINGS, type ListRenameContext } from "./list/rename";
 import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
+import { LIST_WAITING_BINDINGS, type ListWaitingContext } from "./list/waiting";
 import { asZenBindings } from "./zen/from-list";
 import { ZEN_NAVIGATE_BINDINGS, type ZenNavigateContext } from "./zen/navigate";
 import { ZEN_STATUS_PRESET_BINDINGS, type ZenStatusPresetContext } from "./zen/status-presets";
@@ -40,13 +41,14 @@ export interface ZenContext extends
   ListRenameContext,
   ListScrollContext,
   ListStatusContext,
+  ListWaitingContext,
   ZenNavigateContext,
   ZenStatusPresetContext {}
 
 /**
  * The List View's Expectation bindings the Zen View does **not** take: `Shift+E` creates a wait, and
- * `Alt+E` chooses the list's Expectations option — the Zen View creates nothing, and always reads
- * under Do, so `Alt+E` is refused with the presets (`zen/status-presets.ts`).
+ * `Alt+W` chooses the list's Expectations option — the Zen View creates nothing, and always reads
+ * under Do, so `Alt+W` is refused with the presets (`zen/status-presets.ts`).
  */
 const NOT_IN_ZEN: ReadonlySet<string> = new Set(["listView.createExpectation", "listView.preset.expectations"]);
 
@@ -82,5 +84,6 @@ export const ZEN_BINDINGS: readonly Binding<ZenContext>[] = [
   ...asZenBindings(LIST_PLAN_BINDINGS),
   ...asZenBindings(LIST_DEPENDENCY_BINDINGS),
   ...asZenBindings(LIST_DESELECT_BINDINGS),
+  ...asZenBindings(LIST_WAITING_BINDINGS, { "listView.jumpToWaitingAnswer": "jumpToWaitingAnswerCard", "listView.jumpToStagedAnswer": "jumpToStagedAnswerCard" }),
   ...asZenBindings(LIST_HISTORY_BINDINGS),
 ];

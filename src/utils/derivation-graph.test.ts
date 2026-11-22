@@ -4,14 +4,14 @@ import { neighbourhood, placeGraph } from "./derivation-graph";
 
 describe("the derivation graph data", () => {
   // The counts of the page this replaced (the standalone HTML graph page), written out so a lost box fails here.
-  it("has the 43 boxes and 81 arrows the HTML page had", () => {
-    expect(GRAPH_NODES).toHaveLength(43);
-    expect(GRAPH_EDGES).toHaveLength(81);
+  it("has the 45 boxes and 83 arrows (the HTML page's 43 and 81, and the answer draft and Staged)", () => {
+    expect(GRAPH_NODES).toHaveLength(45);
+    expect(GRAPH_EDGES).toHaveLength(83);
   });
 
   it("has unique ids and arrows that join existing boxes", () => {
     const ids = new Set(GRAPH_NODES.map((node) => node.id));
-    expect(ids.size).toBe(43);
+    expect(ids.size).toBe(45);
     for (const edge of GRAPH_EDGES) {
       expect(ids.has(edge.from)).toBe(true);
       expect(ids.has(edge.to)).toBe(true);
@@ -19,7 +19,7 @@ describe("the derivation graph data", () => {
   });
 
   it("draws every arrow", () => {
-    expect(placeGraph().edges).toHaveLength(81);
+    expect(placeGraph().edges).toHaveLength(83);
   });
 });
 

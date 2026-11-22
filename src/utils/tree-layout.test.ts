@@ -4,6 +4,7 @@ import { measureMindmapNode } from "./node-extent";
 import type { MindmapNode } from "./tree-layout";
 import type { TimeScope } from "@/api/time-scope";
 import type { ScopeKey } from "@/api/scopes";
+import { storedRowId } from "@/test/stored-id";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
@@ -86,38 +87,38 @@ describe("computeSubtreeLayout", () => {
 
 describe("entityNodeId", () => {
   it("maps every domain-table subtype into the shared domain-<id> namespace", () => {
-    expect(entityNodeId("project", 96)).toBe("domain-96");
-    expect(entityNodeId("aspect", 1)).toBe("domain-1");
-    expect(entityNodeId("domain", 4)).toBe("domain-4");
-    expect(entityNodeId("tag", 7)).toBe("domain-7");
+    expect(entityNodeId("project", storedRowId(96))).toBe(`domain-${storedRowId(96)}`);
+    expect(entityNodeId("aspect", storedRowId(1))).toBe(`domain-${storedRowId(1)}`);
+    expect(entityNodeId("domain", storedRowId(4))).toBe(`domain-${storedRowId(4)}`);
+    expect(entityNodeId("tag", storedRowId(7))).toBe(`domain-${storedRowId(7)}`);
   });
 
   it("keeps goal and task in their own namespaces", () => {
-    expect(entityNodeId("goal", 5)).toBe("goal-5");
-    expect(entityNodeId("task", 8)).toBe("task-8");
+    expect(entityNodeId("goal", storedRowId(5))).toBe(`goal-${storedRowId(5)}`);
+    expect(entityNodeId("task", storedRowId(8))).toBe(`task-${storedRowId(8)}`);
   });
 });
 
 describe("flowTargetNodeId", () => {
   it("uses the explicit Target Node when the flow has one", () => {
-    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 5 })).toBe("goal-5");
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: storedRowId(1), target_type: "goal", target_id: storedRowId(5) })).toBe(`goal-${storedRowId(5)}`);
   });
 
   // A null target means "my parent", derived here rather than stored — which is what lets a move
   // carry the flow's instances along without rewriting anything.
   it("falls back to the flow's own parent when the target is null", () => {
-    expect(flowTargetNodeId({ parent_type: "goal", parent_id: 5, target_type: null, target_id: null })).toBe("goal-5");
+    expect(flowTargetNodeId({ parent_type: "goal", parent_id: storedRowId(5), target_type: null, target_id: null })).toBe(`goal-${storedRowId(5)}`);
   });
 
   it("normalises a domain-table parent into the shared domain-<id> namespace", () => {
-    expect(flowTargetNodeId({ parent_type: "project", parent_id: 96, target_type: null, target_id: null })).toBe("domain-96");
+    expect(flowTargetNodeId({ parent_type: "project", parent_id: storedRowId(96), target_type: null, target_id: null })).toBe(`domain-${storedRowId(96)}`);
   });
 
   // Half a reference is no reference: both columns are written together, and a stray half must not
   // resolve to a node that happens to share the id.
   it("treats a half-set target as unset", () => {
-    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: "goal", target_id: null })).toBe("domain-1");
-    expect(flowTargetNodeId({ parent_type: "domain", parent_id: 1, target_type: null, target_id: 5 })).toBe("domain-1");
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: storedRowId(1), target_type: "goal", target_id: null })).toBe(`domain-${storedRowId(1)}`);
+    expect(flowTargetNodeId({ parent_type: "domain", parent_id: storedRowId(1), target_type: null, target_id: storedRowId(5) })).toBe(`domain-${storedRowId(1)}`);
   });
 });
 

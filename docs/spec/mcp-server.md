@@ -115,8 +115,8 @@ model was simplified and was not revoked by it.
 
 **Only stored nodes are roots.** A root names a row — a Domain (any of the four domain-table
 subtypes), Goal, Task, Commitment, Expectation, Info, Flow or flow item — keyed by its table and its
-row id, the way the node's own table keys it. A **derived** row (ADR 0008 — a Habit occurrence, a wait's check
-task, a delegated Task's wait, a spawned wait, each an ordinary row of its kind with a UUID id and
+id (a UUID), the way the node's own table keys it. A **derived** row (ADR 0008 — a Habit occurrence, a wait's check
+task, a delegated Task's wait, a spawned wait, each an ordinary row of its kind with a version-8 UUID id and
 an `origin`) is never a root, and is written only where a tool says so (an Agentic occurrence
 through `arlesh_tasks`, an agentic derived wait's release through `arlesh_waits`): it is visible exactly when it is not
 private and the nearest **stored** row above it is visible, climbing through derived parents (an
@@ -127,7 +127,7 @@ row like any other, visible by the roots above the Habit's host its columns name
 is what they describe, and every window and the MCP endpoint read the same list. They are
 **journaled**, so adding or removing a root is an ordinary Gesture and **Ctrl+Z reverses it**. A
 root belongs to its row: deleting the node drops the root in the same Gesture, and undoing the
-delete brings both back — otherwise SQLite reusing the freed row id would open an unrelated node.
+delete brings both back. (Ids are UUIDs, so a freed id is never reused for an unrelated node.)
 
 **Where the user sets them.** On the *Agents* page of the settings modal (called *MCP access* until 2026-10-01) (see
 [*Mindmap*](mindmap-view.md), *Top bar*): the roots are listed with their path and kind, added with
@@ -210,9 +210,9 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items (`flow_goals`, `flow_tasks`, `flow_commitments`, `flow_expectations`), cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`; every write also takes `verbose?`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `raise_review(task_id, title, summary, links?, hand_tests?)`, `release(id, answer?, verdict?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user, a review for their verdict, or a wait on something else, released by the agent (a question only with its answer, a review only with the user's verdict) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `raise_review(task_id, title, summary, links?, hand_tests?)`, `release(id, answer?, verdict?)`, `list(status?, under?, question?, cursor?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user, a review for their verdict, or a wait on something else, released by the agent (a question only with its answer, a review only with the user's verdict) listed cheaply with `list` and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_agents` | `attach(session_id, pin \| token, name?, account?, subtree?)` — the only call an unattached session may make; `status`, `claim(subtree)`, `pause`, `resume`, `release`, `lock`, `unlock`, `report_usage(windows)` — this session's own identity, Claim and account usage; `register_child(name, client_id)` — registers a subagent as a child Agent and answers its `sub_token` once. With a `sub_token`, `status`, `claim`, `pause`, `resume` and `release` act on that child. See [Agents](agents.md) |
 
@@ -232,6 +232,15 @@ that filled in null defaults would otherwise clear every field it did not mentio
 `arlesh_infos.create` returns. An agentic wait's
 fields have one name everywhere — `agentic_note`, `question`, `answer` — in the snapshot and in
 every `arlesh_waits` operation, `get` returning the same row.
+
+**A write answers briefly.** `arlesh_tasks.create`, `update`, `set_status`, `move`, `archive` and
+`unarchive` answer with the Task's `id`, `short_id`, `full_id`, `title` and `status` (an `update`
+also names the fields it set, as `changed`), not its whole `agentic_brief`, which can run to
+thousands of tokens on a long Task. `arlesh_waits` writes (`raise`, `ask`, `raise_review`,
+`release`) likewise leave out the note and the answer: they answer with the ids, `title`, `status`,
+`question`, the Task's `task_id` and `task_short_id`, and for a review `review: true` and, once
+released, its `verdict`. `verbose: true` on any of them returns the whole row as `get` does. The
+default is one constant, `BRIEF_BY_DEFAULT` in `mcp/short.rs`.
 
 **Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table. A parent
 reference to one is stored and reported **one way**, `domain`, whatever its subtype (Task 13c,
@@ -346,7 +355,9 @@ yet (see [*Mindmap*](mindmap-view.md)). `all`, `plan`, `start`, `do` and
 `backlog` are the presets; `unblock` rides beside them as a flag rather than replacing one, exactly
 as the List View stores it — beside them in shape, but not in effect: while the flag is set the
 list's rows are the blocked ones and the preset does not answer for them (see
-[*List View*](list-view.md)). The Archived, Backlog and Delegated pills (`archived`, `backlog`,
+[*List View*](list-view.md)). `expectations` and `review` are the List View's other two options, flags
+of the same kind: `review` lists the Tasks that read Review (see [*The Review option*](list-view.md#review-option)).
+The three never combine; if more than one is set, `unblock` answers, then `expectations`, then `review`. The Archived, Backlog and Delegated pills (`archived`, `backlog`,
 `delegated`: `inactive`, `include` or `exclude` — a delegated Task is not archived; see
 [*Filtering Logic*](filtering-logic.md#delegated-pill)), the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, and so is the Plan preset's **scope narrowing** —
@@ -390,10 +401,10 @@ them is an Any across them). A node id here is spelled as the board keys it — 
 only Under, Scope and Private: a dimension that does not apply to a kind passes it rather than
 failing it. A filter that sets either asks a question only a list of rows can answer, so the read is
 narrowed as the List View narrows it: to the Task, Commitment and Expectation rows that pass —
-preset, Unblock or the Expectations option, tags, toggles and pills, each by the List View's rule
+preset, Unblock, the Expectations option or the Review option, tags, toggles and pills, each by the List View's rule
 (see [*List View*](list-view.md)) — together with every ancestor of one, the chain the row hangs
 from. Notes and Flows are not rows, and drop. Without a pill and with every kind, the read is
-narrowed as the Mindmap narrows it, as above. The rules are `crate::filters::pills`, held to the
+narrowed as the Mindmap narrows it, as above. That includes the **Expectations and Review options**: they are the List View's, so it narrows the read only together with a pill or a narrower kind choice; alone it is ignored, as the Mindmap ignores it, and `{"expectations": true, "preset": "all"}` still returns every wait, released ones too. With a pill it keeps the non-agentic pending waits that pass, never an agentic one, which no view draws and which travels with the Task it hangs under (a Task is not a row under the option, so an `Under` pill finds no agent's wait). Agents find waits with `arlesh_waits.list`. The rules are `crate::filters::pills`, held to the
 frontend's by the same conformance corpus.
 
 ## Paging the snapshot
@@ -491,7 +502,7 @@ filter, as `pills.agentic`; see *Filtering a read*.)
   cycle — a Task after itself included — is `invalid_request` with the app's reason. The Task must
   be writable; a **prerequisite or Tag need only be visible** (inside the roots, not private), and
   one that is not is `not_permitted`. A prerequisite id is matched among Tasks, Goals and waits
-  together, a Tag id among domain-table rows, so a row id shared by two visible nodes of those kinds
+  together, a Tag id among domain-table rows, so a prefix shared by two visible nodes of those kinds
   is `ambiguous_id`.
   **One transaction**: every id is read before anything is written, the row is written, then its
   relations; a refusal anywhere writes none of it, and a success announces one board change. Not
@@ -571,29 +582,36 @@ flags a wait, so it cannot reach it.
 ## Short ids
 
 **Every node id is a string** (settled with the user on 2026-09-25). Each tool parameter naming a
-node is typed `string`; a JSON number is accepted too and read as its decimal string. Nothing is
-stored for ids. A node's **full id** is a UUID-v5 in the one namespace every derived row's id
-already lives in: a derived row keeps the UUID it has, and a stored row's is the UUID-v5 of
-`{kind}:{row id}` — deterministic, so it never needs keeping.
+node is typed `string`; a JSON number is **refused** (`invalid_request`, saying row numbers no longer
+exist): since ids became UUIDs (ADR 0017, decision 9) there is no row number, and read as a prefix a
+stale one would name some other node. A node's **full id** is its id: the UUID it is stored under,
+or a derived row's version-8 UUID (the hash of its value key). A row that existed before UUID
+identity kept, as its id, the UUID-v5 of `{kind}:{old row number}` it had always been shown under, so
+the ids and short ids an agent holds still work. The snapshot's `id` and `full_id` are therefore the
+same string; both stay.
 
-**Resolving.** A string is matched against everything the MCP can see, two ways at once, and the
-matches are pooled: (a) any node whose **row id** in decimal equals the string exactly, and (b) any
-node whose **full id** starts with it — 3 characters or more, hyphens optional. An exact full id
-wins outright. Only nodes of the kind the parameter names count (a `task_id` counts Tasks); when
-none does but a node of another kind would, the refusal says which. One match is that node.
-**None** is `not_permitted`, as any node outside the roots. **Several** — row 269 and a Task whose
-full id starts `269`, say — are refused as `ambiguous_id`, with `details.candidates` listing each:
-its current unique short id, its full id, its kind, its title and a short path such as
+**Resolving.** A string is matched against everything the MCP can see as a **prefix** of a node's
+full id — 3 characters or more, hyphens optional. An exact full id wins outright. Only nodes of the
+kind the parameter names count (a `task_id` counts Tasks); when none does but a node of another kind
+would, the refusal says which. One match is that node. **None** is `not_permitted`, as any node
+outside the roots. **Several** are refused as `ambiguous_id`, with `details.candidates` listing
+each: its current unique short id, its full id, its kind, its title and a short path such as
 `Growth › CODE › ARLESH`, the form the instructions name roots in. Only nodes the MCP can see are
 matched, listed or counted, so a hidden node never makes an id ambiguous and is never named.
 
 **Short ids.** A node's **short id** is the shortest prefix of its full id's hex digits, **three
-at least**, that no other visible node's full id shares **and** that is not any visible node's row
-id in decimal — so a short id can never be taken for a row id. It is worked out at each read from a
+at least**, that no other visible node's full id shares. It is worked out at each read from a
 sorted list over **everything inside the roots**, never over one page, filter or query result, so a
-node goes by the same short id in every view. It may be all digits (`269`); the row-id check
-lengthens one only when it collides, which on a board of a few hundred nodes is rare. Every node
-the MCP returns carries `id`, `short_id` and `full_id`.
+node goes by the same short id in every view. It may be all digits (`269`). Until UUID identity it
+also had to avoid every visible row number written in decimal; with no row numbers left that rule
+went, so a short id that once needed a fourth character may now read three (about 6% of the nodes
+on a real board of 774). The old, longer short id is still a prefix of the full id and still
+resolves. Every node the MCP returns carries `id`, `short_id` and `full_id`.
+
+**Creating with an id.** `arlesh_tasks.create`, `arlesh_infos.create` and `arlesh_waits`
+(`ask`, `raise`, `raise_review`) take an optional `id`: a UUID (version 4 or 7, never the nil UUID or
+a version-8 one, which is a derived node's) the new row is stored under. Without one the server mints
+a UUIDv7. An id already in use is refused as the database's uniqueness error.
 
 The trade-off, accepted with the user: a short id is unique **now**, not forever — a prefix an
 agent saw earlier can become ambiguous as nodes are added. It is then refused and the candidates
@@ -602,7 +620,7 @@ listed, never read as the wrong node. An agent that needs an id to stay good hol
 ## Agentic waits
 
 `arlesh_waits` is how an agent waits — the replacement for `bd human`. Every operation takes ids as
-row ids or short ids.
+full ids or short ids.
 
 - **`raise(task_id, title, note?, question?)`** creates an Expectation with `agentic: true`
   directly under the Agentic Task the agent is working, titled with what it waits for and with the
@@ -633,6 +651,14 @@ row ids or short ids.
   agentic is refused as `not_permitted`. A question or review that is **already released** is
   refused (`invalid_request`): the user's answer or verdict is never overwritten, and a second
   release is a mistake. A wait on something else is idempotent and passes.
+- **`list(status?, under?, question?, cursor?)`** is the cheap way to find waits. It returns agentic
+  waits, `pending` by default (`released` or `all` on request), in the order they were raised, cut
+  to the MCP roots. `under` is any node (a project, domain, goal or Task, by row id or short id):
+  only waits anywhere beneath it. `question` keeps questions and reviews (`true`) or the waits on
+  something else (`false`). Each row carries only `id`, `short_id`, `full_id`, `title`, `status`,
+  `question` and `task` (`id`, `short_id`, `full_id`, `title` of the Task it hangs under); the
+  note and the answer are `get`'s. It is paged like the snapshot: `next_cursor` is null on the
+  last page, and later pages take the same filters.
 - **`get(id)`** returns one visible wait's `status`, `question`, `note` and `answer` (with its
   short and full id, and the Task's `task_id` and `task_short_id` as `get_many` names them; wait
   ids and Task ids share one number space, so name nodes by short id), so an agent can poll for the user's answer without loading the snapshot. A
@@ -657,11 +683,21 @@ wait** — not in the Mindmap, List, Start, Do or Zen — so it exists for agent
 snapshot keeps an agentic wait whenever it keeps the Task it hangs under. A wait blocks nothing
 unless a Task depends on it.
 
+**Staged answers are invisible to agents** (Task `de16`, [ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md);
+the user's side is [Resources § Staged answers](resources.md#staged-answers)). The user may stage
+an answer or a verdict as a **draft** and send several at once. A draft is a row of
+`answer_drafts`, which only the app's board (`mindmap::board`) loads. Every MCP read (the snapshot,
+`get`, `get_many`, `list`, `watch`) and the wait stream read the board through `load_blocked`,
+which never loads drafts. So a wait with a draft reads `pending`, with no answer and no verdict,
+until the batch is sent. Staging, editing or clearing a draft is no change on
+`/events/expectations`. **Sending** releases every staged wait in **one transaction**, through the
+same write a single answer makes, so the agent reads the answer the usual way.
+
 ## Being told a wait resolved
 
 An agent that raised a wait is **told** when it changes, instead of polling `get`. The decision and
 its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md); this is the
-server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
+server's side. The notifier itself is the `arlesh` Claude Code mod (`plugins/arlesh/`),
 which an agent's session may or may not have.
 
 **Two event routes**, on the MCP endpoint's own origin (beside `/mcp` in Standalone) or behind the
@@ -696,6 +732,17 @@ on 2026-11-06, Task `688`: only its own tests followed it, the mod long-polls).
 
 The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
 writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.
+
+**A batch is one change per wait, at one revision** (Task `de16`, [ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)).
+Sending staged answers releases all of them in one transaction. The log diffs whole readings, and
+a reading sees a transaction whole, so the batch's `released` changes all carry the same `revision`
+and arrive in one poll answer. Undoing the send brings them back the same way, as `reopened`. The
+change shape has no batch field. A client that knows nothing of batches sees one change per wait,
+as before. The `arlesh` plugin delivers **one message per recipient per flush**: it groups every
+change it owes by the agent it routes to (the raising sub-agent if it runs, else whoever spawned
+it, else the session), so each agent is woken once for the batch. A message about one wait keeps
+today's text; one about several lists them ("Arlesh notification: 3 waits changed: wait 1ab on Task
+de1 (released), …; read them with `arlesh_waits.get_many`.").
 
 **Two operations on `arlesh_waits`:**
 

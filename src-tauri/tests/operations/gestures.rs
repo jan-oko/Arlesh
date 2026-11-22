@@ -27,7 +27,7 @@ async fn task(app: &tauri::App<tauri::test::MockRuntime>, title: &str) -> Task {
         CreateTaskRequest {
             title: title.into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -135,7 +135,7 @@ async fn the_verdict_controls_toggle_and_the_cycle_walks_all_three() {
         CreateCommitmentRequest {
             title: "Call home".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             time_scope: Some(TimeScope {
                 start_id: week,
                 end_id: week,

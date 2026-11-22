@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -32,19 +33,19 @@ beforeEach(() => vi.clearAllMocks());
 describe("useTaskAgentic", () => {
   it("sends the press for the task's own row and reloads", async () => {
     vi.mocked(toggleTaskAgentic).mockResolvedValue(Object.create(null));
-    const { result, settle } = setup([node("task-5")]);
+    const { result, settle } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic(`task-${storedRowId(5)}`); });
 
-    await waitFor(() => expect(toggleTaskAgentic).toHaveBeenCalledWith(5));
+    await waitFor(() => expect(toggleTaskAgentic).toHaveBeenCalledWith(storedRowId(5)));
     await waitFor(() => expect(settle).toHaveBeenCalled());
   });
 
   it("declines every node that has no agentic column of its own", () => {
-    const { result } = setup([node("goal-1", { kind: "goal" })]);
+    const { result } = setup([node(`goal-${storedRowId(1)}`, { kind: "goal" })]);
 
     act(() => {
-      result.current.toggleAgentic("goal-1");
+      result.current.toggleAgentic(`goal-${storedRowId(1)}`);
       result.current.toggleAgentic("task-missing");
     });
 
@@ -52,23 +53,23 @@ describe("useTaskAgentic", () => {
   });
 
   it("flags a Habit occurrence on its own row, since it is a Task like any other", async () => {
-    const occurrence = node("task-4", { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
+    const occurrence = node(`task-${storedRowId(4)}`, { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
     vi.mocked(toggleTaskAgentic).mockResolvedValue(Object.create(null));
     const { result } = setup([occurrence]);
 
-    act(() => { result.current.toggleAgentic("task-4"); });
+    act(() => { result.current.toggleAgentic(`task-${storedRowId(4)}`); });
 
     await waitFor(() => expect(toggleTaskAgentic).toHaveBeenCalledWith(occurrence.rowId));
   });
 
   it("says so when the write fails rather than leaving the flag silently unchanged", async () => {
     vi.mocked(toggleTaskAgentic).mockRejectedValue(new Error("db is gone"));
-    const { result, showToast } = setup([node("task-5")]);
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`)]);
 
-    act(() => { result.current.toggleAgentic("task-5"); });
+    act(() => { result.current.toggleAgentic(`task-${storedRowId(5)}`); });
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith(
-      expect.objectContaining({ nodeId: "task-5" }),
+      expect.objectContaining({ nodeId: `task-${storedRowId(5)}` }),
     ));
   });
 });

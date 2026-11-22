@@ -86,10 +86,34 @@
   color: var(--text-primary);
 }
 
-.accounts {
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.group {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.groupHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.groupName {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.limits {
+  color: var(--text-secondary);
+  font-size: var(--text-xs, var(--text-sm));
+  overflow-wrap: anywhere;
 }
 
 /* A row the agents' status menu pointed at. */

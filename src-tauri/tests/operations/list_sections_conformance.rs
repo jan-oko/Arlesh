@@ -62,6 +62,8 @@ struct DrawnFilter {
     unblock: bool,
     #[serde(default)]
     expectations: bool,
+    #[serde(default)]
+    review: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +126,7 @@ fn every_case_draws_the_sections_the_corpus_says() {
         let filter = BoardFilter {
             unblock: case.filter.unblock,
             expectations: case.filter.expectations,
+            review: case.filter.review,
             ..BoardFilter::preset(case.filter.preset)
         };
         assert_eq!(

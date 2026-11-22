@@ -3,6 +3,12 @@
 Status: accepted 2026-11-04, built. Decided with the user in a design session; this replaces the
 2026-11-02 draft, which compared long-polls, MCP tasks and channels and chose none of them.
 
+The plugin this ADR calls `arlesh` was named `arlesh-notify` until Task `109` renamed it.
+
+[ADR 0021](0021-staged-answers-sent-as-a-batch.md) (Task `de16`, proposed) changes *Delivery*: a
+flush sends one message per recipient, naming every wait it owes that recipient, so a batch of
+staged answers wakes each agent once.
+
 ## Context
 
 An agent that raises a wait (`arlesh_waits.ask`) hands a question to the user and has nothing to do
@@ -43,7 +49,7 @@ running; once it has finished, the agent that spawned it does, with the sub-agen
 
 **Configuration.** The mod reuses the session's `Arlesh` MCP server entry (URL and headers) and
 opens the streams on the same origin with the same authentication. It has no settings. It ships as
-`plugins/arlesh-notify/`, with `.claude-plugin/marketplace.json` at the repository root.
+`plugins/arlesh/`, with `.claude-plugin/marketplace.json` at the repository root.
 
 **How agents learn of it: four layers**, so that only the mod's own note says notifications are
 really on, and no agent is promised a wake-up it will not get.
@@ -59,7 +65,7 @@ really on, and no agent is promised a wake-up it will not get.
 3. The orchestrating-agents skill puts the same rules in briefs, and treats a notification as the
    cue to re-read the board.
 4. The mod adds one line to the session-start context: "Arlesh notifications are on in this
-   session: waits you ask, raise or `arlesh_waits.watch` will notify you when they change; don't
+   session: waits you ask, raise (a review included) or `arlesh_waits.watch` will notify you when they change; don't
    poll."
 
 Cloud sessions are out of scope: they cannot reach a local Arlesh.
@@ -85,11 +91,23 @@ Checked against the API, and built as decided except where noted:
   (`wait=0`) to the server succeeded. The stream is started in `session.start`.
 - **A hook's `next(e)` for an MCP tool gives the result as a string** (the JSON the model reads),
   not an object: the mod reads that, and skips a result with `isError`.
-- **Delivery is `$.prompt.submit`** (a turn of its own once the session is idle; retried while it is
-  busy) or `$.session.send` to a running sub-agent. Tried by hand on 2.1.318: an idle main session is
+- **Delivery is `$.prompt.submit`** (a turn of its own once the session is idle) or `$.session.send` to a running sub-agent. Tried by hand on 2.1.318: an idle main session is
   woken; the parent is woken for a finished sub-agent; a running sub-agent gets `session.send`
   mid-run; a submit while the session is busy was accepted at once and ran as a turn of its own.
   Whether it interrupts or queues behind the running turn is not determined.
+- **A change is owed until its prompt entered** (Task 1a0). Both calls can fail without throwing:
+  `$.prompt.submit` resolves `{ drop }` when the engine refuses a prompt (a Stop stands, a limit is
+  reached), and `$.session.send` resolves `{ isDelivered: false }`. The mod records a change as owed
+  in the book, in the same write that stores the wait's new state, and removes it only once the
+  prompt entered or the message was queued. An owed change is tried again on every poll round, when
+  the main session's turn completes, and at session start; one flush runs at a time, so a change in
+  flight is not sent twice. A message a sub-agent did not take goes to the session instead, naming
+  the sub-agent. Nothing is submitted while a turn of the main conversation runs: the host queues a
+  prompt submitted mid-turn, answers as if it entered, and discards it if the turn is stopped. The
+  mod follows `turn.start` and `turn.complete` (a stopped turn completes with `isAborted`; a dialog
+  inside a turn is still the turn) and flushes when the turn completes. Reviews raised with
+  `raise_review` are watched like questions. After 20 failed attempts it is given up on and the transcript says so; every
+  attempt, its outcome and the drop reason go to the debug log.
 - **A sub-agent is notified of a release it made itself** (it raised the wait, so it is its
   notification), and a message that goes to anyone else than the raiser names the sub-agent.
 

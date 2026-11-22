@@ -5,6 +5,7 @@
 //! under the parent it has just created, and how an editor's Save writes the tags of the Flow it
 //! has just forked. Each step's answer comes back in order, so the caller reads what was made.
 
+use crate::nodes::id::RowId;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -45,7 +46,8 @@ pub enum StepTarget {
         /// `flow`, `flow_goal`, `flow_task`, `flow_commitment` or `flow_expectation`.
         forked: String,
         /// The node in the Habit as it was.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// The node made by step `step` (counting from 0) of this gesture.
     Made {
@@ -79,11 +81,13 @@ pub enum GestureStep {
         /// The node's kind.
         kind: String,
         /// The node's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// The parent's kind.
         parent_kind: String,
         /// The parent's row id.
-        parent_id: i64,
+        #[schemars(with = "String")]
+        parent_id: RowId,
         /// Where among the parent's children.
         position: i64,
     },
@@ -231,7 +235,8 @@ pub enum GestureStep {
         /// The node.
         id: StepTarget,
         /// The Tag's row id.
-        tag_id: i64,
+        #[schemars(with = "String")]
+        tag_id: RowId,
         /// On, or off.
         present: bool,
     },
@@ -549,12 +554,9 @@ fn resolve(target: &StepTarget, made: &[Value]) -> Result<NodeId, WireError> {
                 return Ok(NodeId::Stored(*id));
             }
             if forked == "flow" {
-                let flow = answer
-                    .get("flow_id")
-                    .and_then(Value::as_i64)
-                    .ok_or_else(|| {
-                        WireError::invalid_request(format!("step {step} forked no Habit"))
-                    })?;
+                let flow = answer.get("flow_id").and_then(row_id_of).ok_or_else(|| {
+                    WireError::invalid_request(format!("step {step} forked no Habit"))
+                })?;
                 return Ok(NodeId::Stored(flow));
             }
             let pairs = match forked.as_str() {
@@ -573,8 +575,8 @@ fn resolve(target: &StepTarget, made: &[Value]) -> Result<NodeId, WireError> {
                 .and_then(Value::as_array)
                 .and_then(|pairs| {
                     pairs.iter().find_map(|pair| {
-                        (pair.get(0).and_then(Value::as_i64) == Some(*id))
-                            .then(|| pair.get(1).and_then(Value::as_i64))
+                        (pair.get(0).and_then(row_id_of) == Some(*id))
+                            .then(|| pair.get(1).and_then(row_id_of))
                             .flatten()
                     })
                 })
@@ -597,7 +599,12 @@ fn resolve(target: &StepTarget, made: &[Value]) -> Result<NodeId, WireError> {
     }
 }
 
-fn stored(id: &NodeId) -> Result<i64, WireError> {
+/// The row id a JSON string spells, when it is one.
+fn row_id_of(value: &Value) -> Option<RowId> {
+    value.as_str()?.parse().ok()
+}
+
+fn stored(id: &NodeId) -> Result<RowId, WireError> {
     id.stored()
         .ok_or_else(|| WireError::invalid_request("a derived node cannot be named here"))
 }
@@ -737,9 +744,9 @@ async fn move_node(
 async fn duplicate(
     db: &mut Db<Transactional>,
     kind: &str,
-    id: i64,
+    id: RowId,
     parent_kind: &str,
-    parent_id: i64,
+    parent_id: RowId,
     position: i64,
 ) -> Result<Value, WireError> {
     let subtree = |duplicable| (duplicable, parent_type(kind, parent_kind));
@@ -802,7 +809,7 @@ async fn create_flow_item(
 async fn update_flow_item(
     db: &mut Db<Transactional>,
     item_type: FlowItemType,
-    id: i64,
+    id: RowId,
     request: UpdateFlowItemRequest,
 ) -> Result<Value, WireError> {
     match item_type {

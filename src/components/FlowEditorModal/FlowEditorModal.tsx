@@ -51,7 +51,7 @@ function isNodeKind(value: string): value is NodeKind {
 /** A chosen Target Node, retaining its display title for the summary chip. */
 export interface TargetSelection {
   kind: NodeKind;
-  id: number;
+  id: string;
   title: string;
 }
 
@@ -73,7 +73,7 @@ export interface FlowSaveData {
   title: string;
   instanceType: InstanceType;
   targetType: string | null;
-  targetId: number | null;
+  targetId: string | null;
   durationN: number | null;
   durationKind: string | null;
   windowPart: string | null;
@@ -167,7 +167,7 @@ interface Props {
   startAsHabit?: boolean;
   /** Tags a task-instance root's wait template can carry. */
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
 }

@@ -2,6 +2,7 @@
 //! flag is on, the wait derived while the task is done, its overlay, and its checks.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -18,8 +19,8 @@ use arlesh_lib::{
 use chrono::NaiveDateTime;
 use helpers::StoredId;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -30,6 +31,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Async".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -42,7 +44,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn task(pool: &sqlx::SqlitePool, project: i64, title: &str) -> i64 {
+async fn task(pool: &sqlx::SqlitePool, project: RowId, title: &str) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
@@ -85,7 +87,7 @@ fn with_template() -> UpdateTaskRequest {
     }
 }
 
-async fn release(pool: &sqlx::SqlitePool, id: i64) {
+async fn release(pool: &sqlx::SqlitePool, id: RowId) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     update_spawned_wait(
         &mut db,
@@ -100,7 +102,7 @@ async fn release(pool: &sqlx::SqlitePool, id: i64) {
     db.commit().await.unwrap();
 }
 
-async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateTaskRequest) {
+async fn update(pool: &sqlx::SqlitePool, id: RowId, request: UpdateTaskRequest) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     update_task(&mut db, TaskId(id), request).await.unwrap();
     db.commit().await.unwrap();

@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::mindmap::model::NodeFacts;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::{
     nodes::origin::{CheckOrigin, Origin},
     tasks::{
@@ -9,9 +11,13 @@ use crate::{
         model::{TaskArchival, TaskStatus},
         waits::WaitKind,
     },
+    tasks::{
+        lifecycle::ItemLifecycle,
+        model::{Status, Task},
+    },
 };
 
-fn task(id: i64, status: Status, origin: Origin) -> Task {
+pub(super) fn task(id: i64, status: Status, origin: Origin) -> Task {
     Task {
         id: id.into(),
         title: format!("task {id}"),
@@ -36,11 +42,11 @@ fn task(id: i64, status: Status, origin: Origin) -> Task {
     }
 }
 
-fn todo(id: i64) -> Task {
+pub(super) fn todo(id: i64) -> Task {
     task(id, Status::Ordinary(TaskStatus::Todo), Origin::Manual)
 }
 
-fn check(id: i64) -> Task {
+pub(super) fn check(id: i64) -> Task {
     let origin = Origin::Check(CheckOrigin {
         wait_kind: WaitKind::Stored,
         wait_id: 9.into(),
@@ -51,11 +57,11 @@ fn check(id: i64) -> Task {
     task(id, Status::Ordinary(TaskStatus::Todo), origin)
 }
 
-fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
+pub(super) fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
     let archival = serde_json::to_value(archival).unwrap();
     serde_json::from_value(serde_json::json!({
         "node_type": "task",
-        "node_id": id,
+        "node_id": tid(id),
         "timing": "active",
         "overdue": overdue,
         "archival": archival,
@@ -64,7 +70,7 @@ fn lifecycle(id: i64, overdue: bool, archival: Archival) -> ItemLifecycle {
     .unwrap()
 }
 
-fn asking(wait: i64) -> NodeFacts {
+pub(super) fn asking(wait: i64) -> NodeFacts {
     NodeFacts {
         open_question: Some(wait.into()),
         ..NodeFacts::default()
@@ -100,14 +106,21 @@ fn a_question_an_overdue_task_and_a_generated_one_are_each_a_fact() {
         ],
         ..MindmapLoad::default()
     };
-    load.facts.insert("task-1".to_string(), asking(7));
+    load.facts.insert(tkey("task", 1), asking(7));
 
     let observed = observe(&load, false);
 
-    assert_eq!(keys(&observed), ["generated:3", "overdue:2", "question:7"]);
+    assert_eq!(
+        keys(&observed),
+        [
+            format!("generated:{}", tid(3)),
+            format!("overdue:{}", tid(2)),
+            format!("question:{}", tid(7))
+        ]
+    );
     let question = &observed.facts[2];
     assert_eq!(question.channel, Channel::AgentQuestion);
-    assert_eq!(question.task.as_deref(), Some("task-1"));
+    assert_eq!(question.task.as_deref(), Some(tkey("task", 1).as_str()));
     assert_eq!(question.title.as_deref(), Some("task 1"));
 }
 
@@ -133,7 +146,7 @@ fn observed(facts: &[(&str, Channel)], locked: bool) -> Observed {
                 key: (*key).to_string(),
                 value: String::new(),
                 channel: *channel,
-                task: Some("task-1".to_string()),
+                task: Some(tkey("task", 1)),
                 title: None,
             })
             .collect(),

@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -10,7 +11,7 @@ fn delegated(id: NodeId) -> Task {
         parent_type: "project".into(),
         parent_id: 1.into(),
         status: Status::Ordinary(TaskStatus::Todo),
-        delegate_to: Some(Delegate::Person { id: 2 }),
+        delegate_to: Some(Delegate::Person { id: tid(2) }),
         agentic: None,
         asynchronous: false,
         compound: false,
@@ -30,30 +31,30 @@ fn delegated(id: NodeId) -> Task {
 
 #[test]
 fn a_delegated_tasks_wait_is_a_pending_expectation_beneath_it() {
-    let wait = delegation_wait(&delegated(NodeId::Stored(7)));
+    let wait = delegation_wait(&delegated(NodeId::Stored(tid(7))));
     assert_eq!(
         wait.id,
-        DerivedKey::DelegationWait(NodeId::Stored(7)).node_id()
+        DerivedKey::DelegationWait(NodeId::Stored(tid(7))).node_id()
     );
     assert_eq!(wait.parent_type, "task");
-    assert_eq!(wait.parent_id, NodeId::Stored(7));
+    assert_eq!(wait.parent_id, NodeId::Stored(tid(7)));
     assert_eq!(wait.status, ExpectationStatus::Pending);
     assert!(wait.is_private, "it is as private as its Task");
     assert_eq!(
         wait.origin,
         Origin::DelegationWait(WaitOrigin {
-            task_id: NodeId::Stored(7)
+            task_id: NodeId::Stored(tid(7))
         })
     );
     assert_eq!(
         registry::recall(wait.id.derived().unwrap()),
-        Some(DerivedKey::DelegationWait(NodeId::Stored(7)))
+        Some(DerivedKey::DelegationWait(NodeId::Stored(tid(7))))
     );
 }
 
 fn check_key() -> CheckKey {
     CheckKey {
-        wait: WaitRef::Stored(5),
+        wait: WaitRef::Stored(tid(5)),
         due_at: NaiveDate::from_ymd_opt(2026, 9, 20)
             .unwrap()
             .and_hms_opt(9, 0, 0)
@@ -64,7 +65,10 @@ fn check_key() -> CheckKey {
 fn state(overlay: TaskOverlay) -> CheckState {
     CheckState {
         overlays: HashMap::from([(check_key().node_key(), overlay)]),
-        tags: HashMap::from([(check_key().node_key(), vec![(3, true), (4, false)])]),
+        tags: HashMap::from([(
+            check_key().node_key(),
+            vec![(tid(3), true), (tid(4), false)],
+        )]),
         reasons: HashMap::from([(check_key().node_key(), vec!["phone is off".to_string()])]),
     }
 }
@@ -73,7 +77,7 @@ fn draw(done: bool) -> CheckDraw<'static> {
     CheckDraw {
         key: check_key(),
         wait_title: "Reply from Dana",
-        wait_row: NodeId::Stored(5),
+        wait_row: NodeId::Stored(tid(5)),
         due: TimeScope::single(crate::scopes::key::ScopeKey::day(
             NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
         )),
@@ -98,10 +102,10 @@ fn an_open_check_task_is_a_task_under_its_wait_reading_its_overlay() {
     assert_eq!(task.title, "Reply from Dana");
     assert_eq!(
         (task.parent_type.as_str(), &task.parent_id),
-        ("expectation", &NodeId::Stored(5))
+        ("expectation", &NodeId::Stored(tid(5)))
     );
     assert_eq!(task.status, Status::Ordinary(TaskStatus::InProgress));
-    assert_eq!(task.tag_ids, vec![3]);
+    assert_eq!(task.tag_ids, vec![tid(3)]);
     assert!(task.time_scope.is_some());
     assert_eq!(rows.block_reasons.len(), 1);
     assert_eq!(rows.block_reasons[0].owner_id, task.id);

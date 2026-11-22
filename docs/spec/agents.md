@@ -43,7 +43,7 @@ pending PINs, so even the right PIN is refused until it has passed.
 and when it lapses. It answers only loopback connections and refuses any request carrying an
 `Origin` header, so no web page can reach it. In Client mode, where the desktop serves no MCP
 endpoint, it serves the door alone and forwards to the server as the signed-in device. The
-arlesh-notify mod uses it to attach unprompted.
+arlesh mod uses it to attach unprompted.
 
 **The connect token** is the server's one credential for `/mcp`: low-privilege, admitting a
 session and the attach tool and nothing else, issued with `arlesh-server connect-token` (issuing
@@ -89,7 +89,7 @@ answer carries the child and its **sub-token**, once. `client_id` is the client'
 subagent (Claude Code's agent id), kept in the child's `session_uuid`. Registering it again answers
 the same child with a **new** sub-token and the old one stops working: only the parent can ask, and
 it asks when it has lost the token. A mod that still has its record resumes the child instead and
-never registers again, so it does not rotate the token. A child cannot register children. The arlesh-notify mod does all of
+never registers again, so it does not rotate the token. A child cannot register children. The arlesh mod does all of
 this when a subagent starts, names the child from the subagent's description, and hands the
 subagent its sub-token in its starting context. Either the child is **created already holding its
 Task** (below) or the subagent claims the Task its brief names.
@@ -100,10 +100,10 @@ same call, under exactly the checks `claim` applies to a child (a stored node in
 Claim, no overlap with an active sibling's sub-Claim). If the Claim is refused the child is **still
 registered**, unclaimed, and the answer carries `claim_refused` with the reason, so the subagent
 falls back to claiming for itself. Registering again with a `subtree` rotates the token and claims
-as well. The arlesh-notify mod uses it when the orchestrator names the Task in the Agent call with a
+as well. The arlesh mod uses it when the orchestrator names the Task in the Agent call with a
 marker, `[arlesh:<task id>]`, once, in the call's `description` or `prompt`:
 
-- The marker is `[arlesh:` + an id of 3 to 40 letters, digits or hyphens (a row id, a short id or a
+- The marker is `[arlesh:` + an id of 3 to 40 letters, digits or hyphens (a short id or a
   full id) + `]`, case-sensitive. **Exactly one** in the `description` and `prompt` together counts;
   a repeated one, or anything that starts `[arlesh:` and is not a whole marker, is treated as none
   and noted in the debug log.
@@ -248,7 +248,7 @@ agents are not registered at all.
 ## Capacity per account
 
 The agent reports its account's plan limits with `arlesh_agents.report_usage(windows)`, each
-`{kind, percent_used, resets_at}`; the arlesh-notify mod does it on its own from the session's
+`{kind, percent_used, resets_at}`; the arlesh mod does it on its own from the session's
 usage (`session.measure`). The server keeps the last report of each window per account.
 
 An Agent is **at capacity** when, at `now`:

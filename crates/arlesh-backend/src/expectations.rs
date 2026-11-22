@@ -1,9 +1,11 @@
 //! The `expectations` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `expectations` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     nodes::id::NodeId,
+    tasks::answer_drafts::{AnswerDraft, DraftRequest, SendOutcome, SendRequest},
     tasks::model::{
         CreateExpectationRequest, Expectation, SpawnedWait, UpdateExpectationRequest,
         UpdateSpawnedWaitRequest,
@@ -33,30 +35,30 @@ pub trait WaitsPort: Send + Sync {
     ) -> Result<Expectation, WireError>;
 
     /// Completes the current check on a stored expectation: records now as its last check, so the
-    async fn complete_expectation_check(&self, id: i64) -> Result<Expectation, WireError>;
+    async fn complete_expectation_check(&self, id: RowId) -> Result<Expectation, WireError>;
 
     /// Releases, un-releases or archives the wait a task's completion spawned.
     async fn update_spawned_wait(
         &self,
-        task_id: i64,
+        task_id: RowId,
         request: UpdateSpawnedWaitRequest,
     ) -> Result<SpawnedWait, WireError>;
 
     /// Completes the current check on a task's spawned wait.
-    async fn complete_spawned_wait_check(&self, task_id: i64) -> Result<(), WireError>;
+    async fn complete_spawned_wait_check(&self, task_id: RowId) -> Result<(), WireError>;
 
     /// Adds a tag to an expectation.
     async fn add_tag_to_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError>;
 
     /// Removes a tag from an expectation.
     async fn remove_tag_from_expectation(
         &self,
         expectation_id: arlesh_core::nodes::id::NodeId,
-        tag_id: i64,
+        tag_id: RowId,
     ) -> Result<(), WireError>;
 
     /// Deletes an expectation, its notes, and every dependency edge aimed at it.
@@ -65,14 +67,29 @@ pub trait WaitsPort: Send + Sync {
     /// Takes the latest completed check on a stored wait back. `due_at` names the check, as the
     async fn reopen_expectation_check(
         &self,
-        id: i64,
+        id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<Expectation, WireError>;
 
     /// Takes the latest completed check on a task's spawned wait back.
     async fn reopen_spawned_wait_check(
         &self,
-        task_id: i64,
+        task_id: RowId,
         due_at: chrono::NaiveDateTime,
     ) -> Result<(), WireError>;
+
+    /// Stages an answer: saves the draft for an open question or review, replacing an earlier one.
+    /// The last save wins. An agent sees nothing of it.
+    async fn save_answer_draft(
+        &self,
+        wait_id: NodeId,
+        request: DraftRequest,
+    ) -> Result<AnswerDraft, WireError>;
+
+    /// Unstages a wait: deletes its draft. Passes when it has none.
+    async fn clear_answer_draft(&self, wait_id: NodeId) -> Result<(), WireError>;
+
+    /// Sends every staged answer on the board, releasing the waits in one write, and says which
+    /// were sent and which were skipped.
+    async fn send_answer_drafts(&self, request: SendRequest) -> Result<SendOutcome, WireError>;
 }

@@ -1,17 +1,16 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { Account, AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
+import type { AgentStanding, AgentSummary, CapacityCause } from "@/api/agents";
 import type { AgentAction } from "@/api/agents";
 import type { McpCatalogueNode } from "@/api/mcp-access";
 import { agentRowId } from "@/utils/agent-anchors";
-import { capitalised, controlsFor, relativeTime, shortAge } from "@/utils/agents";
+import { controlsFor, relativeTime, shortAge } from "@/utils/agents";
 import { describeRoots } from "@/utils/mcp-roots";
 import styles from "./SettingsModal.module.css";
 import own from "./AgentsSection.module.css";
 
 interface Props {
   summary: AgentSummary;
-  account: Account | undefined;
   nodes: readonly McpCatalogueNode[];
   onAct: (action: AgentAction) => void;
   /** The rows of this agent's child agents, nested under it. */
@@ -19,7 +18,7 @@ interface Props {
 }
 
 /** One agent: who it is, what it holds, how it stands, and the hand controls its standing allows. */
-export default function AgentRow({ summary, account, nodes, onAct, children }: Props) {
+export default function AgentRow({ summary, nodes, onAct, children }: Props) {
   const { t } = useTranslation(["settings", "nodeKinds"]);
   const [removing, setRemoving] = useState(false);
   const { agent, standing } = summary;
@@ -62,9 +61,6 @@ export default function AgentRow({ summary, account, nodes, onAct, children }: P
           <span key="standing" className={own.badge} title={standingNotes[standing]}>
             {standingNames[standing]}
           </span>,
-          ...(agent.parent_id === null
-            ? [<span key="account" className={own.meta}>{capitalised(agent.account)}</span>]
-            : []),
           <span key="seen" className={own.meta}>
             {agent.last_seen_at === null
               ? t("settings:mcp.agents.neverSeen")
@@ -89,15 +85,6 @@ export default function AgentRow({ summary, account, nodes, onAct, children }: P
           usage: (window, time) => t("settings:mcp.agents.capacity.usage_limit", { window, time }),
         })}</div>
       )}
-      {agent.parent_id === null && account !== undefined && account.windows.map((window) => (
-        <div key={window.kind} className={own.meta}>
-          {t("settings:mcp.agents.window", {
-            window: window.kind,
-            percent: Math.round(window.percent_used),
-            time: relativeTime(window.resets_at, now),
-          })}
-        </div>
-      ))}
       <div className={own.actions}>
         {controls.canPause && (
           <button className={styles.button} type="button" aria-label={labelled("pause")} onClick={() => onAct({ action: "pause" })}>

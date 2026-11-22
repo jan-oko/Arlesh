@@ -7,6 +7,7 @@ use std::time::Duration;
 use arlesh_core::{database::session::SessionFactory, mindmap::publisher::ChangeEvent};
 
 use super::SqliteBackend;
+use crate::agents::AgentsPort;
 use crate::mindmap::BoardPort;
 use crate::tasks::TasksPort;
 use crate::undo::UndoPort;
@@ -56,7 +57,7 @@ async fn rig() -> Rig {
 
 fn task(title: &str) -> arlesh_core::tasks::model::CreateTaskRequest {
     serde_json::from_value(serde_json::json!({
-        "title": title, "parent_type": "domain", "parent_id": 1
+        "title": title, "parent_type": "domain", "parent_id": arlesh_core::database::row_ids::new_id("domain", 1)
     }))
     .expect("a request")
 }
@@ -157,4 +158,50 @@ async fn the_current_board_is_the_publication_the_head_names() {
     assert_eq!(current.seq, Some(head.seq));
     assert_eq!(current.hash, Some(head.hash));
     assert!(current.load.get().starts_with('{'));
+}
+
+fn origin_of(event: &ChangeEvent) -> String {
+    let event: serde_json::Value = serde_json::from_str(&event.data).expect("JSON");
+    event["origin"].as_str().expect("an origin").to_owned()
+}
+
+#[tokio::test]
+async fn what_the_user_does_in_the_app_is_published_as_the_users() {
+    let rig = rig().await;
+    rig.backend
+        .current_board()
+        .await
+        .expect("the first publication");
+    rig.backend.open_gesture().await.expect("open");
+    rig.backend
+        .create_task(task("By hand"))
+        .await
+        .expect("a write");
+    rig.backend.close_gesture().await.expect("close");
+    heard_within(&rig, 1).await;
+
+    rig.backend
+        .set_agent_account_locked("work".to_owned(), true)
+        .await
+        .expect("locking an account by hand");
+    heard_within(&rig, 2).await;
+    rig.backend.undo().await.expect("ctrl+z");
+    let events = heard_within(&rig, 3).await;
+
+    let origins: Vec<String> = events.iter().map(origin_of).collect();
+    assert_eq!(origins, ["user", "user", "user"]);
+}
+
+#[tokio::test]
+async fn what_an_agent_writes_through_the_mcp_is_published_as_the_agents() {
+    let rig = rig().await;
+    rig.backend
+        .current_board()
+        .await
+        .expect("the first publication");
+
+    rig.backend.write_recorder()(None);
+    let events = heard_within(&rig, 1).await;
+
+    assert_eq!(origin_of(&events[0]), "agent");
 }

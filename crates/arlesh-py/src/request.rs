@@ -8,6 +8,7 @@
 //! where a non-desktop client stamps its name over the journal's context, and a pooled write has
 //! no transaction to hide the stamp in.
 
+use arlesh_core::nodes::id::RowId;
 use std::path::Path;
 
 use arlesh_core::{
@@ -38,7 +39,9 @@ use arlesh_core::{
         write,
     },
     tasks::{
-        self, gestures,
+        self,
+        answer_drafts::{DraftRequest, SendRequest},
+        gestures,
         model::{
             CommitmentId, CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
             CreateTaskRequest, Dependency, DescendantPlans, ExpectationId, GoalId, TaskId,
@@ -77,32 +80,38 @@ pub(crate) enum Request {
     /// One stored Task, with what blocks it.
     GetTask {
         /// The Task's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// One stored Goal.
     GetGoal {
         /// The Goal's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// One stored Commitment.
     GetCommitment {
         /// The Commitment's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// One Aspect, Domain, Project or Tag.
     GetDomain {
         /// Its row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// One Info.
     GetInfo {
         /// Its row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// One Flow or Habit template.
     GetFlow {
         /// Its row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// What a Task depends on.
     TaskDependencies {
@@ -188,11 +197,13 @@ pub(crate) enum Request {
     /// Copies a Task and its subtree under a new parent.
     DuplicateTask {
         /// The Task to copy.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// The new parent's kind.
         target_type: String,
         /// The new parent's row id.
-        target_id: i64,
+        #[schemars(with = "String")]
+        target_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -221,11 +232,13 @@ pub(crate) enum Request {
     /// Copies a Goal and its subtree under a new parent.
     DuplicateGoal {
         /// The Goal to copy.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// The new parent's kind.
         target_type: String,
         /// The new parent's row id.
-        target_id: i64,
+        #[schemars(with = "String")]
+        target_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -277,33 +290,55 @@ pub(crate) enum Request {
     /// Marks a stored wait's check done.
     CompleteWaitCheck {
         /// The wait's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// Reopens a stored wait's check, due again at `due_at`.
     ReopenWaitCheck {
         /// The wait's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// When the check is due again.
         due_at: NaiveDateTime,
     },
     /// Updates the wait an Asynchronous Task spawned.
     UpdateSpawnedWait {
         /// The Task that spawned it.
-        task_id: i64,
+        #[schemars(with = "String")]
+        task_id: RowId,
         /// What to change.
         request: UpdateSpawnedWaitRequest,
     },
     /// Marks a spawned wait's check done.
     CompleteSpawnedWaitCheck {
         /// The Task that spawned it.
-        task_id: i64,
+        #[schemars(with = "String")]
+        task_id: RowId,
     },
     /// Reopens a spawned wait's check, due again at `due_at`.
     ReopenSpawnedWaitCheck {
         /// The Task that spawned it.
-        task_id: i64,
+        #[schemars(with = "String")]
+        task_id: RowId,
         /// When the check is due again.
         due_at: NaiveDateTime,
+    },
+    /// Stages an answer to an open question or review: saves the draft, the last save winning.
+    SaveAnswerDraft {
+        /// The wait, stored or derived.
+        wait_id: NodeId,
+        /// The answer, or a review's verdict and note.
+        request: DraftRequest,
+    },
+    /// Unstages a wait: deletes its draft, if it has one.
+    ClearAnswerDraft {
+        /// The wait.
+        wait_id: NodeId,
+    },
+    /// Sends every staged answer on the board: releases the waits, in one write.
+    SendAnswerDrafts {
+        /// The waits the caller's screen showed as staged.
+        request: SendRequest,
     },
 
     // ---- Tags and block reasons -------------------------------------------------------------
@@ -314,7 +349,8 @@ pub(crate) enum Request {
         /// The node.
         id: NodeId,
         /// The Tag's row id.
-        tag_id: i64,
+        #[schemars(with = "String")]
+        tag_id: RowId,
         /// On (`true`) or off.
         present: bool,
     },
@@ -337,23 +373,27 @@ pub(crate) enum Request {
     /// Updates an Info — and moves it, when the request names a parent.
     UpdateInfo {
         /// The Info's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateInfoRequest,
     },
     /// Deletes an Info.
     DeleteInfo {
         /// The Info's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// Copies an Info and its subtree under a new parent.
     DuplicateInfo {
         /// The Info to copy.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// The new parent's kind.
         target_type: String,
         /// The new parent's row id.
-        target_id: i64,
+        #[schemars(with = "String")]
+        target_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -373,21 +413,25 @@ pub(crate) enum Request {
     /// Updates a Domain, Project or Tag — and moves it, when the request names a parent.
     UpdateDomain {
         /// Its row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateDomainRequest,
     },
     /// Deletes a Domain, Project or Tag.
     DeleteDomain {
         /// Its row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// Copies a Domain or Project and its subtree under a new parent.
     DuplicateDomain {
         /// The one to copy.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// The new parent's row id.
-        target_id: i64,
+        #[schemars(with = "String")]
+        target_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -401,14 +445,16 @@ pub(crate) enum Request {
     /// Updates a Flow — and moves it, when the request names a parent.
     UpdateFlow {
         /// The Flow's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateFlowRequest,
     },
     /// Deletes a Flow and its items.
     DeleteFlow {
         /// The Flow's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// Creates a Goal item in a Flow.
     CreateFlowGoal {
@@ -433,28 +479,32 @@ pub(crate) enum Request {
     /// Updates a Flow's Commitment item.
     UpdateFlowCommitment {
         /// The item's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateFlowItemRequest,
     },
     /// Updates a Flow's wait item.
     UpdateFlowWait {
         /// The item's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateFlowItemRequest,
     },
     /// Updates a Flow's Goal item.
     UpdateFlowGoal {
         /// The item's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateFlowItemRequest,
     },
     /// Updates a Flow's Task item.
     UpdateFlowTask {
         /// The item's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
         /// What to change.
         request: UpdateFlowItemRequest,
     },
@@ -463,17 +513,20 @@ pub(crate) enum Request {
         /// Goal or Task item.
         item_type: FlowItemType,
         /// The item's row id.
-        id: i64,
+        #[schemars(with = "String")]
+        id: RowId,
     },
     /// Sets a Flow item's cycles. Orphaning what Habit iterations recorded asks first, unless
     /// `reconcile` says how.
     SetFlowItemCycles {
         /// The Flow.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// Goal or Task item.
         item_type: FlowItemType,
         /// The item's row id.
-        item_id: i64,
+        #[schemars(with = "String")]
+        item_id: RowId,
         /// The cycles.
         cycles: Vec<FlowCycleInput>,
         /// How to reconcile iterations the change would orphan.
@@ -486,55 +539,65 @@ pub(crate) enum Request {
     /// Makes one Flow item depend on another.
     AddFlowDependency {
         /// The Flow.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// The dependent item's kind.
         dependent_type: FlowItemType,
         /// The dependent item's row id.
-        dependent_id: i64,
+        #[schemars(with = "String")]
+        dependent_id: RowId,
         /// The prerequisite's kind.
         depends_on_type: FlowItemType,
         /// The prerequisite's row id.
-        depends_on_id: i64,
+        #[schemars(with = "String")]
+        depends_on_id: RowId,
     },
     /// Removes a dependency between Flow items.
     RemoveFlowDependency {
         /// The dependent item's kind.
         dependent_type: FlowItemType,
         /// The dependent item's row id.
-        dependent_id: i64,
+        #[schemars(with = "String")]
+        dependent_id: RowId,
         /// The prerequisite's kind.
         depends_on_type: FlowItemType,
         /// The prerequisite's row id.
-        depends_on_id: i64,
+        #[schemars(with = "String")]
+        depends_on_id: RowId,
     },
     /// Starts a Flow: copies it into a real subtree under a target.
     StartFlow {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// Where, and when.
         request: StartFlowRequest,
     },
     /// Makes a Flow a Habit, or changes its Recurrence.
     SetFlowRecurrence {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// The Recurrence.
         request: SetRecurrenceRequest,
     },
     /// Takes a Habit's Recurrence away, making it a plain Flow.
     DeleteFlowRecurrence {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// Drops every edit made to a Habit's occurrences (its overlays).
     ClearHabitModifications {
         /// The Habit's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// Archives a Habit and forks a fresh copy of it, as editing its template from now on does.
     ForkFlow {
         /// The Habit's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// The instant the fork is taken at (default: the local wall clock).
         #[serde(default)]
         now: Option<NaiveDateTime>,
@@ -542,11 +605,13 @@ pub(crate) enum Request {
     /// Copies a Flow under a new parent.
     DuplicateFlow {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
         /// The new parent's kind.
         parent_type: String,
         /// The new parent's row id.
-        parent_id: i64,
+        #[schemars(with = "String")]
+        parent_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -555,11 +620,13 @@ pub(crate) enum Request {
         /// Goal or Task item.
         item_type: FlowItemType,
         /// The item's row id.
-        item_id: i64,
+        #[schemars(with = "String")]
+        item_id: RowId,
         /// The new parent's kind.
         parent_type: String,
         /// The new parent's row id.
-        parent_id: i64,
+        #[schemars(with = "String")]
+        parent_id: RowId,
         /// Where among the new parent's children.
         position: i64,
     },
@@ -568,7 +635,8 @@ pub(crate) enum Request {
         /// The root's kind.
         node_type: String,
         /// The root's row id.
-        node_id: i64,
+        #[schemars(with = "String")]
+        node_id: RowId,
         /// Keep the subtree's dependencies as the Flow's.
         keep_dependencies: bool,
         /// Keep its Time Scopes, relative to the root's.
@@ -625,7 +693,8 @@ pub(crate) enum Request {
         /// The node's kind.
         node_type: String,
         /// Its row id.
-        node_id: i64,
+        #[schemars(with = "String")]
+        node_id: RowId,
         /// The Time Scope it would get.
         time_scope: TimeScope,
     },
@@ -635,11 +704,13 @@ pub(crate) enum Request {
         /// The moving node's kind.
         node_type: String,
         /// Its row id.
-        node_id: i64,
+        #[schemars(with = "String")]
+        node_id: RowId,
         /// The new parent's kind.
         new_parent_type: String,
         /// The new parent's row id.
-        new_parent_id: i64,
+        #[schemars(with = "String")]
+        new_parent_id: RowId,
     },
     /// Every Info.
     ListInfos,
@@ -648,12 +719,14 @@ pub(crate) enum Request {
     /// One Flow's Goal items.
     ListFlowGoals {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// One Flow's Task items.
     ListFlowTasks {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// Every Flow's Goal items.
     ListAllFlowGoals,
@@ -666,12 +739,14 @@ pub(crate) enum Request {
     /// A Habit's recurrence, if it has one.
     GetFlowRecurrence {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// How many of a Habit's occurrences are complete.
     HabitCompletionCount {
         /// The Flow's row id.
-        flow_id: i64,
+        #[schemars(with = "String")]
+        flow_id: RowId,
     },
     /// Which Flow, if any, each node was started from.
     FlowOrigins {
@@ -705,14 +780,16 @@ pub(crate) enum Request {
         /// The node's table.
         node_kind: NodeTable,
         /// Its row id.
-        node_id: i64,
+        #[schemars(with = "String")]
+        node_id: RowId,
     },
     /// Stops one node being an MCP root.
     RemoveMcpRoot {
         /// The node's table.
         node_kind: NodeTable,
         /// Its row id.
-        node_id: i64,
+        #[schemars(with = "String")]
+        node_id: RowId,
     },
     /// Every Agent and account, with where each Claim stands and why an agent is at capacity.
     ListAgents,
@@ -846,7 +923,7 @@ pub(crate) async fn run(
         }
     }?;
     // Committed: every device showing the board has to hear about it (`GET /events/changes`).
-    shared.changes.bump();
+    shared.changes.bump(arlesh_core::board::WriteOrigin::User);
     Ok(answer.to_string())
 }
 
@@ -1215,6 +1292,31 @@ async fn dispatch(
         Request::ReopenSpawnedWaitCheck { task_id, due_at } => {
             transaction(factory, async |db| {
                 tasks::waits::reopen_spawned_check(db, TaskId(task_id), due_at)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+
+        Request::SaveAnswerDraft { wait_id, request } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::save_draft(db, &wait_id, request, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ClearAnswerDraft { wait_id } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::clear_draft(db, &wait_id)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::SendAnswerDrafts { request } => {
+            transaction(factory, async |db| {
+                tasks::answer_drafts::send_drafts(db, request, now())
                     .await
                     .wired()
             })

@@ -1,6 +1,7 @@
 //! Recording and applying a derived wait's own fields: an override only where it differs from
 //! what the wait is drawn with, and nothing at all once every field is set back.
 
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -21,7 +22,7 @@ fn day(date: &str) -> TimeScope {
 /// every week from 8 July.
 fn drawn() -> Expectation {
     Expectation {
-        id: crate::nodes::id::NodeId::Stored(0),
+        id: crate::nodes::id::NodeId::Stored(tid(0)),
         title: "Reviewer replies".into(),
         parent_type: "task".into(),
         parent_id: 7.into(),

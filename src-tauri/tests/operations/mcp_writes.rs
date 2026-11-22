@@ -5,7 +5,9 @@
 //! that derive one.
 
 use crate::helpers;
-use helpers::StoredId;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+use helpers::{IntoParam as _, StoredId};
 
 use arlesh_lib::access::model::NodeTable;
 use arlesh_lib::commands::{
@@ -14,7 +16,6 @@ use arlesh_lib::commands::{
 };
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
 use arlesh_lib::mcp::{params, ArleshMcp};
-use arlesh_lib::nodes::id::{uuid_v5, NODE_NAMESPACE};
 use arlesh_lib::tasks::model::{AgenticPriority, CreateGoalRequest, CreateTaskRequest, Status};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
@@ -25,20 +26,21 @@ use params::{AgenticStatusParam, NodeIdParam, TasksOperation};
 
 /// A project opened to the MCP and one that is not, each holding a Task that inherits nothing.
 struct Board {
-    inside: i64,
-    outside: i64,
-    inside_task: i64,
-    outside_task: i64,
+    inside: RowId,
+    outside: RowId,
+    inside_task: RowId,
+    outside_task: RowId,
 }
 
-async fn project(app: &App<MockRuntime>, title: &str) -> i64 {
+async fn project(app: &App<MockRuntime>, title: &str) -> RowId {
     domain_commands::create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: title.into(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(1),
+            parent_id: Some(crate::helpers::seeded(1)),
             status: None,
             knowledge_base_directory: None,
         },
@@ -48,7 +50,7 @@ async fn project(app: &App<MockRuntime>, title: &str) -> i64 {
     .id
 }
 
-async fn task(app: &App<MockRuntime>, parent_type: &str, parent_id: i64, title: &str) -> i64 {
+async fn task(app: &App<MockRuntime>, parent_type: &str, parent_id: RowId, title: &str) -> RowId {
     task_commands::create_task(
         app.state(),
         CreateTaskRequest {
@@ -82,7 +84,7 @@ fn mcp(pool: &sqlx::SqlitePool) -> ArleshMcp {
     ArleshMcp::new(helpers::session_factory(pool))
 }
 
-async fn set_column(pool: &sqlx::SqlitePool, sql: &str, id: i64) {
+async fn set_column(pool: &sqlx::SqlitePool, sql: &str, id: RowId) {
     sqlx::query(sql)
         .bind(id)
         .execute(pool)
@@ -90,7 +92,7 @@ async fn set_column(pool: &sqlx::SqlitePool, sql: &str, id: i64) {
         .expect("write the fixture column");
 }
 
-async fn not_agentic(pool: &sqlx::SqlitePool, id: i64) {
+async fn not_agentic(pool: &sqlx::SqlitePool, id: RowId) {
     set_column(
         pool,
         "UPDATE tasks SET agentic = 0, status = CASE status
@@ -135,17 +137,25 @@ fn refused(result: &CallToolResult) -> &str {
     body(result)["kind"].as_str().unwrap_or("")
 }
 
-fn create(parent_type: &str, parent_id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
+fn create(
+    parent_type: &str,
+    parent_id: impl crate::helpers::IntoParam,
+    title: &str,
+) -> TasksOperation {
     operation(serde_json::json!({
         "operation": "create",
         "parent_type": parent_type,
-        "parent_id": parent_id.into().text(),
+        "parent_id": parent_id.param().text(),
         "title": title,
     }))
 }
 
-/// An operation as an agent sends it, read through the wire's own parsing.
-fn operation(value: serde_json::Value) -> TasksOperation {
+/// An operation as an agent sends it, read through the wire's own parsing. A write asks for the
+/// whole Task unless the test says `verbose` itself, so the assertions can read every field.
+fn operation(mut value: serde_json::Value) -> TasksOperation {
+    if let Some(fields) = value.as_object_mut() {
+        fields.entry("verbose").or_insert(true.into());
+    }
     serde_json::from_value(value).expect("a well-formed operation")
 }
 
@@ -159,13 +169,14 @@ fn with_spec(spec: &str) -> params::BriefParam {
 
 /// An update of the row fields the first task writes took, every other field left out.
 fn edit(
-    id: impl Into<NodeIdParam>,
+    id: impl crate::helpers::IntoParam,
     title: Option<&str>,
     brief: Option<params::BriefParam>,
     backlog: Option<bool>,
 ) -> TasksOperation {
     TasksOperation::Update {
-        id: id.into(),
+        verbose: Some(true),
+        id: id.param(),
         title: title.map(str::to_string),
         brief,
         backlog,
@@ -184,12 +195,12 @@ fn edit(
     }
 }
 
-fn retitle(id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
+fn retitle(id: impl crate::helpers::IntoParam, title: &str) -> TasksOperation {
     edit(id, Some(title), None, None)
 }
 
 /// A Task's status as the wire spells it — `todo`, `on_agent`, … — whichever model it is in.
-async fn status_of(pool: &sqlx::SqlitePool, id: i64) -> String {
+async fn status_of(pool: &sqlx::SqlitePool, id: RowId) -> String {
     let stored: String = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
         .bind(id)
         .fetch_one(pool)
@@ -201,7 +212,7 @@ async fn status_of(pool: &sqlx::SqlitePool, id: i64) -> String {
         .to_string()
 }
 
-async fn title_of(pool: &sqlx::SqlitePool, id: i64) -> String {
+async fn title_of(pool: &sqlx::SqlitePool, id: RowId) -> String {
     sqlx::query_scalar("SELECT title FROM tasks WHERE id = ?")
         .bind(id)
         .fetch_one(pool)
@@ -227,11 +238,11 @@ async fn snapshot(mcp: &ArleshMcp, section: &str) -> Vec<serde_json::Value> {
         .unwrap_or_default()
 }
 
-async fn short_id(mcp: &ArleshMcp, section: &str, id: i64) -> String {
+async fn short_id(mcp: &ArleshMcp, section: &str, id: RowId) -> String {
     snapshot(mcp, section)
         .await
         .into_iter()
-        .find(|row| row["id"] == id)
+        .find(|row| row["id"] == id.to_string())
         .and_then(|row| row["short_id"].as_str().map(str::to_string))
         .unwrap_or_else(|| panic!("{section} {id} carries no short id"))
 }
@@ -259,11 +270,8 @@ async fn an_agent_creates_an_agentic_task_inside_a_root() {
     assert_eq!(created["agentic"], true, "what an agent creates is Agentic");
     assert_eq!(created["agentic_brief"]["spec"], "Parse the config file");
     assert_eq!(created["agentic_brief"]["priority"], "B");
-    let id = created["id"].as_i64().expect("a stored row");
-    assert_eq!(
-        created["full_id"],
-        uuid_v5(&NODE_NAMESPACE, &format!("task:{id}"))
-    );
+    let id = crate::helpers::row_id(&created["id"]);
+    assert_eq!(created["full_id"], id.to_string());
     assert_eq!(
         created["short_id"].as_str(),
         Some(short_id(&mcp, "tasks", id).await.as_str()),
@@ -276,6 +284,63 @@ async fn an_agent_creates_an_agentic_task_inside_a_root() {
     .await
     .expect("the task was journaled");
     assert_eq!(source, "mcp");
+}
+
+#[tokio::test]
+async fn a_task_write_answers_briefly_unless_asked_for_the_whole_task() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    let mcp = mcp(&pool);
+    let create_with = |verbose: serde_json::Value| {
+        operation(serde_json::json!({
+            "operation": "create",
+            "parent_type": "project",
+            "parent_id": board.inside.to_string(),
+            "title": "Long task",
+            "brief": { "priority": "B", "spec": "A very long spec" },
+            "verbose": verbose,
+        }))
+    };
+
+    let created = run(&mcp, create_with(serde_json::Value::Null)).await;
+    let created = succeeded(&created).clone();
+    let kept: Vec<&str> = created
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(kept, ["full_id", "id", "short_id", "status", "title"]);
+    let id = crate::helpers::row_id(&created["id"]);
+
+    let updated = run(
+        &mcp,
+        operation(serde_json::json!({
+            "operation": "update",
+            "id": id.to_string(),
+            "title": "Renamed",
+            "brief": { "notes": "n" },
+            "verbose": false,
+        })),
+    )
+    .await;
+    let updated = succeeded(&updated);
+    assert_eq!(updated["title"], "Renamed");
+    assert_eq!(updated["changed"], serde_json::json!(["title", "brief"]));
+    assert!(updated.get("agentic_brief").is_none(), "no brief echoed");
+
+    let whole = run(
+        &mcp,
+        operation(serde_json::json!({
+            "operation": "update", "id": id.to_string(), "title": "Whole", "verbose": true,
+        })),
+    )
+    .await;
+    assert_eq!(
+        succeeded(&whole)["agentic_brief"]["spec"],
+        "A very long spec"
+    );
 }
 
 #[tokio::test]
@@ -297,7 +362,7 @@ async fn creating_is_refused_outside_the_roots_and_under_a_task_marked_not_agent
     let under_plain = run(&mcp, create("task", board.inside_task, "A step")).await;
     assert_eq!(
         succeeded(&under_plain)["parent_id"],
-        board.inside_task,
+        board.inside_task.to_string(),
         "a Task that merely inherits nothing is no exception"
     );
 }
@@ -366,7 +431,8 @@ async fn of_two_status_writes_expecting_the_same_status_exactly_one_wins() {
         .await,
     );
     let set = |status| TasksOperation::SetStatus {
-        id: board.inside_task.into(),
+        verbose: Some(true),
+        id: board.inside_task.param(),
         expected: AgenticStatusParam::Todo,
         status,
     };
@@ -408,7 +474,8 @@ async fn claiming_an_agentic_task_needs_a_spec() {
     let started = run(
         &mcp(&pool),
         TasksOperation::SetStatus {
-            id: board.inside_task.into(),
+            verbose: Some(true),
+            id: board.inside_task.param(),
             expected: AgenticStatusParam::Todo,
             status: AgenticStatusParam::OnAgent,
         },
@@ -420,7 +487,7 @@ async fn claiming_an_agentic_task_needs_a_spec() {
 }
 
 /// An agentic Task inside a root with a Spec, claimed by the agent: On Agent.
-async fn claimed(pool: &sqlx::SqlitePool) -> (ArleshMcp, i64) {
+async fn claimed(pool: &sqlx::SqlitePool) -> (ArleshMcp, RowId) {
     let app = helpers::command_host(pool);
     let board = board(&app).await;
     helpers::make_agentic(pool, board.inside_task).await;
@@ -436,7 +503,8 @@ async fn claimed(pool: &sqlx::SqlitePool) -> (ArleshMcp, i64) {
         &run(
             &mcp,
             TasksOperation::SetStatus {
-                id: board.inside_task.into(),
+                verbose: Some(true),
+                id: board.inside_task.param(),
                 expected: AgenticStatusParam::Todo,
                 status: AgenticStatusParam::OnAgent,
             },
@@ -455,7 +523,8 @@ async fn an_agent_never_sets_doing_or_review() {
         let refused_write = run(
             &mcp,
             TasksOperation::SetStatus {
-                id: id.into(),
+                verbose: Some(true),
+                id: id.param(),
                 expected: AgenticStatusParam::OnAgent,
                 status,
             },
@@ -474,7 +543,8 @@ async fn an_agent_claims_only_from_to_do() {
         &run(
             &mcp,
             TasksOperation::SetStatus {
-                id: id.into(),
+                verbose: Some(true),
+                id: id.param(),
                 expected: AgenticStatusParam::OnAgent,
                 status: AgenticStatusParam::Done,
             },
@@ -485,7 +555,8 @@ async fn an_agent_claims_only_from_to_do() {
     let reclaimed = run(
         &mcp,
         TasksOperation::SetStatus {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             expected: AgenticStatusParam::Done,
             status: AgenticStatusParam::OnAgent,
         },
@@ -501,19 +572,22 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let (mcp, id) = claimed(&pool).await;
     let asked = mcp
         .waits(Parameters(params::WaitsOperation::Ask {
-            task_id: id.into(),
+            id: None,
+            verbose: Some(true),
+            task_id: id.param(),
             title: "Review PR #1?".into(),
             note: None,
         }))
         .await
         .expect("the waits tool returned no result");
-    let question = succeeded(&asked)["id"].as_i64().expect("a stored wait");
+    let question = crate::helpers::row_id(&succeeded(&asked)["id"]);
 
     // The compare reads the board's status: Review, not the On Agent the row holds.
     let stale = run(
         &mcp,
         TasksOperation::SetStatus {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             expected: AgenticStatusParam::OnAgent,
             status: AgenticStatusParam::Done,
         },
@@ -526,7 +600,8 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let open = run(
         &mcp,
         TasksOperation::SetStatus {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             expected: AgenticStatusParam::Review,
             status: AgenticStatusParam::Done,
         },
@@ -537,7 +612,8 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     // Answered, it reads On Agent again, and then it can be finished.
     succeeded(
         &mcp.waits(Parameters(params::WaitsOperation::Release {
-            id: question.into(),
+            verbose: Some(true),
+            id: question.param(),
             answer: Some("Merged".to_string()),
             verdict: None,
         }))
@@ -547,7 +623,8 @@ async fn a_question_makes_it_review_and_expected_may_name_review() {
     let done = run(
         &mcp,
         TasksOperation::SetStatus {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             expected: AgenticStatusParam::OnAgent,
             status: AgenticStatusParam::Done,
         },
@@ -579,10 +656,11 @@ async fn a_task_moves_only_between_parents_it_could_be_created_under() {
     let marked = task(&app, "project", board.inside, "The user's own").await;
     not_agentic(&pool, marked).await;
     let mcp = mcp(&pool);
-    let move_to = |parent_type: &str, parent_id: i64| TasksOperation::Move {
-        id: board.inside_task.into(),
+    let move_to = |parent_type: &str, parent_id: RowId| TasksOperation::Move {
+        verbose: Some(true),
+        id: board.inside_task.param(),
         parent_type: parent_type.into(),
-        parent_id: parent_id.into(),
+        parent_id: parent_id.param(),
     };
 
     assert_eq!(
@@ -596,10 +674,10 @@ async fn a_task_moves_only_between_parents_it_could_be_created_under() {
     let moved = run(&mcp, move_to("goal", goal)).await;
 
     assert_eq!(succeeded(&moved)["parent_type"], "goal");
-    assert_eq!(succeeded(&moved)["parent_id"], goal);
+    assert_eq!(succeeded(&moved)["parent_id"], goal.to_string());
 }
 
-async fn stored_archival(pool: &sqlx::SqlitePool, task: i64) -> String {
+async fn stored_archival(pool: &sqlx::SqlitePool, task: RowId) -> String {
     sqlx::query_scalar("SELECT archival FROM tasks WHERE id = ?")
         .bind(task)
         .fetch_one(pool)
@@ -618,7 +696,8 @@ async fn archive_puts_a_stored_agentic_task_away_by_hand_and_unarchive_brings_it
     let archived = run(
         &mcp,
         TasksOperation::Archive {
-            id: board.inside_task.into(),
+            verbose: Some(true),
+            id: board.inside_task.param(),
         },
     )
     .await;
@@ -628,7 +707,8 @@ async fn archive_puts_a_stored_agentic_task_away_by_hand_and_unarchive_brings_it
     let unarchived = run(
         &mcp,
         TasksOperation::Unarchive {
-            id: board.inside_task.into(),
+            verbose: Some(true),
+            id: board.inside_task.param(),
         },
     )
     .await;
@@ -646,7 +726,8 @@ async fn unarchive_is_refused_on_a_task_nobody_archived_by_hand() {
     let unarchived = run(
         &mcp(&pool),
         TasksOperation::Unarchive {
-            id: board.inside_task.into(),
+            verbose: Some(true),
+            id: board.inside_task.param(),
         },
     )
     .await;
@@ -666,15 +747,15 @@ async fn an_agents_write_never_lands_in_the_users_open_gesture() {
         .await
         .expect("open gesture");
     let users = task(&app, "project", board.inside, "The user's").await;
-    let agents = succeeded(&run(&mcp, create("project", board.inside, "The agent's")).await)["id"]
-        .as_i64()
-        .expect("a stored row");
+    let agents =
+        succeeded(&run(&mcp, create("project", board.inside, "The agent's")).await)["id"].clone();
+    let agents = crate::helpers::row_id(&agents);
     undo_commands::close_gesture(app.state())
         .await
         .expect("close gesture");
     undo_commands::undo(app.state()).await.expect("undo");
 
-    let left: Vec<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE id IN (?, ?)")
+    let left: Vec<RowId> = sqlx::query_scalar("SELECT id FROM tasks WHERE id IN (?, ?)")
         .bind(users)
         .bind(agents)
         .fetch_all(&pool)
@@ -695,9 +776,9 @@ async fn a_short_id_a_longer_prefix_and_the_full_id_name_the_same_task() {
     helpers::make_agentic(&pool, board.inside_task).await;
     let mcp = mcp(&pool);
     let short = short_id(&mcp, "tasks", board.inside_task).await;
-    let full = uuid_v5(&NODE_NAMESPACE, &format!("task:{}", board.inside_task));
+    let full = board.inside_task.to_string();
     assert!(
-        full.starts_with(&short) && short.len() >= 3,
+        full.replace('-', "").starts_with(&short) && short.len() >= 3,
         "{short} of {full}"
     );
 
@@ -707,14 +788,18 @@ async fn a_short_id_a_longer_prefix_and_the_full_id_name_the_same_task() {
     {
         let got = mcp
             .tasks(Parameters(TasksOperation::Get {
-                id: NodeIdParam::Short(id.clone()),
+                id: NodeIdParam::new(id.clone()),
             }))
             .await
             .expect("the tasks tool returned no result");
-        assert_eq!(succeeded(&got)["task"]["id"], board.inside_task, "{id}");
+        assert_eq!(
+            succeeded(&got)["task"]["id"],
+            board.inside_task.to_string(),
+            "{id}"
+        );
         let renamed = run(
             &mcp,
-            retitle(NodeIdParam::Short(id), &format!("Renamed {index}")),
+            retitle(NodeIdParam::new(id), &format!("Renamed {index}")),
         )
         .await;
         succeeded(&renamed);
@@ -723,7 +808,8 @@ async fn a_short_id_a_longer_prefix_and_the_full_id_name_the_same_task() {
 
     let noted = mcp
         .infos(Parameters(params::InfosOperation::Create {
-            task_id: NodeIdParam::Short(short),
+            id: None,
+            task_id: NodeIdParam::new(short),
             body: "a note by short id".into(),
             details: None,
         }))
@@ -738,43 +824,48 @@ async fn a_short_id_naming_nothing_visible_or_the_wrong_kind_is_refused() {
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
     let mcp = mcp(&pool);
-    let hidden = uuid_v5(&NODE_NAMESPACE, &format!("task:{}", board.outside_task));
+    let hidden = board.outside_task.to_string();
     let project = short_id(&mcp, "domains", board.inside).await;
 
-    let unseen = run(&mcp, retitle(NodeIdParam::Short(hidden), "Found you")).await;
+    let unseen = run(&mcp, retitle(NodeIdParam::new(hidden), "Found you")).await;
     assert_eq!(
         refused(&unseen),
         "not_permitted",
         "a hidden node is no node"
     );
-    let nonsense = run(&mcp, retitle(NodeIdParam::Short("zz-top".into()), "Hm")).await;
+    let nonsense = run(&mcp, retitle(NodeIdParam::new("zz-top"), "Hm")).await;
     assert_eq!(refused(&nonsense), "not_permitted");
-    let wrong_kind = run(&mcp, retitle(NodeIdParam::Short(project), "Hm")).await;
+    let wrong_kind = run(&mcp, retitle(NodeIdParam::new(project), "Hm")).await;
     assert_eq!(refused(&wrong_kind), "invalid_request");
 }
 
-/// Two task row ids whose full ids share their first three hex digits — and no other node the MCP
-/// can see does — creating Tasks under `board.inside` until two do.
-async fn colliding_tasks(app: &App<MockRuntime>, board: &Board) -> (i64, i64, String) {
-    let prefix_of = |name: String| uuid_v5(&NODE_NAMESPACE, &name)[..3].to_string();
-    let taken = [
-        prefix_of(format!("domain:{}", board.inside)),
-        prefix_of(format!("task:{}", board.inside_task)),
-    ];
-    let mut seen: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    for index in 0..400 {
+/// Two Tasks whose full ids share their first hex digits — three at least, and as many as they
+/// happen to — and no other node the MCP can see shares them: Tasks made close together do, since
+/// a row's id starts with the time it was made. Returns both and the digits they share.
+async fn colliding_tasks(app: &App<MockRuntime>, board: &Board) -> (RowId, RowId, String) {
+    let hex = |id: RowId| id.to_string().replace('-', "");
+    let shared = |a: &str, b: &str| -> usize {
+        a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
+    };
+    let others = [hex(board.inside), hex(board.inside_task)];
+    let mut made: Vec<RowId> = Vec::new();
+    for index in 0..40 {
         let id = task(app, "project", board.inside, &format!("Task {index}")).await;
-        let prefix = prefix_of(format!("task:{id}"));
-        // An all-digit prefix may also be some visible row's id, which would add a third match.
-        if taken.contains(&prefix) || prefix.bytes().all(|byte| byte.is_ascii_digit()) {
-            continue;
+        for &earlier in &made {
+            let length = shared(&hex(earlier), &hex(id));
+            let prefix = hex(id)[..length].to_string();
+            let alone = others.iter().all(|other| !other.starts_with(&prefix))
+                && made
+                    .iter()
+                    .filter(|&&other| other != earlier)
+                    .all(|&other| !hex(other).starts_with(&prefix));
+            if length >= 3 && alone {
+                return (earlier, id, prefix);
+            }
         }
-        if let Some(&first) = seen.get(&prefix) {
-            return (first, id, prefix);
-        }
-        seen.insert(prefix, id);
+        made.push(id);
     }
-    panic!("no two of 400 tasks share three digits");
+    panic!("no two of 40 tasks share three digits that nothing else shares");
 }
 
 #[tokio::test]
@@ -787,7 +878,7 @@ async fn a_prefix_several_visible_nodes_share_is_refused_listing_them() {
 
     let got = mcp
         .tasks(Parameters(TasksOperation::Get {
-            id: NodeIdParam::Short(prefix.clone()),
+            id: NodeIdParam::new(prefix.clone()),
         }))
         .await
         .expect("the tasks tool returned no result");
@@ -800,13 +891,10 @@ async fn a_prefix_several_visible_nodes_share_is_refused_listing_them() {
     for id in [first, second] {
         let candidate = candidates
             .iter()
-            .find(|candidate| candidate["node_id"] == id)
+            .find(|candidate| candidate["node_id"] == id.to_string())
             .unwrap_or_else(|| panic!("task {id} is listed: {candidates:?}"));
         assert_eq!(candidate["kind"], "task");
-        assert_eq!(
-            candidate["id"],
-            uuid_v5(&NODE_NAMESPACE, &format!("task:{id}"))
-        );
+        assert_eq!(candidate["id"], id.to_string());
         let short = candidate["short_id"].as_str().unwrap_or("");
         assert!(short.len() > 3 && short.starts_with(&prefix), "{short}");
         assert_eq!(candidate["path"], "Opened");
@@ -824,11 +912,11 @@ async fn a_prefix_several_visible_nodes_share_is_refused_listing_them() {
     .await;
     let got = mcp
         .tasks(Parameters(TasksOperation::Get {
-            id: NodeIdParam::Short(prefix),
+            id: NodeIdParam::new(prefix),
         }))
         .await
         .expect("the tasks tool returned no result");
-    assert_eq!(succeeded(&got)["task"]["id"], first);
+    assert_eq!(succeeded(&got)["task"]["id"], first.to_string());
 }
 
 async fn agentic_snapshot(
@@ -893,9 +981,9 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     let payload = agentic_snapshot(&mcp, None).await;
 
     let tasks = rows(&payload, "tasks");
-    let ids: Vec<i64> = tasks
+    let ids: Vec<RowId> = tasks
         .iter()
-        .filter_map(|task| task["id"].as_i64())
+        .filter_map(|task| crate::helpers::try_row_id(&task["id"]))
         .collect();
     assert_eq!(
         ids,
@@ -907,9 +995,9 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
         tasks[0]["agentic_brief"]["priority"], "MW",
         "the brief comes along"
     );
-    let domains: Vec<i64> = rows(&payload, "domains")
+    let domains: Vec<RowId> = rows(&payload, "domains")
         .iter()
-        .filter_map(|domain| domain["id"].as_i64())
+        .filter_map(|domain| crate::helpers::try_row_id(&domain["id"]))
         .collect();
     assert_eq!(
         domains,
@@ -920,7 +1008,12 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
 
     let urgent = agentic_snapshot(&mcp, Some(AgenticPriority::A)).await;
     let tasks = rows(&urgent, "tasks");
-    let by_id = |id: i64| tasks.iter().find(|task| task["id"] == id).cloned();
+    let by_id = |id: RowId| {
+        tasks
+            .iter()
+            .find(|task| task["id"] == id.to_string())
+            .cloned()
+    };
     assert_eq!(
         by_id(inheriting).map(|task| task["reads_agentic"].clone()),
         Some(serde_json::json!(true))
@@ -981,6 +1074,7 @@ async fn every_node_carries_a_short_id_and_the_agentic_query_keeps_a_matchs_wait
     info_commands::create_info(
         app.state(),
         CreateInfoRequest {
+            id: None,
             body: "The config lives in /etc".into(),
             details: None,
             parent_type: "task".into(),
@@ -993,7 +1087,9 @@ async fn every_node_carries_a_short_id_and_the_agentic_query_keeps_a_matchs_wait
     let mcp = mcp(&pool);
     let asked = mcp
         .waits(Parameters(params::WaitsOperation::Ask {
-            task_id: NodeIdParam::Short(short_id(&mcp, "tasks", flagged).await),
+            id: None,
+            verbose: Some(true),
+            task_id: NodeIdParam::new(short_id(&mcp, "tasks", flagged).await),
             title: "Which config?".into(),
             note: None,
         }))
@@ -1040,7 +1136,7 @@ mod agent_waits {
     }
 
     /// An agentic Task inside a root, and a wait raised on it over the MCP.
-    async fn raised(question: bool) -> (sqlx::SqlitePool, App<MockRuntime>, ArleshMcp, i64) {
+    async fn raised(question: bool) -> (sqlx::SqlitePool, App<MockRuntime>, ArleshMcp, RowId) {
         let pool = helpers::test_pool().await;
         let app = helpers::command_host(&pool);
         let board = board(&app).await;
@@ -1049,7 +1145,9 @@ mod agent_waits {
         let wait = waits(
             &mcp,
             params::WaitsOperation::Raise {
-                task_id: board.inside_task.into(),
+                id: None,
+                verbose: Some(true),
+                task_id: board.inside_task.param(),
                 title: if question {
                     "Which colour?"
                 } else {
@@ -1061,20 +1159,21 @@ mod agent_waits {
             },
         )
         .await;
-        let id = succeeded(&wait)["id"].as_i64().expect("a stored wait");
+        let id = crate::helpers::row_id(&succeeded(&wait)["id"]);
         assert_eq!(succeeded(&wait)["question"], question);
         (pool, app, mcp, id)
     }
 
-    fn release(id: i64, answer: Option<&str>) -> params::WaitsOperation {
+    fn release(id: RowId, answer: Option<&str>) -> params::WaitsOperation {
         params::WaitsOperation::Release {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             answer: answer.map(str::to_string),
             verdict: None,
         }
     }
 
-    async fn get(mcp: &ArleshMcp, id: i64) -> serde_json::Value {
+    async fn get(mcp: &ArleshMcp, id: RowId) -> serde_json::Value {
         succeeded(&waits(mcp, params::WaitsOperation::Get { id: id.into() }).await).clone()
     }
 
@@ -1089,7 +1188,7 @@ mod agent_waits {
     }
 
     /// An agent holds the Task: what `arlesh_tasks.set_status` `todo` -> `on_agent` leaves.
-    async fn claim(pool: &sqlx::SqlitePool, task: i64) {
+    async fn claim(pool: &sqlx::SqlitePool, task: RowId) {
         sqlx::query("UPDATE tasks SET status = 'on_agent' WHERE id = ?")
             .bind(task)
             .execute(pool)
@@ -1097,9 +1196,11 @@ mod agent_waits {
             .expect("claim the task");
     }
 
-    fn review_request(task: i64, title: &str, summary: &str) -> params::WaitsOperation {
+    fn review_request(task: RowId, title: &str, summary: &str) -> params::WaitsOperation {
         params::WaitsOperation::RaiseReview {
-            task_id: task.into(),
+            id: None,
+            verbose: Some(true),
+            task_id: task.param(),
             title: title.into(),
             summary: summary.into(),
             links: vec![],
@@ -1107,13 +1208,15 @@ mod agent_waits {
         }
     }
 
-    async fn raised_review(pool: &sqlx::SqlitePool, mcp: &ArleshMcp, task: i64) -> i64 {
+    async fn raised_review(pool: &sqlx::SqlitePool, mcp: &ArleshMcp, task: RowId) -> RowId {
         helpers::make_agentic(pool, task).await;
         claim(pool, task).await;
         let review = waits(
             mcp,
             params::WaitsOperation::RaiseReview {
-                task_id: task.into(),
+                id: None,
+                verbose: Some(true),
+                task_id: task.param(),
                 title: "Review #12".into(),
                 summary: "Adds the thing".into(),
                 links: vec![arlesh_lib::tasks::model::ReviewLink {
@@ -1124,7 +1227,7 @@ mod agent_waits {
             },
         )
         .await;
-        succeeded(&review)["id"].as_i64().expect("a stored wait")
+        crate::helpers::row_id(&succeeded(&review)["id"])
     }
 
     #[tokio::test]
@@ -1151,7 +1254,8 @@ mod agent_waits {
         let released = waits(
             &mcp,
             params::WaitsOperation::Release {
-                id: id.into(),
+                verbose: Some(true),
+                id: id.param(),
                 answer: Some("Fix the label".into()),
                 verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::ChangesRequested),
             },
@@ -1171,7 +1275,8 @@ mod agent_waits {
         let mcp = mcp(&pool);
         let id = raised_review(&pool, &mcp, board.inside_task).await;
         let approve = |answer: &str, verdict| params::WaitsOperation::Release {
-            id: id.into(),
+            verbose: Some(true),
+            id: id.param(),
             answer: Some(answer.into()),
             verdict: Some(verdict),
         };
@@ -1211,7 +1316,9 @@ mod agent_waits {
         let task = board.inside_task;
         let with =
             |links: Vec<(&str, &str)>, hand_tests: Vec<&str>| params::WaitsOperation::RaiseReview {
-                task_id: task.into(),
+                id: None,
+                verbose: Some(true),
+                task_id: task.param(),
                 title: "Review".into(),
                 summary: "Changed it".into(),
                 links: links
@@ -1267,7 +1374,9 @@ mod agent_waits {
         let question = waits(
             &mcp,
             params::WaitsOperation::Ask {
-                task_id: board.inside_task.into(),
+                id: None,
+                verbose: Some(true),
+                task_id: board.inside_task.param(),
                 title: "Which?".into(),
                 note: None,
             },
@@ -1335,7 +1444,8 @@ mod agent_waits {
         let refusal = waits(
             &mcp,
             params::WaitsOperation::Release {
-                id: id.into(),
+                verbose: Some(true),
+                id: id.param(),
                 answer: Some("Blue".into()),
                 verdict: Some(arlesh_lib::tasks::model::ReviewVerdict::Approved),
             },
@@ -1399,7 +1509,7 @@ mod agent_waits {
         let snapshot_row = snapshot(&mcp, "expectations")
             .await
             .into_iter()
-            .find(|row| row["id"] == id)
+            .find(|row| row["id"] == id.to_string())
             .expect("the wait is on the board");
         assert_eq!(snapshot_row["answer"], "Blue");
         assert_eq!(snapshot_row["question"], true);
@@ -1444,7 +1554,7 @@ mod agent_waits {
         let watched = waits(
             &mcp,
             params::WaitsOperation::Watch {
-                ids: vec![id.into(), full.clone().into()],
+                ids: vec![id.param(), full.clone().into()],
             },
         )
         .await;
@@ -1515,7 +1625,7 @@ mod agent_waits {
         // The app polls: its windows write without announcing to the endpoint.
         let feed = ChangeFeed::new();
         // A cursor of 0 is no cursor, so the board has moved once before the poll begins.
-        feed.bump();
+        feed.bump(arlesh_core::board::WriteOrigin::Agent);
         let routes = events::routes(
             helpers::session_factory(&pool),
             EventStreams {
@@ -1635,7 +1745,8 @@ mod agent_waits {
         let bare = waits(
             &mcp,
             params::WaitsOperation::Release {
-                id: NodeIdParam::Short(full_id.clone()),
+                verbose: Some(true),
+                id: NodeIdParam::new(full_id.clone()),
                 answer: None,
                 verdict: None,
             },
@@ -1660,7 +1771,7 @@ mod agent_waits {
             &waits(
                 &mcp,
                 params::WaitsOperation::Get {
-                    id: NodeIdParam::Short(full_id.clone()),
+                    id: NodeIdParam::new(full_id.clone()),
                 },
             )
             .await,
@@ -1673,7 +1784,8 @@ mod agent_waits {
         let released = waits(
             &mcp,
             params::WaitsOperation::Release {
-                id: NodeIdParam::Short(full_id.clone()),
+                verbose: Some(true),
+                id: NodeIdParam::new(full_id.clone()),
                 answer: None,
                 verdict: None,
             },
@@ -1705,9 +1817,10 @@ mod agent_notes {
             .expect("the infos tool returned no result")
     }
 
-    fn note(task_id: impl Into<NodeIdParam>, body: &str) -> params::InfosOperation {
+    fn note(task_id: impl crate::helpers::IntoParam, body: &str) -> params::InfosOperation {
         params::InfosOperation::Create {
-            task_id: task_id.into(),
+            id: None,
+            task_id: task_id.param(),
             body: body.into(),
             details: None,
         }
@@ -1732,7 +1845,8 @@ mod agent_notes {
         let created = infos(
             &mcp,
             params::InfosOperation::Create {
-                task_id: NodeIdParam::Short(task_short_id),
+                id: None,
+                task_id: NodeIdParam::new(task_short_id),
                 body: "Visible work, in the words the user first gave it".into(),
                 details: Some("And the rest of it".into()),
             },
@@ -1746,12 +1860,9 @@ mod agent_notes {
         );
         assert_eq!(created["details"], "And the rest of it");
         assert_eq!(created["parent_type"], "task");
-        assert_eq!(created["parent_id"], board.inside_task);
-        let id = created["id"].as_i64().expect("a stored row");
-        assert_eq!(
-            created["full_id"],
-            uuid_v5(&NODE_NAMESPACE, &format!("info:{id}"))
-        );
+        assert_eq!(created["parent_id"], board.inside_task.to_string());
+        let id = crate::helpers::row_id(&created["id"]);
+        assert_eq!(created["full_id"], id.to_string());
         assert_eq!(
             created["short_id"].as_str(),
             Some(short_id(&mcp, "infos", id).await.as_str()),
@@ -1829,9 +1940,9 @@ mod agent_notes {
             .await
             .expect("open gesture");
         let users = task(&app, "project", board.inside, "The user's").await;
-        let agents = succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"]
-            .as_i64()
-            .expect("a stored row");
+        let agents =
+            succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"].clone();
+        let agents = crate::helpers::row_id(&agents);
         undo_commands::close_gesture(app.state())
             .await
             .expect("close gesture");
@@ -1859,16 +1970,19 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
     let board = board(&app).await;
     helpers::make_agentic(&pool, board.inside_task).await;
     let mcp = mcp(&pool);
-    let as_string = NodeIdParam::Short(board.inside_task.to_string());
+    let as_string = board.inside_task.param();
 
     let as_number = run(
         &mcp,
         TasksOperation::Get {
-            id: board.inside_task.into(),
+            id: board.inside_task.param(),
         },
     )
     .await;
-    assert_eq!(succeeded(&as_number)["task"]["id"], board.inside_task);
+    assert_eq!(
+        succeeded(&as_number)["task"]["id"],
+        board.inside_task.to_string()
+    );
 
     let got = run(
         &mcp,
@@ -1877,7 +1991,7 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
         },
     )
     .await;
-    assert_eq!(succeeded(&got)["task"]["id"], board.inside_task);
+    assert_eq!(succeeded(&got)["task"]["id"], board.inside_task.to_string());
     succeeded(&run(&mcp, retitle(as_string, "Renamed by string")).await);
     assert_eq!(
         title_of(&pool, board.inside_task).await,
@@ -1886,7 +2000,8 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
 
     let noted = mcp
         .infos(Parameters(params::InfosOperation::Create {
-            task_id: NodeIdParam::Short(format!(" {} ", board.inside_task)),
+            id: None,
+            task_id: NodeIdParam::new(format!(" {} ", board.inside_task)),
             body: "a note by padded row id".into(),
             details: None,
         }))
@@ -1896,22 +2011,25 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
 
     let raised = mcp
         .waits(Parameters(params::WaitsOperation::Raise {
-            task_id: NodeIdParam::Short(board.inside_task.to_string()),
+            id: None,
+            verbose: Some(true),
+            task_id: board.inside_task.param(),
             title: "CI on #86".into(),
             note: None,
             question: false,
         }))
         .await
         .expect("the waits tool returned no result");
-    let wait = succeeded(&raised)["id"].as_i64().expect("a stored wait");
-    let by_string = || NodeIdParam::Short(wait.to_string());
+    let wait = crate::helpers::row_id(&succeeded(&raised)["id"]);
+    let by_string = || wait.param();
     let polled = mcp
         .waits(Parameters(params::WaitsOperation::Get { id: by_string() }))
         .await
         .expect("the waits tool returned no result");
-    assert_eq!(succeeded(&polled)["id"], wait);
+    assert_eq!(succeeded(&polled)["id"], wait.to_string());
     let released = mcp
         .waits(Parameters(params::WaitsOperation::Release {
+            verbose: Some(true),
             id: by_string(),
             answer: None,
             verdict: None,
@@ -1933,7 +2051,7 @@ async fn a_domain_table_parent_is_spelled_domain_whatever_it_was_called() {
     for spelling in ["project", "aspect", "domain"] {
         let created = run(&mcp, create(spelling, board.inside, "Called something")).await;
         assert_eq!(succeeded(&created)["parent_type"], "domain", "{spelling}");
-        let id = succeeded(&created)["id"].as_i64().expect("a stored row");
+        let id = crate::helpers::row_id(&succeeded(&created)["id"]);
         let stored: String = sqlx::query_scalar("SELECT parent_type FROM tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&pool)
@@ -1945,7 +2063,7 @@ async fn a_domain_table_parent_is_spelled_domain_whatever_it_was_called() {
     let row = snapshot(&mcp, "tasks")
         .await
         .into_iter()
-        .find(|row| row["id"] == board.inside_task)
+        .find(|row| row["id"] == board.inside_task.to_string())
         .expect("the task is on the board");
     assert_eq!(row["parent_type"], "domain");
     assert!(row["full_id"].is_string() && row["short_id"].is_string());
@@ -1965,7 +2083,7 @@ async fn a_nodes_short_id_is_the_same_in_every_view() {
     let whole = short_id(&mcp, "tasks", board.inside_task).await;
     let agentic = rows(&agentic_snapshot(&mcp, None).await, "tasks")
         .into_iter()
-        .find(|row| row["id"] == board.inside_task)
+        .find(|row| row["id"] == board.inside_task.to_string())
         .and_then(|row| row["short_id"].as_str().map(str::to_string))
         .expect("the agentic task is in the agentic query");
 
@@ -2005,10 +2123,11 @@ mod task_fields {
         json!({ "start_id": key, "end_id": key })
     }
 
-    async fn tag(app: &App<MockRuntime>, parent: i64, title: &str) -> i64 {
+    async fn tag(app: &App<MockRuntime>, parent: RowId, title: &str) -> RowId {
         domain_commands::create_domain(
             app.state(),
             CreateDomainRequest {
+                id: None,
                 title: title.into(),
                 description: None,
                 subtype: DomainSubtype::Tag,
@@ -2022,7 +2141,7 @@ mod task_fields {
         .id
     }
 
-    async fn prerequisites(pool: &sqlx::SqlitePool, id: i64) -> Vec<i64> {
+    async fn prerequisites(pool: &sqlx::SqlitePool, id: RowId) -> Vec<RowId> {
         sqlx::query_scalar(
             "SELECT dependency_id FROM task_dependencies \
              WHERE task_id = ? AND dependency_type = 'task' ORDER BY dependency_id",
@@ -2033,7 +2152,7 @@ mod task_fields {
         .expect("read the dependencies")
     }
 
-    async fn block_reasons(mcp: &ArleshMcp, id: i64) -> Vec<String> {
+    async fn block_reasons(mcp: &ArleshMcp, id: RowId) -> Vec<String> {
         let got = run(mcp, TasksOperation::Get { id: id.into() }).await;
         succeeded(&got)["block_reasons"]
             .as_array()
@@ -2078,7 +2197,7 @@ mod task_fields {
         .await;
 
         let created = succeeded(&created).clone();
-        let id = created["id"].as_i64().expect("a stored row");
+        let id = crate::helpers::row_id(&created["id"]);
         assert_eq!(created["agentic"], true);
         assert_eq!(created["time_scope"]["start_id"]["kind"], "week");
         assert_eq!(created["plan"]["start_id"]["date"], "2026-09-22");
@@ -2215,7 +2334,7 @@ mod task_fields {
         .await;
         let hidden_tag = tag(&app, board.outside, "hidden").await;
         let mcp = mcp(&pool);
-        let add = |field: &str, target: i64| {
+        let add = |field: &str, target: RowId| {
             operation(json!({
                 "operation": "update",
                 "id": board.inside_task.to_string(),
@@ -2273,7 +2392,7 @@ mod task_fields {
             })),
         )
         .await;
-        let after = succeeded(&after)["id"].as_i64().expect("a stored row");
+        let after = crate::helpers::row_id(&succeeded(&after)["id"]);
 
         let cycle = run(
             &mcp,
@@ -2365,7 +2484,7 @@ mod delegation {
     use super::*;
     use serde_json::json;
 
-    async fn person(pool: &sqlx::SqlitePool, name: &str) -> i64 {
+    async fn person(pool: &sqlx::SqlitePool, name: &str) -> RowId {
         sqlx::query_scalar("INSERT INTO people (name) VALUES (?) RETURNING id")
             .bind(name)
             .fetch_one(pool)
@@ -2374,11 +2493,13 @@ mod delegation {
     }
 
     /// The titles of the delegation waits the snapshot carries under `task`.
-    async fn delegation_wait_titles(mcp: &ArleshMcp, task: i64) -> Vec<String> {
+    async fn delegation_wait_titles(mcp: &ArleshMcp, task: RowId) -> Vec<String> {
         snapshot(mcp, "expectations")
             .await
             .into_iter()
-            .filter(|wait| wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task)
+            .filter(|wait| {
+                wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task.to_string()
+            })
             .filter_map(|wait| wait["title"].as_str().map(str::to_string))
             .collect()
     }
@@ -2444,7 +2565,7 @@ mod delegation {
             created["delegate_to"],
             json!({ "kind": "person", "id": tuli })
         );
-        let id = created["id"].as_i64().expect("a stored row");
+        let id = crate::helpers::row_id(&created["id"]);
         assert_eq!(
             delegation_wait_titles(&mcp, id).await,
             vec!["Tuli finish: Book the venue".to_string()]
@@ -2465,7 +2586,7 @@ mod delegation {
                 "operation": "update",
                 "id": board.inside_task.to_string(),
                 "title": "Renamed",
-                "delegate": { "kind": "person", "id": 9999 },
+                "delegate": { "kind": "person", "id": tid(9999) },
             })),
         )
         .await;

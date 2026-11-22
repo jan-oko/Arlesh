@@ -1,5 +1,6 @@
 use super::*;
 use crate::flows::TemplateFields;
+use crate::nodes::id::tid;
 use crate::scopes::key::ScopeKey;
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -13,11 +14,11 @@ fn at(iso: &str) -> NaiveDateTime {
 
 fn weekly() -> Flow {
     Flow {
-        id: 1,
+        id: tid(1),
         title: "Weekly review".into(),
         instance_type: "task".into(),
         parent_type: "project".into(),
-        parent_id: 2,
+        parent_id: tid(2),
         target_type: None,
         target_id: None,
         flow_duration_n: Some(1),
@@ -39,7 +40,7 @@ fn weekly() -> Flow {
 
 fn recurrence(end: Option<&str>) -> FlowRecurrence {
     FlowRecurrence {
-        flow_id: 1,
+        flow_id: tid(1),
         start_scope_id: ScopeKey::Week {
             date: date("2026-10-04"),
         },

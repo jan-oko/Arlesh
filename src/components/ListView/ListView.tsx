@@ -1,6 +1,9 @@
+import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
 import { useStableKeys } from "@/hooks/use-temporary-ids";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useTabStores } from "@/stores/tab-stores-context";
+import { useShowRequestedWait } from "@/hooks/use-show-requested-wait";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -82,7 +85,7 @@ export default function ListView() {
   const addTagFilterInMode = useFilterStore((s) => s.addTagFilter);
   // A tag clicked on a row keeps the Any mode it has always added in; the filter menu's own adds
   // read their mode off the keys held (see `modeFromModifiers`).
-  const addTagFilter = (tagId: number) => addTagFilterInMode(tagId, "any");
+  const addTagFilter = (tagId: string) => addTagFilterInMode(tagId, "any");
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
@@ -106,12 +109,28 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onAnswer, onCommitmentSave, onExpectationSave, checkScopeClamp,
+    onTaskSave, answers, onCommitmentSave, onExpectationSave, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, settle });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
   // what Enter does to it.
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  // A tapped or clicked notification asks this tab to select the Task of its question: a request
+  // already made when the view mounts seeds the selection, a later one arrives through the store.
+  // A row that is not drawn yet reads as no selection and shows once it is.
+  const { mindmap: mindmapStore } = useTabStores();
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(() => mindmapStore.getState().requestedSelection);
+  useEffect(() => {
+    const take = (): void => {
+      const requested = mindmapStore.getState().requestedSelection;
+      if (requested === null) return;
+      mindmapStore.getState().clearRequestedSelection();
+      setSelectedRowId(requested);
+    };
+    mindmapStore.getState().clearRequestedSelection();
+    return mindmapStore.subscribe((state, previous) => {
+      if (state.requestedSelection !== null && state.requestedSelection !== previous.requestedSelection) take();
+    });
+  }, [mindmapStore]);
 
   const pendingToast = useMindmapStore((s) => s.pendingToast);
   const showToast = useMindmapStore((s) => s.showToast);
@@ -247,6 +266,7 @@ export default function ListView() {
   // Derived rather than cleared via an effect: a stale selection (e.g. filtered out) just reads as none.
   const activeSelectedId =
     selectedRowId !== null && navigableIds.includes(selectedRowId) ? selectedRowId : null;
+  useShowRequestedWait(navigableIds);
   const selectedRow = filteredRows.find((row) => row.node.id === activeSelectedId);
   const selectedCommitment = filteredCommitments.find((row) => row.node.id === activeSelectedId);
   const selectedTaskId = selectedRow !== undefined ? selectedRow.node.id : null;
@@ -341,6 +361,13 @@ export default function ListView() {
     setListPreset(mode);
   }
 
+  // A chord for a List-View-only option (Unblock, Expectations, Review) that would select the option
+  // already selected clears it instead, back to the shared preset the Mindmap holds — as an Alt+click
+  // on a filter already set that way removes it (ruled by the user, 2026-11-20).
+  function toggleListOption(option: "unblock" | "expectations" | "review") {
+    setListPreset(listFilter.preset === option ? sharedFilter.statusMode : option);
+  }
+
   // Deleting on the Mindmap's terms: its chord, its confirmation, its subtree cascade and its
   // writer — so one undo step covers a delete made from either view.
   const { pendingDelete, isDeleting, error: deleteError, requestDelete, confirmDelete, cancelDelete } =
@@ -375,6 +402,8 @@ export default function ListView() {
   const selectedKind = activeSelectedId === null ? undefined : findNode(tree, activeSelectedId)?.kind;
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
+  const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast });
+  const jumpToStagedAnswer = useJumpToWaiting({ select: setSelectedRowId, showToast, staged: true });
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
@@ -383,7 +412,7 @@ export default function ListView() {
     selectedExpectationId,
     selectedRowId: activeSelectedId,
     onToggleRelease: toggleRelease,
-    onSetExpectationsPreset: () => setListPreset("expectations"),
+    onSetExpectationsPreset: () => toggleListOption("expectations"),
     onBindWait: openAsyncTemplate,
     onCreateExpectation: (id) => {
       const node = findNode(tree, id);
@@ -399,6 +428,8 @@ export default function ListView() {
     onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
+    onJumpToWaitingAnswer: jumpToWaitingAnswer,
+    onJumpToStagedAnswer: jumpToStagedAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,
@@ -408,7 +439,8 @@ export default function ListView() {
     onDelete: requestDelete,
     onDeselect: () => setSelectedRowId(null),
     onSetStatusMode: handleSetStatusPreset,
-    onSetUnblockPreset: () => setListPreset("unblock"),
+    onSetUnblockPreset: () => toggleListOption("unblock"),
+    onSetReviewPreset: () => toggleListOption("review"),
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
@@ -600,7 +632,7 @@ export default function ListView() {
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
                 onContextMenu={openRowMenu}
-                onAnswer={onAnswer}
+                answers={answers}
               />
             );
           })}
@@ -623,7 +655,7 @@ export default function ListView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
-          onAnswer={onAnswer}
+          answers={answers}
           onCheckScopeClamp={checkScopeClamp}
           openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={() => setEditorModal(null)}

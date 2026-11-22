@@ -31,7 +31,7 @@ export interface EntityOption {
 }
 
 export interface TagOption {
-  id: number;
+  id: string;
   label: string;
   color: string | null;
 }
@@ -39,8 +39,8 @@ export interface TagOption {
 export interface FilterDisplay {
   /** Every tag, for the tag search combobox. */
   tagOptions: TagOption[];
-  tagName: (id: number) => string;
-  tagColor: (id: number) => string | null;
+  tagName: (id: string) => string;
+  tagColor: (id: string) => string | null;
   /** Any tree node's title/color by id — resolves antecedent/dependency chip and pill labels. */
   nodeLabel: (ref: string) => string;
   nodeColor: (ref: string) => string | null;

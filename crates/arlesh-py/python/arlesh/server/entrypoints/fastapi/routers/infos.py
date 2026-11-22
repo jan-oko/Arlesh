@@ -17,7 +17,7 @@ class InfosRouter(BoardRouter):
         self.delete("/{id}", status_code=204)(self._delete)
         self.post("/{id}/duplicate", status_code=201)(self._duplicate)
 
-    async def _get(self, id: int) -> Info:
+    async def _get(self, id: str) -> Info:
         """One Info."""
         return await self._reader.get_info(id)
 
@@ -25,16 +25,16 @@ class InfosRouter(BoardRouter):
         """Creates an Info."""
         return await (await self._writer()).create_info(request)
 
-    async def _update(self, id: int, request: UpdateInfoRequest) -> Info:
+    async def _update(self, id: str, request: UpdateInfoRequest) -> Info:
         """Updates an Info; naming a parent moves it."""
         return await (await self._writer()).update_info(id, request)
 
-    async def _delete(self, id: int) -> None:
+    async def _delete(self, id: str) -> None:
         """Deletes an Info."""
         await (await self._writer()).delete_info(id)
 
     async def _duplicate(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedInfo:
         """Copies an Info and its subtree under a new parent."""
         return await (await self._writer()).duplicate_info(id, target_type, target_id, position)

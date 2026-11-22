@@ -6,6 +6,7 @@
 //! Habit occurrence its overlay's `resolved_at`. A row finished before its kind recorded one has
 //! none, and is simply not among them: it still counts as finished, and adds no instant.
 
+use crate::nodes::id::RowId;
 use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
@@ -67,7 +68,7 @@ pub fn occurrence_instants(overlays: &HabitOverlays) -> Instants {
 #[derive(sqlx::FromRow)]
 struct CheckRow {
     wait_kind: String,
-    wait_id: Option<i64>,
+    wait_id: Option<RowId>,
     wait_key: Option<String>,
     due_at: String,
     resolved_at: String,
@@ -102,7 +103,7 @@ impl TaskOperator<'_> {
             ("commitments", "verdict_at", "commitment"),
             ("expectations", "released_at", "expectation"),
         ] {
-            let rows: Vec<(i64, String)> = sqlx::query_as(&format!(
+            let rows: Vec<(RowId, String)> = sqlx::query_as(&format!(
                 "SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL"
             ))
             .fetch_all(&mut *self.connection)
@@ -114,7 +115,7 @@ impl TaskOperator<'_> {
                 }
             }
         }
-        let spawned: Vec<(i64, String)> = sqlx::query_as(
+        let spawned: Vec<(RowId, String)> = sqlx::query_as(
             "SELECT task_id, released_at FROM spawned_waits WHERE released_at IS NOT NULL",
         )
         .fetch_all(&mut *self.connection)

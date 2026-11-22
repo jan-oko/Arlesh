@@ -3,6 +3,7 @@ import { takesCompound } from "@/utils/compound";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { occurrenceRow } from "@/test/occurrence";
 import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
+import { storedRowId } from "@/test/stored-id";
 
 function node(extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: "n", kind: "task", title: "n", position: 0, tagIds: [], children: [], ...extra };
@@ -10,7 +11,7 @@ function node(extra: Partial<MindmapNode> = {}): MindmapNode {
 
 describe("takesCompound", () => {
   it("takes a stored task", () => {
-    expect(takesCompound(node({ rowId: 12 }))).toBe(true);
+    expect(takesCompound(node({ rowId: storedRowId(12) }))).toBe(true);
   });
 
   it("takes an occurrence of a flow Task item", () => {
@@ -22,7 +23,7 @@ describe("takesCompound", () => {
   });
 
   it("refuses a check task and a node that draws no row", () => {
-    const check = node({ rowId: "00000000-0000-5000-8000-000000000001", origin: { kind: "check", wait_kind: "stored", wait_id: 4, due_at: "2026-01-05T09:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES });
+    const check = node({ rowId: "00000000-0000-5000-8000-000000000001", origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(4), due_at: "2026-01-05T09:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES });
     expect(takesCompound(check)).toBe(false);
     expect(takesCompound(node())).toBe(false);
   });

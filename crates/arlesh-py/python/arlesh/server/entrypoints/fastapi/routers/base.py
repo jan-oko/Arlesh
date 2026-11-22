@@ -16,9 +16,8 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
 
 
 def node_id(raw: str) -> arlesh.NodeId:
-    """A path's node id as the core reads it: a stored row's integer id, or a derived node's
-    (a Habit occurrence's) UUID."""
-    return int(raw) if raw.isdecimal() else raw
+    """A path's node id as the core reads it: a UUID string, stored or derived."""
+    return raw
 
 
 class WireRoute(APIRoute):

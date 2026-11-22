@@ -6,6 +6,7 @@
 //! A wait's check task, a spawned wait and a delegated Task's wait are derived rows too, each with
 //! an origin of its own.
 
+use crate::nodes::id::RowId;
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
@@ -70,15 +71,18 @@ pub struct WaitOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HabitOrigin {
     /// The Habit (flow) the occurrence belongs to.
-    pub habit_id: i64,
+    #[schemars(with = "String")]
+    pub habit_id: RowId,
     /// The iteration the occurrence is in.
     pub iteration_scope: IterationScope,
     /// The template table the occurrence is drawn from — `flow_root` for the iteration's root.
     pub item_type: TemplateKind,
     /// The template row's id (the flow's own for the root).
-    pub item_id: i64,
+    #[schemars(with = "String")]
+    pub item_id: RowId,
     /// The cycle pair that drew it, or `0`.
-    pub cycle_id: i64,
+    #[schemars(with = "String")]
+    pub cycle_id: RowId,
 }
 
 impl HabitOrigin {

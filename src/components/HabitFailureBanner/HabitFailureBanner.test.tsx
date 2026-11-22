@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import HabitFailureBanner from "./HabitFailureBanner";
+import { storedRowId } from "@/test/stored-id";
 
 describe("HabitFailureBanner", () => {
   it("lists every failed flow by title", () => {
     render(
       <HabitFailureBanner
-        failedFlows={[{ id: 7, title: "Standup" }, { id: 8, title: "Retro" }]}
+        failedFlows={[{ id: storedRowId(7), title: "Standup" }, { id: storedRowId(8), title: "Retro" }]}
         onDismiss={vi.fn()}
       />,
     );
@@ -21,7 +22,7 @@ describe("HabitFailureBanner", () => {
 
   it("calls onDismiss when the dismiss control is clicked", () => {
     const onDismiss = vi.fn();
-    render(<HabitFailureBanner failedFlows={[{ id: 7, title: "Standup" }]} onDismiss={onDismiss} />);
+    render(<HabitFailureBanner failedFlows={[{ id: storedRowId(7), title: "Standup" }]} onDismiss={onDismiss} />);
     // i18next is not initialised under test, so `t` echoes the key — with the namespace prefix
     // when the key crosses into a namespace other than the component's default.
     screen.getByRole("button", { name: "common:dismiss" }).click();
@@ -32,7 +33,7 @@ describe("HabitFailureBanner", () => {
     render(
       <HabitFailureBanner
         failedFlows={[]}
-        unrenderableCommitmentFlows={[{ id: 11, title: "Asleep by 23:00" }]}
+        unrenderableCommitmentFlows={[{ id: storedRowId(11), title: "Asleep by 23:00" }]}
         onDismiss={vi.fn()}
       />,
     );

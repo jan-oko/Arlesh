@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import styles from "./HabitFailureBanner.module.css";
 
 interface FailedFlow {
-  id: number;
+  id: string;
   title: string;
 }
 

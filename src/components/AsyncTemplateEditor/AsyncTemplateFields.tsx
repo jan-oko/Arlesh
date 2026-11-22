@@ -13,7 +13,7 @@ interface Props {
   titlePlaceholder?: string | undefined;
   /** The tags to pick from. Omitted, the template's tags are kept as they are and not drawn. */
   allTags?: Domain[] | undefined;
-  domainNames?: Map<number, string> | undefined;
+  domainNames?: Map<string, string> | undefined;
 }
 
 /** Writes `value` into `field`, or drops the field when there is none — the template's optional

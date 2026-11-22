@@ -3,8 +3,12 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- A plain monochrome mark: the notification tray tints it. -->
+    <!--
+      Arlesh's tray mark (src-tauri/icons/tray.svg: three chevrons) as a white silhouette on
+      transparent. Status bars and the shade use only the alpha and tint it themselves. Keep the
+      geometry in step with tray.svg.
+    -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2a10,10 0,1 0,0 20a10,10 0,0 0,0 -20zM12,6.5l1.6,3.9l4.2,0.3l-3.2,2.7l1,4.1L12,15.4l-3.6,2.1l1,-4.1l-3.2,-2.7l4.2,-0.3z" />
+        android:pathData="M12,2.5L17,3.75L17,7.25L12,6L7,7.25L7,3.75ZM12,9L20,11L20,14.5L12,12.5L4,14.5L4,11ZM12,15.5L23,18.25L23,21.75L12,19L1,21.75L1,18.25Z" />
 </vector>

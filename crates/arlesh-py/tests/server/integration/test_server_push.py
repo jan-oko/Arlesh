@@ -17,11 +17,16 @@ from arlesh.server.ports.push.push_store import PushEvent
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 Start = Callable[..., Any]
 
 PHONE_TOKEN = "fcm-token-of-the-phone"
+
+MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
 
 class FakeSender(PushSender):
@@ -72,12 +77,14 @@ def set_capacity(client: TestClient, database: Any, at_capacity: bool) -> None:
     """Puts an agent holding the root Aspect at capacity, or back in room: the account's lock."""
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "INSERT OR IGNORE INTO mcp_roots (node_kind, node_id) VALUES ('domain', 1)"
+            "INSERT OR IGNORE INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)",
+            (ROOT_ASPECT,),
         )
         connection.execute(
             "INSERT OR IGNORE INTO agents (name, account, session_uuid, token_sha256, claim_kind, "
             "claim_id, claimed_at, created_at) VALUES ('agent', 'work', 's', 'digest', "
-            "'domain', 1, '2026-11-04T09:00:00', '2026-11-04T09:00:00')"
+            "'domain', ?, '2026-11-04T09:00:00', '2026-11-04T09:00:00')",
+            (ROOT_ASPECT,),
         )
     locked = client.put("/agent-accounts/lock", json={"label": "work", "locked": at_capacity})
     assert locked.status_code == 204, locked.text
@@ -89,19 +96,78 @@ def look(client: TestClient) -> int:
     return int(client.portal.call(notifier.look))  # type: ignore[union-attr]
 
 
+def mcp_session(client: TestClient, connect_token: str) -> str:
+    """Opens an MCP session as an agent's client would."""
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "0"},
+        },
+    }
+    headers = {**MCP_HEADERS, "Authorization": f"Bearer {connect_token}"}
+    response = client.post("/mcp", json=initialize, headers=headers)
+    assert response.status_code == 200, response.text
+    return str(response.headers["mcp-session-id"])
+
+
+def mcp_call(
+    client: TestClient, connect_token: str, session: str, tool: str, **arguments: Any
+) -> dict[str, Any]:
+    """One MCP tool call over ``session``."""
+    body = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {"name": tool, "arguments": arguments},
+    }
+    headers = {
+        **MCP_HEADERS,
+        "Authorization": f"Bearer {connect_token}",
+        "Mcp-Session-Id": session,
+    }
+    response = client.post("/mcp", json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    answer: dict[str, Any] = response.json()
+    return answer
+
+
+def revision(client: TestClient) -> int:
+    """The board's revision as the server stands at."""
+    return int(client.get("/health").headers["x-arlesh-revision"])
+
+
+def look_since(client: TestClient, seen: int) -> int:
+    """Has the notifier look at the board as it does after the writes since revision ``seen``:
+    it knows who made them."""
+    notifier = client.app.notifier  # type: ignore[attr-defined]
+    return int(client.portal.call(notifier.look_since, seen))  # type: ignore[union-attr]
+
+
 def register(client: TestClient, phone: dict[str, str], token: str = PHONE_TOKEN) -> Any:
     return client.put("/devices/current/push", json={"fcm_token": token}, headers=phone)
 
 
-def domain_of(client: TestClient) -> int:
+def domain_of(client: TestClient) -> str:
     """A Domain under the root Aspect."""
-    created = client.post("/domains", json={"title": "Home", "subtype": "domain", "parent_id": 1})
+    created = client.post(
+        "/domains", json={"title": "Home", "subtype": "domain", "parent_id": ROOT_ASPECT}
+    )
     assert created.status_code == 201, created.text
-    return int(created.json()["id"])
+    return str(created.json()["id"])
 
 
-def ask(client: TestClient, parent: int, title: str = "Which one?") -> int:
+def ask(client: TestClient, parent: str, title: str = "Which one?") -> str:
     """An agent's Task under ``parent``, with a question open on it."""
+    return ask_wait(client, parent, title)[0]
+
+
+def ask_wait(client: TestClient, parent: str, title: str = "Which one?") -> tuple[str, str]:
+    """An agent's Task under ``parent``, with a question open on it: the Task's and the
+    question's ids."""
     task = client.post(
         "/tasks",
         json={
@@ -124,7 +190,7 @@ def ask(client: TestClient, parent: int, title: str = "Which one?") -> int:
         },
     )
     assert wait.status_code == 201, wait.text
-    return int(task.json()["id"])
+    return str(task.json()["id"]), str(wait.json()["id"])
 
 
 def test_the_server_says_whether_it_can_push(server: TestClient) -> None:
@@ -170,7 +236,7 @@ def test_without_credentials_the_server_takes_registrations_and_sends_nothing(
 
 
 def test_each_of_the_five_events_is_one_notification_on_its_own_channel(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int, server_db: Any
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str, server_db: Any
 ) -> None:
     register(server, phone)
 
@@ -235,7 +301,7 @@ def test_an_agent_at_capacity_is_told_when_it_starts_and_when_it_ends(
 
 
 def test_a_generated_task_is_told_when_a_check_falls_due(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     register(server, phone)
     task = server.post(
@@ -259,7 +325,7 @@ def test_a_generated_task_is_told_when_a_check_falls_due(
 
 
 def test_what_was_sent_is_not_sent_again(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     register(server, phone)
     ask(server, domain)
@@ -292,7 +358,7 @@ def test_a_restart_does_not_send_again(
 
 
 def test_a_device_that_registers_hears_nothing_of_what_was_already_so(
-    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: int
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
 ) -> None:
     ask(server, domain)
 
@@ -331,3 +397,88 @@ def test_a_failed_send_is_tried_again_at_the_next_look(
 def test_the_notifier_is_the_one_the_server_built(server: TestClient) -> None:
     assert isinstance(server.app.notifier, Notifier)  # type: ignore[attr-defined]
     assert asyncio.iscoroutinefunction(server.app.notifier.look)  # type: ignore[attr-defined]
+
+
+def test_locking_an_account_by_hand_pushes_nothing(
+    server: TestClient, phone: dict[str, str], sender: FakeSender, server_db: Any
+) -> None:
+    register(server, phone)
+    seen = revision(server)
+
+    set_capacity(server, server_db, True)
+    look_since(server, seen)
+    look(server)
+
+    assert sender.sent == []
+
+
+def test_what_the_phone_does_itself_is_not_pushed_to_the_phone(
+    server: TestClient, phone: dict[str, str], sender: FakeSender, server_db: Any
+) -> None:
+    register(server, phone)
+    set_capacity(server, server_db, False)
+    seen = revision(server)
+
+    locked = server.put(
+        "/agent-accounts/lock", json={"label": "work", "locked": True}, headers=phone
+    )
+    look_since(server, seen)
+
+    assert locked.status_code == 204, locked.text
+    assert sender.sent == []
+
+
+def test_undoing_the_release_of_a_question_does_not_push_it_again(
+    server: TestClient, phone: dict[str, str], sender: FakeSender, domain: str
+) -> None:
+    register(server, phone)
+    _, wait = ask_wait(server, domain)
+    look(server)
+    assert sender.channels(PHONE_TOKEN) == ["agent_question"]
+    server.put(f"/waits/{wait}/draft", json={"answer": "yes"})
+    sent = server.post("/drafts/send", json={"shown": [wait]})
+    assert sent.status_code == 200, sent.text
+    look_since(server, 0)
+    seen = revision(server)
+
+    undone = server.post("/undo")
+    look_since(server, seen)
+    look(server)
+
+    assert undone.json() is not None
+    assert sender.channels(PHONE_TOKEN) == ["agent_question"]
+
+
+def test_a_question_an_agent_asks_is_still_pushed(
+    server: TestClient,
+    phone: dict[str, str],
+    sender: FakeSender,
+    domain: str,
+    connect_token: str,
+    server_db: Any,
+) -> None:
+    register(server, phone)
+    with sqlite3.connect(server_db) as connection:
+        connection.execute(
+            "INSERT INTO mcp_roots (node_kind, node_id) VALUES ('domain', ?)", (domain,)
+        )
+    pin = server.post("/agents/pins").json()["pin"]
+    session = mcp_session(server, connect_token)
+    mcp_call(
+        server,
+        connect_token,
+        session,
+        "arlesh_agents",
+        operation="attach",
+        pin=pin,
+        session_id="pytest",
+        name="writer",
+        subtree={"node_type": "domain", "node_id": domain},
+    )
+    seen = revision(server)
+
+    locked = mcp_call(server, connect_token, session, "arlesh_agents", operation="lock")
+    look_since(server, seen)
+
+    assert locked["result"].get("isError") is not True, locked
+    assert sender.channels(PHONE_TOKEN) == ["capacity_locked"]

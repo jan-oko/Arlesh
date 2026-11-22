@@ -2,6 +2,7 @@
 //! block reason it gives a Task, its lifecycle entry and the subtree delete.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -25,8 +26,8 @@ use arlesh_lib::{
 use chrono::{NaiveDate, NaiveDateTime};
 use helpers::StoredId;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -37,6 +38,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Waits".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -58,7 +60,7 @@ async fn day(_pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
     }
 }
 
-async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64 {
+async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: RowId) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let task = create_task(
         &mut db,
@@ -78,7 +80,7 @@ async fn task(pool: &sqlx::SqlitePool, parent_type: &str, parent_id: i64) -> i64
 async fn expectation(
     pool: &sqlx::SqlitePool,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
     check_every: Option<DurationSpec>,
 ) -> Expectation {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
@@ -100,7 +102,7 @@ async fn expectation(
     expectation
 }
 
-async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateExpectationRequest) {
+async fn update(pool: &sqlx::SqlitePool, id: RowId, request: UpdateExpectationRequest) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     update_expectation(&mut db, ExpectationId(id), request)
         .await
@@ -108,7 +110,7 @@ async fn update(pool: &sqlx::SqlitePool, id: i64, request: UpdateExpectationRequ
     db.commit().await.unwrap();
 }
 
-async fn depend(pool: &sqlx::SqlitePool, task_id: i64, expectation_id: i64) {
+async fn depend(pool: &sqlx::SqlitePool, task_id: RowId, expectation_id: RowId) {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     add_task_dependency(
         &mut db,
@@ -120,7 +122,7 @@ async fn depend(pool: &sqlx::SqlitePool, task_id: i64, expectation_id: i64) {
     db.commit().await.unwrap();
 }
 
-async fn block_reasons(pool: &sqlx::SqlitePool, task_id: i64) -> Vec<String> {
+async fn block_reasons(pool: &sqlx::SqlitePool, task_id: RowId) -> Vec<String> {
     let mut db = helpers::session_factory(pool).connect().await.unwrap();
     get_task_with_blockers(&mut db, TaskId(task_id))
         .await
@@ -128,7 +130,7 @@ async fn block_reasons(pool: &sqlx::SqlitePool, task_id: i64) -> Vec<String> {
         .block_reasons
 }
 
-async fn inbound_edges(pool: &sqlx::SqlitePool, expectation_id: i64) -> i64 {
+async fn inbound_edges(pool: &sqlx::SqlitePool, expectation_id: RowId) -> i64 {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM task_dependencies WHERE dependency_type = 'expectation' AND dependency_id = ?",
     )
@@ -350,6 +352,7 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     db.infos()
         .create(CreateInfoRequest {
+            id: None,
             body: "asked on Monday".into(),
             details: None,
             parent_type: "expectation".into(),
@@ -434,12 +437,13 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
 async fn a_wait_carries_tags_and_a_time_scope_of_its_own() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let tag: i64 = helpers::session_factory(&pool)
+    let tag: RowId = helpers::session_factory(&pool)
         .connect()
         .await
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "waiting".into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -589,4 +593,152 @@ async fn an_explicit_null_in_the_payload_stops_the_checks() {
         .unwrap()
         .expectation_checks
         .is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Staged answers (ADR 0021): one case per command.
+// ---------------------------------------------------------------------------------------------
+
+mod staged_answers {
+    use super::*;
+    use arlesh_lib::commands::expectations as commands;
+    use arlesh_lib::nodes::id::NodeId;
+    use arlesh_lib::tasks::answer_drafts::{DraftRequest, SendRequest, SkipReason};
+    use arlesh_lib::tasks::model::TaskAgentic;
+    use tauri::Manager;
+
+    /// An agentic Task in a fresh Project, with one open question under it.
+    async fn open_question(pool: &sqlx::SqlitePool, title: &str) -> NodeId {
+        let project = make_project(pool).await;
+        let mut db = helpers::session_factory(pool).begin().await.unwrap();
+        let task = create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: "Work".into(),
+                parent_type: "project".into(),
+                parent_id: project.into(),
+                agentic: Some(TaskAgentic::Yes),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let wait = create_expectation(
+            &mut db,
+            CreateExpectationRequest {
+                title: title.into(),
+                parent_type: "task".into(),
+                parent_id: task.id,
+                agentic: true,
+                agentic_note: Some("Which?".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        wait.id
+    }
+
+    fn answer(text: &str) -> DraftRequest {
+        DraftRequest {
+            answer: Some(text.into()),
+            verdict: None,
+        }
+    }
+
+    async fn drafts(pool: &sqlx::SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM answer_drafts")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn save_answer_draft_stages_the_answer_and_leaves_the_wait_pending() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+
+        let saved = commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        assert_eq!(saved.answer.as_deref(), Some("blue"));
+        assert_eq!(drafts(&pool).await, 1);
+        let status: String = sqlx::query_scalar("SELECT status FROM expectations WHERE id = ?")
+            .bind(wait.stored().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(status, "pending");
+    }
+
+    #[tokio::test]
+    async fn save_answer_draft_refuses_a_blank_answer_and_writes_nothing() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+
+        let refused = commands::save_answer_draft(app.state(), wait, answer("  ")).await;
+
+        assert!(refused.is_err());
+        assert_eq!(drafts(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn clear_answer_draft_unstages_and_passes_when_there_is_none() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+        commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        commands::clear_answer_draft(app.state(), wait.clone())
+            .await
+            .expect("unstage");
+        commands::clear_answer_draft(app.state(), wait)
+            .await
+            .expect("unstaging again passes");
+
+        assert_eq!(drafts(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn send_answer_drafts_releases_the_staged_waits_and_names_the_skipped() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let wait = open_question(&pool, "Colour?").await;
+        let unstaged = open_question(&pool, "Shape?").await;
+        commands::save_answer_draft(app.state(), wait.clone(), answer("blue"))
+            .await
+            .expect("stage");
+
+        let outcome = commands::send_answer_drafts(
+            app.state(),
+            SendRequest {
+                shown: vec![wait.clone(), unstaged.clone()],
+            },
+        )
+        .await
+        .expect("send");
+
+        assert_eq!(outcome.sent.len(), 1);
+        assert_eq!(outcome.sent[0].wait_id, wait);
+        assert_eq!(outcome.skipped.len(), 1);
+        assert_eq!(outcome.skipped[0].wait_id, unstaged);
+        assert_eq!(outcome.skipped[0].reason, SkipReason::Unstaged);
+        let (status, answer): (String, Option<String>) =
+            sqlx::query_as("SELECT status, agentic_answer FROM expectations WHERE id = ?")
+                .bind(wait.stored().unwrap())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            (status.as_str(), answer.as_deref()),
+            ("released", Some("blue"))
+        );
+        assert_eq!(drafts(&pool).await, 0);
+    }
 }

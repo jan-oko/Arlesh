@@ -10,6 +10,7 @@ use super::{
     rows::{AgentRow, UsageRow, AGENT_COLUMNS},
 };
 use crate::access::model::NodeKey;
+use crate::nodes::id::RowId;
 
 /// Reads and writes the agents' tables.
 ///
@@ -149,7 +150,10 @@ impl<'session> AgentOperator<'session> {
     /// What a stored Task holds for a child agent that claimed it: its stored status, and how many
     /// pending, live agentic waits hang directly under it. `None` when there is no such Task.
     #[tracing::instrument(skip(self))]
-    pub async fn task_holding(&mut self, task: i64) -> Result<Option<(String, usize)>, AgentError> {
+    pub async fn task_holding(
+        &mut self,
+        task: RowId,
+    ) -> Result<Option<(String, usize)>, AgentError> {
         let status: Option<String> = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
             .bind(task)
             .fetch_optional(&mut *self.connection)

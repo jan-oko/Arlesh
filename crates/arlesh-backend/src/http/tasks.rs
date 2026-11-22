@@ -1,6 +1,7 @@
 //! [`HttpBackend`]'s `tasks` operations: each one REST call to `arlesh-server`, as
 //! `conformance/client-mode.json` lists it.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::DuplicatedSubtree,
     error::WireError,
@@ -26,7 +27,7 @@ impl TasksPort for HttpBackend {
             .await
     }
 
-    async fn get_task(&self, id: i64) -> Result<TaskWithBlockers, WireError> {
+    async fn get_task(&self, id: RowId) -> Result<TaskWithBlockers, WireError> {
         self.read(Call::new(Method::GET, format!("/tasks/{}", segment(&id))))
             .await
     }
@@ -95,7 +96,7 @@ impl TasksPort for HttpBackend {
     async fn scope_containment_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         time_scope: TimeScope,
     ) -> Result<Vec<ViolatingDescendant>, WireError> {
         self.read(
@@ -115,9 +116,9 @@ impl TasksPort for HttpBackend {
     async fn reparent_scope_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         new_parent_type: String,
-        new_parent_id: i64,
+        new_parent_id: RowId,
     ) -> Result<ReparentConflicts, WireError> {
         self.read(
             Call::new(
@@ -144,9 +145,9 @@ impl TasksPort for HttpBackend {
 
     async fn duplicate_task(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Task>, WireError> {
         self.write(
@@ -228,7 +229,7 @@ impl TasksPort for HttpBackend {
             .await
     }
 
-    async fn get_goal(&self, id: i64) -> Result<Goal, WireError> {
+    async fn get_goal(&self, id: RowId) -> Result<Goal, WireError> {
         self.read(Call::new(Method::GET, format!("/goals/{}", segment(&id))))
             .await
     }
@@ -262,9 +263,9 @@ impl TasksPort for HttpBackend {
 
     async fn duplicate_goal(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Goal>, WireError> {
         self.write(
@@ -276,7 +277,7 @@ impl TasksPort for HttpBackend {
         .await
     }
 
-    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::PUT,
             format!(
@@ -288,7 +289,7 @@ impl TasksPort for HttpBackend {
         .await
     }
 
-    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!(
@@ -300,7 +301,7 @@ impl TasksPort for HttpBackend {
         .await
     }
 
-    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::PUT,
             format!(
@@ -312,7 +313,7 @@ impl TasksPort for HttpBackend {
         .await
     }
 
-    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         self.write(Call::new(
             Method::DELETE,
             format!(

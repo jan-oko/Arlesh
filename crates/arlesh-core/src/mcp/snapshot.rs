@@ -41,6 +41,17 @@ impl ArleshMcp {
     /// keeps only the Tasks that read as Agentic, most urgent first. Every Task carries
     /// `info_count`, the Info notes directly under it that you may see — the user writes a Task's
     /// details as Infos, so read them (`arlesh_tasks.get` returns them) before you work a Task.
+    /// The `expectations` section holds every wait, released ones included (pending first), each
+    /// with its whole note and answer. To find the open questions of one project use
+    /// `arlesh_waits.list` instead. A filter's `unblock`, `expectations` and `review` options are
+    /// the List View's (`review` lists the Tasks that read Review, whatever Start or Plan would
+    /// hide; `unblock` answers before `expectations`, then `review`, if several are set), and the
+    /// snapshot applies them only when a pill (or a narrower row-kind choice) sends the read through
+    /// the List View's rules; otherwise the read is narrowed as the Mindmap narrows it, which
+    /// ignores them, so `{"expectations": true, "preset": "all"}` still returns released
+    /// waits. Under a pill the List View draws no agentic wait, and Tasks are not rows under the
+    /// option, so an agent's waits do not come back at all: an agentic wait travels with the Task
+    /// it hangs under (a filter that keeps the Task keeps the wait).
     /// Read-only.
     #[tool(
         name = "arlesh_snapshot",
@@ -210,6 +221,9 @@ fn split_into_sections(
                             }
                         }
                     }
+                    if section == Section::Expectations {
+                        pending_first(&mut items);
+                    }
                     items
                 }
                 // A section the payload does not carry reads as empty rather than failing the
@@ -219,6 +233,12 @@ fn split_into_sections(
             },
         })
         .collect())
+}
+
+/// Puts the waits still pending before the released ones, each group in the order it came: the
+/// open questions are what a reader of the section is after, and the released ones only grow.
+fn pending_first(waits: &mut [Value]) {
+    waits.sort_by_key(|wait| wait.get("status").and_then(Value::as_str) != Some("pending"));
 }
 
 /// Stamps a task row with the Plan it reads beside its own (`plan`): `effective_plan`, its own or

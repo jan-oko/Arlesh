@@ -6,6 +6,9 @@
 //! part of the board.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
+use helpers::IntoParam as _;
 use helpers::StoredId;
 
 use arlesh_lib::access::model::NodeTable;
@@ -23,20 +26,21 @@ use tauri::{App, Manager};
 
 /// Two projects under the first Aspect, each holding one task. Nothing is an MCP root yet.
 struct Board {
-    inside: i64,
-    outside: i64,
-    inside_task: i64,
-    outside_task: i64,
+    inside: RowId,
+    outside: RowId,
+    inside_task: RowId,
+    outside_task: RowId,
 }
 
-async fn project(app: &App<MockRuntime>, title: &str) -> i64 {
+async fn project(app: &App<MockRuntime>, title: &str) -> RowId {
     domain_commands::create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: title.into(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(1),
+            parent_id: Some(crate::helpers::seeded(1)),
             status: None,
             knowledge_base_directory: None,
         },
@@ -46,7 +50,7 @@ async fn project(app: &App<MockRuntime>, title: &str) -> i64 {
     .id
 }
 
-async fn task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i64 {
+async fn task(app: &App<MockRuntime>, project_id: RowId, title: &str) -> RowId {
     task_commands::create_task(
         app.state(),
         CreateTaskRequest {
@@ -73,7 +77,7 @@ async fn board(app: &App<MockRuntime>) -> Board {
     }
 }
 
-async fn add_root(app: &App<MockRuntime>, kind: NodeTable, id: i64) {
+async fn add_root(app: &App<MockRuntime>, kind: NodeTable, id: RowId) {
     access_commands::add_mcp_root(app.state(), kind, id)
         .await
         .expect("add MCP root");
@@ -108,13 +112,13 @@ fn kind_of_error(result: &CallToolResult) -> Option<&str> {
         .and_then(|kind| kind.as_str())
 }
 
-fn ids(payload: &serde_json::Value, section: &str) -> Vec<i64> {
+fn ids(payload: &serde_json::Value, section: &str) -> Vec<RowId> {
     payload
         .get(section)
         .and_then(|items| items.as_array())
         .unwrap_or_else(|| panic!("the snapshot carried no {section}"))
         .iter()
-        .filter_map(|item| item.get("id").and_then(|id| id.as_i64()))
+        .filter_map(|item| item.get("id").and_then(crate::helpers::try_row_id))
         .collect()
 }
 
@@ -138,16 +142,17 @@ async fn snapshot(mcp: &ArleshMcp) -> serde_json::Value {
     structured(&result).clone()
 }
 
-async fn get_task(mcp: &ArleshMcp, id: i64) -> CallToolResult {
+async fn get_task(mcp: &ArleshMcp, id: RowId) -> CallToolResult {
     mcp.tasks(Parameters(params::TasksOperation::Get { id: id.into() }))
         .await
         .expect("the tasks tool returned no result")
 }
 
 /// A write that needs write access to the Task: hanging a note (an Info) under it.
-async fn write_note(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
+async fn write_note(mcp: &ArleshMcp, task_id: RowId) -> CallToolResult {
     mcp.infos(Parameters(params::InfosOperation::Create {
-        task_id: task_id.into(),
+        id: None,
+        task_id: task_id.param(),
         body: "a note from the agent".into(),
         details: None,
     }))
@@ -257,7 +262,7 @@ async fn a_private_node_stays_hidden_inside_a_root() {
 }
 
 /// An Info under a Task, as the user writes one; `private` marks it so.
-async fn info(pool: &sqlx::SqlitePool, task_id: i64, body: &str, position: i64, private: bool) {
+async fn info(pool: &sqlx::SqlitePool, task_id: RowId, body: &str, position: i64, private: bool) {
     sqlx::query(
         "INSERT INTO infos (body, details, parent_type, parent_id, position, is_private) \
          VALUES (?, 'the details', 'task', ?, ?, ?)",
@@ -302,10 +307,10 @@ async fn a_tasks_own_infos_come_back_with_it_and_are_counted_in_the_snapshot() {
     assert!(infos[0]["short_id"].is_string() && infos[0]["full_id"].is_string());
 
     let payload = snapshot(&mcp).await;
-    let count_of = |id: i64| {
+    let count_of = |id: RowId| {
         payload["tasks"]
             .as_array()
-            .and_then(|tasks| tasks.iter().find(|t| t["id"] == id))
+            .and_then(|tasks| tasks.iter().find(|t| t["id"] == id.to_string()))
             .map(|task| task["info_count"].clone())
     };
     assert_eq!(count_of(board.inside_task), Some(serde_json::json!(2)));
@@ -536,7 +541,7 @@ async fn a_root_on_a_node_that_does_not_exist_is_refused() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
 
-    let refused = access_commands::add_mcp_root(app.state(), NodeTable::Task, 99_999)
+    let refused = access_commands::add_mcp_root(app.state(), NodeTable::Task, tid(99_999))
         .await
         .expect_err("a root on nothing");
 
@@ -553,9 +558,11 @@ async fn roots(app: &App<MockRuntime>) -> Vec<arlesh_lib::access::model::NodeKey
         .roots
 }
 
-async fn ask(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
+async fn ask(mcp: &ArleshMcp, task_id: RowId) -> CallToolResult {
     mcp.waits(Parameters(params::WaitsOperation::Ask {
-        task_id: task_id.into(),
+        id: None,
+        verbose: Some(true),
+        task_id: task_id.param(),
         title: "Which colour?".into(),
         note: Some("Red or blue for the badge?".into()),
     }))
@@ -582,7 +589,7 @@ async fn an_agent_raises_a_wait_under_an_agentic_task_it_can_write() {
     let wait = structured(&raised);
     assert_eq!(wait["agentic"], true);
     assert_eq!(wait["parent_type"], "task");
-    assert_eq!(wait["parent_id"], board.inside_task);
+    assert_eq!(wait["parent_id"], board.inside_task.to_string());
     assert_eq!(wait["agentic_note"], "Red or blue for the badge?");
     let source: String = sqlx::query_scalar(
         "SELECT source FROM undo_journal WHERE table_name = 'expectations' ORDER BY seq DESC LIMIT 1",
@@ -623,7 +630,7 @@ async fn an_agent_cannot_raise_a_wait_where_it_cannot_write() {
 }
 
 /// A daily task Habit under `project`, from the snapshot's own day, with one item `item`.
-async fn daily_habit(app: &App<MockRuntime>, project: i64, item: &str) {
+async fn daily_habit(app: &App<MockRuntime>, project: RowId, item: &str) {
     use arlesh_lib::commands::flows as flow_commands;
     use arlesh_lib::flows::model::{
         ClockKind, CreateFlowItemRequest, CreateFlowRequest, InstanceType, MissPolicy,
@@ -647,6 +654,7 @@ async fn daily_habit(app: &App<MockRuntime>, project: i64, item: &str) {
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: item.into(),
             parent_type: "flow".into(),

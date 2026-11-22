@@ -3,9 +3,9 @@
   "owner": { "name": "Arlesh" },
   "plugins": [
     {
-      "name": "arlesh-notify",
-      "source": "./plugins/arlesh-notify",
-      "description": "Wakes a Claude Code session when an Arlesh wait it raised or watches changes."
+      "name": "arlesh",
+      "source": "./plugins/arlesh",
+      "description": "Attaches a Claude Code session and its subagents to Arlesh as agents, reports plan usage, and wakes the session when an Arlesh wait it raised or watches changes."
     }
   ]
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::nodes::id::tid;
 use crate::scopes::key::test_key;
 
 fn at(iso: &str) -> NaiveDateTime {
@@ -24,7 +25,7 @@ fn stored() -> Expectation {
         check_starting: Some(at("2026-07-01T09:00:00")),
         last_check_at: None,
         time_scope: None,
-        tag_ids: vec![2],
+        tag_ids: vec![tid(2)],
         position: 100,
         is_private: false,
         agentic: false,
@@ -112,7 +113,7 @@ fn a_move_needs_both_halves_of_the_parent_link() {
         at("2026-07-05T10:00:00"),
     )
     .unwrap();
-    assert_eq!(whole.reparent, Some(("task".to_string(), 3)));
+    assert_eq!(whole.reparent, Some(("task".to_string(), tid(3))));
     assert_eq!(whole.title, "Reply");
     assert_eq!(whole.archival, ExpectationArchival::Archived);
     assert_eq!(whole.position, 5);
@@ -122,10 +123,10 @@ fn a_move_needs_both_halves_of_the_parent_link() {
 #[test]
 fn an_unrecognised_stored_status_reads_as_pending() {
     let row = ExpectationRow {
-        id: 2,
+        id: tid(2),
         title: "x".to_string(),
         parent_type: "task".to_string(),
-        parent_id: 1,
+        parent_id: tid(1),
         status: "bogus".to_string(),
         archival: "bogus".to_string(),
         check_every_n: Some(2),
@@ -198,7 +199,7 @@ fn a_time_scope_can_be_set_and_cleared_like_a_tasks() {
     .unwrap();
     assert!(cleared.time_scope.is_none());
     assert_eq!(cleared.parent_type, "project");
-    assert_eq!(cleared.parent_id, 7);
+    assert_eq!(cleared.parent_id, tid(7));
 }
 
 #[test]

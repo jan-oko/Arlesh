@@ -489,7 +489,7 @@
         "preset": "all",
         "tags": [
           {
-            "tagId": 7,
+            "tagId": "00000000-0000-7000-8000-000000000007",
             "mode": "any"
           }
         ]
@@ -516,7 +516,7 @@
         "preset": "all",
         "tags": [
           {
-            "tagId": 7,
+            "tagId": "00000000-0000-7000-8000-000000000007",
             "mode": "exclude"
           }
         ]
@@ -540,11 +540,11 @@
         "preset": "all",
         "tags": [
           {
-            "tagId": 7,
+            "tagId": "00000000-0000-7000-8000-000000000007",
             "mode": "all"
           },
           {
-            "tagId": 8,
+            "tagId": "00000000-0000-7000-8000-000000000008",
             "mode": "all"
           }
         ]
@@ -1207,7 +1207,7 @@
         "preset": "all",
         "tags": [
           {
-            "tagId": 7,
+            "tagId": "00000000-0000-7000-8000-000000000007",
             "mode": "any"
           }
         ]
@@ -3167,9 +3167,112 @@
       "expectations": [
         "expectation-by-hand"
       ]
+    },
+    {
+      "name": "review over start lists every Review task, whatever start hides, and no sub-item that is not in Review",
+      "spec": "list-view.md — The Review option replaces the preset's rules for the list: every live Agentic Task that reads Review, blocked, backlogged or planned ahead too; archived ones stay hidden. A sub-item is a row only if it reads Review itself, so a Review Task under a Task that is not in Review is a row and a child of a Review Task that is not in Review is not. The Mindmap keeps the shared preset; there are no Commitments and no Expectations.",
+      "filter": {
+        "preset": "start",
+        "review": true
+      },
+      "board": "review",
+      "mindmap": [
+        "domain-review",
+        "task-r-child-review",
+        "task-r-child-todo",
+        "task-r-parent",
+        "task-r-plain",
+        "task-r-todo-parent",
+        "task-r-under-todo"
+      ],
+      "list": [
+        "task-r-ahead",
+        "task-r-aside",
+        "task-r-blocked",
+        "task-r-child-review",
+        "task-r-parent",
+        "task-r-plain",
+        "task-r-under-todo"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "review lists an archived Review task only under the archived pill's include",
+      "spec": "list-view.md — Archived Review Tasks stay hidden unless the Archived pill includes them.",
+      "filter": {
+        "preset": "all",
+        "review": true,
+        "archived": "include"
+      },
+      "board": "review",
+      "mindmap": [
+        "domain-review",
+        "task-r-ahead",
+        "task-r-archived",
+        "task-r-aside",
+        "task-r-blocked",
+        "task-r-child-review",
+        "task-r-child-todo",
+        "task-r-onagent",
+        "task-r-parent",
+        "task-r-plain",
+        "task-r-todo-parent",
+        "task-r-under-todo"
+      ],
+      "list": [
+        "task-r-ahead",
+        "task-r-archived",
+        "task-r-aside",
+        "task-r-blocked",
+        "task-r-child-review",
+        "task-r-parent",
+        "task-r-plain",
+        "task-r-under-todo"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
+    "review": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-review",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            { "id": "task-r-plain", "kind": "task", "status": "review", "agentic": true },
+            { "id": "task-r-blocked", "kind": "task", "status": "review", "agentic": true, "isBlocked": true },
+            { "id": "task-r-aside", "kind": "task", "status": "review", "agentic": true, "backlogged": true },
+            { "id": "task-r-ahead", "kind": "task", "status": "review", "agentic": true, "planTiming": "pending" },
+            { "id": "task-r-archived", "kind": "task", "status": "review", "agentic": true, "archived": true },
+            { "id": "task-r-onagent", "kind": "task", "status": "on_agent", "agentic": true },
+            {
+              "id": "task-r-parent",
+              "kind": "task",
+              "status": "review",
+              "agentic": true,
+              "children": [
+                { "id": "task-r-child-todo", "kind": "task", "status": "todo", "agentic": true },
+                { "id": "task-r-child-review", "kind": "task", "status": "review", "agentic": true }
+              ]
+            },
+            {
+              "id": "task-r-todo-parent",
+              "kind": "task",
+              "status": "todo",
+              "agentic": true,
+              "children": [
+                { "id": "task-r-under-todo", "kind": "task", "status": "review", "agentic": true }
+              ]
+            }
+          ]
+        }
+      ]
+    },
     "mixed": {
       "id": "root",
       "kind": "aspect",
@@ -3373,7 +3476,7 @@
               "kind": "task",
               "status": "todo",
               "tagIds": [
-                7
+                "00000000-0000-7000-8000-000000000007"
               ]
             },
             {
@@ -3381,7 +3484,7 @@
               "kind": "task",
               "status": "todo",
               "tagIds": [
-                8
+                "00000000-0000-7000-8000-000000000008"
               ]
             },
             {
@@ -3389,8 +3492,8 @@
               "kind": "task",
               "status": "todo",
               "tagIds": [
-                7,
-                8
+                "00000000-0000-7000-8000-000000000007",
+                "00000000-0000-7000-8000-000000000008"
               ]
             },
             {
@@ -3399,7 +3502,7 @@
               "verdict": "unresolved",
               "timing": "active",
               "tagIds": [
-                7
+                "00000000-0000-7000-8000-000000000007"
               ]
             }
           ]
@@ -3711,8 +3814,8 @@
                   "status": "pending",
                   "timing": "lapsed",
                   "tagIds": [
-                    7
-                  ]
+                "00000000-0000-7000-8000-000000000007"
+              ]
                 }
               ]
             }

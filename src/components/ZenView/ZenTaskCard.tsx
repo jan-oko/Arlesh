@@ -9,9 +9,8 @@ import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import StatusStepButton from "@/components/StatusStepButton/StatusStepButton";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import { AGENTIC_STATUS, TASK_STATUS, isReview, taskStatusOf } from "@/utils/status-mapping";
-import type { MindmapNode } from "@/utils/tree-layout";
 import OpenWaits from "@/components/AnswerField/OpenWaits";
-import type { WaitReply } from "@/hooks/use-answer-question";
+import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { useTranslation } from "react-i18next";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 import { isOverdue } from "@/utils/overdue";
@@ -45,7 +44,7 @@ interface Props {
   /** A tap on the status icon steps the status, as the cycle key does. */
   onCycleStatus: (nodeId: string) => void;
   /** On a **Review** card: answers one of the agent's open waits, from the card. */
-  onAnswer?: ((wait: MindmapNode, reply: WaitReply) => Promise<boolean>) | undefined;
+  answers?: AnswerActions | undefined;
 }
 
 /**
@@ -66,7 +65,7 @@ interface Props {
  */
 export default function ZenTaskCard({
   row, corners, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
-  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, onAnswer,
+  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, answers,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -147,7 +146,7 @@ export default function ZenTaskCard({
           ))}
         </span>
       )}
-      {review && onAnswer !== undefined && <OpenWaits task={node} onAnswer={onAnswer} compact />}
+      {review && answers !== undefined && <OpenWaits task={node} actions={answers} compact />}
       {(showBadges || review || fitsContent) && (
         <span className={styles.badges}>
           {showsStatusIcon && (

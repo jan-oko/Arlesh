@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
-import { agentActivityFrom } from "@/utils/agent-activity";
+import { agentActivityFrom, stagedWaitIdsFrom } from "@/utils/agent-activity";
 import { boardFence, boardHead, reportBoardDivergence } from "@/api/board";
 import type { BoardChange, BoardHead, DivergenceReport } from "@/api/board";
 import { getErrorMessage } from "@/api/errors";
@@ -34,7 +34,7 @@ export interface SharedBoard {
   load: MindmapLoad;
   /** The local time the board was derived at, which Habit iteration roots judge "passed" against. */
   now: string;
-  personNames: ReadonlyMap<number, string>;
+  personNames: ReadonlyMap<string, string>;
   stamp: BoardStamp;
   /** The digest of every entry the window holds, kept up to date as changes are applied. */
   digests: BoardDigests;
@@ -77,7 +77,7 @@ interface BoardStore {
 }
 
 /** People are Standalone-only: a server has none to name (docs/spec/client-mode.md). */
-async function loadPersonNames(): Promise<Map<number, string>> {
+async function loadPersonNames(): Promise<Map<string, string>> {
   if (isClientMode(useClientModeStore.getState().status)) return new Map();
   try {
     const people = await listPeople();
@@ -89,13 +89,13 @@ async function loadPersonNames(): Promise<Map<number, string>> {
 }
 
 /** Whether a Task row delegates to a Person the window cannot name. */
-function delegatesToUnnamedPerson(set: ReadonlyArray<readonly [string, unknown]>, names: ReadonlyMap<number, string>): boolean {
+function delegatesToUnnamedPerson(set: ReadonlyArray<readonly [string, unknown]>, names: ReadonlyMap<string, string>): boolean {
   return set.some(([, value]) => {
     if (typeof value !== "object" || value === null) return false;
     const delegate: unknown = Reflect.get(value, "delegate_to");
     if (typeof delegate !== "object" || delegate === null) return false;
     const id: unknown = Reflect.get(delegate, "id");
-    return Reflect.get(delegate, "kind") === "person" && typeof id === "number" && !names.has(id);
+    return Reflect.get(delegate, "kind") === "person" && typeof id === "string" && !names.has(id);
   });
 }
 
@@ -164,7 +164,7 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       // delegate's badge and wait are labelled with, and nothing else on the board needs them.
       const personNames = data.load.tasks.some((task) => task.delegate_to != null)
         ? await loadPersonNames()
-        : new Map<number, string>();
+        : new Map<string, string>();
       // Nobody is looking any more: the next view to mount loads afresh.
       if (views === 0) return;
       const held = indexBoard(data.load);
@@ -185,6 +185,7 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
       hold(board);
       // The whole board, before any view narrows it to a subtree: the top bar's agent status.
       useAgentActivityStore.getState().receive(agentActivityFrom(data.load.agent_activity));
+      useAgentActivityStore.getState().receiveStaged(stagedWaitIdsFrom(data.load.facts));
     } catch (err) {
       if (views > 0) set({ error: getErrorMessage(err) });
     } finally {
@@ -247,6 +248,9 @@ export const useBoardStore = create<BoardStore>()((set, get) => {
     hold(board);
     if (change.changes.agent_activity !== undefined) {
       useAgentActivityStore.getState().receive(agentActivityFrom(applied.load.agent_activity));
+    }
+    if (change.changes.facts !== undefined) {
+      useAgentActivityStore.getState().receiveStaged(stagedWaitIdsFrom(applied.load.facts));
     }
     const tasks = change.changes.tasks;
     if (tasks !== undefined && delegatesToUnnamedPerson(tasks.set, held.personNames)) void refreshPeople();

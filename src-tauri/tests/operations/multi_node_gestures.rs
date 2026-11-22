@@ -2,6 +2,8 @@
 //! The server runs the same operation for its `/gestures` routes, through the bindings.
 
 use crate::helpers;
+use arlesh_lib::nodes::id::tid;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::commands::{node_gestures, tasks as task_commands};
 use arlesh_lib::nodes::gestures::GestureNode;
@@ -14,7 +16,7 @@ async fn task(app: &tauri::App<tauri::test::MockRuntime>, title: &str) -> Task {
         CreateTaskRequest {
             title: title.into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -87,7 +89,7 @@ async fn every_deletable_kind_is_deleted_by_its_own_writer() {
         CreateGoalRequest {
             title: "Goal".into(),
             parent_type: "domain".into(),
-            parent_id: 1.into(),
+            parent_id: crate::helpers::seeded(1).into(),
             ..Default::default()
         },
     )
@@ -96,6 +98,7 @@ async fn every_deletable_kind_is_deleted_by_its_own_writer() {
     let info = infos::create_info(
         app.state(),
         CreateInfoRequest {
+            id: None,
             body: "Note".into(),
             details: None,
             parent_type: "goal".into(),
@@ -108,10 +111,11 @@ async fn every_deletable_kind_is_deleted_by_its_own_writer() {
     let project = domains::create_domain(
         app.state(),
         CreateDomainRequest {
+            id: None,
             title: "Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
-            parent_id: Some(1),
+            parent_id: Some(helpers::seeded(1)),
             status: None,
             knowledge_base_directory: None,
         },
@@ -124,7 +128,7 @@ async fn every_deletable_kind_is_deleted_by_its_own_writer() {
             title: "Morning".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("day".into()),
             ..Default::default()
@@ -135,6 +139,7 @@ async fn every_deletable_kind_is_deleted_by_its_own_writer() {
     let item = flows::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -193,7 +198,7 @@ async fn a_kind_that_is_not_deletable_or_not_stored_is_refused() {
         app.state(),
         vec![GestureNode {
             kind: "flow".into(),
-            id: serde_json::from_value(serde_json::json!("00000000-0000-5000-8000-000000000000"))
+            id: serde_json::from_value(serde_json::json!("00000000-0000-8000-8000-000000000000"))
                 .expect("a derived id"),
         }],
     )
@@ -220,6 +225,14 @@ async fn gesture(
     name: &str,
     steps: serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, arlesh_lib::error::WireError> {
+    if let Some(list) = steps.as_array() {
+        for (index, step) in list.iter().enumerate() {
+            let read = serde_json::from_value::<arlesh_lib::nodes::gestures::steps::StepEntry>(
+                step.clone(),
+            );
+            assert!(read.is_ok(), "step {index} of {name}: {read:?}: {step}");
+        }
+    }
     node_gestures::run_gesture(
         app.state(),
         serde_json::from_value(serde_json::json!(name)).expect("a gesture name"),
@@ -228,8 +241,8 @@ async fn gesture(
     .await
 }
 
-fn id_of(answer: &serde_json::Value) -> i64 {
-    answer["id"].as_i64().expect("an id")
+fn id_of(answer: &serde_json::Value) -> RowId {
+    crate::helpers::row_id(&answer["id"])
 }
 
 #[tokio::test]
@@ -244,9 +257,9 @@ async fn paste_copies_and_moves_each_kind_under_its_target() {
         &app,
         "insert-parent",
         json!([
-            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": 1 } },
-            { "op": "create_info", "request": { "body": "Note", "parent_type": "domain", "parent_id": 1, "position": 0 } },
-            { "op": "create_domain", "request": { "title": "Project", "description": null, "subtype": "project", "parent_id": 1, "status": null, "knowledge_base_directory": null } },
+            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": crate::helpers::seeded(1) } },
+            { "op": "create_info", "request": { "body": "Note", "parent_type": "domain", "parent_id": crate::helpers::seeded(1), "position": 0 } },
+            { "op": "create_domain", "request": { "title": "Project", "description": null, "subtype": "project", "parent_id": crate::helpers::seeded(1), "status": null, "knowledge_base_directory": null } },
         ]),
     )
     .await
@@ -262,10 +275,10 @@ async fn paste_copies_and_moves_each_kind_under_its_target() {
             { "op": "duplicate", "kind": "task", "id": copied.id, "parent_kind": "task", "parent_id": target_id, "position": 1 },
             { "op": "duplicate", "kind": "goal", "id": goal, "parent_kind": "project", "parent_id": project, "position": 0 },
             { "op": "duplicate", "kind": "info", "id": info, "parent_kind": "task", "parent_id": target_id, "position": 2 },
-            { "op": "duplicate", "kind": "project", "id": project, "parent_kind": "domain", "parent_id": 1, "position": 9 },
+            { "op": "duplicate", "kind": "project", "id": project, "parent_kind": "domain", "parent_id": crate::helpers::seeded(1), "position": 9 },
             { "op": "move", "kind": "goal", "id": goal, "parent_kind": "project", "parent": project, "position": 1 },
             { "op": "move", "kind": "info", "id": info, "parent_kind": "goal", "parent": goal, "position": 0 },
-            { "op": "move", "kind": "project", "id": project, "parent_kind": "domain", "parent": 1, "position": 3 },
+            { "op": "move", "kind": "project", "id": project, "parent_kind": "domain", "parent": crate::helpers::seeded(1), "position": 3 },
         ]),
     )
     .await
@@ -290,7 +303,7 @@ async fn a_write_can_name_the_node_an_earlier_write_made() {
         &app,
         "insert-parent",
         json!([
-            { "op": "create_task", "request": { "title": "Parent", "parent_type": "domain", "parent_id": 1 } },
+            { "op": "create_task", "request": { "title": "Parent", "parent_type": "domain", "parent_id": crate::helpers::seeded(1) } },
             { "op": "move", "kind": "task", "id": child.id, "parent_kind": "task", "parent": { "step": 0 }, "position": 0 },
         ]),
     )
@@ -349,7 +362,7 @@ async fn a_write_that_may_be_refused_is_taken_back_alone_and_the_rest_lands() {
         &app,
         "plan-tasks",
         json!([
-            { "op": "update_task", "id": 99999, "request": { "title": "nobody" }, "may_be_refused": true },
+            { "op": "update_task", "id": tid(99999), "request": { "title": "nobody" }, "may_be_refused": true },
             { "op": "update_task", "id": kept.id, "request": { "title": "Renamed" }, "may_be_refused": true },
         ]),
     )
@@ -374,7 +387,7 @@ async fn a_task_save_writes_the_task_and_what_hangs_on_it_together() {
         &app,
         "save-project",
         json!([
-            { "op": "create_domain", "request": { "title": "Tag", "description": null, "subtype": "tag", "parent_id": 1, "status": null, "knowledge_base_directory": null } },
+            { "op": "create_domain", "request": { "title": "Tag", "description": null, "subtype": "tag", "parent_id": crate::helpers::seeded(1), "status": null, "knowledge_base_directory": null } },
             { "op": "update_domain", "id": { "step": 0 }, "request": { "title": "Renamed tag" } },
         ]),
     )
@@ -414,7 +427,7 @@ async fn the_goal_wait_and_info_saves() {
         &app,
         "save-wait",
         json!([
-            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": 1 } },
+            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": crate::helpers::seeded(1) } },
             { "op": "update_goal", "id": { "step": 0 }, "request": { "title": "Goal again" } },
         ]),
     )
@@ -446,10 +459,10 @@ async fn a_new_habit_and_its_save_with_archive_and_new() {
         &app,
         "new-flow",
         json!([
-            { "op": "create_flow", "request": { "title": "Morning", "instance_type": "task", "parent_type": "aspect", "parent_id": 1, "flow_duration_n": 1, "flow_duration_kind": "day" } },
+            { "op": "create_flow", "request": { "title": "Morning", "instance_type": "task", "parent_type": "aspect", "parent_id": crate::helpers::seeded(1), "flow_duration_n": 1, "flow_duration_kind": "day" } },
             { "op": "update_flow", "id": { "step": 0 }, "request": { "title": "Morning routine" } },
             { "op": "set_flow_recurrence", "flow_id": { "step": 0 }, "request": { "start_scope_id": { "kind": "day", "date": "2026-01-05" }, "gap_n": null, "gap_kind": null, "end_scope_id": null, "clock": "interval", "miss_policy": null } },
-            { "op": "create_flow_item", "item_type": "flow_task", "request": { "flow_id": 0, "title": "placeholder", "parent_type": "flow", "parent_id": 0 }, "may_be_refused": true },
+            { "op": "create_flow_item", "item_type": "flow_task", "request": { "flow_id": tid(0), "title": "placeholder", "parent_type": "flow", "parent_id": tid(0) }, "may_be_refused": true },
         ]),
     )
     .await
@@ -508,10 +521,10 @@ async fn every_write_a_gesture_makes_runs_against_its_kind() {
         &app,
         "save-commitment",
         json!([
-            { "op": "create_commitment", "request": { "title": "Rule", "parent_type": "domain", "parent_id": 1, "time_scope": day }, "may_be_refused": true },
+            { "op": "create_commitment", "request": { "title": "Rule", "parent_type": "domain", "parent_id": crate::helpers::seeded(1), "time_scope": day }, "may_be_refused": true },
             { "op": "update_commitment", "id": { "step": 0 }, "request": { "title": "Rule again" }, "may_be_refused": true },
             { "op": "create_expectation", "request": { "title": "Reply", "parent_type": "task", "parent_id": holder.id } },
-            { "op": "create_flow", "request": { "title": "Plan", "instance_type": "goal", "parent_type": "aspect", "parent_id": 1, "flow_duration_n": 1, "flow_duration_kind": "week" } },
+            { "op": "create_flow", "request": { "title": "Plan", "instance_type": "goal", "parent_type": "aspect", "parent_id": crate::helpers::seeded(1), "flow_duration_n": 1, "flow_duration_kind": "week" } },
         ]),
     )
     .await
@@ -538,19 +551,19 @@ async fn every_write_a_gesture_makes_runs_against_its_kind() {
         &app,
         "paste",
         json!([
-            { "op": "move", "kind": "expectation", "id": wait, "parent_kind": "domain", "parent": 1, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "expectation", "id": wait, "parent_kind": "domain", "parent": crate::helpers::seeded(1), "position": 0, "may_be_refused": true },
             { "op": "move", "kind": "commitment", "id": { "step": 0 }, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
-            { "op": "duplicate", "kind": "flow", "id": flow, "parent_kind": "aspect", "parent_id": 1, "position": 5 },
+            { "op": "duplicate", "kind": "flow", "id": flow, "parent_kind": "aspect", "parent_id": crate::helpers::seeded(1), "position": 5 },
             { "op": "duplicate", "kind": "flow_goal", "id": goal_item, "parent_kind": "flow", "parent_id": flow, "position": 2 },
             { "op": "move", "kind": "flow_goal", "id": goal_item, "parent_kind": "flow", "parent": flow, "position": 3 },
-            { "op": "move", "kind": "flow", "id": flow, "parent_kind": "domain", "parent": 1, "position": 6 },
+            { "op": "move", "kind": "flow", "id": flow, "parent_kind": "domain", "parent": crate::helpers::seeded(1), "position": 6 },
             { "op": "move", "kind": "flow", "id": flow, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
-            { "op": "move", "kind": "info", "id": 1, "parent_kind": "flow", "parent": flow, "position": 0, "may_be_refused": true },
-            { "op": "move", "kind": "flow_task", "id": 1, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
-            { "op": "move", "kind": "aspect", "id": 1, "parent_kind": "domain", "parent": 1, "position": 0, "may_be_refused": true },
-            { "op": "duplicate", "kind": "commitment", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
-            { "op": "duplicate", "kind": "flow_task", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
-            { "op": "move", "kind": "task", "id": "00000000-0000-5000-8000-000000000000", "parent_kind": "info", "parent": 1, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "info", "id": tid(1), "parent_kind": "flow", "parent": flow, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "flow_task", "id": tid(1), "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "aspect", "id": tid(1), "parent_kind": "domain", "parent": crate::helpers::seeded(1), "position": 0, "may_be_refused": true },
+            { "op": "duplicate", "kind": "commitment", "id": tid(1), "parent_kind": "task", "parent_id": crate::helpers::seeded(1), "position": 0, "may_be_refused": true },
+            { "op": "duplicate", "kind": "flow_task", "id": tid(1), "parent_kind": "task", "parent_id": crate::helpers::seeded(1), "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "task", "id": "00000000-0000-8000-8000-000000000000", "parent_kind": "info", "parent": crate::helpers::seeded(1), "position": 0, "may_be_refused": true },
         ]),
     )
     .await
@@ -558,7 +571,7 @@ async fn every_write_a_gesture_makes_runs_against_its_kind() {
     let derived = gesture(
         &app,
         "save-wait",
-        json!([{ "op": "update_info", "id": "00000000-0000-5000-8000-000000000000", "request": { "body": "x" }, "may_be_refused": true }]),
+        json!([{ "op": "update_info", "id": "00000000-0000-8000-8000-000000000000", "request": { "body": "x" }, "may_be_refused": true }]),
     )
     .await
     .unwrap();

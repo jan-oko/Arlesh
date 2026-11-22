@@ -337,6 +337,7 @@ fn an_event_moves_the_head_and_keeps_the_sums_of_the_same_run() {
         revision: 1,
         hash: 5,
         sums: [("tasks".to_owned(), 5)].into(),
+        source: None,
     });
     let change = |epoch: &str, seq| BoardChange {
         epoch: epoch.to_owned(),
@@ -346,6 +347,7 @@ fn an_event_moves_the_head_and_keeps_the_sums_of_the_same_run() {
         hash: Some(9),
         changes: None,
         reload: false,
+        origin: None,
     };
 
     backend.note_change(&change("run1", 3));

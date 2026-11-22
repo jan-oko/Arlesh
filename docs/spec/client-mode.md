@@ -313,6 +313,136 @@ Since a hash is compared only at the same `seq`, and a tick that changes the boa
 publication of its own, time passing never reads as divergence: a window that has not yet applied
 the tick is behind, not wrong.
 
+### The source rows (ADR 0017, Task `ccc`)
+
+An event can also say which **source rows** its writes changed, for a client that keeps a Replica of
+the board (the stored rows, not the derived nodes above). It is the event's `source`, and **only a
+stream that asks for it gets it**: `GET /events/changes?rows=true`. Without `rows`, the event and the
+head are byte for byte what apps before the Replica read, so existing clients are unaffected.
+
+```json
+"source":{"base":1228,"upto":1234,"hash":"9ac1d0e55b7c2f31",
+          "rows":[{"table":"tasks","rowid":7,"seq":1230,"op":"set","image":{"id":"…","title":"Write the ADR","…":"…"}},
+                  {"table":"tasks","rowid":9,"seq":1234,"op":"del"}]}
+```
+
+- **Rows.** One entry per row that changed since the publication before, as it last became (`set`
+  with its after-image) or as gone (`del`), in log order. They include undo and redo, cascaded
+  deletions and rows a trigger wrote, because they are written by triggers, not by commands
+  ([ADR 0017](../adr/0017-client-board-replica.md), decision 5). A row is named by its table and its
+  SQLite `rowid` (see *Why rowid*, below). An update that changes no column of the image logs nothing.
+- **Position.** `seq` is the row's place in the **change log**, which is monotonic for the life of
+  the database file. `base` is the position of the publication before and `upto` the position after
+  this one. A client holding rows at position `p` **applies** an event with `base <= p < upto`
+  (skipping rows whose `seq <= p`) and moves to `upto`; an event with `upto <= p` is already held;
+  `base > p` means it missed an event and fetches a snapshot. An event whose `base == upto` carries no
+  rows, so removing it loses nothing. The last event has no successor to show a gap, so the head
+  does: its `source.upto` is ahead of the client's.
+- **Hash.** `hash` is the [source hash](#the-source-hash) of every replicated row at `upto`. After
+  applying an event the client's own hash must equal it.
+- **No `source`.** An event with none says the rows cannot be applied: the client fetches a
+  snapshot. The publisher sends none when it published no rows (another publisher holds the
+  capture), when its hash disagreed with the database's (below), when the rows alone were over
+  256 KiB, and when the ring's budget for sources has moved past that event. Only the rows are ever
+  dropped for size: the derived `changes` decide `reload` exactly as before, so rows never turn an
+  event an old app could apply into a reload.
+- **The head** (`board-head`) carries `source: {upto, hash}` of the latest publication, on a
+  `?rows=true` stream only.
+
+**The published hash is the database's, not the feed's.** On every turn (each write, and each
+minute) the publisher reads the replicated rows in the same write transaction in which it drains the
+log, and compares their hash with the one it keeps from the log. A difference means a change the log
+never held (a writer that was not the publisher, a lapsed lease, a log emptied by hand): it logs an
+error, starts again from the rows, states the **database's** hash on the head and on the event, and
+sends that event with no `source`. A Replica that applied the feed faithfully then disagrees with the
+head, and fetches a snapshot.
+
+**The capture.** The triggers write the log only while a publisher holds a **lease** on it
+(`change_capture.leased_until` in the future, `owner` naming the holder). The server's publisher takes
+it (clearing the log and seeding its hash from every row), renews it on every turn, and gives it up
+at a clean shutdown. A publisher that finds another's valid lease is refused: it neither drains nor
+takes the capture, and publishes no `source`. A publisher without rows (the desktop's Standalone one)
+never touches it. A crashed server's lease runs out in 3 minutes, so the log stops growing by itself
+and the next publisher starts again from the rows. A writer that is not a publisher is never
+captured, which is a row changed behind the feed: the hash catches it.
+
+**Always a full board** (the user, 2026-11-13). The server keeps no history of source rows. The log
+is a buffer the publisher empties into each publication, in the transaction that reads it, and a
+restart clears it, so nothing accumulates. A missed event, a reconnect, a new epoch, a schema
+difference or a hash mismatch are all repaired by fetching the [device
+snapshot](http-api.md#device-snapshot-get-boardsnapshot); a Replica never sends `Last-Event-ID`. The
+live stream is pulled from the 64-event ring of the derived nodes (ADR 0020), which keeps each
+event's `source` while a separate 4 MiB budget lasts, oldest first; an event past it has none, and a
+Replica that finds none fetches a snapshot.
+
+**What apps before the Replica pay.** Nothing per event: they do not ask for `rows`, and the ring's
+event budget (4 MiB) counts the derived part only. They can see one more event than before when a
+publication holds only changed rows and no derived change (a tick that finds rows no announced
+write explained, or a resync): an event with empty `changes`, which they apply as nothing. Writes
+that change no column of an image publish nothing of their own: an agent's `last_seen_at` (rewritten
+by `touch` on every request an agent session makes) is a constant in the image and does not log.
+
+**Revisions and epochs after a restart.** The revision counts committed writes since the server
+started and starts again at 0; the epoch names the run (see [HTTP API](http-api.md#revision-on-every-answer-and-gzip)).
+The change-log position does **not** restart: it lives in the database file. So after a restart a
+client sees a new epoch and fetches a snapshot, and never compares a revision or a position across
+epochs. Within an epoch the publisher reads the revision before it drains the log, so an event at
+revision `r` holds every row of writes `<= r` and perhaps rows of a write the next revision will
+count, which that event then carries empty. The snapshot's `revision` is likewise read before its
+transaction: a write landing mid-read makes it look older than it is, never newer, which only costs
+a client one redundant event, so it is harmless.
+
+**Which tables.** Every table the undo journal covers, less the server-only ones
+(`arlesh_core::replication::UNREPLICATED_TABLES`): the credentials and pairings (`server_tokens`,
+`pairing_pins`, `agent_pins`, `agent_pin_failures`, `connect_tokens`), the accounts' usage reports
+(`agent_account_usage`), the push registrations (`push_devices`, `push_sent`), the journal and the
+change log itself. `answer_drafts` travels (a device shows what it staged); keeping it from agents
+is the MCP's job ([ADR 0021](../adr/0021-staged-answers-sent-as-a-batch.md)).
+
+**Stand-ins in `agents`.** `agents.token_sha256` is a credential and is `NOT NULL UNIQUE`, so its
+image holds `'redacted:' || id` (unique, deterministic, secret-free) and the row applies under the
+**same schema** a device has: no schema difference, no special case for the Replica. `last_seen_at`
+is the constant `null`. The hash covers these stand-ins, so both sides agree on them.
+
+**How a Replica applies rows.** With foreign keys off, `INSERT OR REPLACE` by explicit `rowid`, and
+`DELETE` by `rowid`; capture stays off on the Replica. A unique key that moves between rows within one
+event (two agents swapping names) converges once every row of the event is applied, because a
+conflicting row is replaced and then set again by its own entry.
+
+**Why rowid, and what must never be done.** A row is named by its `rowid`, which is implicit on every
+table (since 0107 made the keys TEXT): it is what every table has, it survives a changed primary key,
+and the triggers can always name it. So nothing may renumber rowids or delete a row without a trigger
+seeing it: **no `VACUUM`, no table rebuild outside a migration that regenerates the triggers, no
+`INSERT OR REPLACE` / `REPLACE INTO` / `ON CONFLICT REPLACE` against a replicated table, no WITHOUT
+ROWID replicated table.** `replication::tests` fails if non-test code issues `VACUUM` or a replacing
+insert, or a replicated table is WITHOUT ROWID. (Keying rows by their primary keys instead would
+need a per-table key list in the triggers, the snapshot and the digests, and composite keys for the
+link tables; it is possible, and not done.)
+
+**Canonical text assumptions.** The image is the text of SQLite's `json_object` over the columns in
+`pragma_table_info` order. Server and client must therefore run a SQLite whose `json_object` prints
+the same text (integers, escaping, and reals to 15 significant digits) and have the same column order
+for every replicated table: one schema version, from the chain or the baseline alike (a test pins the
+order for both). A client whose text differed would mismatch on every event and fetch a snapshot each
+time.
+
+### The source hash
+
+The **source hash** fingerprints the replicated rows so a client can catch a row that changed behind
+the feed (a writer that is not the server's publisher). It is separate from the board hash above,
+which covers the derived board.
+
+- **Covers** every row of every replicated table.
+- **Canonical form.** A row's image is SQLite's own `json_object('column', value, …)` over the
+  table's columns in schema order, less the omitted ones. The change-log triggers and the snapshot
+  query write it; a Replica reads its own rows back with `arlesh_core::replication::row_query`.
+- **Digest.** FNV-1a 64 over `table`, a zero byte, the `rowid` in decimal, a zero byte and the image
+  (UTF-8). The hash is the sum of every row's digest, wrapping at 2^64, as 16 lowercase hex digits.
+  A sum, so it is independent of row order and kept current by adding and removing rows.
+- **Where it is computed.** `arlesh_core::replication::rules::hash` (the pure part; `board_hash`)
+  and `replication::board_hash` (over a database's rows): the server's publisher and a Replica call
+  the same code.
+
 **Catching up.** The server keeps its last 64 change events. A stream that reconnects with
 `Last-Event-ID` is sent the ones it missed; if they are gone, or the epoch changed, it is sent one
 `reload` event. So a dropped connection costs the events, not the board.
@@ -580,11 +710,19 @@ settings; `docker login ghcr.io` with a token that can read packages until then.
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.
+It became 2 when ids became UUIDs (ADR 0017): every id on the wire is a string, so an older app and a
+newer server, or the reverse, cannot read each other's rows.
 On a mismatch the app goes read-only and says which side to update. `/health` is checked when the app
 starts following the server and on every reconnect of the change stream, so a server upgraded
 underneath a running app is noticed. A route the server lacks answers 404 with `details.reason =
 "unknown_route"`, which the window shows as a refusal of that one action rather than a failure of
 the board.
+
+The sync surface (Task `ccc`, PR 2) did not bump it either: `source` on events, `source` on the
+head and `GET /board/snapshot` are additive, and an app that does not know them ignores them. What
+it does need is a **schema version** (migration 0111 added the change log), and ADR 0017 decision
+13 says client and server must share one: the snapshot carries `schema_version`, the newest migration
+the server has applied, and a Replica compares it with its own.
 
 Changed nodes (ADR 0020) did not bump it: they are additive both ways. An app that knows only
 revisions reloads on each `board-changed` and ignores `board-head`; an app on a server without
@@ -852,7 +990,36 @@ More of the tool, for trying pairing and the phone build:
   or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
   so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
   gone are listed in the plan and pruned too. Without `gh`, box cannot know which PRs are open,
-  so it skips the worktree part and prunes only those apps.
+  so it skips the worktree part and the data below, and prunes only those apps.
+- **`prune` removes the data box keeps per branch; `clean` does not.** Per branch box keeps: the
+  server's directory `<instances>/.servers/<branch>/` (database, logs, port, pid, host), the app
+  instance's directory `<instances>/<branch>/` (data, config, logs, port, pids, the kept binary and
+  APK), its entries in `state.json` (build stamps, install and provisioning records, the token
+  holders of its server) and its cached CI APKs in `$XDG_STATE_HOME/arlesh/box/ci/`. `prune` deletes
+  all of it for each worktree it removes, once `git worktree remove` has succeeded, and for the
+  leftovers of branches pruned earlier: any such directory, entry or APK whose branch has no
+  worktree (anywhere, the main checkout included) and no open PR. **Only for merged branches**: the
+  branch is merged into `origin/dev` or `origin/master`, or its PR was merged (the test that decides
+  "local branch: delete"). A leftover's branch is found from the local and origin refs whose name
+  maps to its folder name, else the name is looked up as a PR head; a closed unmerged PR or none is
+  "not merged". An unmerged branch keeps its data ("kept: not merged"); `prune --all-data` also
+  takes those, each marked "(unmerged)" in the plan, and a cached CI APK whose branch is unknown.
+  The plan lists each path with its size and the total, under the same prompt, `-y` and `--dry-run`.
+  A worktree that stays (open PR, `dev`, `master`, dirty, unpushed, current directory, or one
+  `git worktree remove` refused) keeps its data. Data goes only after the branch's server and app
+  stopped: a server or app still alive (its pid, or any holder of its database lock) is not deleted
+  under, a failed kill keeps the pid file, and a leftover whose app is running is listed as kept.
+  Just before each deletion prune re-reads the open PRs and the worktrees and keeps the data of a
+  branch that has gained either. No data is removed when `gh` fails, answers with something that is
+  not a list of PRs, or with a list as long as its limit (200: it may be cut), or when `state.json`
+  cannot be read (it is never replaced by an empty one). A directory is box's only if it holds the
+  integer `port` file box writes into each instance and server directory; anything else under the
+  instances directory is never listed or removed, whatever `ARLESH_INSTANCES` points at. Each path
+  is built from the branch's name alone, must be a plain child of the instances or state directory
+  and not a symlink, or it is refused. A deletion that fails partway prints "partly removed" with
+  what is left, keeps that branch's `state.json` entries and makes prune exit non-zero. `clean`
+  removes only the binary, APK, CI APKs and build stamps and keeps the data. Shared caches (the
+  cargo target, sccache, `box.env`, the keystore, the device registry) are never touched.
 
 ## Not in phase 1
 

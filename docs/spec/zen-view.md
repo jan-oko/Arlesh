@@ -22,7 +22,7 @@ Exactly as the [Plan View is always Plan](plan-view.md#always-the-plan-preset), 
 - The top bar's preset control shows **Do** while this view is active; the other presets are drawn
   but disabled, each saying on hover that the Zen View always reads under Do, and so does the
   closed control.
-- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U` and `Alt+E`, change nothing
+- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U`, `Alt+W` and `Alt+E`, change nothing
   here and say so in a toast. They are left off this view's cheat-sheet.
 - The tab's own preset is **not overwritten**: the view reads the board *as* Do, and switching to
   another view gives the tab its preset back. The Plan preset's scope narrowing is not read either,
@@ -125,7 +125,9 @@ its **On Agent** pill is on. A
 its status with **Started's glyph** (the ring with a hollow centre; ruled by the user, 2026-10-02)
 whether or not badges are shown, and draws the agent's open question — its title, its note on hover — with
 an **answer field**: **Send**, or `Ctrl+Enter` in the field, stores the answer and releases the
-question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on). An On
+question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on).
+The field can also **Stage** the answer and send it later with the others ([Resources § Staged
+answers](resources.md#staged-answers)). A staged card stays in the grid, as Review. An On
 Agent card says its status with the **On Agent glyph** (a small bot head inside the ring).
 
 **The Review pill** (Task ac8, ruled by the user, 2026-10-09). The Zen View's Filter menu carries a

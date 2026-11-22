@@ -2,7 +2,7 @@ import { invoke } from "./gesture";
 
 /** A knowledge-base Person — someone a Task can be delegated to. */
 export interface Person {
-  id: number;
+  id: string;
   name: string;
 }
 

@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
@@ -55,14 +56,14 @@ function installBackend(refuse: (args: unknown) => string | null = () => null): 
         const refused = refuse(write);
         if (refused !== null) return { refused: { kind: "invalid_request", message: refused } };
         writes.push({ command: String(Reflect.get(Object(step), "op")), args: write, gesture: current });
-        return { id: 1 };
+        return { id: storedRowId(1) };
       });
       return Promise.resolve(answers);
     }
     const refusal = refuse(args);
     if (refusal !== null) return Promise.reject(new Error(refusal));
     writes.push({ command, args, gesture: current });
-    return Promise.resolve({ id: 1 });
+    return Promise.resolve({ id: storedRowId(1) });
   });
   return { writes, gestures: () => started };
 }
@@ -94,20 +95,20 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 describe("useQuickPlan — opening", () => {
   it("opens on a Task, bound to its Time Scope and holding its Plan", () => {
-    const { result } = setup([node("task-5", "task", { timeScope: JUNE, plan: JUNE_3 })]);
-    act(() => { result.current.open(["task-5"]); });
-    expect(result.current.target).toMatchObject({ anchorId: "task-5", value: JUNE_3, timeScope: JUNE, skipped: 0 });
+    const { result } = setup([node(`task-${storedRowId(5)}`, "task", { timeScope: JUNE, plan: JUNE_3 })]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
+    expect(result.current.target).toMatchObject({ anchorId: `task-${storedRowId(5)}`, value: JUNE_3, timeScope: JUNE, skipped: 0 });
   });
 
   it("lifts the Time Scope bound for an Overdue Task, as the editor does", () => {
-    const { result } = setup([node("task-5", "task", { timeScope: JUNE, overdue: true, status: "todo" })]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result } = setup([node(`task-${storedRowId(5)}`, "task", { timeScope: JUNE, overdue: true, status: "todo" })]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     expect(result.current.target?.timeScope).toBeNull();
   });
 
   it("refuses a node that holds no Plan by name, and opens nothing", () => {
-    const { result, showToast } = setup([node("goal-2", "goal", { title: "Ship v1" })]);
-    act(() => { result.current.open(["goal-2"]); });
+    const { result, showToast } = setup([node(`goal-${storedRowId(2)}`, "goal", { title: "Ship v1" })]);
+    act(() => { result.current.open([`goal-${storedRowId(2)}`]); });
     expect(result.current.target).toBeNull();
     expect(lastToast(showToast)).toBe('warnings:quickPlanNotTask {"title":"Ship v1"}');
   });
@@ -120,16 +121,16 @@ describe("useQuickPlan — opening", () => {
   });
 
   it("refuses a selection with no Task in it at all", () => {
-    const { result, showToast } = setup([node("goal-2", "goal"), node("domain-3", "domain")]);
-    act(() => { result.current.open(["goal-2", "domain-3"]); });
+    const { result, showToast } = setup([node(`goal-${storedRowId(2)}`, "goal"), node(`domain-${storedRowId(3)}`, "domain")]);
+    act(() => { result.current.open([`goal-${storedRowId(2)}`, `domain-${storedRowId(3)}`]); });
     expect(result.current.target).toBeNull();
     expect(lastToast(showToast)).toBe("warnings:quickPlanNoTasks");
   });
 
   it("Escape — closing — writes nothing", () => {
     const backend = installBackend();
-    const { result } = setup([node("task-5", "task")]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result } = setup([node(`task-${storedRowId(5)}`, "task")]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     act(() => { result.current.close(); });
     expect(result.current.target).toBeNull();
     expect(backend.writes).toEqual([]);
@@ -139,10 +140,10 @@ describe("useQuickPlan — opening", () => {
 describe("useQuickPlan — writing", () => {
   it("sets the Plan through update_task, the editor's own write, and reloads", async () => {
     const backend = installBackend();
-    const { result, settle, showToast } = setup([node("task-5", "task")]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result, settle, showToast } = setup([node(`task-${storedRowId(5)}`, "task")]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
-    expect(backend.writes).toEqual([{ command: "update_task", args: { id: 5, request: { plan: JUNE_3 } }, gesture: expect.any(String) }]);
+    expect(backend.writes).toEqual([{ command: "update_task", args: { id: storedRowId(5), request: { plan: JUNE_3 } }, gesture: expect.any(String) }]);
     expect(settle).toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
     expect(result.current.target).toBeNull();
@@ -150,10 +151,10 @@ describe("useQuickPlan — writing", () => {
 
   it("clears the Plan with null", async () => {
     const backend = installBackend();
-    const { result } = setup([node("task-5", "task", { plan: JUNE_3 })]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result } = setup([node(`task-${storedRowId(5)}`, "task", { plan: JUNE_3 })]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     await act(async () => { await result.current.apply(null); });
-    expect(backend.writes.map((w) => w.args)).toEqual([{ id: 5, request: { plan: null } }]);
+    expect(backend.writes.map((w) => w.args)).toEqual([{ id: storedRowId(5), request: { plan: null } }]);
   });
 
   it("plans a Habit occurrence on its own row id — the backend writes its overlay", async () => {
@@ -167,16 +168,16 @@ describe("useQuickPlan — writing", () => {
 
   it("says a backlogged Task came out of the Backlog", async () => {
     installBackend();
-    const { result, showToast } = setup([node("task-5", "task", { backlogged: true })]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result, showToast } = setup([node(`task-${storedRowId(5)}`, "task", { backlogged: true })]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(lastToast(showToast)).toBe("warnings:backlogClearedByPlan");
   });
 
   it("shows the backend's refusal — a Plan outside the Task's Time Scope — and writes nothing", async () => {
     const backend = installBackend(() => "plan must fall within the task's time scope");
-    const { result, settle, showToast } = setup([node("task-5", "task", { title: "Ship it", timeScope: JUNE })]);
-    act(() => { result.current.open(["task-5"]); });
+    const { result, settle, showToast } = setup([node(`task-${storedRowId(5)}`, "task", { title: "Ship it", timeScope: JUNE })]);
+    act(() => { result.current.open([`task-${storedRowId(5)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(backend.writes).toEqual([]);
     expect(settle).not.toHaveBeenCalled();
@@ -189,13 +190,13 @@ describe("useQuickPlan — writing", () => {
 describe("useQuickPlan — a multi-selection", () => {
   it("plans every Task in it as one Gesture — one Ctrl+Z", async () => {
     const backend = installBackend();
-    const { result } = setup([node("task-1", "task"), node("task-2", "task"), node("task-3", "task")]);
-    act(() => { result.current.open(["task-2", "task-1", "task-3"]); });
+    const { result } = setup([node(`task-${storedRowId(1)}`, "task"), node(`task-${storedRowId(2)}`, "task"), node(`task-${storedRowId(3)}`, "task")]);
+    act(() => { result.current.open([`task-${storedRowId(2)}`, `task-${storedRowId(1)}`, `task-${storedRowId(3)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(backend.writes.map((w) => w.args)).toEqual([
-      { id: 2, request: { plan: JUNE_3 } },
-      { id: 1, request: { plan: JUNE_3 } },
-      { id: 3, request: { plan: JUNE_3 } },
+      { id: storedRowId(2), request: { plan: JUNE_3 } },
+      { id: storedRowId(1), request: { plan: JUNE_3 } },
+      { id: storedRowId(3), request: { plan: JUNE_3 } },
     ]);
     // One Gesture holds every write; the clamp prompt's read before it holds none.
     const held = new Set(backend.writes.map((w) => w.gesture));
@@ -205,20 +206,20 @@ describe("useQuickPlan — a multi-selection", () => {
 
   it("plans the Tasks and names the nodes it left alone, never dropping them in silence", async () => {
     const backend = installBackend();
-    const { result, showToast } = setup([node("task-1", "task"), node("goal-2", "goal")]);
-    act(() => { result.current.open(["goal-2", "task-1"]); });
-    expect(result.current.target).toMatchObject({ anchorId: "goal-2", skipped: 1 });
+    const { result, showToast } = setup([node(`task-${storedRowId(1)}`, "task"), node(`goal-${storedRowId(2)}`, "goal")]);
+    act(() => { result.current.open([`goal-${storedRowId(2)}`, `task-${storedRowId(1)}`]); });
+    expect(result.current.target).toMatchObject({ anchorId: `goal-${storedRowId(2)}`, skipped: 1 });
     await act(async () => { await result.current.apply(JUNE_3); });
-    expect(backend.writes.map((w) => w.args)).toEqual([{ id: 1, request: { plan: JUNE_3 } }]);
+    expect(backend.writes.map((w) => w.args)).toEqual([{ id: storedRowId(1), request: { plan: JUNE_3 } }]);
     expect(lastToast(showToast)).toBe('warnings:quickPlanSkippedNotTask {"count":1}');
   });
 
   it("keeps the Tasks the backend accepted when it refuses one, and counts the refusal", async () => {
-    const backend = installBackend((args) => (JSON.stringify(args).includes('"id":2') ? "outside its parent's plan" : null));
-    const { result, showToast } = setup([node("task-1", "task"), node("task-2", "task", { title: "Two" })]);
-    act(() => { result.current.open(["task-1", "task-2"]); });
+    const backend = installBackend((args) => (JSON.stringify(args).includes(`"id":"${storedRowId(2)}"`) ? "outside its parent's plan" : null));
+    const { result, showToast } = setup([node(`task-${storedRowId(1)}`, "task"), node(`task-${storedRowId(2)}`, "task", { title: "Two" })]);
+    act(() => { result.current.open([`task-${storedRowId(1)}`, `task-${storedRowId(2)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
-    expect(backend.writes.map((w) => w.args)).toEqual([{ id: 1, request: { plan: JUNE_3 } }]);
+    expect(backend.writes.map((w) => w.args)).toEqual([{ id: storedRowId(1), request: { plan: JUNE_3 } }]);
     expect(lastToast(showToast)).toBe(
       `warnings:quickPlanFailedSome {"title":"Two","message":"outside its parent's plan","count":1,"total":2}`,
     );
@@ -227,9 +228,9 @@ describe("useQuickPlan — a multi-selection", () => {
   it("counts every Task a batch took out of the Backlog", async () => {
     installBackend();
     const { result, showToast } = setup([
-      node("task-1", "task", { backlogged: true }), node("task-2", "task", { backlogged: true }),
+      node(`task-${storedRowId(1)}`, "task", { backlogged: true }), node(`task-${storedRowId(2)}`, "task", { backlogged: true }),
     ]);
-    act(() => { result.current.open(["task-1", "task-2"]); });
+    act(() => { result.current.open([`task-${storedRowId(1)}`, `task-${storedRowId(2)}`]); });
     await act(async () => { await result.current.apply(JUNE_3); });
     expect(lastToast(showToast)).toBe('warnings:backlogClearedByPlanMany {"count":2}');
   });

@@ -90,7 +90,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Agent** — An AI session that attached to the MCP with a one-time PIN (or its agent token): a name, an **Account** label, a session id and at most one **Claim**. Kept in the database (`agents`), journaled: the user's Settings edits to it and its Claim are undoable, and its own writes are journaled as `mcp` and never enter the Undo Stack. Listed in Settings → Agents, apart from the Devices list. Not a device and not a person. An unattached MCP session is not an Agent: it may call only the attach tool. The MCP session is bound to its Agent; a subagent sharing the connection is told apart as a **Child Agent** by its **Sub-token**, and a call without one runs as the session's Agent. See ADR 0018.
 
-**Child Agent** — A subagent of an attached session, registered as an Agent of its own under the session's Agent (`agents.parent_id`) and listed nested under it in Settings → Agents, named from the subagent's description. It uses its parent's account, so capacity and locks follow the parent; it has no lock of its own and cannot have children. It holds at most one **Sub-Claim**. The arlesh-notify mod registers it when the subagent starts, pauses its Sub-Claim when the subagent stops and resumes it when the subagent is resumed. It is removed when its parent is removed, when the Task its Sub-Claim names is set Done (stored status), in the same Gesture, or when its subagent stops holding nothing open (no Task still On Agent, no open wait under it). See ADR 0019.
+**Child Agent** — A subagent of an attached session, registered as an Agent of its own under the session's Agent (`agents.parent_id`) and listed nested under it in Settings → Agents, named from the subagent's description. It uses its parent's account, so capacity and locks follow the parent; it has no lock of its own and cannot have children. It holds at most one **Sub-Claim**. The arlesh mod registers it when the subagent starts, pauses its Sub-Claim when the subagent stops and resumes it when the subagent is resumed. It is removed when its parent is removed, when the Task its Sub-Claim names is set Done (stored status), in the same Gesture, or when its subagent stops holding nothing open (no Task still On Agent, no open wait under it). See ADR 0019.
 
 **Sub-Claim** — A Child Agent's Claim. It must lie inside its parent's Claim, which plays for the child the part the user's MCP roots play for an Agent; it is not an overlap with the parent's Claim, and the parent keeps its whole Claim, the Sub-Claim included. Overlap and shadowing are judged among one parent's children only. It reads Paused while its own Claim or its parent's is paused, and Unreachable while the parent sees nothing or the Sub-Claim has left the parent's Claim.
 
@@ -194,9 +194,9 @@ How the board travels from where it is derived to the windows that draw it ([Cli
 
 ## Replication
 
-Designed in [ADR 0017](docs/adr/0017-client-board-replica.md), not built yet.
+Designed in [ADR 0017](docs/adr/0017-client-board-replica.md). Built so far: UUID identity, and the server's sync surface (Change Log rows on each event, Device Snapshot, Source Hash). The Replica itself is not.
 
-**Replica** — A client's own copy of the board, running the same core as the server. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
+**Replica** — A client's own copy of the board, running the same core as the server, in memory. It is written to storage on the startup fetch and when the app quits normally, and a launch shows that stored board first, then fetches a whole one. It is disposable: the server stays the truth, and a snapshot repairs anything. _Avoid_: cache, shadow board, local database (that is Standalone's board).
 
 **Prediction** — A write run on the Replica before the server has answered it. What it shows is what the board will look like if the server agrees. _Avoid_: optimistic patch, speculation.
 
@@ -204,11 +204,13 @@ Designed in [ADR 0017](docs/adr/0017-client-board-replica.md), not built yet.
 
 **Local Refusal** — A write the Replica rejects. It is never sent; the user retries once the board has synced. _Avoid_: client-side validation.
 
-**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas sync from. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
+**Change Log** — The server's record of which rows each revision changed, and what they became. It is what Replicas hear live changes from, and it is written by triggers into a buffer that the publisher empties into each live event (`source`): the server keeps no history of it. Unlike the Undo Journal it includes undo and redo, and it exists to tell other devices, not to reverse anything.
 
-**Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and falls back to one when it cannot prove it is current. _Avoid_: backup (that is the administrator's).
+**Device Snapshot** — A whole board for one device, carrying no credentials. A Replica starts from one, and repairs any gap with one: a missed revision, a reconnect, a new epoch or a hash mismatch always fetches a whole board, never a catch-up by revision. _Avoid_: backup (that is the administrator's).
 
-**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show.
+**Row Id** — The UUID a stored row is stored under. A caller may choose it when it creates the row (a client does, so both sides hold the same node); otherwise the server mints a UUIDv7. A row from before UUID identity keeps its old `full_id` as its Row Id, which is why short ids and links did not change. A derived row's id is a version-8 UUID, the hash of its value key, so a Row Id alone says whether a row is stored or derived. _Avoid_: row number, integer id (they no longer exist).
+
+**Board Hash** — A fingerprint of the board's contents. A Replica compares it with the server's to catch a difference that revisions cannot show. Two exist: the derived board's (ADR 0020, for the windows) and the **Source Hash** over the replicated stored rows (a sum of per-row FNV-1a 64 digests over each row's canonical `json_object` image and `rowid`), which a Replica computes over its own copy with the same `arlesh-core` code.
 
 ---
 

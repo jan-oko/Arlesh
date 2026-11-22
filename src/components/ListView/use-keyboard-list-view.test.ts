@@ -55,10 +55,18 @@ describe("useKeyboardListView", () => {
     expect(options.onSetStatusMode).not.toHaveBeenCalled();
   });
 
-  it("Alt+E selects the Expectations option", () => {
+  it("Alt+E selects the List View's Review option without writing a shared status mode", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("e", { altKey: true });
+    expect(options.onSetReviewPreset).toHaveBeenCalledTimes(1);
+    expect(options.onSetStatusMode).not.toHaveBeenCalled();
+  });
+
+  it("Alt+W selects the Expectations option", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("w", { altKey: true });
     expect(options.onSetExpectationsPreset).toHaveBeenCalledTimes(1);
   });
 

@@ -9,16 +9,20 @@ from typing import Any
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
-NewTask = Callable[..., int]
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
+NewTask = Callable[..., str]
+Create = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
-def _exists(server: TestClient, task: int) -> bool:
+def _exists(server: TestClient, task: str) -> bool:
     status: int = server.get(f"/tasks/{task}").status_code
     return status == 200
 
 
 def test_a_write_is_one_undo_step_and_redo_puts_it_back(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
 
@@ -40,7 +44,7 @@ def test_an_empty_stack_answers_null(server: TestClient) -> None:
 
 
 def test_each_client_undoes_only_its_own_writes(
-    server: TestClient, tokens: DatabaseTokenStore, domain: int, new_task: NewTask
+    server: TestClient, tokens: DatabaseTokenStore, domain: str, new_task: NewTask
 ) -> None:
     mine = new_task(domain, "Mine")
     phone = {"Authorization": f"Bearer {tokens.add('phone')}"}
@@ -57,7 +61,7 @@ def test_each_client_undoes_only_its_own_writes(
 
 
 def test_deleting_several_nodes_is_one_undo_step(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     nodes: list[dict[str, Any]] = [{"kind": "task", "id": first}, {"kind": "task", "id": second}]
@@ -70,12 +74,13 @@ def test_deleting_several_nodes_is_one_undo_step(
 
 
 def test_a_delete_that_fails_part_way_deletes_nothing(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
 
     refused = server.post(
-        "/gestures/delete-nodes", json=[{"kind": "task", "id": task}, {"kind": "aspect", "id": 1}]
+        "/gestures/delete-nodes",
+        json=[{"kind": "task", "id": task}, {"kind": "aspect", "id": ROOT_ASPECT}],
     )
 
     assert refused.status_code == 400
@@ -83,7 +88,7 @@ def test_a_delete_that_fails_part_way_deletes_nothing(
 
 
 def test_insert_parent_names_the_node_it_made_and_is_one_undo_step(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     child = new_task(domain, "Child")
     steps = [
@@ -113,7 +118,7 @@ def test_insert_parent_names_the_node_it_made_and_is_one_undo_step(
 
 
 def test_a_write_a_gesture_does_not_make_is_refused_before_anything_is_written(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
 
@@ -126,11 +131,16 @@ def test_a_write_a_gesture_does_not_make_is_refused_before_anything_is_written(
 
 
 def test_a_write_that_may_be_refused_is_taken_back_alone(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
     steps = [
-        {"op": "update_task", "id": 99999, "request": {"title": "x"}, "may_be_refused": True},
+        {
+            "op": "update_task",
+            "id": "5b0d3c2e-8f4a-4c1e-9a7b-2d6e1f0a3b4c",
+            "request": {"title": "x"},
+            "may_be_refused": True,
+        },
         {"op": "update_task", "id": task, "request": {"title": "Renamed"}},
     ]
 
@@ -141,7 +151,7 @@ def test_a_write_that_may_be_refused_is_taken_back_alone(
 
 
 def test_archiving_several_nodes_is_one_undo_step(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     steps = [
@@ -160,7 +170,7 @@ def test_archiving_several_nodes_is_one_undo_step(
 
 
 def test_archive_nodes_refuses_a_delete_before_anything_is_written(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
 
@@ -170,3 +180,37 @@ def test_archive_nodes_refuses_a_delete_before_anything_is_written(
 
     assert refused.status_code == 400
     assert _exists(server, task)
+
+
+def test_undoing_a_send_stages_every_answer_again(
+    server: TestClient, create: Create, domain: str, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+    server.post(f"/tasks/{task}/agentic/toggle")
+    waits = [
+        create(
+            "/waits",
+            {
+                "title": title,
+                "parent_type": "task",
+                "parent_id": task,
+                "agentic": True,
+                "agentic_note": "Which?",
+            },
+        )["id"]
+        for title in ("One?", "Two?")
+    ]
+    for wait in waits:
+        server.put(f"/waits/{wait}/draft", json={"answer": "yes"})
+    server.post("/drafts/send", json={"shown": waits})
+
+    undone = server.post("/undo")
+    board = server.get("/board").json()
+    redone = server.post("/redo")
+
+    assert undone.json() is not None
+    assert {e["id"]: e["status"] for e in board["expectations"] if e["id"] in waits} == {
+        wait: "pending" for wait in waits
+    }
+    assert sorted(draft["wait_id"] for draft in board.get("answer_drafts", [])) == sorted(waits)
+    assert redone.json() is not None

@@ -12,12 +12,14 @@
 
 pub(crate) mod agentic;
 mod ancestry;
+pub mod answer_drafts;
 pub mod commitments;
 pub mod compound;
 pub mod done_date;
 pub mod error;
 pub mod expectations;
 pub mod gestures;
+use crate::nodes::id::RowId;
 pub use arlesh_rules::tasks::model;
 pub use rules::lifecycle;
 pub use rules::review;
@@ -113,7 +115,7 @@ pub(crate) fn insertion_position() -> i64 {
 async fn delete_infos_under(
     db: &mut Db<Transactional>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<(), TaskError> {
     let mut stack = db.infos().child_ids(parent_type, parent_id).await?;
     let mut all = Vec::new();
@@ -143,7 +145,7 @@ async fn delete_infos_under(
 async fn delete_node_subtree(
     db: &mut Db<Transactional>,
     root_type: &str,
-    root_id: i64,
+    root_id: RowId,
 ) -> Result<(), TaskError> {
     let mut stack = vec![(root_type.to_string(), root_id)];
     let mut nodes = Vec::new();
@@ -213,9 +215,9 @@ async fn delete_node_subtree(
 pub(crate) async fn delete_children_of(
     db: &mut Db<Transactional>,
     parent_type: &str,
-    parent_id: i64,
+    parent_id: RowId,
 ) -> Result<(), TaskError> {
-    let mut children: Vec<(&str, i64)> = Vec::new();
+    let mut children: Vec<(&str, RowId)> = Vec::new();
     children.extend(
         db.tasks()
             .child_ids(parent_type, parent_id)
@@ -272,13 +274,13 @@ fn time_scope_from_row(
 
 #[derive(sqlx::FromRow)]
 struct TaskRow {
-    id: i64,
+    id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     status: String,
     delegate_kind: Option<String>,
-    delegate_id: Option<i64>,
+    delegate_id: Option<RowId>,
     agentic: Option<bool>,
     asynchronous: bool,
     compound: bool,
@@ -339,10 +341,10 @@ impl From<TaskRow> for Task {
 /// A stored status in whichever model it is spelled in. The CHECK constraint admits only the two
 /// models' spellings, so an unrecognised one is corrupt data: it reads as an ordinary To Do — the
 /// fallback that never claims work is under way — and is logged.
-fn decode_status(id: i64, stored: &str) -> Status {
+fn decode_status(id: RowId, stored: &str) -> Status {
     Status::from_db(stored).unwrap_or_else(|| {
         tracing::warn!(
-            task = id,
+            task = %id,
             status = stored,
             "a task row holds an unknown status"
         );
@@ -357,10 +359,10 @@ fn status_column(status: Status) -> Result<&'static str, TaskError> {
 
 #[derive(sqlx::FromRow)]
 struct GoalRow {
-    id: i64,
+    id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     status: String,
     time_scope_start_id: Option<DbScopeKey>,
     time_scope_end_id: Option<DbScopeKey>,
@@ -401,7 +403,7 @@ impl From<GoalRow> for Goal {
 #[derive(sqlx::FromRow)]
 struct TaskAncestryRow {
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     time_scope_start_id: Option<DbScopeKey>,
     time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
@@ -416,7 +418,7 @@ struct TaskAncestryRow {
 #[derive(sqlx::FromRow)]
 struct GoalAncestryRow {
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     time_scope_start_id: Option<DbScopeKey>,
     time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
@@ -426,9 +428,9 @@ struct GoalAncestryRow {
 
 async fn fetch_task_tag_ids(
     connection: &mut sqlx::SqliteConnection,
-    task_id: i64,
-) -> Result<Vec<i64>, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>(
+    task_id: RowId,
+) -> Result<Vec<RowId>, sqlx::Error> {
+    sqlx::query_scalar::<_, RowId>(
         "SELECT tag_id FROM tags_on_tasks WHERE task_id = ? ORDER BY tag_id",
     )
     .bind(task_id)
@@ -438,9 +440,9 @@ async fn fetch_task_tag_ids(
 
 async fn fetch_goal_tag_ids(
     connection: &mut sqlx::SqliteConnection,
-    goal_id: i64,
-) -> Result<Vec<i64>, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>(
+    goal_id: RowId,
+) -> Result<Vec<RowId>, sqlx::Error> {
+    sqlx::query_scalar::<_, RowId>(
         "SELECT tag_id FROM tags_on_goals WHERE goal_id = ? ORDER BY tag_id",
     )
     .bind(goal_id)
@@ -456,11 +458,11 @@ async fn fetch_goal_tag_ids(
 /// not expressible.
 struct GoalWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
-    reparent: Option<(String, i64)>,
+    reparent: Option<(String, RowId)>,
     /// The parent the merged Time Scope is validated against — the new one when reparenting.
     parent_type: String,
     /// Id of that same parent.
-    parent_id: i64,
+    parent_id: RowId,
     /// Final title.
     title: String,
     /// Final status, as its database string.
@@ -520,11 +522,11 @@ impl GoalWrite {
 /// method that consumes it all module-private, [`update_task`] is the only way to change a task.
 struct TaskWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
-    reparent: Option<(String, i64)>,
+    reparent: Option<(String, RowId)>,
     /// The parent the merged Time Scope and Plan are validated against.
     parent_type: String,
     /// Id of that same parent.
-    parent_id: i64,
+    parent_id: RowId,
     /// Final title.
     title: String,
     /// Final status, in the model the Task holds after the write — settled by
@@ -694,13 +696,14 @@ impl<'session> GoalOperator<'session> {
             .unwrap_or("active");
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
-        let id = sqlx::query(
+        let id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO goals
-                (title, parent_type, parent_id, status,
+                (id, title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind,
                  on_scope_exit, achieved_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
@@ -715,9 +718,8 @@ impl<'session> GoalOperator<'session> {
             (status == GoalStatus::Achieved.as_str())
                 .then(|| waits::instant_column(expectations::now())),
         )
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query("UPDATE goals SET position = ? WHERE id = ?")
             .bind(insertion_position())
             .bind(id)
@@ -804,8 +806,8 @@ impl<'session> GoalOperator<'session> {
     pub async fn child_ids(
         &mut self,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, TaskError> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, TaskError> {
         Ok(
             sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = ? AND parent_id = ?")
                 .bind(stored_reference(parent_type))
@@ -898,7 +900,7 @@ impl<'session> GoalOperator<'session> {
     }
 
     /// Attaches a tag to a goal.
-    pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)")
             .bind(goal_id.0)
             .bind(tag_id)
@@ -908,7 +910,7 @@ impl<'session> GoalOperator<'session> {
     }
 
     /// Removes a tag from a goal.
-    pub async fn remove_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, goal_id: GoalId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_goals WHERE goal_id = ? AND tag_id = ?")
             .bind(goal_id.0)
             .bind(tag_id)
@@ -967,15 +969,16 @@ impl<'session> TaskOperator<'session> {
         let done_at = status
             .is_done()
             .then(|| waits::instant_column(expectations::now()));
-        let id = sqlx::query(
+        let id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO tasks
-                (title, parent_type, parent_id, status,
+                (id, title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id,
                  due_scope_start_id, due_scope_end_id, archival, agentic, asynchronous, done_at,
                  compound)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
@@ -994,9 +997,8 @@ impl<'session> TaskOperator<'session> {
         .bind(asynchronous)
         .bind(done_at)
         .bind(compound)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
             .bind(insertion_position())
             .bind(id)
@@ -1095,8 +1097,8 @@ impl<'session> TaskOperator<'session> {
     pub async fn child_ids(
         &mut self,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, TaskError> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, TaskError> {
         Ok(
             sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = ? AND parent_id = ?")
                 .bind(stored_reference(parent_type))
@@ -1253,7 +1255,7 @@ impl<'session> TaskOperator<'session> {
         #[derive(sqlx::FromRow)]
         struct DependencyRow {
             dependency_type: String,
-            dependency_id: i64,
+            dependency_id: RowId,
         }
         let rows = sqlx::query_as::<_, DependencyRow>(
             "SELECT dependency_type, dependency_id FROM task_dependencies WHERE task_id = ?",
@@ -1281,7 +1283,7 @@ impl<'session> TaskOperator<'session> {
 
     /// Lists every task-dependency edge across all tasks (for the mindmap bulk load).
     pub async fn list_all_dependencies(&mut self) -> Result<Vec<TaskDependencyEdge>, TaskError> {
-        let rows: Vec<(i64, String, i64)> =
+        let rows: Vec<(RowId, String, RowId)> =
             sqlx::query_as("SELECT task_id, dependency_type, dependency_id FROM task_dependencies")
                 .fetch_all(&mut *self.connection)
                 .await?;
@@ -1301,7 +1303,7 @@ impl<'session> TaskOperator<'session> {
     ///
     /// Module-private: the subtree delete calls it for a wait, whose inbound edges carry no foreign
     /// key (`task_dependencies.dependency_id` is polymorphic), so nothing else would remove them.
-    async fn drop_dependents(&mut self, node_type: &str, node_id: i64) -> Result<(), TaskError> {
+    async fn drop_dependents(&mut self, node_type: &str, node_id: RowId) -> Result<(), TaskError> {
         sqlx::query(
             "DELETE FROM task_dependencies WHERE dependency_type = ? AND dependency_id = ?",
         )
@@ -1326,7 +1328,7 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Attaches a tag to a task.
-    pub async fn add_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, task_id: TaskId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("INSERT OR IGNORE INTO tags_on_tasks (task_id, tag_id) VALUES (?, ?)")
             .bind(task_id.0)
             .bind(tag_id)
@@ -1336,7 +1338,7 @@ impl<'session> TaskOperator<'session> {
     }
 
     /// Removes a tag from a task.
-    pub async fn remove_tag(&mut self, task_id: TaskId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, task_id: TaskId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_tasks WHERE task_id = ? AND tag_id = ?")
             .bind(task_id.0)
             .bind(tag_id)
@@ -1352,8 +1354,8 @@ impl<'session> TaskOperator<'session> {
         candidate_id: TaskId,
     ) -> Result<bool, TaskError> {
         // BFS from candidate_id: if we can reach task_id through its dependencies, it's a cycle.
-        let mut visited: HashSet<i64> = HashSet::new();
-        let mut queue: VecDeque<i64> = VecDeque::new();
+        let mut visited: HashSet<RowId> = HashSet::new();
+        let mut queue: VecDeque<RowId> = VecDeque::new();
         queue.push_back(candidate_id.0);
 
         while let Some(current) = queue.pop_front() {
@@ -1365,7 +1367,7 @@ impl<'session> TaskOperator<'session> {
             }
             #[derive(sqlx::FromRow)]
             struct DependencyRow {
-                dependency_id: i64,
+                dependency_id: RowId,
             }
             let children = sqlx::query_as::<_, DependencyRow>(
                 "SELECT dependency_id FROM task_dependencies WHERE task_id = ? AND dependency_type = 'task'",
@@ -1429,10 +1431,11 @@ pub async fn create_goal(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let existing = arlesh_core::nodes::id::nil_row_id();
 /// let mut db = factory.begin().await?;
 /// update_goal(
 ///     &mut db,
-///     GoalId(1),
+///     GoalId(existing),
 ///     UpdateGoalRequest { title: Some("Renamed".into()), ..Default::default() },
 /// )
 /// .await?;
@@ -1585,10 +1588,11 @@ pub(crate) async fn create_task_as(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let existing = arlesh_core::nodes::id::nil_row_id();
 /// let mut db = factory.begin().await?;
 /// update_task(
 ///     &mut db,
-///     TaskId(1),
+///     TaskId(existing),
 ///     UpdateTaskRequest { title: Some("Renamed".into()), ..Default::default() },
 /// )
 /// .await?;
@@ -1692,8 +1696,9 @@ pub async fn update_task_at(
 /// # use arlesh_core::database::session::SessionFactory;
 /// # use arlesh_core::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
 /// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
+/// # let (task, blocker) = (arlesh_core::nodes::id::nil_row_id(), arlesh_core::nodes::id::nil_row_id());
 /// let mut db = factory.begin().await?;
-/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2.into() }).await?;
+/// add_task_dependency(&mut db, TaskId(task), Dependency::Task { id: blocker.into() }).await?;
 /// db.commit().await?;
 /// # Ok(())
 /// # }
@@ -1744,7 +1749,7 @@ pub async fn get_task_with_blockers<M: SessionMode>(
 pub async fn get_task_with_blockers_as<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
-    served: &HashMap<i64, Status>,
+    served: &HashMap<RowId, Status>,
     names: &HashMap<String, String>,
 ) -> Result<TaskWithBlockers, TaskError> {
     let mut task = db.tasks().get(id).await?;
@@ -1806,7 +1811,7 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
 /// derived target reaching here is refused.
 fn dependency_parts(
     dependency: &Dependency,
-) -> Result<(&'static str, i64), crate::nodes::id::NotStored> {
+) -> Result<(&'static str, RowId), crate::nodes::id::NotStored> {
     Ok(match dependency {
         Dependency::Task { id } => ("task", id.require_stored()?),
         Dependency::Goal { id } => ("goal", id.require_stored()?),

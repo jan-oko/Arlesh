@@ -48,7 +48,7 @@ class TasksRouter(BoardRouter):
         self.post("/{id}/spawned-wait/check/complete", status_code=204)(self._complete_check)
         self.post("/{id}/spawned-wait/check/reopen", status_code=204)(self._reopen_check)
 
-    async def _get(self, id: int) -> TaskWithBlockers:
+    async def _get(self, id: str) -> TaskWithBlockers:
         """One stored Task, with what blocks it."""
         return await self._reader.get_task(id)
 
@@ -122,26 +122,26 @@ class TasksRouter(BoardRouter):
         await (await self._writer()).set_task_done_at(node_id(id), at)
 
     async def _duplicate(
-        self, id: int, target_type: str, target_id: int, position: int
+        self, id: str, target_type: str, target_id: str, position: int
     ) -> DuplicatedTask:
         """Copies a Task and its subtree under a new parent."""
         return await (await self._writer()).duplicate_task(id, target_type, target_id, position)
 
-    async def _convert_to_flow(self, id: int, keep_dependencies: bool, map_scopes: bool) -> Flow:
+    async def _convert_to_flow(self, id: str, keep_dependencies: bool, map_scopes: bool) -> Flow:
         """Turns a Task's subtree into a Flow."""
         return await (await self._writer()).convert_to_flow(
             "task", id, keep_dependencies=keep_dependencies, map_scopes=map_scopes
         )
 
-    async def _update_spawned_wait(self, id: int, request: UpdateSpawnedWaitRequest) -> SpawnedWait:
+    async def _update_spawned_wait(self, id: str, request: UpdateSpawnedWaitRequest) -> SpawnedWait:
         """Updates the wait an Asynchronous Task spawned."""
         return await (await self._writer()).update_spawned_wait(id, request)
 
-    async def _complete_check(self, id: int) -> None:
+    async def _complete_check(self, id: str) -> None:
         """Marks a spawned wait's check done."""
         await (await self._writer()).complete_spawned_wait_check(id)
 
-    async def _reopen_check(self, id: int, due_at: datetime) -> None:
+    async def _reopen_check(self, id: str, due_at: datetime) -> None:
         """Reopens a spawned wait's check, due again at ``due_at``."""
         await (await self._writer()).reopen_spawned_wait_check(id, due_at)
 

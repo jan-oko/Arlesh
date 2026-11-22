@@ -8,12 +8,13 @@
 
 pub mod model;
 
+use crate::nodes::id::RowId;
 use model::BlockReason;
 
 #[derive(sqlx::FromRow)]
 struct BlockReasonRow {
     owner_type: String,
-    owner_id: i64,
+    owner_id: RowId,
     reason: String,
     position: i64,
 }
@@ -63,7 +64,7 @@ impl<'session> BlockReasonOperator<'session> {
     pub async fn list_for(
         &mut self,
         owner_type: &str,
-        owner_id: i64,
+        owner_id: RowId,
     ) -> Result<Vec<String>, sqlx::Error> {
         let reasons: Vec<String> = sqlx::query_scalar(
             "SELECT reason FROM block_reasons WHERE owner_type = ? AND owner_id = ? ORDER BY position",
@@ -85,8 +86,9 @@ impl<'session> BlockReasonOperator<'session> {
     /// ```no_run
     /// # use arlesh_core::database::session::SessionFactory;
     /// # async fn replace(factory: &SessionFactory) -> Result<(), sqlx::Error> {
+    /// # let task = arlesh_core::nodes::id::nil_row_id();
     /// let mut db = factory.begin().await?;
-    /// db.block_reasons().set("task", 1, &["stuck".to_string()]).await?;
+    /// db.block_reasons().set("task", task, &["stuck".to_string()]).await?;
     /// db.commit().await?;
     /// # Ok(())
     /// # }
@@ -95,7 +97,7 @@ impl<'session> BlockReasonOperator<'session> {
     pub async fn set(
         &mut self,
         owner_type: &str,
-        owner_id: i64,
+        owner_id: RowId,
         reasons: &[String],
     ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
@@ -125,7 +127,11 @@ impl<'session> BlockReasonOperator<'session> {
     /// Removes every reason for an owner — the cleanup a deleted task or goal needs, since the
     /// owner link has no foreign key to cascade. Nothing calls it yet; see the module docs.
     #[tracing::instrument(skip(self))]
-    pub async fn delete_for(&mut self, owner_type: &str, owner_id: i64) -> Result<(), sqlx::Error> {
+    pub async fn delete_for(
+        &mut self,
+        owner_type: &str,
+        owner_id: RowId,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM block_reasons WHERE owner_type = ? AND owner_id = ?")
             .bind(owner_type)
             .bind(owner_id)

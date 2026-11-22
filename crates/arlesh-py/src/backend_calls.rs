@@ -7,6 +7,7 @@
 //! serde form the port returns.
 
 use arlesh_backend::Backend;
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::{WireError, WireErrorKind},
     tasks::model::DescendantPlans,
@@ -165,6 +166,11 @@ async fn dispatch(backend: &dyn Backend, request: Request) -> Result<Value, Wire
         Request::ReopenSpawnedWaitCheck { task_id, due_at } => {
             json(backend.reopen_spawned_wait_check(task_id, due_at).await?)
         }
+        Request::SaveAnswerDraft { wait_id, request } => {
+            json(backend.save_answer_draft(wait_id, request).await?)
+        }
+        Request::ClearAnswerDraft { wait_id } => json(backend.clear_answer_draft(wait_id).await?),
+        Request::SendAnswerDrafts { request } => json(backend.send_answer_drafts(request).await?),
 
         Request::SetTag {
             kind,
@@ -426,7 +432,7 @@ async fn set_tag(
     backend: &dyn Backend,
     kind: &str,
     id: arlesh_core::nodes::id::NodeId,
-    tag_id: i64,
+    tag_id: RowId,
     present: bool,
 ) -> Result<Value, WireError> {
     match (kind, present) {

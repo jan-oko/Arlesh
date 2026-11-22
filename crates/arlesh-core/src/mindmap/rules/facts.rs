@@ -6,6 +6,7 @@
 //! Pure: a function of a finished board load. Keyed as the load's `short_ids` are (`task-12`,
 //! `expectation-3`).
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -64,7 +65,7 @@ pub(super) fn content_parent(parent_type: &str, parent_id: &NodeId) -> Key {
 }
 
 /// The key a flow item's in-flow parent names: the flow itself, or another item.
-fn flow_item_parent(flow_id: i64, parent_type: &str, parent_id: i64) -> Key {
+fn flow_item_parent(flow_id: RowId, parent_type: &str, parent_id: RowId) -> Key {
     match parent_type {
         "flow_goal" => format!("flowgoal-{parent_id}"),
         "flow_task" => format!("flowtask-{parent_id}"),
@@ -343,10 +344,34 @@ fn open_questions(
     questions
 }
 
+/// The staged ones among each Task's open questions: those with a draft. A draft on any other
+/// wait is stale and marks nothing.
+fn staged_questions(
+    load: &MindmapLoad,
+    open: &HashMap<Key, Vec<NodeId>>,
+) -> HashMap<Key, Vec<NodeId>> {
+    let drafted: HashSet<&NodeId> = load
+        .answer_drafts
+        .iter()
+        .map(|draft| &draft.wait_id)
+        .collect();
+    open.iter()
+        .filter_map(|(key, questions)| {
+            let staged: Vec<NodeId> = questions
+                .iter()
+                .filter(|id| drafted.contains(id))
+                .cloned()
+                .collect();
+            (!staged.is_empty()).then(|| (key.clone(), staged))
+        })
+        .collect()
+}
+
 /// What the agents are doing on the whole board.
 fn agent_activity(
     load: &MindmapLoad,
     lifecycles: &HashMap<(&str, &NodeId), &ItemLifecycle>,
+    staged: usize,
 ) -> AgentActivity {
     let waits = load
         .expectations
@@ -368,6 +393,7 @@ fn agent_activity(
         review: holding(AgenticStatus::Review),
         waits,
         on_agent: holding(AgenticStatus::OnAgent),
+        staged,
     }
 }
 
@@ -531,10 +557,16 @@ pub fn derive(
             facts.entry(key.clone()).or_default().met = true;
         }
     }
-    for (key, questions) in open_questions(load, &lifecycles) {
+    let open = open_questions(load, &lifecycles);
+    let staged = staged_questions(load, &open);
+    let staged_count = staged.values().map(Vec::len).sum();
+    for (key, questions) in open {
         let facts = facts.entry(key).or_default();
         facts.open_question = questions.first().cloned();
         facts.open_questions = questions;
+    }
+    for (key, questions) in staged {
+        facts.entry(key).or_default().staged_questions = questions;
     }
     sub_items_facts(load, &mut facts);
     for id in &load.derived_in_progress {
@@ -562,5 +594,5 @@ pub fn derive(
     for (key, title) in mcp_visible_via(&links, access.unwrap_or_default()) {
         facts.entry(key).or_default().mcp_visible_via = Some(title);
     }
-    (facts, agent_activity(load, &lifecycles))
+    (facts, agent_activity(load, &lifecycles, staged_count))
 }

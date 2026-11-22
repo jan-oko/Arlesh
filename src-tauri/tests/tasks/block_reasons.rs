@@ -1,4 +1,5 @@
 use crate::helpers;
+use arlesh_lib::nodes::id::RowId;
 
 use arlesh_lib::{
     commands::block_reasons::{list_all_block_reasons, set_block_reasons},
@@ -12,8 +13,8 @@ use arlesh_lib::{
 use helpers::StoredId;
 use tauri::Manager;
 
-async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &sqlx::SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -24,6 +25,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Block Test Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -121,7 +123,7 @@ async fn deleting_a_task_removes_its_block_reasons() {
 }
 
 /// A task to hang block reasons off, since the owner link is polymorphic and unconstrained.
-async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
+async fn make_task(pool: &sqlx::SqlitePool, project_id: RowId) -> RowId {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
     let id = create_task(
         &mut db,
@@ -146,7 +148,7 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
 /// independent observer: it distinguishes committed from rolled-back, which is what these tests
 /// assert, but it could not distinguish committed from still-open. Calling it while a session is
 /// alive would block on `acquire` until sqlx's 30-second timeout.
-async fn reasons_on_disk(pool: &sqlx::SqlitePool, owner_id: i64) -> Vec<String> {
+async fn reasons_on_disk(pool: &sqlx::SqlitePool, owner_id: RowId) -> Vec<String> {
     sqlx::query_scalar(
         "SELECT reason FROM block_reasons WHERE owner_type = 'task' AND owner_id = ? ORDER BY position",
     )

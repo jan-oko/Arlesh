@@ -6,6 +6,7 @@ import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 import { scopeContainmentConflicts } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { testKey } from "@/test/scope-key";
+import { storedRowId } from "@/test/stored-id";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -21,7 +22,7 @@ vi.mock("@/api/tasks", () => ({
 }));
 vi.mock("@/api/flows", () => ({ flowOrigins: vi.fn().mockResolvedValue([]) }));
 
-const task: MindmapNode = { id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [] };
+const task: MindmapNode = { id: "task-5", rowId: storedRowId(5), kind: "task", title: "Task", tagIds: [], position: 0, children: [] };
 const root: MindmapNode = { id: "root", kind: "aspect", title: "root", tagIds: [], position: 0, children: [task] };
 const narrower = { start_id: testKey(1), end_id: testKey(1) };
 
@@ -33,9 +34,9 @@ const narrower = { start_id: testKey(1), end_id: testKey(1) };
 function listViewSave() {
   render(<ScopeClampPrompt />);
   const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [task], settle: vi.fn() }));
-  vi.mocked(scopeContainmentConflicts).mockResolvedValue([{ node_type: "task", node_id: 9 }]);
+  vi.mocked(scopeContainmentConflicts).mockResolvedValue([{ node_type: "task", node_id: storedRowId(9) }]);
   let decision: Promise<boolean> = Promise.resolve(false);
-  act(() => { decision = result.current.checkScopeClamp("task", 5, narrower); });
+  act(() => { decision = result.current.checkScopeClamp("task", storedRowId(5), narrower); });
   return () => decision;
 }
 

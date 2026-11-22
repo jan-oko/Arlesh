@@ -11,6 +11,8 @@
 
 mod helpers;
 
+use arlesh_lib::nodes::id::RowId;
+
 use arlesh_lib::commands::block_reasons as block_reason_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
@@ -122,8 +124,8 @@ async fn redo(app: &App<MockRuntime>) -> Option<GestureSummary> {
     undo_commands::redo(app.state()).await.expect("redo")
 }
 
-async fn make_project(pool: &SqlitePool) -> i64 {
-    let aspect_id: i64 =
+async fn make_project(pool: &SqlitePool) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -134,6 +136,7 @@ async fn make_project(pool: &SqlitePool) -> i64 {
         .expect("connect")
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: "Undo Project".into(),
             description: None,
             subtype: DomainSubtype::Project,
@@ -146,8 +149,8 @@ async fn make_project(pool: &SqlitePool) -> i64 {
         .id
 }
 
-async fn make_tag(pool: &SqlitePool, title: &str) -> i64 {
-    let aspect_id: i64 =
+async fn make_tag(pool: &SqlitePool, title: &str) -> RowId {
+    let aspect_id: RowId =
         sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
             .fetch_one(pool)
             .await
@@ -158,6 +161,7 @@ async fn make_tag(pool: &SqlitePool, title: &str) -> i64 {
         .expect("connect")
         .domains()
         .create(CreateDomainRequest {
+            id: None,
             title: title.into(),
             description: None,
             subtype: DomainSubtype::Tag,
@@ -170,8 +174,9 @@ async fn make_tag(pool: &SqlitePool, title: &str) -> i64 {
         .id
 }
 
-fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskRequest {
+fn task_request(parent_type: &str, parent_id: RowId, title: &str) -> CreateTaskRequest {
     CreateTaskRequest {
+        id: None,
         title: title.into(),
         parent_type: parent_type.into(),
         parent_id: parent_id.into(),
@@ -189,8 +194,9 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
     }
 }
 
-fn goal_request(parent_type: &str, parent_id: i64, title: &str) -> CreateGoalRequest {
+fn goal_request(parent_type: &str, parent_id: RowId, title: &str) -> CreateGoalRequest {
     CreateGoalRequest {
+        id: None,
         title: title.into(),
         parent_type: parent_type.into(),
         parent_id: parent_id.into(),
@@ -283,7 +289,7 @@ async fn pausing_a_claim_from_settings_is_one_gesture_that_undo_and_redo_reverse
 }
 
 /// A parent Agent with two children, each claiming one of `tasks`: the parent's id.
-async fn parent_with_children(pool: &SqlitePool, tasks: [i64; 2]) -> i64 {
+async fn parent_with_children(pool: &SqlitePool, tasks: [RowId; 2]) -> i64 {
     sqlx::query(
         "INSERT INTO agents (name, account, session_uuid, token_sha256, created_at) \
          VALUES ('parent', 'default', 's', 'parent-digest', '2026-11-13T10:00:00')",
@@ -907,6 +913,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
 
     let result = mcp
         .infos(Parameters(params::InfosOperation::Create {
+            id: None,
             task_id: agents_task.id.sid().into(),
             body: "the agent's note".into(),
             details: None,
@@ -961,6 +968,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
         .expect("create task");
     let result = mcp
         .infos(Parameters(params::InfosOperation::Create {
+            id: None,
             task_id: agents_task.id.sid().into(),
             body: "the agent's note".into(),
             details: None,
@@ -1075,7 +1083,7 @@ async fn neither_undo_nor_redo_writes_a_journal_entry() {
 
 /// The `agentic` flag as the database holds it: `Some(true)`, `Some(false)`, or `None` for a Task
 /// that inherits from its ancestors.
-async fn agentic(pool: &SqlitePool, task_id: i64) -> Option<bool> {
+async fn agentic(pool: &SqlitePool, task_id: RowId) -> Option<bool> {
     sqlx::query_scalar("SELECT agentic FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(pool)
@@ -1145,7 +1153,7 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
             title: "Routine".into(),
             instance_type: Some(InstanceType::Task),
             parent_type: "aspect".into(),
-            parent_id: 1,
+            parent_id: helpers::seeded(1),
             flow_duration_n: Some(1),
             flow_duration_kind: Some("day".into()),
             ..Default::default()
@@ -1158,6 +1166,7 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
         .expect("connect")
         .flows()
         .create_task(CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "Stretch".into(),
             parent_type: "flow".into(),
@@ -1183,7 +1192,7 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
         )
         .await
         .expect("set cycles");
-    let pairs: Vec<i64> = sqlx::query_scalar(
+    let pairs: Vec<RowId> = sqlx::query_scalar(
         "SELECT id FROM flow_item_cycles WHERE item_type = 'flow_task' AND item_id = ? \
           ORDER BY position",
     )
@@ -1243,7 +1252,7 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
     );
 
     undo(&app).await.expect("there is something to undo");
-    let restored: (i64, Option<String>) =
+    let restored: (RowId, Option<String>) =
         sqlx::query_as("SELECT cycle_id, status FROM task_overlays WHERE item_id = ?")
             .bind(item.id)
             .fetch_one(&pool)
@@ -1318,7 +1327,7 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
 }
 
 /// The `asynchronous` flag as the database holds it.
-async fn asynchronous(pool: &SqlitePool, task_id: i64) -> bool {
+async fn asynchronous(pool: &SqlitePool, task_id: RowId) -> bool {
     sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(pool)
@@ -1372,7 +1381,7 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
 }
 
 /// How many completed checks are stored for a wait.
-async fn completed_checks(pool: &SqlitePool, expectation_id: i64) -> i64 {
+async fn completed_checks(pool: &SqlitePool, expectation_id: RowId) -> i64 {
     sqlx::query_scalar(
         "SELECT COUNT(*) FROM wait_checks WHERE wait_kind = 'stored' AND wait_id = ?",
     )
@@ -1453,6 +1462,7 @@ async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
     arlesh_lib::commands::flows::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
+            id: None,
             flow_id: flow.id,
             title: "step".into(),
             parent_type: "flow".into(),
@@ -1461,7 +1471,7 @@ async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
     )
     .await
     .expect("create flow item");
-    let aspect_id: i64 = sqlx::query_scalar("SELECT parent_id FROM domains WHERE id = ?")
+    let aspect_id: RowId = sqlx::query_scalar("SELECT parent_id FROM domains WHERE id = ?")
         .bind(project_id)
         .fetch_one(&pool)
         .await
@@ -1495,4 +1505,107 @@ async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
         None,
         "and it was a single step"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Staged answers (ADR 0021): a send is one Gesture, and undo stages the answers again.
+// ---------------------------------------------------------------------------------------------
+
+/// Two open questions under an agentic Task, both staged with an answer.
+async fn two_staged_questions(
+    pool: &SqlitePool,
+    app: &App<MockRuntime>,
+) -> [arlesh_lib::nodes::id::NodeId; 2] {
+    use arlesh_lib::commands::expectations as expectation_commands;
+    use arlesh_lib::tasks::answer_drafts::DraftRequest;
+    use arlesh_lib::tasks::model::CreateExpectationRequest;
+
+    let project_id = make_project(pool).await;
+    let task = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            agentic: Some(TaskAgentic::Yes),
+            ..task_request("project", project_id, "work")
+        },
+    )
+    .await
+    .expect("create task");
+    let mut waits = Vec::new();
+    for title in ["One?", "Two?"] {
+        let wait = expectation_commands::create_expectation(
+            app.state(),
+            CreateExpectationRequest {
+                title: title.into(),
+                parent_type: "task".into(),
+                parent_id: task.id.clone(),
+                agentic: true,
+                agentic_note: Some("Which?".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("ask");
+        expectation_commands::save_answer_draft(
+            app.state(),
+            wait.id.clone(),
+            DraftRequest {
+                answer: Some(format!("answer to {title}")),
+                verdict: None,
+            },
+        )
+        .await
+        .expect("stage");
+        waits.push(wait.id);
+    }
+    let [one, two]: [arlesh_lib::nodes::id::NodeId; 2] = waits.try_into().expect("two questions");
+    [one, two]
+}
+
+async fn staged_and_pending(pool: &SqlitePool) -> (i64, i64) {
+    let drafts = sqlx::query_scalar("SELECT COUNT(*) FROM answer_drafts")
+        .fetch_one(pool)
+        .await
+        .expect("count drafts");
+    let pending = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM expectations WHERE agentic = 1 AND status = 'pending'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("count pending");
+    (drafts, pending)
+}
+
+#[tokio::test]
+async fn undoing_a_send_stages_every_answer_again_and_redoing_sends_them() {
+    use arlesh_lib::commands::expectations as expectation_commands;
+    use arlesh_lib::tasks::answer_drafts::SendRequest;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let waits = two_staged_questions(&pool, &app).await;
+    assert_eq!(staged_and_pending(&pool).await, (2, 2));
+    let drafts_before = dump(&pool, "answer_drafts").await;
+
+    open_gesture(&app).await;
+    expectation_commands::send_answer_drafts(
+        app.state(),
+        SendRequest {
+            shown: waits.to_vec(),
+        },
+    )
+    .await
+    .expect("send");
+    close_gesture(&app).await;
+    assert_eq!(staged_and_pending(&pool).await, (0, 0));
+
+    undo(&app).await.expect("the send is one undo step");
+    assert_eq!(staged_and_pending(&pool).await, (2, 2));
+    assert_eq!(
+        dump(&pool, "answer_drafts").await,
+        drafts_before,
+        "the drafts come back as they were, at their own rowids"
+    );
+
+    redo(&app).await.expect("there is something to redo");
+    assert_eq!(staged_and_pending(&pool).await, (0, 0));
 }

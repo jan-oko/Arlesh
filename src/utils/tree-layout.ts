@@ -7,7 +7,7 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
 import type { SubItemsWire } from "@/wasm/rules";
-import type { Review } from "@/api/expectations";
+import type { Review, ReviewVerdict } from "@/api/expectations";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -60,9 +60,9 @@ export function entityNodeId(type: string, id: RowId): string {
 /** The `(type, id)` reference a flow stores for its parent and (optionally) its Target Node. */
 export interface FlowPlacement {
   parent_type: string;
-  parent_id: number;
+  parent_id: string;
   target_type: string | null;
-  target_id: number | null;
+  target_id: string | null;
 }
 
 /**
@@ -80,7 +80,7 @@ export function flowTargetNodeId(flow: FlowPlacement): string {
 export interface FlowData {
   instanceType: InstanceType;
   targetType: string | null;
-  targetId: number | null;
+  targetId: string | null;
   durationN: number | null;
   durationKind: string | null;
   /** Phase-`part` band (e.g. "evening"), when durationKind is "part". */
@@ -115,13 +115,13 @@ export interface FlowCyclePair {
 /** A resolved intra-flow dependency edge (this item waits on `{type,id}`). */
 export interface FlowItemDep {
   type: FlowItemType;
-  id: number;
+  id: string;
 }
 
 /** Template data carried by a `flow_goal`/`flow_task` node. */
 export interface FlowItemData {
   itemType: FlowItemType;
-  flowId: number;
+  flowId: string;
   flowScopeN: number | null;
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];
@@ -145,7 +145,7 @@ export interface FlowItemData {
  */
 export interface HabitIterationMeta {
   /** The Habit this iteration belongs to; iterations fold only with their own flow's. */
-  flowId: number;
+  flowId: string;
   /** That Habit's own title — "Journal", not the iteration's "Journal 2026-09-14". A folded run
    * names the Habit it stands for, and this is the only place the renderer can read it: the run
    * node is built from the iterations alone, and the Flow node may be filtered out of the tree. */
@@ -177,7 +177,7 @@ export type HabitGroupLevel = "run" | "year" | "season" | "month" | "week";
  * that run's expansion. It has no DB row, no status and no filter of its own — it is the tally and
  * the span, and everything else about it is read from the iterations behind it. */
 export interface HabitGroup {
-  flowId: number;
+  flowId: string;
   level: HabitGroupLevel;
   /** How many passed iterations this node stands for. */
   passed: number;
@@ -268,6 +268,9 @@ export interface MindmapNode {
   /** Every open agentic question or review beneath a Task — the waits that make it read Review — by
    * row id, in position order. The backend's rule, read off the load's facts. */
   openQuestionIds?: RowId[];
+  /** The open questions among `openQuestionIds` that are **staged**: an answer written, not yet
+   * sent (ADR 0021). The backend's rule, read off the load's facts. The wait still reads Review. */
+  stagedQuestionIds?: RowId[];
   /** The agentic waits an agent raised beneath this node. No view draws them as nodes of their own:
    * they are held here, off the tree, so the Task can show its open question or review. */
   agentWaits?: MindmapNode[];
@@ -357,6 +360,9 @@ export interface MindmapNode {
     answer: string | null;
     /** Present on a **review**: what the agent handed back, and the verdict once given. */
     review?: Review;
+    /** The staged answer for this wait, when it has one: what the field shows, and whether the
+     * wait is staged. Stale when the wait is not open; `stagedQuestionIds` is the rule. */
+    draft?: { answer: string | null; verdict: ReviewVerdict | null };
   };
   /** The Expectations this Task depends on, stored or derived (a Habit wait item's occurrence), by row id (Tasks only). */
   expectationDependencyIds?: RowId[];
@@ -396,7 +402,7 @@ export interface MindmapNode {
    * load. */
   pending?: true;
   position: number;
-  tagIds: number[];
+  tagIds: string[];
   children: MindmapNode[];
 }
 

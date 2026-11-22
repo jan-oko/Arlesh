@@ -58,3 +58,5 @@ The exemption covers the focused node **and every ancestor needed to reach it**,
 It is a **render-time** exemption: the filter's definition is unchanged and the filter's own answers are unchanged. Anything that counts, filters or exports off the filter sees exactly what it saw before — only the view holds the extra node.
 
 ---
+
+<a id="review-option"></a>**The Review option reads the shared filter as All** (ruled by the user, 2026-11-15; Task 1e6). Like Unblock, the List View's Review option replaces the status preset's rules for the list, so the preset left in the shared filter — the Mindmap's — does not answer: Start would drop a blocked, backlogged or Plan-ahead Task, which is exactly what the option exists to show. What it keeps is the Task's own state — it reads Review — and the filters that are not the preset's: tags, the Info/Flow/Private rules, the Archived pill (an archived Review Task shows only under Include) and an Exclude on the Backlog or Delegated pill. See [*List View*](list-view.md#review-option).

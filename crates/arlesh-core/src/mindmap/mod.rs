@@ -94,6 +94,7 @@ pub async fn board(
             None
         }
     };
+    load.answer_drafts = db.answer_drafts().list().await?;
     load.short_ids = crate::mcp::ids::board_short_ids(&load);
     let (facts, activity) = rules::facts::derive(&load, access.as_deref());
     load.facts = facts;

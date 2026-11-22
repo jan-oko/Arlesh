@@ -9,7 +9,7 @@ interface Props {
   waitEditor: ReturnType<typeof useWaitEditor>;
   /** The tags to pick from. */
   allTags?: Domain[];
-  domainNames?: Map<number, string>;
+  domainNames?: Map<string, string>;
 }
 
 /** A blank wait for the create path: pending, live, never checked on. */

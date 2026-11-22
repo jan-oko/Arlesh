@@ -13,8 +13,11 @@ import arlesh
 import pytest
 from fastapi.testclient import TestClient
 
+ROOT_ASPECT = "4440ccd1-f5c6-5057-898c-f89df62d6f60"
+"""The Domain row a fresh database is seeded with first (id: the v5 of ``domain:1``)."""
+
 Create = Callable[[str, dict[str, Any]], dict[str, Any]]
-NewTask = Callable[..., int]
+NewTask = Callable[..., str]
 
 NOW = {"now": "2026-06-10T12:00:00"}
 
@@ -29,7 +32,7 @@ NOW = {"now": "2026-06-10T12:00:00"}
     ],
 )
 def test_each_list_is_the_boards_own(
-    server: TestClient, domain: int, new_task: NewTask, path: str, key: str
+    server: TestClient, domain: str, new_task: NewTask, path: str, key: str
 ) -> None:
     new_task(domain)
 
@@ -41,7 +44,7 @@ def test_each_list_is_the_boards_own(
 
 
 def test_the_board_reads_lifecycles_dependencies_and_block_reasons(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     server.post(f"/tasks/{second}/dependencies", json={"type": "task", "id": first})
@@ -57,7 +60,7 @@ def test_the_board_reads_lifecycles_dependencies_and_block_reasons(
 
 
 def test_dependency_candidates_leave_out_what_would_close_a_cycle(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     first, second = new_task(domain, "First"), new_task(domain, "Second")
     server.post(f"/tasks/{second}/dependencies", json={"type": "task", "id": first})
@@ -71,7 +74,7 @@ def test_dependency_candidates_leave_out_what_would_close_a_cycle(
 
 def test_the_containment_what_ifs_write_nothing(
     server: TestClient,
-    domain: int,
+    domain: str,
     new_task: NewTask,
     one_day: Callable[[str], dict[str, Any]],
 ) -> None:
@@ -107,7 +110,7 @@ def test_the_flow_reads(server: TestClient, create: Create) -> None:
             "title": "Morning",
             "instance_type": "task",
             "parent_type": "aspect",
-            "parent_id": 1,
+            "parent_id": ROOT_ASPECT,
             "flow_duration_n": 1,
             "flow_duration_kind": "day",
         },
@@ -128,17 +131,20 @@ def test_the_flow_reads(server: TestClient, create: Create) -> None:
     assert server.get(f"/flows/{flow}/completion-count").json() == 0
     assert server.get("/flows/instance-nodes").json() == []
     assert (
-        server.post("/flows/origins", json=[{"node_type": "task", "node_id": 1}]).status_code == 200
+        server.post(
+            "/flows/origins", json=[{"node_type": "task", "node_id": ROOT_ASPECT}]
+        ).status_code
+        == 200
     )
     targets = server.post(
         "/flows/scope-valid-targets",
         params={"duration_n": 1, "duration_kind": "day", "anchor_date": "2026-06-10"},
-        json=[{"node_type": "aspect", "node_id": 1}],
+        json=[{"node_type": "aspect", "node_id": ROOT_ASPECT}],
     )
     assert targets.status_code == 200, targets.text
 
 
-def test_infos_list(server: TestClient, create: Create, domain: int, new_task: NewTask) -> None:
+def test_infos_list(server: TestClient, create: Create, domain: str, new_task: NewTask) -> None:
     task = new_task(domain)
     info = create(
         "/infos", {"parent_type": "task", "parent_id": task, "body": "A note", "position": 0}
@@ -160,7 +166,7 @@ def test_an_account_lock_is_set_and_listed(server: TestClient) -> None:
     assert server.get("/agents").json()["accounts"][0]["locked"] is False
 
 
-def test_mcp_roots_are_added_listed_and_removed(server: TestClient, domain: int) -> None:
+def test_mcp_roots_are_added_listed_and_removed(server: TestClient, domain: str) -> None:
     added = server.put(f"/mcp-access/roots/domain/{domain}")
     catalogue = server.get("/mcp-access/catalogue").json()
     seen = server.get("/mcp-access").json()
@@ -182,7 +188,7 @@ def test_health_answers_the_api_version_behind_the_token(server: TestClient) -> 
 
 
 def test_a_write_moves_the_revision_and_a_read_does_not(
-    server: TestClient, domain: int, new_task: NewTask, server_db: Path
+    server: TestClient, domain: str, new_task: NewTask, server_db: Path
 ) -> None:
     # Every open of the file in this process shares one revision, so a fresh read-only open sees
     # the server's.
@@ -199,7 +205,7 @@ def test_a_write_moves_the_revision_and_a_read_does_not(
 
 
 def test_every_answer_carries_the_revision_and_epoch(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     before = server.get("/board", params=NOW)
     revision, epoch = int(before.headers["x-arlesh-revision"]), before.headers["x-arlesh-epoch"]
@@ -217,7 +223,7 @@ def test_every_answer_carries_the_revision_and_epoch(
 
 
 def test_a_status_step_moves_the_revision_by_one(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     task = new_task(domain)
     before = int(server.get("/board", params=NOW).headers["x-arlesh-revision"])
@@ -229,7 +235,7 @@ def test_a_status_step_moves_the_revision_by_one(
 
 
 def test_the_board_is_gzipped_for_a_client_that_accepts_it(
-    server: TestClient, domain: int, new_task: NewTask
+    server: TestClient, domain: str, new_task: NewTask
 ) -> None:
     for number in range(8):
         new_task(domain, f"Task {number}")

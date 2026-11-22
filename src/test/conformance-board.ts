@@ -1,3 +1,4 @@
+import { storedRowId } from "@/test/stored-id";
 import { occurrenceRow } from "@/test/occurrence";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
@@ -37,7 +38,7 @@ export interface CorpusNode {
   /** A Task's status is of the Agentic model. */
   agentic?: boolean;
   hasCheck?: boolean;
-  tagIds?: number[];
+  tagIds?: string[];
   timeScope?: TimeScope;
   /** A Task is Asynchronous. */
   asynchronous?: boolean;
@@ -151,10 +152,11 @@ function parseVerdict(value: unknown, what: string): Verdict {
   return VERDICT_VALUES.find((candidate) => candidate === verdict) ?? fail(`${what} is not a verdict: ${verdict}`);
 }
 
-function parseTagIds(value: unknown, what: string): number[] {
+function parseTagIds(value: unknown, what: string): string[] {
   if (!Array.isArray(value)) fail(`${what} is not an array`);
   return value.map((entry, index) => {
-    if (typeof entry !== "number") fail(`${what}[${index}] is not a number`);
+    if (typeof entry === "number") return storedRowId(entry);
+    if (typeof entry !== "string") fail(`${what}[${index}] is not an id`);
     return entry;
   });
 }
@@ -225,7 +227,7 @@ export function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.blockingDependencies !== undefined ? { blockingDependencyIds: node.blockingDependencies } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
-    ...(node.delegated === true ? { delegate: { kind: "person" as const, id: 1 } } : {}),
+    ...(node.delegated === true ? { delegate: { kind: "person" as const, id: storedRowId(1) } } : {}),
     ...(node.kind === "task" && node.status !== undefined ? { taskStatus: corpusTaskStatus(node) } : {}),
     ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
     ...(node.timeScope !== undefined ? { timeScope: node.timeScope } : {}),

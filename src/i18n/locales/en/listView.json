@@ -6,7 +6,8 @@
     "do": "Do",
     "unblock": "Unblock",
     "backlog": "Backlog",
-    "expectations": "Expectations"
+    "expectations": "Expectations",
+    "review": "Review"
   },
   "statusPresetLabel": "Status preset",
   "rowKindsLabel": "Show",

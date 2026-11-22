@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { archivePlanFor, openCheckOf } from "./board-writes";
+import { storedRowId } from "@/test/stored-id";
 
 function node(over: Partial<MindmapNode>): MindmapNode {
   return { id: "n", kind: "task", title: "t", children: [], ...over } as MindmapNode;
 }
 const check = (id: string, dueAt: string, done = false) => node({
-  id, kind: "task", rowId: 1,
-  origin: { kind: "check", wait_kind: "stored", wait_id: 9, due_at: dueAt },
+  id, kind: "task", rowId: storedRowId(1),
+  origin: { kind: "check", wait_kind: "stored", wait_id: storedRowId(9), due_at: dueAt },
   taskStatus: { kind: "ordinary", status: done ? "done" : "todo" },
 });
 
@@ -24,10 +25,10 @@ describe("openCheckOf", () => {
 });
 
 describe("archivePlanFor", () => {
-  const stored = (over: Partial<MindmapNode>) => node({ rowId: 1, origin: { kind: "manual" }, ...over });
+  const stored = (over: Partial<MindmapNode>) => node({ rowId: storedRowId(1), origin: { kind: "manual" }, ...over });
 
   it("archives what takes the archive and counts what does not", () => {
-    const plan = archivePlanFor([stored({ id: "a" }), node({ id: "g", kind: "goal", rowId: 2 })]);
+    const plan = archivePlanFor([stored({ id: "a" }), node({ id: "g", kind: "goal", rowId: storedRowId(2) })]);
     expect(plan).toMatchObject({ archive: true, skipped: 1 });
     expect(plan?.nodes.map((n) => n.id)).toEqual(["a"]);
   });
@@ -37,6 +38,6 @@ describe("archivePlanFor", () => {
   });
 
   it("is none when nothing takes the archive", () => {
-    expect(archivePlanFor([node({ kind: "goal", rowId: 2 })])).toBeNull();
+    expect(archivePlanFor([node({ kind: "goal", rowId: storedRowId(2) })])).toBeNull();
   });
 });

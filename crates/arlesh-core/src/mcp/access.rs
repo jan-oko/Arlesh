@@ -12,6 +12,7 @@
 //! - **A request naming a node is refused** with `not_permitted` — including a node that does not
 //!   exist, so the error kind cannot be used to probe for what is there.
 
+use crate::nodes::id::RowId;
 use std::collections::{HashMap, HashSet};
 
 use rmcp::model::{CallToolResult, ErrorData};
@@ -49,22 +50,27 @@ pub(super) fn refuse(
 
 /// Whether `map` lets the MCP hold `needed` on the node a board reference names. A reference to
 /// something that is not a stored row is never permitted.
-pub(super) fn permits(map: &AccessMap, node_type: &str, node_id: i64, needed: AccessLevel) -> bool {
+pub(super) fn permits(
+    map: &AccessMap,
+    node_type: &str,
+    node_id: RowId,
+    needed: AccessLevel,
+) -> bool {
     NodeKey::from_reference(node_type, node_id).is_some_and(|node| map.level(node).permits(needed))
 }
 
 /// Whether `map` lets the MCP read the node a board reference names.
-pub(super) fn reads(map: &AccessMap, node_type: &str, node_id: i64) -> bool {
+pub(super) fn reads(map: &AccessMap, node_type: &str, node_id: RowId) -> bool {
     permits(map, node_type, node_id, AccessLevel::Read)
 }
 
-fn reads_row(map: &AccessMap, table: NodeTable, id: i64) -> bool {
+fn reads_row(map: &AccessMap, table: NodeTable, id: RowId) -> bool {
     map.can_read(NodeKey::new(table, id))
 }
 
 /// A flow item reference inside a Flow the MCP can already read. `flow_root` names the Flow
 /// itself, so it is readable exactly when the Flow is.
-fn reads_flow_item(map: &AccessMap, item_type: &str, item_id: i64) -> bool {
+fn reads_flow_item(map: &AccessMap, item_type: &str, item_id: RowId) -> bool {
     match NodeTable::from_reference(item_type) {
         Some(table) => reads_row(map, table, item_id),
         None => true,
@@ -72,7 +78,7 @@ fn reads_flow_item(map: &AccessMap, item_type: &str, item_id: i64) -> bool {
 }
 
 /// Drops the tag ids that name a Tag the MCP cannot read.
-fn keep_readable_tags(tag_ids: &mut Vec<i64>, map: &AccessMap) {
+fn keep_readable_tags(tag_ids: &mut Vec<RowId>, map: &AccessMap) {
     tag_ids.retain(|&tag| reads_row(map, NodeTable::Domain, tag));
 }
 
@@ -273,7 +279,7 @@ pub(super) fn restrict_snapshot(load: &mut MindmapLoad, map: &AccessMap) {
 pub(super) fn visible_knowledge_base(
     references: &[KnowledgeBaseReference],
     map: &AccessMap,
-) -> HashSet<(String, i64)> {
+) -> HashSet<(String, RowId)> {
     references
         .iter()
         .filter(|reference| map.can_read(reference.owner))
@@ -339,7 +345,7 @@ pub(super) fn agent_instructions(
                 desktop app), then attach with your session_id, the PIN, a name, your account \
                 label and the subtree you were asked to work. Keep the agent token the answer \
                 gives: attach with it (token instead of pin) after the server restarts or the \
-                session is resumed. A host with the arlesh-notify mod attaches for you."
+                session is resumed. A host with the arlesh mod attaches for you."
             .to_string();
     };
     let by_key: HashMap<NodeKey, &CatalogueNode> =

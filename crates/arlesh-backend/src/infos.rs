@@ -1,6 +1,7 @@
 //! The `infos` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `infos` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::DuplicatedSubtree,
     error::WireError,
@@ -17,17 +18,17 @@ pub trait InfosPort: Send + Sync {
     async fn list_infos(&self) -> Result<Vec<Info>, WireError>;
 
     /// Updates an info node.
-    async fn update_info(&self, id: i64, request: UpdateInfoRequest) -> Result<Info, WireError>;
+    async fn update_info(&self, id: RowId, request: UpdateInfoRequest) -> Result<Info, WireError>;
 
     /// Deletes an info node.
-    async fn delete_info(&self, id: i64) -> Result<(), WireError>;
+    async fn delete_info(&self, id: RowId) -> Result<(), WireError>;
 
     /// Deep-clones an info node and its whole subtree under `(target_type, target_id)`, putting the
     async fn duplicate_info(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Info>, WireError>;
 }

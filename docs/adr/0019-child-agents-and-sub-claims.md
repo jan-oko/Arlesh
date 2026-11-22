@@ -4,6 +4,8 @@ Status: accepted 2026-11-13 (Task `077`). The Spec was ruled by the user on 2026
 choices under *Decisions made in design* were not, and are listed there so the user can overrule
 any of them. Builds on [ADR 0018](0018-agents-claims-and-account-capacity.md).
 
+The plugin this ADR calls `arlesh` was named `arlesh-notify` until Task `109` renamed it.
+
 ## Context
 
 ADR 0018 binds an MCP session to one Agent, and says the subagents of a client "share the
@@ -126,7 +128,7 @@ Both triggers are guarded on `undo_context.suppressed`, as migration 0080's `mcp
 triggers are, so an undo or redo replays the journal's own row images instead. Ctrl+Z on the
 Gesture that set the Task Done (or removed the parent) brings the child back with it.
 
-**The mod** (`arlesh-notify`) registers, pauses and resumes children, fills in `sub_token` on a
+**The mod** (`arlesh`) registers, pauses and resumes children, fills in `sub_token` on a
 subagent's Arlesh calls, and draws the Task under the subagent's row. Details in the build plan.
 
 ### Decisions made in design (the user may overrule any)
@@ -538,7 +540,7 @@ and names the same child; `claim_name` appears once a node is claimed.
   Lock (acceptance line 1, app side); `use-agent-locks.test.ts` counts a locked parent with two
   children once.
 
-### Step 8. The mod (`plugins/arlesh-notify/hooks/`)
+### Step 8. The mod (`plugins/arlesh/hooks/`)
 
 New pure module `children.ts` (tested in `children.test.ts`), wired from `register.ts`:
 
@@ -572,7 +574,7 @@ New pure module `children.ts` (tested in `children.test.ts`), wired from `regist
   whose `tool_use_id` maps to a recorded child, draw `await next(e)` with one dim line under it,
   `Arlesh · <claimName> · <Active|Paused>`; any other row is `next(e)` untouched. Kept in `$.state`
   per the `plugin-authoring` skill (with the `types/index.d.ts` contract), so a write redraws.
-- Tests (`claude plugin test plugins/arlesh-notify`): SubagentStart on an attached session calls
+- Tests (`claude plugin test plugins/arlesh`): SubagentStart on an attached session calls
   `register_child` with the description and the agent id, and its `additionalContext` holds the
   token; a second SubagentStart for the same id calls `resume` and adds nothing; `turn.complete`
   for it calls `pause` with the `sub_token`; a subagent's Arlesh call without `sub_token` reaches the
@@ -584,7 +586,7 @@ New pure module `children.ts` (tested in `children.test.ts`), wired from `regist
 ### Step 9. Hand tests, then the PR
 
 With the desktop app built from the branch (`scripts/branch-instance.sh`) and a session with the
-mod (`claude --plugin-dir plugins/arlesh-notify`) that claimed a Project with two Agentic Tasks:
+mod (`claude --plugin-dir plugins/arlesh`) that claimed a Project with two Agentic Tasks:
 
 - **H1** Dispatch a subagent whose brief names Task A. Settings → Agents shows it nested under the
   session's Agent, Active, its Claim Task A.

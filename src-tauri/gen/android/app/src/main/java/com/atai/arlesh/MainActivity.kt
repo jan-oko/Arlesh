@@ -79,7 +79,7 @@ class MainActivity : TauriActivity() {
     PushBridge.listenForTokens { token -> dispatchToPage("arlesh-push-token", token) }
   }
 
-  /** The app is already running and a notification was tapped: tell the page which Task to open. */
+  /** The app is already running and a notification was tapped: tell the page what to open. */
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)

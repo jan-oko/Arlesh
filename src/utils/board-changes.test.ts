@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MindmapLoad } from "@/api/mindmap";
+import type { BoardChanges } from "@/utils/board-changes";
 import { applyBoardChanges, compactJson, differingCollections, entriesOf, indexBoard, recomputeHash } from "@/utils/board-changes";
 
 /** A board as the producer's JSON gives it: rows are opaque to the apply path, which reads keys only. */
@@ -155,5 +156,31 @@ describe("the board hash", () => {
 
     expect(entries.filter((entry) => entry.collection === "block_reasons").map((entry) => entry.key)).toEqual(["task-1", "task-2"]);
     expect(entries.filter((entry) => entry.collection === "short_ids")).toHaveLength(1);
+  });
+});
+
+describe("staged answers", () => {
+  const draft = (wait: string, answer: string) => ({ wait_id: wait, answer, verdict: null, saved_at: "2026-11-21T09:00:00" });
+
+  it("keys a draft by its wait and hashes it with the board", () => {
+    const withDraft = load({ ...board(), answer_drafts: [draft("w1", "blue")] });
+
+    expect(entriesOf(withDraft).filter((entry) => entry.collection === "answer_drafts").map((entry) => entry.key)).toEqual(["draft-w1"]);
+    expect(differingCollections(indexBoard(board()).digests.sums, indexBoard(withDraft).digests.sums)).toEqual(["answer_drafts"]);
+  });
+
+  it("applies a draft saved elsewhere, an edit that replaces it and a clear that removes it", () => {
+    const set = (answer: string): BoardChanges => ({
+      answer_drafts: { set: [["draft-w1", draft("w1", answer)] as const], del: [] },
+    });
+    const staged = applyBoardChanges(indexBoard(board()), set("blue"));
+    const edited = applyBoardChanges(staged, set("red"));
+    const cleared = applyBoardChanges(edited, { answer_drafts: { set: [], del: ["draft-w1"] } });
+
+    expect(staged.load.answer_drafts).toEqual([draft("w1", "blue")]);
+    expect(edited.load.answer_drafts).toEqual([draft("w1", "red")]);
+    expect(cleared.load.answer_drafts).toEqual([]);
+    expect(cleared.digests.total).toBe(indexBoard(board()).digests.total);
+    expect(edited.digests.total).toBe(recomputeHash(edited.load));
   });
 });

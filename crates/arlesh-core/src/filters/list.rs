@@ -87,7 +87,8 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if !filter.kinds.contains(&RowKind::Task) {
         return false;
     }
-    let effective: Cow<'_, BoardFilter> = if filter.unblock {
+    let reads_review = filter.reads_review_option();
+    let effective: Cow<'_, BoardFilter> = if filter.unblock || reads_review {
         Cow::Owned(unblock_filter(filter))
     } else {
         Cow::Borrowed(filter)
@@ -102,10 +103,25 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         if !rules::is_blocked(row.node) {
             return false;
         }
+    } else if reads_review {
+        if !passes_review_option(row, &effective) {
+            return false;
+        }
     } else if !passes_row_preset(row, filter) {
         return false;
     }
     rules::passes_tags(row.node, filter) && pills::task_passes(row.chain(), &filter.pills)
+}
+
+/// The List View's **Review** option, asked of a flat row: it reads Review itself — whatever its
+/// parent reads — and is live, so an archived one shows only under the Archived pill's Include.
+/// `neutral` is the filter under [`unblock_filter`], so Start's and Plan's own hides (blocked, a
+/// Plan or Time Scope still ahead, a backlogged Task) do not answer; the subtree gates that are not
+/// the preset's — an excluded archived or backlogged ancestor — still do.
+fn passes_review_option(row: Row<'_>, neutral: &BoardFilter) -> bool {
+    rules::reads_review(row.node)
+        && !row.has_gating_ancestor(neutral)
+        && rules::with_archived_override(row.node, neutral, !rules::is_archived(row.node))
 }
 
 /// The filter as Unblock reads it: the same tags, Info/Flow/Private toggles and Archived/Backlog
@@ -171,7 +187,7 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// archived Commitment through [`rules::with_archived_override`], as `docs/spec/mindmap-view.md`
 /// says it does.
 pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
-    if filter.unblock || filter.expectations || filter.preset == Preset::Backlog {
+    if filter.unblock || filter.expectations || filter.review || filter.preset == Preset::Backlog {
         return false;
     }
     if !filter.kinds.contains(&RowKind::Commitment) {
@@ -213,7 +229,8 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
 ///
 /// Of the pills, a wait answers Under, Scope and Private (see [`pills::expectation_passes`]).
 pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
-    if filter.unblock || rules::is_agentic_wait(row.node) {
+    // Review shows Tasks only, so no wait is a row under it, as under Unblock.
+    if filter.unblock || filter.reads_review_option() || rules::is_agentic_wait(row.node) {
         return false;
     }
     if filter.expectations {

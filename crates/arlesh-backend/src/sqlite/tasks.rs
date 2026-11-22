@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `tasks` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::WireError,
@@ -29,7 +30,7 @@ impl TasksPort for SqliteBackend {
         Ok(task)
     }
 
-    async fn get_task(&self, id: i64) -> Result<TaskWithBlockers, WireError> {
+    async fn get_task(&self, id: RowId) -> Result<TaskWithBlockers, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -114,7 +115,7 @@ impl TasksPort for SqliteBackend {
     async fn scope_containment_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         time_scope: TimeScope,
     ) -> Result<Vec<ViolatingDescendant>, WireError> {
         let mut db = self
@@ -130,9 +131,9 @@ impl TasksPort for SqliteBackend {
     async fn reparent_scope_conflicts(
         &self,
         node_type: String,
-        node_id: i64,
+        node_id: RowId,
         new_parent_type: String,
-        new_parent_id: i64,
+        new_parent_id: RowId,
     ) -> Result<ReparentConflicts, WireError> {
         let mut db = self
             .factory
@@ -160,9 +161,9 @@ impl TasksPort for SqliteBackend {
 
     async fn duplicate_task(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Task>, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -273,7 +274,7 @@ impl TasksPort for SqliteBackend {
         Ok(goal)
     }
 
-    async fn get_goal(&self, id: i64) -> Result<Goal, WireError> {
+    async fn get_goal(&self, id: RowId) -> Result<Goal, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -324,9 +325,9 @@ impl TasksPort for SqliteBackend {
 
     async fn duplicate_goal(
         &self,
-        id: i64,
+        id: RowId,
         target_type: String,
-        target_id: i64,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Goal>, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
@@ -352,7 +353,7 @@ impl TasksPort for SqliteBackend {
         })
     }
 
-    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn add_tag_to_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(
             &mut db,
@@ -367,7 +368,7 @@ impl TasksPort for SqliteBackend {
         db.commit().await.map_err(WireError::from_error)
     }
 
-    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn remove_tag_from_task(&self, task_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(
             &mut db,
@@ -382,7 +383,7 @@ impl TasksPort for SqliteBackend {
         db.commit().await.map_err(WireError::from_error)
     }
 
-    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn add_tag_to_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(
             &mut db,
@@ -397,7 +398,7 @@ impl TasksPort for SqliteBackend {
         db.commit().await.map_err(WireError::from_error)
     }
 
-    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: i64) -> Result<(), WireError> {
+    async fn remove_tag_from_goal(&self, goal_id: NodeId, tag_id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         write::set_tag(
             &mut db,

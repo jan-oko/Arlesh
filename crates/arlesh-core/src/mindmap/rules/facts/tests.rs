@@ -2,6 +2,8 @@
 //! and what the agents are doing.
 
 use super::*;
+use crate::nodes::id::tid;
+use crate::nodes::id::tkey;
 use crate::{
     domains::model::Domain,
     scopes::key::test_key,
@@ -13,7 +15,7 @@ use crate::{
 
 fn domain_row(id: i64, parent: Option<i64>) -> Domain {
     Domain {
-        id,
+        id: tid(id),
         title: format!("domain {id}"),
         description: None,
         subtype: if parent.is_none() {
@@ -22,7 +24,7 @@ fn domain_row(id: i64, parent: Option<i64>) -> Domain {
             "project"
         }
         .to_string(),
-        parent_id: parent,
+        parent_id: parent.map(tid),
         color: None,
         status: parent.map(|_| "active".to_string()),
         knowledge_base_directory: None,
@@ -140,19 +142,25 @@ fn board() -> MindmapLoad {
 fn a_node_inherits_the_nearest_agentic_flag_and_time_scope_above_it() {
     let (facts, _) = derive(&board(), None);
     let inherits = |key: &str| facts.get(key).cloned().unwrap_or_default();
-    assert!(inherits("task-11").inherited_agentic);
-    assert!(inherits("task-21").inherited_agentic, "through the goal");
+    assert!(inherits(&tkey("task", 11)).inherited_agentic);
     assert!(
-        inherits("task-12").inherited_agentic,
+        inherits(&tkey("task", 21)).inherited_agentic,
+        "through the goal"
+    );
+    assert!(
+        inherits(&tkey("task", 12)).inherited_agentic,
         "its own flag is not what it inherits"
     );
     assert!(
-        !inherits("task-10").inherited_agentic,
+        !inherits(&tkey("task", 10)).inherited_agentic,
         "nothing above it is flagged"
     );
-    assert_eq!(inherits("task-21").inherited_time_scope, Some(scoped(1)));
     assert_eq!(
-        inherits("task-10").inherited_time_scope,
+        inherits(&tkey("task", 21)).inherited_time_scope,
+        Some(scoped(1))
+    );
+    assert_eq!(
+        inherits(&tkey("task", 10)).inherited_time_scope,
         None,
         "its own is not inherited"
     );
@@ -173,13 +181,13 @@ fn a_task_carries_what_its_sub_items_say_when_they_say_anything() {
     let (facts, _) = derive(&load, None);
     let items = |key: &str| facts.get(key).and_then(|node| node.sub_items);
     assert_eq!(
-        items("task-10"),
+        items(&tkey("task", 10)),
         Some(SubItems {
             floor: TaskStatus::InProgress,
             open: 2
         })
     );
-    assert_eq!(items("task-13"), None, "no sub-items say nothing");
+    assert_eq!(items(&tkey("task", 13)), None, "no sub-items say nothing");
 }
 
 #[test]
@@ -192,10 +200,9 @@ fn a_dependency_blocks_until_its_target_is_finished() {
         edge(11, "goal", 30),
         edge(11, "task", 99),
     ];
-    load.short_ids
-        .insert("task-12".to_string(), "abc".to_string());
+    load.short_ids.insert(tkey("task", 12), "abc".to_string());
     let (facts, _) = derive(&load, None);
-    let blocks = &facts["task-11"].dependency_blocks;
+    let blocks = &facts[&tkey("task", 11)].dependency_blocks;
     assert_eq!(
         blocks
             .iter()
@@ -205,9 +212,9 @@ fn a_dependency_blocks_until_its_target_is_finished() {
         "an achieved goal and a target not on the board block nothing"
     );
     assert_eq!(blocks[0].title, "task 12");
-    assert!(facts["goal-30"].met, "an achieved goal is met");
+    assert!(facts[&tkey("goal", 30)].met, "an achieved goal is met");
     assert!(
-        !facts.get("task-12").is_some_and(|fact| fact.met),
+        !facts.get(&tkey("task", 12)).is_some_and(|fact| fact.met),
         "a task not done is not"
     );
 }
@@ -222,9 +229,9 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
         wait_row(4, 11, 0, false, true),
     ];
     let (facts, activity) = derive(&load, None);
-    assert_eq!(facts["task-11"].open_question, Some(2.into()));
+    assert_eq!(facts[&tkey("task", 11)].open_question, Some(2.into()));
     assert_eq!(
-        facts["task-11"].open_questions,
+        facts[&tkey("task", 11)].open_questions,
         vec![NodeId::from(2), NodeId::from(1)],
         "every open one, in position order"
     );
@@ -234,6 +241,64 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
     );
     assert_eq!(activity.on_agent, 1);
     assert_eq!(activity.review, 0);
+}
+
+fn draft(wait: i64) -> crate::tasks::answer_drafts::AnswerDraft {
+    crate::tasks::answer_drafts::AnswerDraft {
+        wait_id: wait.into(),
+        answer: Some("blue".to_string()),
+        verdict: None,
+        saved_at: chrono::NaiveDate::from_ymd_opt(2026, 11, 21)
+            .and_then(|day| day.and_hms_opt(9, 0, 0))
+            .unwrap_or_default(),
+    }
+}
+
+#[test]
+fn an_open_question_with_a_draft_is_staged_and_counted() {
+    let mut load = board();
+    load.expectations = vec![
+        wait_row(1, 11, 5, true, true),
+        wait_row(2, 11, 3, true, true),
+    ];
+    load.answer_drafts = vec![draft(1)];
+    let (facts, activity) = derive(&load, None);
+    assert_eq!(
+        facts[&tkey("task", 11)].staged_questions,
+        vec![NodeId::from(1)],
+        "only the staged one of the open questions"
+    );
+    assert_eq!(
+        facts[&tkey("task", 11)].open_questions.len(),
+        2,
+        "a staged wait is still open, and its Task still reads Review"
+    );
+    assert_eq!(activity.staged, 1);
+}
+
+#[test]
+fn a_draft_on_a_wait_that_is_not_an_open_question_marks_nothing() {
+    let mut load = board();
+    let mut released = wait_row(1, 11, 5, true, true);
+    released.status = ExpectationStatus::Released;
+    let mut archived = wait_row(2, 11, 4, true, true);
+    archived.archival = ExpectationArchival::Archived;
+    load.expectations = vec![released, archived, wait_row(3, 11, 3, true, false)];
+    load.answer_drafts = vec![draft(1), draft(2), draft(3), draft(99)];
+    let (facts, activity) = derive(&load, None);
+    assert!(facts
+        .get(&tkey("task", 11))
+        .is_none_or(|fact| fact.staged_questions.is_empty()));
+    assert_eq!(activity.staged, 0);
+}
+
+#[test]
+fn nothing_is_staged_without_drafts() {
+    let mut load = board();
+    load.expectations = vec![wait_row(1, 11, 5, true, true)];
+    let (facts, activity) = derive(&load, None);
+    assert!(facts[&tkey("task", 11)].staged_questions.is_empty());
+    assert_eq!(activity.staged, 0);
 }
 
 #[test]
@@ -270,8 +335,10 @@ fn a_commitment_expires_unresolved_and_archived() {
     };
     load.lifecycles = vec![archived(40), archived(41)];
     let (facts, _) = derive(&load, None);
-    assert!(facts["commitment-40"].expired);
-    assert!(!facts.get("commitment-41").is_some_and(|fact| fact.expired));
+    assert!(facts[&tkey("commitment", 40)].expired);
+    assert!(!facts
+        .get(&tkey("commitment", 41))
+        .is_some_and(|fact| fact.expired));
 }
 
 #[test]
@@ -285,20 +352,24 @@ fn a_node_is_seen_through_its_root_and_a_derived_one_through_its_nearest_stored_
     load.tasks.push(occurrence);
     let seen = |table: NodeTable, id: i64| EffectiveAccess {
         node_kind: table,
-        node_id: id,
+        node_id: tid(id),
         root_kind: NodeTable::Domain,
-        root_id: 2,
+        root_id: tid(2),
     };
     let access = [seen(NodeTable::Domain, 2), seen(NodeTable::Task, 10)];
     let (facts, _) = derive(&load, Some(&access));
     let via = |key: &str| facts.get(key).and_then(|fact| fact.mcp_visible_via.clone());
-    assert_eq!(via("task-10").as_deref(), Some("domain 2"));
+    assert_eq!(via(&tkey("task", 10)).as_deref(), Some("domain 2"));
     assert_eq!(
         via(&occurrence_key).as_deref(),
         Some("domain 2"),
         "through task 10"
     );
-    assert_eq!(via("task-11"), None, "a stored node the roots do not reach");
+    assert_eq!(
+        via(&tkey("task", 11)),
+        None,
+        "a stored node the roots do not reach"
+    );
 }
 
 #[test]
@@ -313,10 +384,14 @@ fn a_derived_wait_says_what_it_may_not_be_done_to_and_a_row_made_by_hand_says_no
     });
     load.tasks.push(check);
     let (facts, _) = derive(&load, None);
-    let capabilities = facts.get("task-30").and_then(|node| node.capabilities);
+    let capabilities = facts
+        .get(&tkey("task", 30))
+        .and_then(|node| node.capabilities);
     assert!(capabilities.is_some_and(|can| !can.delete && !can.drag && !can.compound));
     assert_eq!(
-        facts.get("task-12").and_then(|node| node.capabilities),
+        facts
+            .get(&tkey("task", 12))
+            .and_then(|node| node.capabilities),
         None,
         "a row made by hand carries no limits"
     );

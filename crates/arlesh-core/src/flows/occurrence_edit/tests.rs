@@ -1,3 +1,4 @@
+use crate::nodes::id::tid;
 use chrono::NaiveDate;
 
 use super::*;
@@ -24,11 +25,11 @@ fn noon() -> NaiveDateTime {
 
 #[test]
 fn a_request_repeating_the_current_parent_and_window_is_not_a_move() {
-    let parent = NodeId::Stored(7);
+    let parent = NodeId::Stored(tid(7));
     let project = "project".to_string();
     assert!(refuse_moves((None, None), ("project", &parent), None, &scope(1, 1)).is_ok());
     assert!(refuse_moves(
-        (Some(&project), Some(&NodeId::Stored(7))),
+        (Some(&project), Some(&NodeId::Stored(tid(7)))),
         ("project", &parent),
         Some(&scope(1, 1)),
         &scope(1, 1),
@@ -38,12 +39,12 @@ fn a_request_repeating_the_current_parent_and_window_is_not_a_move() {
 
 #[test]
 fn a_new_parent_is_refused() {
-    let parent = NodeId::Stored(7);
+    let parent = NodeId::Stored(tid(7));
     let project = "project".to_string();
     let goal = "goal".to_string();
     for request in [
-        (Some(&project), Some(&NodeId::Stored(8))),
-        (Some(&goal), Some(&NodeId::Stored(7))),
+        (Some(&project), Some(&NodeId::Stored(tid(8)))),
+        (Some(&goal), Some(&NodeId::Stored(tid(7)))),
         (Some(&project), None),
     ] {
         let refused = refuse_moves(request, ("project", &parent), None, &None).unwrap_err();
@@ -58,7 +59,7 @@ fn a_derived_parent_is_never_named_by_an_integer() {
     ));
     let task = "task".to_string();
     assert!(refuse_moves(
-        (Some(&task), Some(&NodeId::Stored(1))),
+        (Some(&task), Some(&NodeId::Stored(tid(1)))),
         ("task", &parent),
         None,
         &None
@@ -68,7 +69,7 @@ fn a_derived_parent_is_never_named_by_an_integer() {
 
 #[test]
 fn a_new_window_is_refused_but_a_duration_tag_is_not_a_window() {
-    let parent = NodeId::Stored(7);
+    let parent = NodeId::Stored(tid(7));
     let refused = refuse_moves(
         (None, None),
         ("project", &parent),

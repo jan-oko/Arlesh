@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 def test_the_board_is_every_node_in_one_request_with_its_lifecycle(
     server: TestClient,
-    domain: int,
+    domain: str,
     new_task: Callable[..., int],
     one_day: Callable[[str], dict[str, Any]],
 ) -> None:
@@ -130,7 +130,7 @@ def _nulls(value: Any, path: str = "") -> list[str]:
 
 
 def test_the_wire_leaves_an_absent_value_out_rather_than_sending_null(
-    server: TestClient, domain: int, new_task: Callable[..., int]
+    server: TestClient, domain: str, new_task: Callable[..., int]
 ) -> None:
     """The core reads a missing field as its default but ``null`` for a ``bool`` as a failure, and
     a real database has nulls a fixture does not: every route answers as the core writes it, a

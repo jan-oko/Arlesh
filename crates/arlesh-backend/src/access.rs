@@ -1,6 +1,7 @@
 //! The `access` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `access` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     access::model::{EffectiveAccess, NodeTable},
     error::WireError,
@@ -18,8 +19,8 @@ pub trait AccessPort: Send + Sync {
     async fn list_mcp_access(&self) -> Result<Vec<EffectiveAccess>, WireError>;
 
     /// Makes one stored node an MCP root.
-    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError>;
+    async fn add_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError>;
 
     /// Stops one node being an MCP root.
-    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: i64) -> Result<(), WireError>;
+    async fn remove_mcp_root(&self, node_kind: NodeTable, node_id: RowId) -> Result<(), WireError>;
 }

@@ -47,6 +47,7 @@ use crate::nodes::relations::RelationOperator;
 use crate::push::PushOperator;
 use crate::server_pairing::PairingPinOperator;
 use crate::server_tokens::ServerTokenOperator;
+use crate::tasks::answer_drafts::AnswerDraftOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
 
@@ -190,6 +191,11 @@ impl<M: SessionMode> Db<M> {
         BlockReasonOperator::new(self.connection())
     }
 
+    /// The change log and the replicated rows (ADR 0017): see [`crate::replication`].
+    pub fn replication(&mut self) -> crate::replication::ReplicationOperator<'_> {
+        crate::replication::ReplicationOperator::new(self.connection())
+    }
+
     /// `arlesh-server`'s bearer tokens, kept as digests.
     pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
         ServerTokenOperator::new(self.connection())
@@ -213,6 +219,11 @@ impl<M: SessionMode> Db<M> {
     /// Expectations — waits that tasks depend on.
     pub fn expectations(&mut self) -> ExpectationOperator<'_> {
         ExpectationOperator::new(self.connection())
+    }
+
+    /// Staged answers: drafts of answers not yet sent.
+    pub fn answer_drafts(&mut self) -> AnswerDraftOperator<'_> {
+        AnswerDraftOperator::new(self.connection())
     }
 
     /// Aspects, projects, domains and tags.

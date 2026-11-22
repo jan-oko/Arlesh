@@ -10,6 +10,7 @@
 //! it is synchronous and runs per render — so "one definition" has to mean one *specification*
 //! both evaluators are held to, rather than one call stack.
 
+use arlesh_lib::nodes::id::RowId;
 use std::collections::{BTreeSet, HashMap};
 
 use arlesh_lib::{
@@ -64,6 +65,8 @@ struct CorpusFilter {
     unblock: bool,
     #[serde(default)]
     expectations: bool,
+    #[serde(default)]
+    review: bool,
     #[serde(default = "yes")]
     include_flows: bool,
     #[serde(default)]
@@ -141,7 +144,7 @@ fn yes() -> bool {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CorpusTag {
-    tag_id: i64,
+    tag_id: RowId,
     mode: TagMode,
 }
 
@@ -151,6 +154,7 @@ impl From<&CorpusFilter> for BoardFilter {
             preset: filter.preset,
             unblock: filter.unblock,
             expectations: filter.expectations,
+            review: filter.review,
             include_flows: filter.include_flows,
             tags: filter
                 .tags
@@ -294,5 +298,9 @@ fn every_preset_is_covered() {
     assert!(
         corpus.cases.iter().any(|case| case.filter.expectations),
         "no case covers the Expectations option"
+    );
+    assert!(
+        corpus.cases.iter().any(|case| case.filter.review),
+        "no case covers the Review option"
     );
 }

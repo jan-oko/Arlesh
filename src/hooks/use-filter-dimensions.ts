@@ -44,7 +44,7 @@ function fixedLabel(
     case "blocked": return display.displayBlocked(value);
     case "agentic": return display.displayAgentic(value);
     case "asynchronous": return display.displayAsynchronous(value);
-    case "tag": return display.tagName(Number.parseInt(value, 10));
+    case "tag": return display.tagName(value);
     case "antecedent":
     case "dependency": return display.nodeLabel(value);
   }
@@ -89,7 +89,7 @@ export function useFilterDimensions(): FilterDimensions {
   );
 
   function valueColor(dimension: FilterDimension, value: string): string | null {
-    if (dimension === "tag") return display.tagColor(Number.parseInt(value, 10));
+    if (dimension === "tag") return display.tagColor(value);
     if (dimension === "antecedent" || dimension === "dependency") return display.nodeColor(value);
     return null;
   }

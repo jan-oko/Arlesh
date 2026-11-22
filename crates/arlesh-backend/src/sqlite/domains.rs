@@ -1,5 +1,6 @@
 //! [`SqliteBackend`]'s `domains` operations: the in-process core over the local file.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     domains::model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest},
     duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
@@ -22,7 +23,7 @@ impl DomainsPort for SqliteBackend {
         Ok(domain)
     }
 
-    async fn get_domain(&self, id: i64) -> Result<Domain, WireError> {
+    async fn get_domain(&self, id: RowId) -> Result<Domain, WireError> {
         let mut db = self
             .factory
             .connect()
@@ -48,7 +49,7 @@ impl DomainsPort for SqliteBackend {
 
     async fn update_domain(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdateDomainRequest,
     ) -> Result<Domain, WireError> {
         let mut db = self
@@ -62,7 +63,7 @@ impl DomainsPort for SqliteBackend {
             .map_err(WireError::from_error)
     }
 
-    async fn delete_domain(&self, id: i64) -> Result<(), WireError> {
+    async fn delete_domain(&self, id: RowId) -> Result<(), WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;
         arlesh_core::domains::delete_subtree(&mut db, DomainId(id))
             .await
@@ -72,8 +73,8 @@ impl DomainsPort for SqliteBackend {
 
     async fn duplicate_domain(
         &self,
-        id: i64,
-        target_id: i64,
+        id: RowId,
+        target_id: RowId,
         position: i64,
     ) -> Result<DuplicatedSubtree<Domain>, WireError> {
         let mut db = self.factory.begin().await.map_err(WireError::from_error)?;

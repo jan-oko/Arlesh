@@ -36,6 +36,11 @@
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- The small icon of a notification the system builds itself: the Arlesh mark. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_arlesh" />
+
         <!-- Receives the server's push messages and builds the notification. -->
         <service
             android:name=".PushService"

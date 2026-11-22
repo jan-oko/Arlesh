@@ -15,7 +15,7 @@ interface Props {
   /** What the wait's title defaults to when left blank. */
   titlePlaceholder: string;
   allTags: Domain[];
-  domainNames: Map<number, string>;
+  domainNames: Map<string, string>;
 }
 
 /**

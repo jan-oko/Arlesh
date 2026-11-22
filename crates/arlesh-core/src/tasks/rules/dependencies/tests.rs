@@ -2,6 +2,7 @@
 //! specification.
 
 use super::*;
+use crate::nodes::id::tkey;
 use crate::{
     nodes::{id::DerivedId, origin::CheckOrigin},
     tasks::{
@@ -124,7 +125,13 @@ fn every_goal_every_other_task_and_every_stored_wait_is_offered() {
     let (tasks, goals, waits) = board();
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &[])),
-        ["task-2", "task-3", "task-4", "goal-10", "expectation-20"]
+        [
+            tkey("task", 2),
+            tkey("task", 3),
+            tkey("task", 4),
+            tkey("goal", 10),
+            tkey("expectation", 20)
+        ]
     );
 }
 
@@ -134,7 +141,7 @@ fn what_it_already_depends_on_is_left_out() {
     let edges = [edge(1, "task", 2), edge(1, "goal", 10)];
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &edges)),
-        ["task-3", "task-4", "expectation-20"]
+        [tkey("task", 3), tkey("task", 4), tkey("expectation", 20)]
     );
 }
 
@@ -145,7 +152,7 @@ fn every_task_that_depends_on_it_through_a_chain_is_left_out() {
     let edges = [edge(2, "task", 1), edge(3, "task", 2)];
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &edges)),
-        ["task-4", "goal-10", "expectation-20"]
+        [tkey("task", 4), tkey("goal", 10), tkey("expectation", 20)]
     );
 }
 
@@ -155,6 +162,12 @@ fn a_task_sharing_a_goal_or_a_wait_is_still_offered() {
     let edges = [edge(2, "goal", 10), edge(2, "expectation", 20)];
     assert_eq!(
         keys(&candidates(&1.into(), &tasks, &goals, &waits, &edges)),
-        ["task-2", "task-3", "task-4", "goal-10", "expectation-20"]
+        [
+            tkey("task", 2),
+            tkey("task", 3),
+            tkey("task", 4),
+            tkey("goal", 10),
+            tkey("expectation", 20)
+        ]
     );
 }

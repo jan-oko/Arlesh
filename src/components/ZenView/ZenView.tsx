@@ -1,3 +1,4 @@
+import { useJumpToWaiting } from "@/hooks/use-jump-to-waiting";
 import { useStableKeys } from "@/hooks/use-temporary-ids";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -200,6 +201,8 @@ export default function ZenView() {
   const selectedKind = activeId === null ? undefined : find(activeId)?.kind;
   usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
+  const jumpToWaitingAnswer = useJumpToWaiting({ select: setSelectedId, showToast });
+  const jumpToStagedAnswer = useJumpToWaiting({ select: setSelectedId, showToast, staged: true });
   useKeyboardZenView({
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,
     selectedTaskId: selectedTask === undefined ? null : selectedTask.node.id,
@@ -210,6 +213,8 @@ export default function ZenView() {
     onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
+    onJumpToWaitingAnswer: jumpToWaitingAnswer,
+    onJumpToStagedAnswer: jumpToStagedAnswer,
     onScrollList: startScroll,
     onCycleStatus,
     onCycleVerdict: cycleVerdict,
@@ -217,7 +222,7 @@ export default function ZenView() {
     onToggleRelease: toggleRelease,
     onBindWait: openAsyncTemplate,
     // Borrowed with the List View's Expectation context, but never dispatched: the Zen table
-    // leaves out `Alt+E`'s list option and `Shift+E`'s create (see `ZEN_BINDINGS`).
+    // leaves out `Alt+W`'s list option and `Shift+E`'s create (see `ZEN_BINDINGS`).
     onSetExpectationsPreset: () => {},
     onCreateExpectation: () => {},
     onOpenEditor: openEditor,
@@ -323,7 +328,7 @@ export default function ZenView() {
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onCycleStatus={onCycleStatus}
-                onAnswer={nodeEditor.onAnswer}
+                answers={nodeEditor.answers}
               />
             ))}
           </div>

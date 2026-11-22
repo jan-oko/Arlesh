@@ -107,6 +107,10 @@ class AgentActivity(BaseModel):
     """
     Agentic Tasks that read Review: On Agent, with the agent's question open for the user.
     """
+    staged: Annotated[int | None, Field(ge=0)] = None
+    """
+    Open questions and reviews on the whole board with a staged answer: what one Send sends.
+    """
     waits: Annotated[int, Field(ge=0)]
     """
     Pending, live agentic waits on something other than the user — CI, say.
@@ -382,11 +386,16 @@ class CreateFlowItemRequest(BaseModel):
     Request body for creating a flow item (goal or task).
     """
 
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    parent_id: int
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
+    parent_id: str
     """
     In-flow parent id.
     """
@@ -405,7 +414,7 @@ class DelegatePerson(BaseModel):
     Delegated to the Person with this id.
     """
 
-    id: int
+    id: str
     """
     The `people` row the task is delegated to.
     """
@@ -432,7 +441,7 @@ class DependencyExpectation(BaseModel):
     Depends on an expectation being released.
     """
 
-    id: int
+    id: str
     """
     The expectation being waited on.
     """
@@ -491,7 +500,7 @@ class Domain(BaseModel):
     """
     Optional description.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -503,7 +512,7 @@ class Domain(BaseModel):
     """
     Linked Obsidian directory (Projects only).
     """
-    parent_id: int | None
+    parent_id: str | None
     """
     Parent domain id (nullable).
     """
@@ -650,7 +659,7 @@ class FlowDependency(BaseModel):
     An intra-flow dependency: `dependent` waits on `depends_on`.
     """
 
-    dependent_id: int
+    dependent_id: str
     """
     The waiting item's id.
     """
@@ -658,7 +667,7 @@ class FlowDependency(BaseModel):
     """
     The waiting item's type (`flow_goal` / `flow_task`).
     """
-    depends_on_id: int
+    depends_on_id: str
     """
     The blocking item's id.
     """
@@ -666,11 +675,11 @@ class FlowDependency(BaseModel):
     """
     The blocking item's type.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -702,15 +711,15 @@ class FlowItemCycle(BaseModel):
     A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
     """
 
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
-    item_id: int
+    item_id: str
     """
     Owning flow-item id.
     """
@@ -776,7 +785,7 @@ class FlowOrigin(BaseModel):
     """
     Title of the flow this node was materialised from.
     """
-    node_id: int
+    node_id: str
     """
     The real node's id.
     """
@@ -786,8 +795,8 @@ class FlowOrigin(BaseModel):
     """
 
 
-class IdPair(RootModel[tuple[int, int]]):
-    root: Annotated[tuple[int, int], Field(max_length=2, min_length=2, title="IdPair")]
+class IdPair(RootModel[tuple[str, str]]):
+    root: Annotated[tuple[str, str], Field(max_length=2, min_length=2, title="IdPair")]
 
 
 class ForkedTemplate(BaseModel):
@@ -804,7 +813,7 @@ class ForkedTemplate(BaseModel):
     """
     Old→new `flow_expectations` ids.
     """
-    flow_id: int
+    flow_id: str
     """
     The fork's flow id.
     """
@@ -1056,7 +1065,7 @@ class LeftBehindChild(BaseModel):
     One row hung on a Habit occurrence that a copy left behind, titled so the paste can name it.
     """
 
-    child_id: int
+    child_id: str
     """
     The row's id.
     """
@@ -1075,7 +1084,7 @@ class MaterializedFlow(BaseModel):
     The outcome of starting a flow: the materialised root node.
     """
 
-    root_id: int
+    root_id: str
     """
     Root node id.
     """
@@ -1269,7 +1278,7 @@ class OriginSpawnedWait(BaseModel):
     The wait an Asynchronous Task spawned when it was done, drawn from its Expectation template.
     """
 
-    task_id: int | str
+    task_id: str
     """
     The Task that spawned the wait, or that is delegated.
     """
@@ -1281,7 +1290,7 @@ class OriginDelegationWait(BaseModel):
     The wait a delegated Task has on its delegate, drawn while the Task is not done.
     """
 
-    task_id: int | str
+    task_id: str
     """
     The Task that spawned the wait, or that is delegated.
     """
@@ -1559,6 +1568,33 @@ class ScopeKind(StrEnum):
     """
 
 
+class SendRequest(BaseModel):
+    """
+    A request to send the staged answers.
+    """
+
+    shown: list[str] | None = []
+    """
+    The waits the caller's screen showed as staged: one that has no draft any more is reported
+    as skipped rather than passed over in silence.
+    """
+
+
+class SentDraft(BaseModel):
+    """
+    A draft that was sent: its wait is released.
+    """
+
+    task_id: str
+    """
+    The Task it hangs under.
+    """
+    wait_id: str
+    """
+    The wait released.
+    """
+
+
 class SetRecurrenceRequest(BaseModel):
     """
     Request to set (create or replace) a flow's Recurrence, making it a Habit.
@@ -1612,6 +1648,48 @@ class SetRecurrenceRequest(BaseModel):
     )
     """
     The scope the recurrence starts on (of the flow's Duration kind).
+    """
+
+
+class SkipReason(StrEnum):
+    """
+    Why a staged answer was not sent.
+    """
+
+    released = "released"
+    """
+    The wait was already released.
+    """
+    gone = "gone"
+    """
+    The wait no longer exists, is archived, or is no longer an agentic question.
+    """
+    unstaged = "unstaged"
+    """
+    The wait is still open, but its draft was cleared on another device.
+    """
+
+
+class SkippedDraft(BaseModel):
+    """
+    A staged answer that was not sent, named so the client can say so.
+    """
+
+    reason: SkipReason
+    """
+    Why it was skipped.
+    """
+    task_id: str | None
+    """
+    The Task it hangs under, when the wait is still known.
+    """
+    title: str | None
+    """
+    The wait's title, when the wait is still known.
+    """
+    wait_id: str
+    """
+    The wait.
     """
 
 
@@ -1672,7 +1750,7 @@ class SpawnedWait(BaseModel):
     """
     Pending or Released.
     """
-    task_id: int
+    task_id: str
     """
     The Task that spawned it.
     """
@@ -1687,7 +1765,7 @@ class StartFlowRequest(BaseModel):
     """
     A date within the anchor scope of the flow's kind (the window's first period).
     """
-    target_id: int
+    target_id: str
     """
     Target parent id.
     """
@@ -1774,7 +1852,7 @@ class StepEntryDuplicate(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: int
+    id: str
     """
     The node's row id.
     """
@@ -1783,7 +1861,7 @@ class StepEntryDuplicate(BaseModel):
     The node's kind.
     """
     op: Literal["duplicate"]
-    parent_id: int
+    parent_id: str
     """
     The parent's row id.
     """
@@ -1828,7 +1906,7 @@ class StepTarget1(BaseModel):
     """
     `flow`, `flow_goal`, `flow_task`, `flow_commitment` or `flow_expectation`.
     """
-    id: int
+    id: str
     """
     The node in the Habit as it was.
     """
@@ -1855,7 +1933,7 @@ class TargetRef(BaseModel):
     scope-validity check and the flow-origin lookup.
     """
 
-    node_id: int
+    node_id: str
     """
     Node id.
     """
@@ -1935,7 +2013,7 @@ class TaskDependencyEdge(BaseModel):
     bulk-load endpoint so the mindmap can derive virtual "blocked by" reasons without a per-task call.
     """
 
-    dependency_id: int | str
+    dependency_id: str
     """
     Database id of the dependency target.
     """
@@ -1943,7 +2021,7 @@ class TaskDependencyEdge(BaseModel):
     """
     Kind of the dependency target: `task` or `goal`.
     """
-    task_id: int | str
+    task_id: str
     """
     The dependent task.
     """
@@ -2094,7 +2172,7 @@ class UpdateDomainRequest(BaseModel):
     """
     New Obsidian directory link (if provided).
     """
-    parent_id: int | None = None
+    parent_id: str | None = None
     """
     New parent id (if provided).
     """
@@ -2152,7 +2230,7 @@ class UpdateExpectationRequest(BaseModel):
     """
     New private flag, if changing.
     """
-    parent_id: int | str | None = None
+    parent_id: str | None = None
     """
     New parent entity id for re-parenting (must be set together with parent_type).
     """
@@ -2201,7 +2279,7 @@ class UpdateGoalRequest(BaseModel):
     On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     defaulted to Keep Overdue when a scope is set without one.
     """
-    parent_id: int | str | None = None
+    parent_id: str | None = None
     """
     New parent entity id for re-parenting (must be set together with parent_type).
     """
@@ -2244,7 +2322,7 @@ class UpdateInfoRequest(BaseModel):
     """
     New private flag, if changing.
     """
-    parent_id: int | str | None = None
+    parent_id: str | None = None
     """
     New parent id, if re-parenting.
     """
@@ -2344,7 +2422,7 @@ class ViolatingDescendant(BaseModel):
     narrowing an ancestor's scope (or reparenting) would orphan.
     """
 
-    node_id: int
+    node_id: str
     """
     The descendant's id.
     """
@@ -2378,7 +2456,7 @@ class WaitOrigin(BaseModel):
     The Task a derived wait belongs to.
     """
 
-    task_id: int | str
+    task_id: str
     """
     The Task that spawned the wait, or that is delegated.
     """
@@ -2511,6 +2589,29 @@ class AgenticBrief(BaseModel):
     """
 
 
+class AnswerDraft(BaseModel):
+    """
+    An answer written but not yet sent. Its existence means the wait is **staged**.
+    """
+
+    answer: str | None
+    """
+    A question's answer, or a review's note (optional there).
+    """
+    saved_at: datetime
+    """
+    When the last save landed.
+    """
+    verdict: ReviewVerdict | None
+    """
+    A review's verdict; `None` on a question.
+    """
+    wait_id: str
+    """
+    The wait it answers: a stored or a derived wait's id.
+    """
+
+
 class AsyncTemplate(BaseModel):
     """
     A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
@@ -2524,7 +2625,7 @@ class AsyncTemplate(BaseModel):
     """
     How often to check on the spawned wait; the first check falls one interval after it begins.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags the spawned wait carries.
     """
@@ -2549,7 +2650,7 @@ class BlockReason(BaseModel):
     Why this reason was derived rather than written, when it was. Absent for a stored reason —
     and left off the wire then, so a board with no derived reason reads exactly as before.
     """
-    owner_id: int | str
+    owner_id: str
     """
     Owning node: a stored row, or a derived one (a Habit occurrence's own list).
     """
@@ -2585,7 +2686,7 @@ class CatalogueNode(BaseModel):
     """
     Its own private flag.
     """
-    node_id: int
+    node_id: str
     """
     The node's row id.
     """
@@ -2593,7 +2694,7 @@ class CatalogueNode(BaseModel):
     """
     The node's table.
     """
-    parent_id: int | None
+    parent_id: str | None
     """
     The row id of the stored node it hangs under, if any.
     """
@@ -2621,7 +2722,7 @@ class CheckOrigin(BaseModel):
     """
     When the check fell due.
     """
-    wait_id: int | str
+    wait_id: str
     """
     The Expectation's id, or the spawning Task's — a stored one's integer, an occurrence's
     UUID.
@@ -2682,7 +2783,12 @@ class CreateCommitmentRequest(BaseModel):
     Request body for creating a commitment.
     """
 
-    parent_id: int | str
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
+    parent_id: str
     """
     Parent entity id.
     """
@@ -2719,11 +2825,16 @@ class CreateDomainRequest(BaseModel):
     """
     Optional description.
     """
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
     knowledge_base_directory: str | None = None
     """
     Linked Obsidian directory (Projects only).
     """
-    parent_id: int | None = None
+    parent_id: str | None = None
     """
     Parent domain id. Required for Projects (must be Aspect or Project).
     """
@@ -2766,6 +2877,11 @@ class CreateFlowRequest(BaseModel):
     """
     Phase-`exact` window start time-of-day `HH:MM`, when kind is `exact`.
     """
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
     instance_type: InstanceType | None = None
     """
     What instances materialize as.
@@ -2775,7 +2891,7 @@ class CreateFlowRequest(BaseModel):
     Whether the flow is created **Private** (the new-Flow editor's Private switch); omitted
     means public.
     """
-    parent_id: int
+    parent_id: str
     """
     Parent entity id.
     """
@@ -2795,7 +2911,7 @@ class CreateFlowRequest(BaseModel):
     """
     Root Cycle Plan start offset within the flow window.
     """
-    target_id: int | None = None
+    target_id: str | None = None
     """
     Explicit Target Node id; omit (or `None`) to leave the target derived from the parent.
     """
@@ -2822,11 +2938,16 @@ class CreateGoalRequest(BaseModel):
     Request body for creating a goal.
     """
 
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
     on_scope_exit: OnScopeExit | None = None
     """
     On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Parent entity id.
     """
@@ -2861,7 +2982,12 @@ class CreateInfoRequest(BaseModel):
     """
     Optional longer supporting text.
     """
-    parent_id: int | str
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
+    parent_id: str
     """
     Parent node database id.
     """
@@ -2895,7 +3021,7 @@ class DependencyTask(BaseModel):
     Depends on another task.
     """
 
-    id: int | str
+    id: str
     """
     The task being depended on — a stored one, or a Habit occurrence.
     """
@@ -2907,7 +3033,7 @@ class DependencyGoal(BaseModel):
     Depends on a goal being achieved.
     """
 
-    id: int | str
+    id: str
     """
     The goal being depended on — a stored one, or a Habit occurrence.
     """
@@ -2919,7 +3045,7 @@ class DependencyBlock(BaseModel):
     A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
     """
 
-    id: int | str
+    id: str
     """
     The target's row id.
     """
@@ -2966,6 +3092,21 @@ class DerivedState(BaseModel):
     """
 
 
+class DraftRequest(BaseModel):
+    """
+    The content of a draft to save, as the user gave it.
+    """
+
+    answer: str | None = None
+    """
+    A question's answer, or a review's note.
+    """
+    verdict: ReviewVerdict | None = None
+    """
+    A review's verdict.
+    """
+
+
 class DuplicatedDomain(BaseModel):
     """
     A duplicate command's answer: the copy's root, and what the copy left behind.
@@ -2989,7 +3130,7 @@ class EffectiveAccess(BaseModel):
     whether the node is an Agentic Task, which the node's own Agentic badge already says.
     """
 
-    node_id: int
+    node_id: str
     """
     The node's row id.
     """
@@ -2997,7 +3138,7 @@ class EffectiveAccess(BaseModel):
     """
     The node's table.
     """
-    root_id: int
+    root_id: str
     """
     The row id of that root.
     """
@@ -3067,7 +3208,7 @@ class Flow(BaseModel):
     """
     Phase-`exact` window start time-of-day `HH:MM`; set iff kind is `exact`.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -3083,7 +3224,7 @@ class Flow(BaseModel):
     """
     Whether this flow is private (hidden unless Private Mode is on).
     """
-    parent_id: int
+    parent_id: str
     """
     Parent entity id.
     """
@@ -3108,11 +3249,11 @@ class Flow(BaseModel):
     """
     Root Cycle Plan start offset within the flow window.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags every occurrence carries.
     """
-    target_id: int | None
+    target_id: str | None
     """
     Explicit Target Node id for instances; `None` alongside `target_type` means "my parent".
     """
@@ -3182,11 +3323,11 @@ class FlowCommitment(BaseModel):
     """
     Who every occurrence is delegated to, unless it says otherwise. Task templates only.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -3194,7 +3335,7 @@ class FlowCommitment(BaseModel):
     """
     Whether this item is private (propagates to its instances).
     """
-    parent_id: int
+    parent_id: str
     """
     In-flow parent id (the flow, or a flow item).
     """
@@ -3206,7 +3347,7 @@ class FlowCommitment(BaseModel):
     """
     Sort position among siblings.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags every occurrence carries.
     """
@@ -3272,11 +3413,11 @@ class FlowExpectation(BaseModel):
     """
     When each occurrence's first check falls; `None` is its window's start.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -3284,7 +3425,7 @@ class FlowExpectation(BaseModel):
     """
     Whether this item is private (propagates to its instances).
     """
-    parent_id: int
+    parent_id: str
     """
     In-flow parent id (the flow, or a flow item).
     """
@@ -3296,7 +3437,7 @@ class FlowExpectation(BaseModel):
     """
     Sort position among siblings.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags every occurrence carries.
     """
@@ -3345,11 +3486,11 @@ class FlowGoal(BaseModel):
     """
     Who every occurrence is delegated to, unless it says otherwise. Task templates only.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -3357,7 +3498,7 @@ class FlowGoal(BaseModel):
     """
     Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     """
-    parent_id: int
+    parent_id: str
     """
     In-flow parent id (the flow, or a flow item).
     """
@@ -3369,7 +3510,7 @@ class FlowGoal(BaseModel):
     """
     Sort position among siblings.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags every occurrence carries.
     """
@@ -3387,7 +3528,7 @@ class FlowHabitEntry(BaseModel):
     consumer can key by it instead of trusting position.
     """
 
-    flow_id: int
+    flow_id: str
     """
     The flow this entry describes.
     """
@@ -3434,7 +3575,7 @@ class FlowRecurrence(BaseModel):
     """
     Optional end scope; `None` = open-ended.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow (also the primary key — one recurrence per flow).
     """
@@ -3505,11 +3646,11 @@ class FlowTask(BaseModel):
     """
     Who every occurrence is delegated to, unless it says otherwise. Task templates only.
     """
-    flow_id: int
+    flow_id: str
     """
     Owning flow.
     """
-    id: int
+    id: str
     """
     Primary key.
     """
@@ -3517,7 +3658,7 @@ class FlowTask(BaseModel):
     """
     Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     """
-    parent_id: int
+    parent_id: str
     """
     In-flow parent id (the flow, or a flow item).
     """
@@ -3529,7 +3670,7 @@ class FlowTask(BaseModel):
     """
     Sort position among siblings.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tags every occurrence carries.
     """
@@ -3544,7 +3685,7 @@ class GestureNode(BaseModel):
     One node a gesture acts on: its kind, as the board names it, and its id.
     """
 
-    id: int | str
+    id: str
     """
     Its id: a row id, or a derived node's UUID where the kind has derived rows.
     """
@@ -3562,7 +3703,7 @@ class HabitInstance(BaseModel):
     this iteration.
 
     An item with N pairs contributes N of these, exactly as `start` materialises N real nodes from
-    it. An item with no pairs contributes one, with `cycle_id` = [`NO_CYCLE`] and no window of its
+    it. An item with no pairs contributes one, with `cycle_id` = [`no_cycle()`] and no window of its
     own — it is relevant for as long as the iteration is.
 
     The windows are resolved **here**, not in the frontend, because `start` resolves them here too
@@ -3575,11 +3716,11 @@ class HabitInstance(BaseModel):
     and All shows everything.
     """
 
-    cycle_id: int
+    cycle_id: str
     """
-    The cycle pair that produced this occurrence, or [`NO_CYCLE`] when the item declares none.
+    The cycle pair that produced this occurrence, or [`no_cycle()`] when the item declares none.
     """
-    item_id: int
+    item_id: str
     """
     The flow item's id.
     """
@@ -3671,7 +3812,7 @@ class Info(BaseModel):
     """
     Optional longer supporting text (e.g. an error traceback); `None` when unset.
     """
-    id: int
+    id: str
     """
     Database primary key.
     """
@@ -3679,7 +3820,7 @@ class Info(BaseModel):
     """
     Whether this node is private (hidden unless Private Mode is on).
     """
-    parent_id: int | str
+    parent_id: str
     """
     The parent node: a stored row, or a derived one (a Habit occurrence).
     """
@@ -3706,7 +3847,7 @@ class ItemLifecycle(BaseModel):
     """
     True when `archival` silently overrode a manually-set `Frozen` or `Backlog`.
     """
-    node_id: int | str
+    node_id: str
     """
     The item's id — a stored row's, or a derived one's UUID.
     """
@@ -3802,7 +3943,7 @@ class NodeKey(BaseModel):
     One stored node: its table and its row id there.
     """
 
-    node_id: int
+    node_id: str
     """
     Its primary key in that table.
     """
@@ -3817,15 +3958,15 @@ class OriginHabit(BaseModel):
     An occurrence of a Habit, derived from its template and overlaid with what differs.
     """
 
-    cycle_id: int
+    cycle_id: str
     """
     The cycle pair that drew it, or `0`.
     """
-    habit_id: int
+    habit_id: str
     """
     The Habit (flow) the occurrence belongs to.
     """
-    item_id: int
+    item_id: str
     """
     The template row's id (the flow's own for the root).
     """
@@ -3849,7 +3990,7 @@ class OriginCheck(BaseModel):
     """
     When the check fell due.
     """
-    wait_id: int | str
+    wait_id: str
     """
     The Expectation's id, or the spawning Task's — a stored one's integer, an occurrence's
     UUID.
@@ -3870,7 +4011,7 @@ class PlanClampTarget(BaseModel):
     """
     The Plan clamping gives it, or `None` when nothing above would admit it.
     """
-    id: int | str
+    id: str
     """
     The Task.
     """
@@ -3981,6 +4122,21 @@ class Scope(BaseModel):
     """
 
 
+class SendOutcome(BaseModel):
+    """
+    What a send did.
+    """
+
+    sent: list[SentDraft]
+    """
+    The waits released.
+    """
+    skipped: list[SkippedDraft]
+    """
+    The staged answers not sent.
+    """
+
+
 class StatusOrdinary(BaseModel):
     """
     An ordinary Task's status.
@@ -4032,7 +4188,7 @@ class StepEntryMove(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The node.
     """
@@ -4041,7 +4197,7 @@ class StepEntryMove(BaseModel):
     The node's kind.
     """
     op: Literal["move"]
-    parent: StepTarget1 | StepTarget2 | int | str
+    parent: StepTarget1 | StepTarget2 | str
     """
     The new parent.
     """
@@ -4171,7 +4327,7 @@ class StepEntryUpdateGoal(BaseModel):
     """
     Achieving a Goal over open work asks first unless this is set.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Goal.
     """
@@ -4192,7 +4348,7 @@ class StepEntryUpdateExpectation(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The wait.
     """
@@ -4213,7 +4369,7 @@ class StepEntryUpdateInfo(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Info.
     """
@@ -4234,7 +4390,7 @@ class StepEntryUpdateDomain(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     Its row.
     """
@@ -4260,7 +4416,7 @@ class StepEntryUpdateSpawnedWait(BaseModel):
     """
     What to change.
     """
-    task_id: StepTarget1 | StepTarget2 | int | str
+    task_id: StepTarget1 | StepTarget2 | str
     """
     The Task.
     """
@@ -4280,7 +4436,7 @@ class StepEntrySetTaskDoneAt(BaseModel):
     """
     When it was done.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Task.
     """
@@ -4297,7 +4453,7 @@ class StepEntrySetBlockReasons(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Task or Goal.
     """
@@ -4322,7 +4478,7 @@ class StepEntrySetTag(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The node.
     """
@@ -4335,7 +4491,7 @@ class StepEntrySetTag(BaseModel):
     """
     On, or off.
     """
-    tag_id: int
+    tag_id: str
     """
     The Tag's row id.
     """
@@ -4360,7 +4516,7 @@ class StepEntrySetTaskDependency(BaseModel):
     """
     Add, or remove.
     """
-    task_id: StepTarget1 | StepTarget2 | int | str
+    task_id: StepTarget1 | StepTarget2 | str
     """
     The dependent Task.
     """
@@ -4376,7 +4532,7 @@ class StepEntrySetFlowRecurrence(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The Flow.
     """
@@ -4397,7 +4553,7 @@ class StepEntryDeleteFlowRecurrence(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The Flow.
     """
@@ -4414,7 +4570,7 @@ class StepEntryClearHabitModifications(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The Habit.
     """
@@ -4431,7 +4587,7 @@ class StepEntryForkFlow(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The Habit.
     """
@@ -4452,11 +4608,11 @@ class StepEntrySetFlowItemCycles(BaseModel):
     """
     Its cycles.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The item's Flow.
     """
-    item_id: StepTarget1 | StepTarget2 | int | str
+    item_id: StepTarget1 | StepTarget2 | str
     """
     The item.
     """
@@ -4481,7 +4637,7 @@ class StepEntrySetFlowDependency(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    dependent_id: StepTarget1 | StepTarget2 | int | str
+    dependent_id: StepTarget1 | StepTarget2 | str
     """
     The dependent item.
     """
@@ -4489,7 +4645,7 @@ class StepEntrySetFlowDependency(BaseModel):
     """
     The dependent item's kind.
     """
-    depends_on_id: StepTarget1 | StepTarget2 | int | str
+    depends_on_id: StepTarget1 | StepTarget2 | str
     """
     The prerequisite.
     """
@@ -4497,7 +4653,7 @@ class StepEntrySetFlowDependency(BaseModel):
     """
     The prerequisite's kind.
     """
-    flow_id: StepTarget1 | StepTarget2 | int | str
+    flow_id: StepTarget1 | StepTarget2 | str
     """
     The Flow.
     """
@@ -4576,7 +4732,7 @@ class Task(BaseModel):
     Overdue. Must lie within its effective Time Scope. `None` means the due is derived — see
     [`crate::tasks::lifecycle::effective_due`].
     """
-    id: int | str
+    id: str
     """
     Primary key for a stored row, or the UUID of a derived one.
     """
@@ -4598,7 +4754,7 @@ class Task(BaseModel):
     """
     Where the row came from: made by hand, or derived (a Habit occurrence).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
     """
@@ -4619,7 +4775,7 @@ class Task(BaseModel):
     Current status, in the model the Task's kind holds. As a board load serves it, Review is
     derived here; as read straight from the row it is what the row holds.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tag domain ids attached to this task.
     """
@@ -4662,7 +4818,7 @@ class UpdateCommitmentRequest(BaseModel):
     """
     New private flag, if changing.
     """
-    parent_id: int | str | None = None
+    parent_id: str | None = None
     """
     New parent entity id for re-parenting (must be set together with parent_type).
     """
@@ -4744,7 +4900,7 @@ class UpdateFlowItemRequest(BaseModel):
     """
     New private flag, if changing.
     """
-    parent_id: int | None = None
+    parent_id: str | None = None
     """
     New in-flow parent id (with parent_type).
     """
@@ -4756,7 +4912,7 @@ class UpdateFlowItemRequest(BaseModel):
     """
     New sort position.
     """
-    tag_ids: list[int] | None = None
+    tag_ids: list[str] | None = None
     """
     The whole tag list to set.
     """
@@ -4836,7 +4992,7 @@ class UpdateFlowRequest(BaseModel):
     """
     New private flag, if changing.
     """
-    parent_id: int | None = None
+    parent_id: str | None = None
     """
     New parent id (with parent_type).
     """
@@ -4860,11 +5016,11 @@ class UpdateFlowRequest(BaseModel):
     """
     Root Cycle Plan start offset (Some(None) clears).
     """
-    tag_ids: list[int] | None = None
+    tag_ids: list[str] | None = None
     """
     The whole tag list to set.
     """
-    target_id: int | None = None
+    target_id: str | None = None
     """
     Target Node id (`Some(None)` clears it back to the derived parent default).
     """
@@ -4948,7 +5104,7 @@ class UpdateTaskRequest(BaseModel):
     On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     defaulted to Keep Overdue when a scope is set without one.
     """
-    parent_id: int | str | None = None
+    parent_id: str | None = None
     """
     New parent entity id for re-parenting (must be set together with parent_type).
     """
@@ -5014,7 +5170,7 @@ class Commitment(BaseModel):
     Its own archive, set by hand: archived with everything beneath it until unarchived. Beside
     the archival its verdict and Verdict Window derive. Always Live on a Habit occurrence.
     """
-    id: int | str
+    id: str
     """
     Primary key for a stored row, or the UUID of a derived one.
     """
@@ -5032,7 +5188,7 @@ class Commitment(BaseModel):
     """
     Where the row came from: made by hand, or derived (a Habit occurrence).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
     """
@@ -5044,7 +5200,7 @@ class Commitment(BaseModel):
     """
     Sort position among siblings; defaults to id (insertion order).
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tag domain ids attached to this commitment.
     """
@@ -5091,7 +5247,12 @@ class CreateExpectationRequest(BaseModel):
     """
     When the first check falls due. Omitted with a Check every, it is the moment of creation.
     """
-    parent_id: int | str
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
+    parent_id: str
     """
     Parent entity id.
     """
@@ -5152,11 +5313,16 @@ class CreateTaskRequest(BaseModel):
     """
     Initial explicit due scope; must lie within the task's effective Time Scope.
     """
+    id: str | None = None
+    """
+    The new row's id, chosen by the caller (a client that has already shown the row under it);
+    the server mints one when it is absent. Must be a UUID that is not a derived node's.
+    """
     on_scope_exit: OnScopeExit | None = None
     """
     On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Parent entity id.
     """
@@ -5252,7 +5418,7 @@ class Expectation(BaseModel):
     When the first check falls due; set to the moment Check every is first given, unless the
     request names another.
     """
-    id: int | str
+    id: str
     """
     Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
     delegated Task's wait on its delegate).
@@ -5275,7 +5441,7 @@ class Expectation(BaseModel):
     """
     Where the row came from: made by hand, or derived from a Task (ADR 0008).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
     """
@@ -5305,7 +5471,7 @@ class Expectation(BaseModel):
     """
     Pending or Released.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tag domain ids attached to this expectation.
     """
@@ -5325,7 +5491,7 @@ class Goal(BaseModel):
     A goal row as returned from the database.
     """
 
-    id: int | str
+    id: str
     """
     Primary key for a stored row, or the UUID of a derived one.
     """
@@ -5347,7 +5513,7 @@ class Goal(BaseModel):
     """
     Where the row came from: made by hand, or derived (a Habit occurrence).
     """
-    parent_id: int | str
+    parent_id: str
     """
     Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
     """
@@ -5363,7 +5529,7 @@ class Goal(BaseModel):
     """
     Current status.
     """
-    tag_ids: list[int]
+    tag_ids: list[str]
     """
     Tag domain ids attached to this goal.
     """
@@ -5382,15 +5548,15 @@ class HabitOrigin(BaseModel):
     A Habit occurrence's provenance: which Habit, which iteration, which template row and pair.
     """
 
-    cycle_id: int
+    cycle_id: str
     """
     The cycle pair that drew it, or `0`.
     """
-    habit_id: int
+    habit_id: str
     """
     The Habit (flow) the occurrence belongs to.
     """
-    item_id: int
+    item_id: str
     """
     The template row's id (the flow's own for the root).
     """
@@ -5473,11 +5639,11 @@ class NodeFacts(BaseModel):
     Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
     Achieved, a wait no longer pending.
     """
-    open_question: int | str | None = None
+    open_question: str | None = None
     """
     The open agentic question beneath a Task — the wait that makes it read Review.
     """
-    open_questions: list[int | str] | None = None
+    open_questions: list[str] | None = None
     """
     Every open agentic question or review beneath a Task, in position order — the app draws
     them on the Task, never as nodes of their own. [`Self::open_question`] is the first.
@@ -5495,6 +5661,11 @@ class NodeFacts(BaseModel):
     plan_source_short_id: str | None = None
     """
     [`Self::plan_source`]'s short id, when the board has one for it.
+    """
+    staged_questions: list[str] | None = None
+    """
+    The open questions beneath a Task that are **staged**: an answer is written and not yet
+    sent. A subset of [`Self::open_questions`]; the wait still reads Review.
     """
     sub_items: SubItems | None = None
     """
@@ -5579,7 +5750,7 @@ class StepEntryUpdateTask(BaseModel):
     """
     What becomes of the Tasks below whose own Plan the new Plan would leave outside.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Task.
     """
@@ -5600,7 +5771,7 @@ class StepEntryUpdateCommitment(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Commitment.
     """
@@ -5621,7 +5792,7 @@ class StepEntryUpdateFlow(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The Flow.
     """
@@ -5642,7 +5813,7 @@ class StepEntryUpdateFlowItem(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | StepTarget2 | int | str
+    id: StepTarget1 | StepTarget2 | str
     """
     The item.
     """
@@ -5839,6 +6010,12 @@ class MindmapLoad(BaseModel):
     agent_activity: AgentActivity | None = None
     """
     What the agents are doing on the whole board. Filled by the app's load only.
+    """
+    answer_drafts: list[AnswerDraft] | None = None
+    """
+    Every staged answer: the drafts of waits the user has answered but not sent. Filled by the
+    app's board only (`mindmap::board`); never by `load_blocked`, so the MCP's board, the
+    snapshot and the wait stream carry none and an agent never sees a draft.
     """
     block_reasons: list[BlockReason]
     """

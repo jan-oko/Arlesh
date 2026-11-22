@@ -40,6 +40,7 @@ interface DrawnCase {
   preset: StatusMode;
   unblock: boolean;
   expectations: boolean;
+  reviewOption: boolean;
   overdueSetting: boolean;
   review: boolean;
   overdue: boolean;
@@ -90,6 +91,7 @@ function parseDrawnCase(value: unknown, index: number): DrawnCase {
     preset: STATUS_MODES.find((mode) => mode === preset) ?? fail(`${name}.filter.preset is not a preset`),
     unblock: bool(filter.unblock, `${name}.filter.unblock`),
     expectations: bool(filter.expectations, `${name}.filter.expectations`),
+    reviewOption: bool(filter.review, `${name}.filter.review`),
     overdueSetting: bool(raw.overdueSetting, `${name}.overdueSetting`),
     review: bool(raw.review, `${name}.review`),
     overdue: bool(raw.overdue, `${name}.overdue`),
@@ -163,7 +165,9 @@ describe("list sections conformance corpus", () => {
       const shared: FilterState = { ...DEFAULT_FILTER, statusMode: testCase.preset };
       const listFilter: ListFilterState = {
         ...DEFAULT_LIST_FILTER,
-        preset: testCase.unblock ? "unblock" : testCase.expectations ? "expectations" : testCase.preset,
+        preset: testCase.unblock ? "unblock"
+          : testCase.expectations ? "expectations"
+            : testCase.reviewOption ? "review" : testCase.preset,
       };
       expect(showsReviewSection(shared, listFilter)).toBe(testCase.review);
       expect(showsOverdueSection(testCase.overdueSetting, shared, listFilter)).toBe(testCase.overdue);

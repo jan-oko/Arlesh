@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import contextlib
 import http.server
@@ -1039,6 +1040,170 @@ class SharedTargetOwnership(IsolatedEnv):
         self.assertEqual(self.build(self.wt_a)["arlesh-core"], "partial, from a")
         self.keys["b"]["arlesh-core"] = "core-2"
         self.assertEqual(self.build(self.wt_b)["arlesh-core"], "compiled in b")
+
+
+class SharedTargetLock(IsolatedEnv):
+    """Two box builds into one target take turns: the second waits, says so, and sees the first's records."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        patcher = mock.patch.object(box, "note")
+        self.notes = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_free_target_is_taken_without_a_word(self) -> None:
+        with box.target_lock(self.target):
+            pass
+        self.notes.assert_not_called()
+
+    def test_a_second_build_waits_for_the_first_and_says_so_once(self) -> None:
+        order: list[str] = []
+        first_in, release = threading.Event(), threading.Event()
+
+        def first() -> None:
+            with box.target_lock(self.target):
+                order.append("first in")
+                first_in.set()
+                release.wait(5)
+                order.append("first out")
+
+        def second() -> None:
+            with box.target_lock(self.target):
+                order.append("second in")
+
+        a = threading.Thread(target=first)
+        a.start()
+        self.assertTrue(first_in.wait(5))
+        b = threading.Thread(target=second)
+        b.start()
+        time.sleep(0.3)
+        self.assertEqual(order, ["first in"])  # still queued
+        release.set()
+        a.join(5)
+        b.join(5)
+        self.assertEqual(order, ["first in", "first out", "second in"])
+        self.assertEqual(self.notes.call_count, 1)
+
+    def test_the_lock_is_released_when_the_build_raises(self) -> None:
+        with self.assertRaises(RuntimeError), box.target_lock(self.target):
+            raise RuntimeError("compile error")
+        with box.target_lock(self.target):
+            pass
+        self.notes.assert_not_called()
+
+
+class CargoCommand(IsolatedEnv):
+    """`box cargo -- <args>`: cargo in this worktree, in the shared target, under the lock."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        self.calls: list[dict[str, Any]] = []
+        self.owned: list[tuple[Path, Path]] = []
+        self.exit_code = 0
+
+        @contextlib.contextmanager
+        def fake_owned(wt: Path, target: Path, unkeyed: Any = ()) -> Any:
+            self.owned.append((wt, target))
+            yield
+
+        def fake_run(cmd: list[str], **kwargs: Any) -> Any:
+            self.calls.append({"cmd": cmd, **kwargs})
+            return subprocess.CompletedProcess(cmd, self.exit_code)
+
+        for patcher in (
+            mock.patch.object(box, "owned_target", fake_owned),
+            mock.patch.object(box, "shared_target", lambda: self.target),
+            mock.patch.object(box.subprocess, "run", fake_run),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_everything_after_cargo_is_cargos_own_including_flags_and_a_second_double_dash(self) -> None:
+        box.main(["cargo", "--", "test", "-p", "arlesh-core", "-j", "3", "--", "--nocapture"])
+        self.assertEqual(self.calls[0]["cmd"], ["cargo", "test", "-p", "arlesh-core", "-j", "3", "--", "--nocapture"])
+
+    def test_it_builds_this_worktree_into_the_shared_target_under_ownership(self) -> None:
+        box.main(["cargo", "check"])
+        self.assertEqual(self.owned, [(box.repo_root(), self.target)])
+        self.assertEqual(self.calls[0]["cwd"], box.repo_root())
+        self.assertEqual(self.calls[0]["env"]["CARGO_TARGET_DIR"], str(self.target))
+
+    def test_the_callers_environment_reaches_cargo(self) -> None:
+        with mock.patch.dict(os.environ, {"CARGO_INCREMENTAL": "0"}):
+            box.main(["cargo", "check"])
+        self.assertEqual(self.calls[0]["env"]["CARGO_INCREMENTAL"], "0")
+
+    def test_cargos_exit_code_is_returned(self) -> None:
+        self.exit_code = 101
+        self.assertEqual(box.main(["cargo", "test"]), 101)
+
+    def test_clean_is_refused_because_it_would_empty_the_shared_target(self) -> None:
+        self.assertEqual(box.main(["cargo", "--", "clean", "-p", "arlesh-core"]), 2)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.owned, [])
+
+    def test_without_arguments_it_is_a_usage_error(self) -> None:
+        self.assertEqual(box.main(["cargo"]), 2)
+        self.assertEqual(self.calls, [])
+
+
+class CompilerCache(IsolatedEnv):
+    """sccache under every `owned_target` build, and nothing changed when it is not installed."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        for var in ("RUSTC_WRAPPER", "SCCACHE_DIR", "SCCACHE_CACHE_SIZE", "SCCACHE_SERVER_PORT", "SCCACHE_BASEDIRS", "CARGO_INCREMENTAL"):
+            os.environ.pop(var, None)
+        self.notes = mock.patch.object(box, "note").start()
+        self.addCleanup(mock.patch.stopall)
+        self.which = mock.patch.object(box.shutil, "which", return_value="/bin/sccache").start()
+        mock.patch.object(box, "main_checkout", return_value=Path("/repo")).start()
+
+    def test_it_wraps_rustc_with_its_own_server_and_a_capped_cache_outside_the_repo(self) -> None:
+        env = box.cache_environment()
+        self.assertEqual(env["RUSTC_WRAPPER"], "/bin/sccache")
+        self.assertEqual(env["SCCACHE_DIR"], str(box.home() / ".cache" / "arlesh" / "sccache"))
+        self.assertEqual(env["SCCACHE_CACHE_SIZE"], "10G")
+        self.assertEqual(env["SCCACHE_SERVER_PORT"], box.CACHE_SERVER_PORT)
+        self.assertEqual(env["SCCACHE_BASEDIRS"], "/repo")  # worktrees under it share workspace-crate hits
+        self.notes.assert_not_called()
+
+    def test_incremental_is_off_while_the_cache_is_in_use(self) -> None:
+        self.assertEqual(box.cache_environment()["CARGO_INCREMENTAL"], "0")
+
+    def test_the_one_constant_leaves_incremental_alone(self) -> None:
+        with mock.patch.object(box, "CACHE_TURNS_INCREMENTAL_OFF", False):
+            self.assertNotIn("CARGO_INCREMENTAL", box.cache_environment())
+
+    def test_without_sccache_nothing_changes_and_one_line_says_so(self) -> None:
+        self.which.return_value = None
+        self.assertEqual(box.cache_environment(), {})
+        self.assertEqual(self.notes.call_count, 1)
+
+    def test_a_wrapper_the_caller_chose_is_left_alone(self) -> None:
+        os.environ["RUSTC_WRAPPER"] = "my-wrapper"
+        self.assertEqual(box.cache_environment(), {})
+        self.notes.assert_not_called()
+
+    def test_what_the_caller_set_wins(self) -> None:
+        os.environ.update({"SCCACHE_DIR": "/elsewhere", "CARGO_INCREMENTAL": "1"})
+        env = box.cache_environment()
+        self.assertNotIn("SCCACHE_DIR", env)
+        self.assertNotIn("CARGO_INCREMENTAL", env)
+
+    def test_the_variables_are_in_place_for_the_build_and_gone_after(self) -> None:
+        with box.compiler_cache():
+            self.assertEqual(os.environ["RUSTC_WRAPPER"], "/bin/sccache")
+        self.assertNotIn("RUSTC_WRAPPER", os.environ)
+        self.assertNotIn("CARGO_INCREMENTAL", os.environ)
+
+    def test_an_owned_target_build_runs_under_the_cache(self) -> None:
+        seen: list[str | None] = []
+        with mock.patch.object(box, "own_records", lambda *a: contextlib.nullcontext()), box.owned_target(self.tmp, self.tmp / "t"):
+            seen.append(os.environ.get("RUSTC_WRAPPER"))
+        self.assertEqual(seen, ["/bin/sccache"])
 
 
 class ContentKeys(unittest.TestCase):
@@ -2400,7 +2565,11 @@ if not os.path.exists(d + "/authed"):
     sys.exit(1)
 if a[:2] == ["pr", "list"]:
     state = a[a.index("--state") + 1]
+    if os.path.exists(d + "/raw_" + state):
+        sys.stdout.write(open(d + "/raw_" + state).read())
+        sys.exit(0)
     data = json.load(open(d + "/" + state + ".json"))
+
     if "--head" in a:
         data = [x for x in data if x["headRefName"] == a[a.index("--head") + 1]]
     print(json.dumps(data))
@@ -2722,6 +2891,459 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertIn("pruned 1 test app(s)", out)
         self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
+
+
+class PruneBranchData(OpenPrFixture):
+    """`prune` removes what box keeps per branch, once the branch's worktree is gone."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop("ARLESH_INSTANCES", None)
+        os.environ.pop("ARLESH_SHARED_TARGET", None)
+        # Branches that have no worktree and whose PR was merged: their data may go.
+        self.merged_ghosts = ["ghost-old", "ghost-state", "only-state", "seg-a", "seg_a", "col-a"]
+        self.set_prs(open=["pr-with-wt", "pr-no-wt"], merged=["squashed", *self.merged_ghosts])
+
+    def prompt(self, tty: bool, answer: str = "") -> tuple[int, str, str, list[str]]:
+        asked: list[str] = []
+
+        def fake_ask(text: str) -> str:
+            asked.append(text)
+            return answer
+
+        with (
+            mock.patch.object(box, "interactive", return_value=tty),
+            mock.patch.object(box, "ask", fake_ask),
+        ):
+            code, out, err = self.run_box("prune")
+        return code, out, err, asked
+
+    def keep(self, name: str, *, state: bool = True) -> None:
+        """Give `name` a server directory with a database, an instance directory and state entries."""
+        box.server_db(name).parent.mkdir(parents=True, exist_ok=True)
+        box.server_db(name).write_bytes(b"x" * 2048)
+        (box.server_dir(name) / "port").write_text("14700")
+        box.instance_dir(name).mkdir(parents=True, exist_ok=True)
+        (box.instance_dir(name) / "port").write_text("14200")
+        (box.instance_dir(name) / "arlesh").write_text("bin")
+        if state:
+            box.update_state(lambda s: (
+                s["built"][box.DESKTOP].__setitem__(name, "stamp"),
+                s["installed"].setdefault("pixel", {}).__setitem__(name, "old"),
+                s["provisioned"].setdefault("pixel", {}).__setitem__(name, {"server": name}),
+                s["tokens"].setdefault(name, {}).__setitem__("pixel", f"pixel/{name}"),
+            ))  # fmt: skip
+        apk = box.ci_cached_apk(name, "abcdef0123")
+        apk.parent.mkdir(parents=True, exist_ok=True)
+        apk.write_bytes(b"apk")
+
+    def has_data(self, name: str) -> bool:
+        return box.server_dir(name).exists() or box.instance_dir(name).exists()
+
+    def in_state(self, name: str) -> bool:
+        return name in box.state_branch_names()
+
+    def test_a_removed_worktrees_data_goes_and_the_plan_lists_it_with_sizes_first(self) -> None:
+        self.keep("merged-ff")
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn(f"delete {box.instance_dir('merged-ff')} (", out)
+        self.assertIn(f"delete {box.server_dir('merged-ff')} (", out)
+        self.assertIn("(2.0K)", out)  # the server directory's database
+        self.assertIn("build stamps", out)
+        self.assertIn("data to remove:", out)
+        self.assertTrue(self.has_data("merged-ff"))  # a dry run removes nothing
+        self.assertTrue(box.ci_cached_apk("merged-ff", "abcdef0123").exists())
+        self.assertTrue(self.in_state("merged-ff"))
+        self.assertTrue(box.git_in(self.main, "worktree", "list").stdout.count("merged-ff"))
+        code, out, _, asked = self.prompt(True, "y")
+        self.assertEqual((code, len(asked)), (0, 1))
+        self.assertLess(out.index("delete "), out.index("removed worktree merged-ff"))
+        self.assertFalse(self.has_data("merged-ff"))
+        self.assertFalse(box.ci_cached_apk("merged-ff", "abcdef0123").exists())
+        self.assertFalse(self.in_state("merged-ff"))
+
+    def test_the_prompt_declined_removes_no_data(self) -> None:
+        self.keep("merged-ff")
+        self.prompt(True, "n")
+        self.assertTrue(self.has_data("merged-ff"))
+        self.assertTrue(self.in_state("merged-ff"))
+
+    def test_without_a_terminal_and_without_yes_no_data_is_removed(self) -> None:
+        self.keep("merged-ff")
+        code, out, _, _ = self.prompt(False)
+        self.assertEqual(code, 1)
+        self.assertIn("delete ", out)
+        self.assertTrue(self.has_data("merged-ff"))
+
+    def test_leftovers_of_branches_without_worktree_or_pr_go(self) -> None:
+        self.keep("ghost-old")
+        box.server_db("ghost-state").parent.mkdir(parents=True)
+        (box.server_dir("ghost-state") / "port").write_text("14701")
+        box.update_state(lambda s: s["built"][box.DESKTOP].__setitem__("only-state", "x"))
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn("remove data of ghost-old: no worktree, no open PR", out)
+        self.assertTrue(self.has_data("ghost-old"))
+        self.run_box("prune", "-y")
+        self.assertFalse(self.has_data("ghost-old"))
+        self.assertFalse(self.in_state("ghost-old"))
+        self.assertFalse(self.in_state("only-state"))
+        self.assertFalse(box.server_dir("ghost-state").exists())
+        self.assertFalse(box.ci_cached_apk("ghost-old", "abcdef0123").exists())
+
+    def test_a_ci_apk_with_no_branch_left_is_a_leftover_too(self) -> None:
+        apk = box.ci_cached_apk("long-gone", "abcdef0123")
+        apk.parent.mkdir(parents=True)
+        apk.write_bytes(b"apk")
+        self.run_box("prune", "-y")
+        self.assertTrue(apk.exists())  # its branch is unknown, so it is not known to be merged
+        self.run_box("prune", "-y", "--all-data")
+        self.assertFalse(apk.exists())
+
+    def test_protected_branches_keep_their_data(self) -> None:
+        protected = ("dev", "master", "pr-with-wt", "pr-no-wt", "dirty", "unpushed")
+        for name in protected:
+            self.keep(name)
+        self.run_box("prune", "-y")
+        for name in protected:
+            self.assertTrue(self.has_data(name), name)
+            self.assertTrue(self.in_state(name), name)
+            self.assertTrue(box.ci_cached_apk(name, "abcdef0123").exists(), name)
+
+    def test_the_current_directorys_branch_keeps_its_data(self) -> None:
+        self.keep("unmerged")
+        os.chdir(self.wts["unmerged"])
+        _, out, _ = self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("unmerged"))
+        self.assertIn("kept: unmerged: current directory", out)
+
+    def test_a_worktree_that_cannot_be_removed_keeps_its_data(self) -> None:
+        self.keep("merged-ff")
+        real = box.git_in
+
+        def refuse(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ("worktree", "remove"):
+                return subprocess.CompletedProcess(args, 1, "", "locked")
+            return real(cwd, *args)
+
+        with mock.patch.object(box, "git_in", refuse):
+            _, _, err = self.run_box("prune", "-y")
+        self.assertIn("git worktree remove failed", err)
+        self.assertTrue(self.has_data("merged-ff"))
+        self.assertTrue(self.in_state("merged-ff"))
+        self.assertTrue(box.server_db("merged-ff").exists())
+
+    def test_data_is_removed_only_after_the_stop(self) -> None:
+        self.keep("merged-ff")
+        seen: list[bool] = []
+        real = box.stop_server
+
+        def spy(name: str) -> None:
+            seen.append(box.server_db(name).exists())
+            real(name)
+
+        with mock.patch.object(box, "stop_server", spy):
+            self.run_box("prune", "-y")
+        self.assertEqual(seen, [True])
+        self.assertFalse(self.has_data("merged-ff"))
+
+    def test_a_server_that_survives_the_stop_keeps_its_data(self) -> None:
+        self.keep("ghost-old")
+        with (
+            mock.patch.object(box, "server_running", lambda n: n == "ghost-old"),
+            mock.patch.object(box, "stop_server"),
+        ):
+            _, _, err = self.run_box("prune", "-y")
+        self.assertIn("kept data of ghost-old: its server or app is still running", err)
+        self.assertTrue(box.server_db("ghost-old").exists())
+
+    def test_a_running_app_of_a_leftover_is_not_planned_nor_deleted_under(self) -> None:
+        self.keep("ghost-old")
+        (box.instance_dir("ghost-old") / "run.pid").write_text(str(os.getpid()))
+        _, out, _ = self.run_box("prune", "-y")
+        self.assertIn("kept: ghost-old: data kept: its app is running", out)
+        self.assertTrue(self.has_data("ghost-old"))
+
+    def test_without_gh_no_data_is_removed_and_it_says_so(self) -> None:
+        (self.gh_dir / "authed").unlink()
+        self.keep("ghost-old")
+        self.keep("merged-ff")
+        code, _, err = self.run_box("prune", "-y")
+        self.assertEqual(code, 0)
+        self.assertIn("removing any branch data", err)
+        self.assertTrue(self.has_data("ghost-old"))
+        self.assertTrue(self.has_data("merged-ff"))
+
+    def test_paths_never_leave_the_instances_directory(self) -> None:
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        (outside / "precious").write_text("keep")
+        box.instances_dir().mkdir(parents=True)
+        (box.instances_dir() / "evil").symlink_to(outside)
+        self.run_box("prune", "-y")
+        self.assertTrue((outside / "precious").exists())
+        self.assertTrue((box.instances_dir() / "evil").is_symlink())
+        for bad in ("", ".", "..", ".servers", "a/b", "dev", "master"):
+            self.assertFalse(box.safe_branch_name(bad), bad)
+        data = box.BranchData("x", "t", [(box.instances_dir(), outside)])
+        with contextlib.redirect_stderr(io.StringIO()):
+            box.purge_branch_data(data, set())
+        self.assertTrue((outside / "precious").exists())
+
+    # ---- the merged-only ruling -------------------------------------------------------------
+
+    def test_an_unmerged_branch_keeps_its_data_unless_all_data_is_given(self) -> None:
+        self.keep("unmerged")  # a worktree with no open PR, not merged
+        self.keep("ghost-unmerged")  # no worktree, no PR at all
+        _, out, _ = self.run_box("prune", "--dry-run")
+        self.assertIn("kept: unmerged: data kept: not merged", out)
+        self.assertIn("kept: ghost-unmerged: data kept: not merged", out)
+        self.assertNotIn(f"delete {box.server_dir('unmerged')}", out)
+        self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("unmerged"))
+        self.assertTrue(self.has_data("ghost-unmerged"))
+        _, out, _ = self.run_box("prune", "--dry-run", "--all-data")
+        self.assertIn(f"delete {box.server_dir('unmerged')}", out)
+        self.assertIn("(unmerged)", out)
+        self.assertTrue(self.has_data("unmerged"))
+        self.run_box("prune", "-y", "--all-data")
+        self.assertFalse(self.has_data("unmerged"))
+        self.assertFalse(self.has_data("ghost-unmerged"))
+
+    def test_a_closed_unmerged_pr_is_not_merged(self) -> None:
+        self.keep("ghost-closed")
+        # It has a closed PR that was never merged: it is in no `merged` listing.
+        self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("ghost-closed"))
+
+    def test_a_slashed_branch_is_found_through_its_refs(self) -> None:
+        git(self.seed, "checkout", "-q", "-b", "feat/slashed", "dev")
+        git(self.seed, "push", "-q", "origin", "feat/slashed")
+        git(self.main, "fetch", "-q", "origin")  # merged into dev: an ancestor
+        self.keep("feat-slashed")
+        self.run_box("prune", "-y")
+        self.assertFalse(self.has_data("feat-slashed"))
+
+    # ---- gh replies that are not a list ----------------------------------------------------
+
+    def test_a_gh_reply_that_is_not_a_list_removes_no_data(self) -> None:
+        self.keep("ghost-old")
+        big = json.dumps([{"number": i, "title": "t", "headRefName": f"b{i}",
+                           "baseRefName": "dev", "isDraft": False, "url": "u"} for i in range(200)])  # fmt: skip
+        for raw in ("", "null", "{}", '{"message": "rate limited"}', big):
+            (self.gh_dir / "raw_open").write_text(raw)
+            code, out, err = self.run_box("prune", "-y")
+            self.assertEqual(code, 0, raw[:20])
+            self.assertTrue(self.has_data("ghost-old"), raw[:20])
+            self.assertIn("removing any branch data", err)
+            self.assertNotIn("removed data of", out)
+
+    def test_a_merged_lookup_that_is_not_a_list_removes_no_data(self) -> None:
+        self.keep("ghost-old")
+        (self.gh_dir / "raw_merged").write_text("null")
+        self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("ghost-old"))
+
+    # ---- failures are reported -----------------------------------------------------------------
+
+    def test_a_deletion_that_fails_partway_keeps_the_state_and_fails(self) -> None:
+        self.keep("ghost-old")
+        real = box.shutil.rmtree
+
+        def partial(path: Any, *a: Any, **k: Any) -> None:
+            if Path(path) == box.server_dir("ghost-old"):
+                box.server_db("ghost-old").unlink()
+                raise PermissionError("denied")
+            real(path, *a, **k)
+
+        with mock.patch.object(box.shutil, "rmtree", partial):
+            code, out, err = self.run_box("prune", "-y")
+        self.assertEqual(code, 1)
+        self.assertIn("partly removed", err)
+        self.assertIn(str(box.server_dir("ghost-old")), err)
+        self.assertNotIn("removed data of ghost-old", out)
+        self.assertTrue(self.in_state("ghost-old"))
+        self.assertTrue(box.server_dir("ghost-old").exists())
+
+    # ---- liveness -------------------------------------------------------------------------------
+
+    def hold(self, path: Path) -> subprocess.Popen[bytes]:
+        """A process that keeps `path` open, as an app does its database lock."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+        proc = subprocess.Popen([sys.executable, "-c",
+                                 "import sys, time; f = open(sys.argv[1]); print('x', flush=True); time.sleep(60)",
+                                 str(path)], stdout=subprocess.PIPE)  # fmt: skip
+        assert proc.stdout
+        proc.stdout.readline()
+        self.addCleanup(proc.stdout.close)
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        return proc
+
+    def need_lock_tool(self) -> None:
+        if not (shutil.which("lsof") or shutil.which("fuser")):
+            self.skipTest("neither lsof nor fuser is installed")
+
+    def test_an_app_holding_its_lock_without_a_pid_file_is_never_deleted_under(self) -> None:
+        self.need_lock_tool()
+        self.keep("ghost-old")
+        self.hold(box.instance_db("ghost-old").with_name("arlesh.db.lock"))
+        self.assertTrue(box.branch_running("ghost-old"))
+        _, out, _ = self.run_box("prune", "-y")
+        self.assertTrue(self.has_data("ghost-old"))
+        self.assertIn("its app is running", out)
+
+    def test_a_server_that_survives_the_stop_keeps_its_data_by_its_real_lock(self) -> None:
+        self.need_lock_tool()
+        self.keep("ghost-old")
+        self.hold(box.server_db("ghost-old").with_name("arlesh.db.lock"))
+        with mock.patch.object(box, "stop_server"):
+            _, _, err = self.run_box("prune", "-y")
+        self.assertIn("still running", err)
+        self.assertTrue(box.server_db("ghost-old").exists())
+
+    def test_a_failed_kill_leaves_the_pid_file_and_counts_as_running(self) -> None:
+        self.keep("ghost-old")
+        pidfile = box.instance_dir("ghost-old") / "run.pid"
+        pidfile.write_text(str(os.getpid()))
+        with mock.patch.object(box, "stop_pid", return_value=True), contextlib.redirect_stderr(io.StringIO()):
+            box.kill_pidfile(pidfile, "app", "ghost-old")  # our own pid never dies
+        self.assertTrue(pidfile.exists())
+        self.assertTrue(box.branch_running("ghost-old"))
+
+    # ---- what counts as a box directory ----------------------------------------------------
+
+    def test_only_directories_box_made_are_candidates(self) -> None:
+        box.instances_dir().mkdir(parents=True)
+        (box.instances_dir() / "stray-file").write_text("x")
+        (box.instances_dir() / "no-marker").mkdir()
+        (box.instances_dir() / "no-marker" / "precious").write_text("keep")
+        (box.instances_dir() / "bad-marker").mkdir()
+        (box.instances_dir() / "bad-marker" / "port").write_text("not a port")
+        _, out, _ = self.run_box("prune", "--dry-run")
+        for n in ("stray-file", "no-marker", "bad-marker"):
+            self.assertNotIn(n, out)
+        self.run_box("prune", "-y", "--all-data")
+        self.assertTrue((box.instances_dir() / "no-marker" / "precious").exists())
+        self.assertTrue((box.instances_dir() / "stray-file").exists())
+        self.assertTrue((box.instances_dir() / "bad-marker").exists())
+
+    def test_instances_pointed_at_the_wrong_directory_deletes_nothing(self) -> None:
+        wrong = self.tmp / "dot-cache-arlesh"
+        for sub in ("instances", "sccache", "other"):
+            (wrong / sub).mkdir(parents=True)
+            (wrong / sub / "file").write_text("keep")
+        os.environ["ARLESH_INSTANCES"] = str(wrong)
+        _, out, _ = self.run_box("prune", "--dry-run", "--all-data")
+        self.assertNotIn("instances", out.replace(str(wrong), ""))
+        self.run_box("prune", "-y", "--all-data")
+        for sub in ("instances", "sccache", "other"):
+            self.assertTrue((wrong / sub / "file").exists(), sub)
+
+    # ---- protection -----------------------------------------------------------------------------
+
+    def test_a_branch_checked_out_anywhere_is_protected(self) -> None:
+        elsewhere = self.tmp / "elsewhere"
+        box.git_in(self.main, "worktree", "add", "-q", "-b", "elsewhere-br", str(elsewhere), "dev")
+        self.keep("elsewhere-br")
+        self.set_prs(open=["pr-with-wt", "pr-no-wt"], merged=["squashed", "elsewhere-br"])
+        _, out, _ = self.run_box("prune", "-y", "--all-data")
+        self.assertTrue(self.has_data("elsewhere-br"))
+        self.assertNotIn("elsewhere-br", out)
+
+    def test_a_worktree_made_while_the_prompt_is_open_protects_its_data(self) -> None:
+        self.keep("ghost-old")
+
+        def recreate(_text: str) -> str:
+            box.git_in(self.main, "worktree", "add", "-q", "-b", "ghost-old",
+                       str(box.worktrees_dir() / "ghost-old"), "dev")  # fmt: skip
+            return "y"
+
+        with mock.patch.object(box, "interactive", return_value=True), mock.patch.object(box, "ask", recreate):
+            self.run_box("prune")
+        self.assertTrue(self.has_data("ghost-old"))
+
+    def test_a_pr_opened_while_the_prompt_is_open_protects_its_data(self) -> None:
+        self.keep("ghost-old")
+
+        def open_pr(_text: str) -> str:
+            self.set_prs(open=["pr-with-wt", "pr-no-wt", "ghost-old"], merged=["squashed", "ghost-old"])
+            return "y"
+
+        with mock.patch.object(box, "interactive", return_value=True), mock.patch.object(box, "ask", open_pr):
+            self.run_box("prune")
+        self.assertTrue(self.has_data("ghost-old"))
+
+    def test_a_ci_apk_shared_with_a_branch_that_stays_is_kept(self) -> None:
+        self.set_prs(open=["pr-with-wt", "pr-no-wt", "col_a"], merged=["squashed", "col-a"])
+        self.keep("col-a")
+        self.keep("col_a")
+        self.run_box("prune", "-y")
+        self.assertFalse(self.has_data("col-a"))
+        self.assertTrue(self.has_data("col_a"))
+        self.assertTrue(box.ci_cached_apk("col-a", "abcdef0123").exists())  # col_a's own, same segment
+
+    def test_two_branches_sharing_a_ci_apk_list_it_once(self) -> None:
+        self.keep("seg-a")
+        self.keep("seg_a")
+        _, out, _ = self.run_box("prune", "--dry-run")
+        apk = box.ci_cached_apk("seg-a", "abcdef0123")
+        self.assertEqual(out.count(f"delete {apk} "), 1)
+        once = sum(box.tree_size(p) for p in (
+            box.instance_dir("seg-a"), box.server_dir("seg-a"),
+            box.instance_dir("seg_a"), box.server_dir("seg_a"), apk))  # fmt: skip
+        self.assertIn(f"data to remove: {box.human_size(once)}", out)
+
+    def test_a_folder_name_that_differs_from_its_branch_name(self) -> None:
+        path = box.worktrees_dir() / "odd-dir"
+        box.git_in(self.main, "worktree", "add", "-q", "-b", "odd-branch", str(path), "dev")
+        self.keep("odd-branch")
+        self.keep("odd-dir")
+        self.run_box("prune", "-y")
+        self.assertFalse(path.exists())
+        self.assertFalse(self.has_data("odd-branch"))
+        self.assertFalse(self.has_data("odd-dir"))
+
+    # ---- state.json -------------------------------------------------------------------------------
+
+    def test_an_unreadable_state_file_is_never_replaced_and_no_data_goes(self) -> None:
+        self.keep("ghost-old", state=False)
+        box.state_file().parent.mkdir(parents=True, exist_ok=True)
+        box.state_file().write_text("{ not json")
+        _, _, err = self.run_box("prune", "-y")
+        self.assertEqual(box.state_file().read_text(), "{ not json")
+        self.assertIn("state.json", err)
+        self.assertTrue(self.has_data("ghost-old"))
+        with self.assertRaises(box.BoxError):
+            box.update_state(lambda s: None)
+        self.assertEqual(box.state_file().read_text(), "{ not json")
+
+    def test_clean_keeps_the_data_that_prune_removes(self) -> None:
+        self.keep("ghost-old")
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            mock.patch.object(box, "Firebase"),
+            mock.patch.object(box, "uninstall_everywhere"),
+        ):
+            box.cmd_clean(argparse.Namespace(branches=["ghost-old"]))
+        self.assertTrue(box.server_db("ghost-old").exists())
+        self.assertTrue((box.instance_dir("ghost-old") / "port").exists())
+        self.assertFalse((box.instance_dir("ghost-old") / "arlesh").exists())
+
+
+class TauriVersionCheck(IsolatedEnv):
+    def test_a_drifted_branch_stops_with_the_checks_message_and_an_old_one_passes(self) -> None:
+        wt = self.tmp / "wt"
+        (wt / "scripts").mkdir(parents=True)
+        box.check_tauri_versions(wt)  # no script: let through
+        bad = subprocess.CompletedProcess([], 1, "", "Found version mismatched Tauri packages.\n")
+        with mock.patch.object(box, "capture", return_value=bad):
+            (wt / "scripts" / "check-tauri-versions.mjs").write_text("")
+            with self.assertRaisesRegex(box.BoxError, "mismatched Tauri packages"):
+                box.check_tauri_versions(wt)
+        ok = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(box, "capture", return_value=ok):
+            box.check_tauri_versions(wt)
 
 
 class NodeModules(IsolatedEnv):
@@ -3373,6 +3995,24 @@ class EnvFileTests(IsolatedEnv):
         with mock.patch.object(box, "parse_args", return_value=fake):
             self.assertEqual(box.main(["list"]), 0)
         self.assertEqual(seen, ["from-file"])
+
+
+class StartVite(IsolatedEnv):
+    def test_the_vite_server_is_told_which_instance_it_serves(self) -> None:
+        spawned: list[dict[str, str] | None] = []
+
+        def spawn(cmd, pidfile, logfile, cwd, env=None):  # type: ignore[no-untyped-def]
+            spawned.append(env)
+            return 1
+
+        with (
+            mock.patch.object(box, "spawn_detached", spawn),
+            mock.patch.object(box, "http_up", side_effect=[False, True]),
+            mock.patch.object(box, "instance_dir", return_value=self.tmp),
+            mock.patch.object(box.time, "sleep"),
+        ):
+            box.start_vite("978-box-branch-name", self.tmp)
+        self.assertEqual(spawned, [{"VITE_ARLESH_BOX": "978-box-branch-name"}])
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@
 //! `scope_rules`. Splitting it out would mean either duplicating that chain or making it public.
 
 use crate::database::session::{Db, Transactional};
+use crate::nodes::id::RowId;
 use crate::nodes::origin::Origin;
 use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;
@@ -32,10 +33,10 @@ use super::{insertion_position, scope_rules, time_scope_columns, time_scope_from
 /// The stored shape of a commitment row.
 #[derive(sqlx::FromRow)]
 struct CommitmentRow {
-    id: i64,
+    id: RowId,
     title: String,
     parent_type: String,
-    parent_id: i64,
+    parent_id: RowId,
     verdict: String,
     time_scope_start_id: Option<DbScopeKey>,
     time_scope_end_id: Option<DbScopeKey>,
@@ -100,11 +101,11 @@ impl From<CommitmentRow> for Commitment {
 /// a commitment.
 struct CommitmentWrite {
     /// The new parent, when the request asks for a move; `None` leaves the parent link alone.
-    reparent: Option<(String, i64)>,
+    reparent: Option<(String, RowId)>,
     /// The parent the merged Time Scope is validated against — the new one when reparenting.
     parent_type: String,
     /// Id of that same parent.
-    parent_id: i64,
+    parent_id: RowId,
     /// Final title.
     title: String,
     /// Final verdict.
@@ -187,13 +188,14 @@ impl<'session> CommitmentOperator<'session> {
         let verdict = request.verdict.unwrap_or_default();
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let (vw_n, vw_kind) = verdict_window_columns(&request.verdict_window);
-        let id = sqlx::query(
+        let id = sqlx::query_scalar::<_, RowId>(
             "INSERT INTO commitments
-                (title, parent_type, parent_id, verdict,
+                (id, title, parent_type, parent_id, verdict,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, verdict_window_n, verdict_window_kind, verdict_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(request.id.unwrap_or_else(crate::nodes::new_id::new_row_id))
         .bind(&request.title)
         .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
@@ -210,9 +212,8 @@ impl<'session> CommitmentOperator<'session> {
                 .is_resolved()
                 .then(|| super::waits::instant_column(super::expectations::now())),
         )
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
+        .fetch_one(&mut *self.connection)
+        .await?;
         sqlx::query("UPDATE commitments SET position = ? WHERE id = ?")
             .bind(insertion_position())
             .bind(id)
@@ -236,8 +237,8 @@ impl<'session> CommitmentOperator<'session> {
     }
 
     /// The tag domain ids attached to one commitment, in id order.
-    async fn tag_ids(&mut self, id: CommitmentId) -> Result<Vec<i64>, TaskError> {
-        Ok(sqlx::query_scalar::<_, i64>(
+    async fn tag_ids(&mut self, id: CommitmentId) -> Result<Vec<RowId>, TaskError> {
+        Ok(sqlx::query_scalar::<_, RowId>(
             "SELECT tag_id FROM tags_on_commitments WHERE commitment_id = ? ORDER BY tag_id",
         )
         .bind(id.0)
@@ -302,18 +303,20 @@ impl<'session> CommitmentOperator<'session> {
         &mut self,
         id: CommitmentId,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<i64, TaskError> {
+        parent_id: RowId,
+    ) -> Result<RowId, TaskError> {
+        let copy_id = crate::nodes::new_id::new_row_id();
         let copy = sqlx::query(
             "INSERT INTO commitments
-                (title, parent_type, parent_id, verdict, time_scope_start_id, time_scope_end_id,
+                (id, title, parent_type, parent_id, verdict, time_scope_start_id, time_scope_end_id,
                  time_scope_duration_n, time_scope_duration_kind, verdict_window_n,
                  verdict_window_kind, position, is_private, verdict_at)
-             SELECT title, ?, ?, verdict, time_scope_start_id, time_scope_end_id,
+             SELECT ?, title, ?, ?, verdict, time_scope_start_id, time_scope_end_id,
                     time_scope_duration_n, time_scope_duration_kind, verdict_window_n,
                     verdict_window_kind, position, is_private, verdict_at
              FROM commitments WHERE id = ?",
         )
+        .bind(copy_id)
         .bind(stored_reference(parent_type))
         .bind(parent_id)
         .bind(id.0)
@@ -322,7 +325,6 @@ impl<'session> CommitmentOperator<'session> {
         if copy.rows_affected() == 0 {
             return Err(TaskError::CommitmentNotFound(id.0));
         }
-        let copy_id = copy.last_insert_rowid();
         sqlx::query(
             "INSERT INTO tags_on_commitments (commitment_id, tag_id)
              SELECT ?, tag_id FROM tags_on_commitments WHERE commitment_id = ?",
@@ -341,8 +343,8 @@ impl<'session> CommitmentOperator<'session> {
     pub async fn child_ids(
         &mut self,
         parent_type: &str,
-        parent_id: i64,
-    ) -> Result<Vec<i64>, TaskError> {
+        parent_id: RowId,
+    ) -> Result<Vec<RowId>, TaskError> {
         Ok(
             sqlx::query_scalar(
                 "SELECT id FROM commitments WHERE parent_type = ? AND parent_id = ?",
@@ -435,7 +437,7 @@ impl<'session> CommitmentOperator<'session> {
     }
 
     /// Attaches a tag to a commitment.
-    pub async fn add_tag(&mut self, id: CommitmentId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn add_tag(&mut self, id: CommitmentId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query(
             "INSERT OR IGNORE INTO tags_on_commitments (commitment_id, tag_id) VALUES (?, ?)",
         )
@@ -447,7 +449,7 @@ impl<'session> CommitmentOperator<'session> {
     }
 
     /// Removes a tag from a commitment.
-    pub async fn remove_tag(&mut self, id: CommitmentId, tag_id: i64) -> Result<(), TaskError> {
+    pub async fn remove_tag(&mut self, id: CommitmentId, tag_id: RowId) -> Result<(), TaskError> {
         sqlx::query("DELETE FROM tags_on_commitments WHERE commitment_id = ? AND tag_id = ?")
             .bind(id.0)
             .bind(tag_id)

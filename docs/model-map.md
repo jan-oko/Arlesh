@@ -58,6 +58,7 @@ never stored.
 | **Parent status** | own status, Agentic (own), sub-items' statuses, verdicts and waits; Archived *(of another node)* | An ordinary Task that is not Compound and has sub-items reads its own status raised to what they say, by Compound's counting: In Progress if any is, else Started if any is Started or Done. Never Done by itself, never lowered, and a Done Task stays Done. An Agentic Task is not derived. | `rs:tasks/rules/compound.rs::parent_reading`, `rs:tasks/rules/compound.rs::derive` |
 | **Agent at capacity** | agents' locks, accounts' locks, account usage reports, now | Locked by hand (agent or account), or a window of its account is at 100% and its reset still ahead. Lifts at the reset by itself. A Child Agent is at capacity exactly when its parent is. | `rs:agents/rules/usage.rs::cause` |
 | **Review** | Agentic, status, agent waits (questions and reviews) | To Do or On Agent with a pending, live agentic question or review beneath it. | `rs:tasks/rules/review.rs::derive` |
+| **Staged** | answer draft, Review's open questions (agentic, question, pending, live) | A wait with a draft that is an open question or review; a Task's staged waits are its open questions with a draft, and the Task is marked staged only when every one of its open questions and reviews is; a draft on any other wait is stale and marks nothing. | `rs:tasks/rules/answer_drafts.rs`, `rs:mindmap/rules/facts.rs` (`staged_questions`, `AgentActivity.staged`), `ts:utils/open-question.ts` |
 | **Capacity block** | Agent at capacity, Claims, Agentic, status | The Task reads as Agentic, is not Done, and lies inside the active Claim of an Agent at capacity. There is no app-wide lock. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, a Domain's archive, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
@@ -125,6 +126,16 @@ How the presets read them:
   - Code: `rs:nodes/overlay.rs`, `rs:nodes/wait_overlay.rs` and `rs:flows/occurrence_edit.rs`.
 - **Spec:** [Derived nodes § Overlays](spec/virtual-nodes.md#overlays).
 
+### Answer draft
+- **Is:** an answer to an agent's question, or a review's verdict with its note, written down and not yet sent. One row per wait (`answer_drafts`, keyed by the wait's id, stored or derived), stored on the server and synced to every device; the last save wins. A row means staged. Send releases every staged wait in one write and deletes the rows.
+- **Why:** so an answer can wait for the others, and every agent wakes once for the whole batch.
+- **Without:** each answer goes out as it is written, and agents act on half a set of answers.
+- **Lives:**
+  - Storage and operations: `rs:tasks/answer_drafts.rs`, `migrations/0110_answer_drafts.sql`; the rules in `rs:tasks/rules/answer_drafts.rs`.
+  - The board carries the drafts as its own collection (`answer_drafts`) and the facts say which open questions are staged; agents read neither (`rs:mindmap/`, `rs:mcp/`).
+  - Frontend: `ts:hooks/use-answer-drafts.ts`, `ts:components/AnswerField/`.
+- **Spec:** [Resources § Staged answers](spec/resources.md#staged-answers), [ADR 0021](adr/0021-staged-answers-sent-as-a-batch.md).
+
 ## 2. What's derived
 
 ### Derived nodes
@@ -142,17 +153,17 @@ How the presets read them:
   - [ADR 0008](adr/0008-virtual-node-tables.md) covers virtual node tables.
 - **Spec:** [Derived nodes](spec/virtual-nodes.md).
 
-### Three kinds of id
-- **Is:** the three ids a node can have:
-  - a stored row's integer **row id**;
-  - every node's **full id**, a UUID-v5 (a stored row's is the hash of `{kind}:{row id}`);
-  - a **short id**, the shortest prefix of at least three hex digits that is unique and is not any visible row id.
-- **Why:** derived rows have no row number, and people need a handle shorter than a UUID that can't be mistaken for a row or PR number.
-- **Without:** two id types in every request, and a number meaning three different things.
+### Two kinds of id
+- **Is:** the two ids a node can have:
+  - its **id** (also its **full id**): a UUID. A stored row's is chosen by whoever creates it (a client may send one; the server mints a UUIDv7 otherwise), and a row that predates UUID identity kept the UUID-v5 of `{kind}:{old row number}` it was always shown under. A derived row's is a version-8 UUID, the hash of its value key, so the id alone says stored or derived;
+  - a **short id**, the shortest prefix of at least three hex digits that is unique among the visible nodes.
+- **Why:** a client's Replica has to create rows whose ids match the server's, so the id cannot be an integer the server counts out; people still need a handle shorter than a UUID.
+- **Without:** a number meaning three different things, and a client unable to name a row before the server has.
 - **Lives:**
-  - `rs:nodes/id.rs` and `rs:nodes/key.rs`.
+  - `rs:nodes/id.rs` (`NodeId`, `RowId`) and `rs:nodes/key.rs`; `rs:nodes/new_id.rs` mints UUIDv7s.
+  - `rs:database/row_ids.rs` and migrations 0107 to 0109 (the one-time move from integers).
   - `rs:mcp/ids.rs` (`NodeNames`, `short_id_among`, `board_short_ids`).
-  - Frontend: `ts:utils/uuid-v5.ts` and `ts:utils/node-identity.ts`.
+  - Frontend: `ts:api/node-id.ts`, `ts:utils/uuid-v5.ts` and `ts:utils/node-identity.ts`.
 - **Spec:** [MCP § Short ids](spec/mcp-server.md#short-ids), [Derived nodes](spec/virtual-nodes.md).
 
 ### Two status models
@@ -168,6 +179,7 @@ How the presets read them:
 
 ### Review
 - **Is:** never set. A Task reads Review when it is To Do or On Agent with an open agentic question or **review** (`question: true`, pending, live) beneath it; a To Do one is a question asked before claiming (a Task with no Spec cannot be claimed), and its row stays To Do. Answering, which releases the wait, returns it to what its row holds (On Agent or To Do), whichever the verdict. A review is its own kind of agentic wait: a summary, links and hand tests from the agent, and a verdict (`approved` / `changes_requested`) plus a note from the user. One status serves both; the status row's icon differs (a question: a question mark; a review: a checked page).
+- An answer can be **staged** (an answer draft) and sent with the others as one batch; the wait still reads Review, and agents never see a draft. See [Resources § Staged answers](spec/resources.md#staged-answers) and [ADR 0021](adr/0021-staged-answers-sent-as-a-batch.md).
 - **Why:** it is the only way an agent hands work back, and the question or review says what you need to do. The app draws no agentic wait of its own: the Task shows it, and is where it is answered.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
@@ -403,7 +415,7 @@ How the presets read them:
   - A subagent is a **Child Agent** under the session's Agent, told apart by a **Sub-token** on each call. Its **Sub-Claim** lies inside the parent's Claim and is no overlap with it; the parent's Claim is the child's roots. Its standing and capacity are derived from the parent's; it goes when its parent goes, its Task is set Done, or its subagent stops holding nothing open (no Task still On Agent, no open wait).
 - **Why:** several agents can work one board without overlapping, each in a bounded context, and one agent hitting its plan limit blocks only its own work. Child Agents give each subagent its own Task as its view and show it in Settings.
 - **Without:** every session sees the same roots, two agents write one subtree, and a limit hit by one blocks everyone or no one; a subagent sees and writes its orchestrator's whole Claim and shows nowhere.
-- **Lives:** `rs:agents/` (`rules/claims.rs` for claims, sub-Claims and standing, `rules/` for usage and PINs; `service.rs`), `rs:mcp/agents.rs`, `session.rs` and the `sub_token` door in `rs:mcp/mod.rs::call_tool`, the `agents` tables (migrations 0101, 0102 journaled, 0105 `parent_id` and the removal triggers, 0106), and `plugins/arlesh-notify/` for registering, pausing and resuming children.
+- **Lives:** `rs:agents/` (`rules/claims.rs` for claims, sub-Claims and standing, `rules/` for usage and PINs; `service.rs`), `rs:mcp/agents.rs`, `session.rs` and the `sub_token` door in `rs:mcp/mod.rs::call_tool`, the `agents` tables (migrations 0101, 0102 journaled, 0105 `parent_id` and the removal triggers, 0106), and `plugins/arlesh/` for registering, pausing and resuming children.
 - **Spec:** [Agents](spec/agents.md), [ADR 0018](adr/0018-agents-claims-and-account-capacity.md), [ADR 0019](adr/0019-child-agents-and-sub-claims.md).
 
 ### The server
@@ -450,6 +462,7 @@ How the presets read them:
 
 ### The undo journal
 - **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's, and another client's writes as that client's; neither is undoable from the app.
+- `answer_drafts` is journaled, and one `Ctrl+Z` undoes a whole sent batch: the drafts come back and the waits read Review again.
 - **Why:** a trigger can't be forgotten by a command that doesn't know it exists.
 - **Without:** an inverse to write for every one of eighty-odd commands, with the next one missing it.
 - **Lives:**

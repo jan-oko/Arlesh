@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { goalSaveFields, infoSaveFields, shownTitle, taskSaveFields } from "@/utils/editor-save-fields";
+import { storedRowId } from "@/test/stored-id";
 
 const node: MindmapNode = {
-  id: "task-1", rowId: 1, kind: "task", title: "Write", tagIds: [], position: 0, children: [],
+  id: `task-${storedRowId(1)}`, rowId: storedRowId(1), kind: "task", title: "Write", tagIds: [], position: 0, children: [],
   status: "todo", taskStatus: { kind: "ordinary", status: "todo" },
 };
 
 const save: TaskSaveData = {
-  title: "Write more", status: { kind: "ordinary", status: "todo" }, blockReasons: ["waiting"], tagIds: [3],
+  title: "Write more", status: { kind: "ordinary", status: "todo" }, blockReasons: ["waiting"], tagIds: [storedRowId(3)],
   addedDeps: [], removedDeps: [], timeScope: null, onScopeExit: null, plan: null, archival: "live",
   agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
@@ -18,7 +19,7 @@ describe("taskSaveFields", () => {
   it("carries the form's own values and no derived field", () => {
     const fields = taskSaveFields(node, save);
     expect(fields).toMatchObject({
-      title: "Write more", blockReasons: ["waiting"], tagIds: [3], plan: null, timeScope: null,
+      title: "Write more", blockReasons: ["waiting"], tagIds: [storedRowId(3)], plan: null, timeScope: null,
       agentic: null, asynchronous: false, agenticBrief: null,
     });
     for (const derived of ["inheritedPlan", "inheritedAgentic", "overdue", "timing", "blocked", "archived"]) {

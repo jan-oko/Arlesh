@@ -8,7 +8,8 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
-import type { Expectation } from "@/api/expectations";
+import type { Expectation, ReviewVerdict } from "@/api/expectations";
+import type { AnswerDraft } from "@/api/answer-drafts";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
 import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
@@ -207,7 +208,7 @@ interface MindmapData {
   /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
   createFlow: (request: CreateFlowRequest) => Promise<Flow>;
-  updateFlow: (id: number, request: UpdateFlowRequest) => Promise<void>;
+  updateFlow: (id: string, request: UpdateFlowRequest) => Promise<void>;
   /** Resolves once the window holds the board its own latest write brought about (ADR 0020). */
   settle: () => Promise<void>;
 }
@@ -351,7 +352,7 @@ function templateFieldsOf(item: TemplateFields): TemplateFields {
 }
 
 /** Node id of a flow item's in-flow parent (the flow itself, or another item). */
-function flowItemParentKey(flowId: number, parentType: string, parentId: number): string {
+function flowItemParentKey(flowId: string, parentType: string, parentId: string): string {
   return isFlowItemType(parentType) ? flowItemNodeId(parentType, parentId) : `flow-${flowId}`;
 }
 
@@ -365,7 +366,7 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
 
 /** A Task's `delegateName` field: its Person delegate's name, when it has one that is known. */
 function personNameOf(
-  delegate: Delegate | null | undefined, personNames: ReadonlyMap<number, string>,
+  delegate: Delegate | null | undefined, personNames: ReadonlyMap<string, string>,
 ): { delegateName?: string } {
   const name = delegate?.kind === "person" ? personNames.get(delegate.id) : undefined;
   return name === undefined ? {} : { delegateName: name };
@@ -388,14 +389,18 @@ function cooldownFields(
 function factNodeKey(key: string): string {
   const wait = /^expectation-(.+)$/.exec(key);
   if (wait?.[1] === undefined) return key;
-  const id = Number(wait[1]);
-  return expectationNodeId(Number.isNaN(id) ? wait[1] : id);
+  return expectationNodeId(wait[1]);
 }
 
 /** The node id a dependency's target is drawn under. */
 function dependencyNodeId(block: DependencyBlock): string {
   if (block.kind === "expectation") return expectationNodeId(block.id);
   return `${block.kind}-${block.id}`;
+}
+
+/** The draft as a wait node carries it. */
+function draftOf(draft: AnswerDraft | undefined): { answer: string | null; verdict: ReviewVerdict | null } {
+  return { answer: draft?.answer ?? null, verdict: draft?.verdict ?? null };
 }
 
 /** Stamps what the board's rules say about `node` onto it. */
@@ -408,6 +413,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   }
   if (fact.plan_conflict !== undefined) node.planConflict = fact.plan_conflict;
   if (fact.open_questions !== undefined) node.openQuestionIds = fact.open_questions;
+  if (fact.staged_questions !== undefined) node.stagedQuestionIds = fact.staged_questions;
   if (fact.expired === true) node.expired = true;
   if (fact.derived_in_progress === true) node.derivedInProgress = true;
   if (fact.sub_items !== undefined) node.subItems = fact.sub_items;
@@ -448,7 +454,7 @@ export function buildTree(
   /** Each node's short id, keyed `task-12` / `expectation-3` (the load's `short_ids`). */
   shortIds: Readonly<Record<string, string>> = {},
   /** Every known Person's name, by id — what a Person delegate is called. */
-  personNames: ReadonlyMap<number, string> = new Map(),
+  personNames: ReadonlyMap<string, string> = new Map(),
   /** What the board's rules say about each node beyond its row, keyed `task-12` (the load's
    * `facts`): which dependencies block it, what it inherits, its open question, whether it has
    * expired. */
@@ -456,8 +462,11 @@ export function buildTree(
   /** Every Flow's Commitment items and wait items (Task b66). */
   flowCommitments: FlowCommitment[] = [],
   flowExpectations: FlowExpectation[] = [],
+  /** Every staged answer (the load's `answer_drafts`): drawn on the wait it answers. */
+  answerDrafts: readonly AnswerDraft[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
+  const draftsByWait = new Map(answerDrafts.map((draft) => [draft.wait_id, draft]));
 
   // Explicit block reasons, grouped per owner in stored (position) order. A reason the backend
   // derived — the agent capacity lock's, or a Compound Task's — is not the owner's to edit, so it is
@@ -613,6 +622,7 @@ export function buildTree(
             question: expectation.question !== false,
             answer: expectation.answer ?? null,
             ...(expectation.review !== undefined ? { review: expectation.review } : {}),
+            ...(draftsByWait.has(expectation.id) ? { draft: draftOf(draftsByWait.get(expectation.id)) } : {}),
           },
         }
         : {}),
@@ -867,7 +877,7 @@ export function buildTree(
 
 /** One flow whose Habit iterations failed to derive, as the banner needs it. */
 export interface FailedFlow {
-  id: number;
+  id: string;
   title: string;
 }
 
@@ -920,11 +930,11 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
   const failedFlows = data.habits
     .filter((entry) => entry.result.outcome === "failed")
     .map((entry) => ({ id: entry.flow_id, title: entry.flow_title }))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => a.id.localeCompare(b.id));
   const unrenderableCommitmentFlows = data.flows
     .filter((flow) => flow.is_habit && holdsUnrenderableGoalItems(flow, data.flow_goals))
     .map((flow) => ({ id: flow.id, title: flow.title }))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => a.id.localeCompare(b.id));
   return failedFlows.length === 0 && unrenderableCommitmentFlows.length === 0
     ? NO_CONDITIONS
     : { failedFlows, unrenderableCommitmentFlows };
@@ -1000,7 +1010,7 @@ export function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode
     data.expectations, inputs.delegationWaitTitle,
     (title) => `${inputs.checkPrefix}${title}`, inputs.compoundReason, inputs.capacityReason,
     inputs.cooldownReason, data.short_ids ?? {}, board.personNames, data.facts ?? {},
-    data.flow_commitments ?? [], data.flow_expectations ?? [],
+    data.flow_commitments ?? [], data.flow_expectations ?? [], data.answer_drafts ?? [],
   );
   applyLifecycles(built, lifecycleMap(data.lifecycles));
   // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
@@ -1561,7 +1571,7 @@ export function useMindmapData(): MindmapData {
       ]);
       const made = answers[0];
       const id: unknown = typeof made === "object" && made !== null ? Reflect.get(made, "id") : undefined;
-      if (typeof id !== "number") throw new Error("insert parent made no node");
+      if (typeof id !== "string") throw new Error("insert parent made no node");
       await settle();
       if (childKind === "domain" || childKind === "project" || childKind === "tag") return `domain-${id}`;
       if (isFlowItemType(childKind)) return flowItemNodeId(childKind, id);
@@ -1638,7 +1648,7 @@ export function useMindmapData(): MindmapData {
   );
 
   const updateFlowNode = useCallback(
-    async (id: number, request: UpdateFlowRequest): Promise<void> => {
+    async (id: string, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
       await settle();
     },

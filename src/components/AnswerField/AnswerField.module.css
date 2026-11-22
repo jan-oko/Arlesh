@@ -103,6 +103,34 @@
   border-color: var(--accent);
 }
 
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A staged field is locked: written down, not yet sent. Dashed while it is not the focused one; the
+   focus border is solid, staged or not. */
+.staged {
+  border-style: dashed;
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.staged:focus {
+  border-style: solid;
+}
+
+/* The Staged mark on a Task whose every open wait is staged. */
+.mark {
+  align-self: flex-start;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--node-radius);
+  color: var(--accent);
+  font-size: var(--text-xs, var(--text-sm));
+}
+
 .send {
   background: var(--accent);
   border: none;
@@ -114,15 +142,44 @@
   cursor: pointer;
 }
 
+/* Stage and the other secondary controls: an outline at the normal text contrast, so an enabled one
+   never reads as disabled. Pressed (staged) is filled and accented; disabled is faded and dashed. */
 .secondary {
-  background: none;
-  border: 1px solid var(--node-border);
+  background: var(--node-bg);
+  border: 1px solid var(--text-secondary);
   border-radius: var(--node-radius);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--node-bg-hover);
+  border-color: var(--text-primary);
+}
+
+.secondary[aria-pressed="true"] {
+  background: var(--node-bg-selected);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.secondary:disabled {
+  border-style: dashed;
+  border-color: var(--node-border);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+@media (pointer: coarse) {
+  .send,
+  .secondary {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 .send:disabled,
@@ -143,4 +200,191 @@
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+/* The review's one line: the verdict switch, Stage and Send. It wraps only where the line cannot fit,
+   on the phone's width. */
+.controls {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+/* A segmented two-option switch: one verdict at a time, none at first. It is as wide as its widest
+   label, both options equal, and never fills the row: Stage and Send sit directly beside it. */
+.switch {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: min(100%, 28rem);
+  min-width: 0;
+  border: 1px solid var(--text-secondary);
+  border-radius: var(--node-radius);
+  overflow: hidden;
+}
+
+.option {
+  min-width: 0;
+  background: var(--node-bg);
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.option + .option {
+  border-inline-start: 1px solid var(--text-secondary);
+}
+
+.option:hover:not(:disabled) {
+  background: var(--node-bg-hover);
+}
+
+.option[aria-checked="true"] {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.option:disabled {
+  cursor: default;
+}
+
+.option:disabled:not([aria-checked="true"]) {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+@media (pointer: coarse) {
+  .option {
+    min-height: 44px;
+  }
+}
+
+/* Stage and Send: kept together, so they wrap as one unit and are never split across lines. */
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+/* The phone (the `touch` class, set from the same query as the rows and the icons): the field to
+   type in is the largest thing in the group, two lines when empty, growing with its text up to a cap
+   and never clipping it. The controls are four icon buttons on one line, each a 44 px target: the
+   verdict pair grouped on the start side, Stage and Send at the end. The textarea is border-box:
+   the browsers' default is content-box, and with width 100% its padding and border pushed its
+   right edge past the group. */
+.touch .field,
+.touch.compact .field {
+  box-sizing: border-box;
+  line-height: 1.4;
+  min-height: calc(2 * 1.4em + 2 * var(--space-2) + 2px);
+  max-height: 50vh;
+  overflow-y: auto;
+  field-sizing: content;
+  resize: none;
+  flex: none;
+  width: 100%;
+}
+
+.touch .row {
+  flex-direction: column;
+}
+
+.touch .buttons {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
+.touch .controls {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.touch .switch {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.touch .actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+/* Four round icon buttons, 38 px visible. Each one's tap area is stretched to 44 px by a pseudo-element
+   reaching 3 px out; the 8 px gaps keep neighbouring areas from overlapping. The verdict pair is two
+   separate circles, not a joined bar: a chosen one fills with its own colour, so two circles with a
+   gap read as a two-way choice at a glance. */
+.touch .send,
+.touch .secondary,
+.touch .option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 38px;
+  height: 38px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  flex: none;
+  border-radius: 50%;
+}
+
+.touch .send::before,
+.touch .secondary::before,
+.touch .option::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+
+.touch .send svg,
+.touch .secondary svg,
+.touch .option svg {
+  width: 20px;
+  height: 20px;
+}
+
+.touch .switch {
+  gap: var(--space-2);
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.touch .option,
+.touch .option + .option {
+  border: 1px solid var(--text-secondary);
+}
+
+.touch .actions {
+  gap: var(--space-2);
+}
+
+/* The chosen verdict: filled in its own colour with a white icon (approve green, changes red, the
+   theme's own tokens). The unchosen stay outlined and quiet. */
+.touch .option[aria-checked="true"] {
+  color: white;
+  border-color: transparent;
+}
+
+.touch .option[data-verdict="approved"][aria-checked="true"] {
+  background: var(--color-aspect-green);
+}
+
+.touch .option[data-verdict="changes_requested"][aria-checked="true"] {
+  background: var(--danger);
 }

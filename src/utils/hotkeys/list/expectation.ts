@@ -38,9 +38,9 @@ export const LIST_EXPECTATION_BINDINGS: readonly Binding<ListExpectationContext>
     run: (c) => { if (c.selectedExpectationId !== null) c.onToggleRelease(c.selectedExpectationId); },
   },
   {
-    // Alt+E, the List View's second option that is not a status preset — Unblock's neighbour, and
+    // Alt+W, the List View's second option that is not a status preset — Unblock's neighbour, and
     // like it, it writes the list's own preset and leaves the shared one for the Mindmap.
-    id: "listView.preset.expectations", section: "listView", chord: { code: "KeyE", alt: true },
+    id: "listView.preset.expectations", section: "listView", chord: { code: "KeyW", alt: true },
     labelKey: "statusExpectations", run: (c) => c.onSetExpectationsPreset(),
   },
 ];

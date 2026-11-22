@@ -1,6 +1,7 @@
 //! The `knowledge_base` part of the [`Backend`](super::Backend) port: what the commands in
 //! the app's `knowledge_base` commands ask of whichever backend the app runs on.
 
+use arlesh_core::nodes::id::RowId;
 use arlesh_core::{
     error::WireError,
     knowledge_base::model::{
@@ -16,7 +17,7 @@ pub trait KnowledgeBasePort: Send + Sync {
     async fn create_person(&self, request: CreatePersonRequest) -> Result<Person, WireError>;
 
     /// Fetches a person by id.
-    async fn get_person(&self, id: i64) -> Result<Person, WireError>;
+    async fn get_person(&self, id: RowId) -> Result<Person, WireError>;
 
     /// Lists all people.
     async fn list_people(&self) -> Result<Vec<Person>, WireError>;
@@ -24,12 +25,12 @@ pub trait KnowledgeBasePort: Send + Sync {
     /// Updates a person.
     async fn update_person(
         &self,
-        id: i64,
+        id: RowId,
         request: UpdatePersonRequest,
     ) -> Result<Person, WireError>;
 
     /// Deletes a person by id.
-    async fn delete_person(&self, id: i64) -> Result<(), WireError>;
+    async fn delete_person(&self, id: RowId) -> Result<(), WireError>;
 
     /// Creates a new event.
     async fn create_event(&self, request: CreateEventRequest) -> Result<Event, WireError>;

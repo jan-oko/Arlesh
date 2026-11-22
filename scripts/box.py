@@ -14,9 +14,10 @@
     box keystore init [--force]
     box keystore rotate-password
     box keystore migrate [-y]
+    box cargo -- <cargo arguments>
     box stop [branch ... | all]
     box clean [branch ... | all]
-    box prune [<target>] [-y | --dry-run]
+    box prune [<target>] [-y | --dry-run] [--all-data]
     box server start <branch> [--public] [--local-seed]
     box server stop [branch ... | all]
     box server token <branch> <arlesh-server token args...>
@@ -38,20 +39,30 @@ It also stops each running box server (`server start`) whose branch has no open 
 `dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
 and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
 are pruned.
-
-`list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
-worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
-and any worktree with no open PR ("prunable"). Without an authenticated gh it shows the worktrees.
-`prune` prints its plan, then asks `Proceed? [y/N]`; `-y` applies without asking, `--dry-run` only
-prints, and with no terminal and no `-y` it exits non-zero rather than wait. It removes each worktree whose branch has
-no open PR, never the main checkout, `dev`, `master`, the current directory's worktree, or one with
-uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
-device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
-is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
-It also stops each running box server (`server start`) whose branch has no open PR and that is not
-`dev`/`master`'s or a removed worktree's (that one stops with its worktree), listed in the same plan
-and applied under the same prompt. Orphaned box apps are pruned as before. Without gh, only the apps
-are pruned.
+`prune` also removes the data box keeps per branch, once the branch's worktree is gone and only for
+a MERGED branch (merged into origin/dev or origin/master, or its PR was merged: the test that decides
+"local branch: delete"): the server's directory (`<instances>/.servers/<branch>/`: database, logs,
+port, pid, host), the app instance's directory (`<instances>/<branch>/`: data, config, logs, the
+kept binary and APK), the branch's entries in state.json (build stamps, install and provisioning
+records, issued-token holders) and its CI APKs in $XDG_STATE_HOME/arlesh/box/ci/. It does so for
+each worktree it removes (only after `git worktree remove` succeeded) and for the leftovers of
+branches pruned earlier: any such directory or entry whose branch has no worktree (box's, the main
+checkout's or any other) and no open PR. A leftover's branch is found from the local and origin
+refs that map to its folder name (`/` -> `-`), else the name itself is looked up as a PR head on
+GitHub; a closed unmerged PR, or none, counts as not merged. An unmerged branch keeps its data and
+the plan says "kept: not merged"; `--all-data` takes it too (marked "(unmerged)"), and a cached CI
+APK whose branch is unknown. All of it is in the plan, with sizes, under the same prompt, `-y` and
+`--dry-run`. It never touches `dev`, `master`, a branch with an open PR or a worktree, and deletes
+under no running server or app (pid files, and whoever holds the server's or the app's database
+lock): data is removed only after the stop succeeded. Just before each deletion it re-reads the open
+PRs and the worktrees and keeps the data of a branch that gained either meanwhile. Without gh (or
+when gh does not answer with a whole list of PRs, or one as long as its limit) or with an unreadable
+state.json it removes no data. A directory counts as box's only when it holds the integer `port` file
+box writes into every instance and server directory; every path is built from the branch's instance
+name and checked to be a plain child of its directory (no symlink). A deletion that fails partway
+says "partly removed", keeps that branch's state entries and makes prune exit non-zero. `clean` keeps
+the data: it removes only a branch's binary, APK, CI APKs and build stamps. Caches shared by all
+branches (the cargo target, sccache, the keystore, box.env, the device registry) are never pruned.
 
 A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
 (`run`, `server start|token|pin`); an existing one is used as-is, found by the branch it holds
@@ -101,6 +112,52 @@ baked into the binary. The frontend is not shared (each
 worktree has its own node_modules, Vite server and dist), and the per-branch binary and APK are
 copied out of the target right after the build, so a "build is current" stamp never points at
 another branch's artifact.
+
+Shared dependencies compile once, too: a crate built with other features is another cargo unit, and
+the desktop app (`cargo build --bin arlesh`) and the server's native module (`maturin develop`)
+resolved different features for tokio, serde_json, uuid and a few dozen more, so those and
+`arlesh-rules`, `arlesh-core` and `arlesh-backend` above them compiled twice into the one target.
+`crates/arlesh-workspace-hack` (cargo-hakari, `.config/hakari.toml`) now names the union of those
+features and every crate that compiles depends on it, so both builds resolve the same ones; the test
+builds (`cargo test`) agree too, except for the dev-only features (`arlesh-rules`'s `test-support`,
+Tauri's `test`), which are separate units by design. Three things stay outside hakari's reach and
+are done by hand: the hack names `quote`'s default features itself (a line above hakari's section in
+its Cargo.toml, with the reason), `arlesh-py` names `arlesh-backend`'s `sqlite` feature (a workspace crate's own feature is not
+a third-party one), and `arlesh-rules` has no hack dependency (it compiles to wasm and may not
+name tokio) and gets the unified features through whatever depends on it. Tauri and the crates only
+it reaches are excluded from the hack, so the server's module does not compile them. CI
+(`scripts/check-workspace-hack.sh`, with `scripts/check-shared-features.py`, which compares the unit
+graphs of the two builds) fails when the hack drifts: after adding a dependency or a
+feature run `cargo hakari generate && cargo hakari manage-deps --yes`. maturin itself adds nothing
+that splits the units: it runs `cargo rustc --lib --locked --features pyo3/extension-module` (the
+same dev profile, host target and no RUSTFLAGS) with PYO3_CONFIG_FILE, PYO3_PYTHON and
+PYO3_BUILD_EXTENSION_MODULE set, which only the pyo3 build scripts read. Measured: a build of the app
+and then of the module compiles `arlesh-rules`, `arlesh-core` and `arlesh-backend` once, in either
+order; the module's build then compiles only `arlesh-py`.
+
+One build at a time: `owned_target` holds an exclusive lock on `<target>/.arlesh-box.lock` for the
+whole of key check, drop, cargo and record, so two box commands (or `box cargo`) building different
+branches queue; the second prints one line and waits. Cargo serialises on the target itself anyway,
+but box's drop of a crate's records happens outside cargo's lock and used to break the build that
+was running ("invoked.timestamp: No such file or directory"). The trade-off is that builds in the
+shared target never overlap; a queued build waits for the one before it.
+
+Compiler cache: when `sccache` is on PATH, every build through `owned_target` runs under it
+(RUSTC_WRAPPER), so going back to a branch built before, a wiped target and a new worktree of known
+content come back from the cache instead of recompiling. The cache is `~/.cache/arlesh/sccache`,
+capped at 10G, outside the repo and every target; box uses its own sccache server port, so a server
+another tool runs cannot make it ignore that directory; SCCACHE_BASEDIRS is the main checkout, so the
+workspace crates also hit across worktrees. sccache cannot cache incremental compilations, so while
+it is in use CARGO_INCREMENTAL=0 (the constant CACHE_TURNS_INCREMENTAL_OFF; the cost is a slower
+rebuild after a one-line edit, the gain a branch switch that is a cache hit). Anything the caller set
+(RUSTC_WRAPPER, SCCACHE_*, CARGO_INCREMENTAL) wins. Without sccache box notes it once and builds as before.
+
+`box cargo -- <cargo arguments>` (`npm run cargo -- <cargo arguments>`) is a cargo run in this
+worktree through the same guard: it builds into the shared target (so the worktree grows no
+`src-tauri/target` of its own), runs under `owned_target`, takes the caller's environment as it is
+(CARGO_INCREMENTAL, RUSTFLAGS, `-j`) and exits with cargo's exit code. A plain `cargo` is unchanged
+and keeps the checkout's own target, which is the safe default: pointed at the shared target
+without the guard it could link another branch's workspace crates (see above).
 
 Notifications: after an install, before every launch, box grants a box app POST_NOTIFICATIONS
 (`pm grant`, box packages only, never the release app) so its first launch registers its push token.
@@ -185,6 +242,7 @@ import argparse
 import atexit
 import base64
 import contextlib
+import fcntl
 import getpass
 import hashlib
 import ipaddress
@@ -203,7 +261,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -884,7 +942,25 @@ def load_state() -> dict[str, Any]:
     return state
 
 
+def state_problem() -> str | None:
+    """Why state.json cannot be read, or None when it is absent or well formed."""
+    try:
+        text = state_file().read_text()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return f"{state_file()} cannot be read ({exc.strerror})"
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return f"{state_file()} is not valid JSON"
+    return None if isinstance(raw, dict) else f"{state_file()} is not a JSON object"
+
+
 def update_state(change: Any) -> None:
+    problem = state_problem()
+    if problem:
+        raise die(f"{problem}; not rewriting it (fix or delete the file).")
     state = load_state()
     change(state)
     atomic_write(state_file(), json.dumps(state, indent=2) + "\n")
@@ -1204,8 +1280,102 @@ def shared_inputs_key(wt: Path) -> str:
     return digest.hexdigest()
 
 
+# ---- The compiler cache: sccache under every build through `owned_target` --------------------
+#
+# The shared target holds one version of each workspace crate, so going back to a branch built
+# before recompiles whatever differs. sccache keys rustc's output on its inputs, so that becomes a
+# hit. It never touches the target's own records: cargo still decides what to compile, `owned_target`
+# still drops what is not the branch's, and sccache only answers a compile it has seen.
+
+# sccache does not cache incremental compilations, and cargo compiles workspace crates
+# incrementally by default (dependencies from the registry never are). With the cache in use,
+# True turns incremental off (CARGO_INCREMENTAL=0) so the workspace crates can hit; False leaves
+# it as the caller has it, so the cache serves dependencies only. The user ruled on 2026-11-15: True.
+CACHE_TURNS_INCREMENTAL_OFF = True
+
+CACHE_SIZE = "10G"
+
+# sccache runs one background server per port, and the server keeps the cache directory it was
+# started with: a server another tool (or the user) already runs would silently ignore the
+# directory box asks for. Box's builds therefore talk to their own server, on their own port.
+CACHE_SERVER_PORT = "4229"
+
+
+def cache_dir() -> Path:
+    return home() / ".cache" / "arlesh" / "sccache"
+
+
+def cache_environment() -> dict[str, str]:
+    """The variables that put sccache under cargo, or {} (with one note) when it is not installed.
+
+    What the caller set wins: an own RUSTC_WRAPPER, SCCACHE_DIR, SCCACHE_CACHE_SIZE or
+    CARGO_INCREMENTAL is left alone.
+    """
+    if os.environ.get("RUSTC_WRAPPER"):
+        return {}
+    binary = shutil.which("sccache")
+    if binary is None:
+        note("compiler cache: sccache is not installed, so builds are not cached (cargo install sccache --locked)")
+        return {}
+    wanted = {
+        "RUSTC_WRAPPER": binary,
+        "SCCACHE_DIR": str(cache_dir()),
+        "SCCACHE_CACHE_SIZE": CACHE_SIZE,
+        "SCCACHE_SERVER_PORT": CACHE_SERVER_PORT,
+        # Worktrees sit under the main checkout at different paths; without this the workspace
+        # crates miss in a worktree other than the one that filled the cache (measured: the three
+        # crates recompiled, 98 s against 24 s), and dependencies are unaffected either way.
+        "SCCACHE_BASEDIRS": str(main_checkout()),
+    }
+    if CACHE_TURNS_INCREMENTAL_OFF:
+        wanted["CARGO_INCREMENTAL"] = "0"
+    return {k: v for k, v in wanted.items() if k not in os.environ}
+
+
+@contextlib.contextmanager
+def compiler_cache() -> Iterator[None]:
+    """Cache variables in this process's environment for the length of a build (children inherit)."""
+    added = cache_environment()
+    os.environ.update(added)
+    try:
+        yield
+    finally:
+        for key in added:
+            os.environ.pop(key, None)
+
+
+LOCK_FILE = ".arlesh-box.lock"
+
+
+@contextlib.contextmanager
+def target_lock(target: Path) -> Iterator[None]:
+    """Exclusive lock on the shared `target` for one whole box build (keys, drop, cargo, record).
+
+    Cargo locks its target directory itself, but only while it runs: box's drop of a crate's
+    `.fingerprint/` and `build/` records happens outside that lock, so a second box command
+    dropping them mid-build made the first fail ("invoked.timestamp: No such file or directory").
+    Holding this lock around the drop, the build and the record serialises builds instead: the
+    second waits, says so once, and then finds the first one's records and keys.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    with open(target / LOCK_FILE, "a") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            note("shared target: another build holds it; waiting for it to finish...")
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield  # closing the file releases the lock, also when the build raised or was signalled
+
+
 @contextlib.contextmanager
 def owned_target(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
+    """`own_records` under `target_lock`: the whole build of one worktree holds the target alone."""
+    with target_lock(target), own_records(wt, target, unkeyed), compiler_cache():
+        yield
+
+
+@contextlib.contextmanager
+def own_records(wt: Path, target: Path, unkeyed: Sequence[str] = ()) -> Iterator[None]:
     """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
 
     Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
@@ -1369,6 +1539,10 @@ def kill_pidfile(pidfile: Path, what: str, name: str) -> None:
     pid = read_pid(pidfile)
     if pid is not None and stop_pid(pid):
         print(f"stopped {name} {what} (pid {pid})")
+    if pid is not None and pid_alive(pid):
+        # A kill that failed is not a stop: keep the pid file, so the process is still found.
+        note(f"!! {name} {what} (pid {pid}) is still running")
+        return
     pidfile.unlink(missing_ok=True)
 
 
@@ -1958,6 +2132,10 @@ def build_desktop(name: str, wt: Path) -> None:
     print(f"=== {name}: ready ({size:.0f}M, port {port}, {free_gb()}G free) ===")
 
 
+# Read by the frontend (`src/api/box-instance.ts`) to show the branch at the tabs bar's right end.
+VITE_BOX_ENV = "VITE_ARLESH_BOX"
+
+
 def start_vite(name: str, wt: Path) -> None:
     """Start the instance's own Vite server and wait for it: a debug build loads over HTTP."""
     port = port_for(name)
@@ -1971,6 +2149,7 @@ def start_vite(name: str, wt: Path) -> None:
         inst / "vite.pid",
         inst / "vite.log",
         wt,
+        {VITE_BOX_ENV: name},
     )
     for _ in range(60):
         if http_up(url):
@@ -3543,10 +3722,23 @@ def apply_android_patch(gradle: Path, strings: Path, package: str, label: str) -
     strings.write_text(xml_string_file(label))
 
 
+def check_tauri_versions(wt: Path) -> None:
+    """Stop early, with the Tauri CLI's own message, when an `@tauri-apps/*` package and its Rust crate
+    are on different minors: `tauri android build` would refuse after the slow steps. A branch from
+    before the check existed has no script and is let through."""
+    script = wt / "scripts" / "check-tauri-versions.mjs"
+    if not script.is_file():
+        return
+    res = capture(["node", str(script)], cwd=wt)
+    if res.returncode != 0:
+        raise die(res.stderr.strip() or "Tauri npm packages and Rust crates are on different versions.")
+
+
 def build_android(name: str, wt: Path, firebase: bool) -> None:
     package, label = box_package(name), box_label(name)
     android_env()
     need_cmd("npx", "Install Node.")
+    check_tauri_versions(wt)
     need_cmd("rustup", "Install Rust via rustup.")
     require_space()
     signing = choose_signing()
@@ -3905,14 +4097,24 @@ def list_worktrees_only() -> None:
                   f"{pf.read_text().strip() if pf.exists() else '-':<7} {server_db(s)}")  # fmt: skip
 
 
+GH_LIST_LIMIT = 200
+
+
 def gh_pr_list(state: str, fields: str, *extra: str) -> list[dict[str, Any]]:
+    """`gh pr list`, or a BoxError unless the reply is a whole list of PRs: not a list (empty output,
+    `null`, an error object) and a list as long as the limit (it may be cut) both count as a failure,
+    never as "no PRs"."""
     cwd = main_checkout()
     data = gh_json(
-        ["pr", "list", "--repo", origin_repo(cwd), "--state", state, "--limit", "200",
+        ["pr", "list", "--repo", origin_repo(cwd), "--state", state, "--limit", str(GH_LIST_LIMIT),
          "--json", fields, *extra],
         cwd,
     )  # fmt: skip
-    return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
+    if not isinstance(data, list) or not all(isinstance(d, dict) for d in data):
+        raise die("gh pr list did not return a list of pull requests.")
+    if len(data) >= GH_LIST_LIMIT:
+        raise die(f"gh pr list returned {GH_LIST_LIMIT} entries, its limit: the list may be cut.")
+    return data
 
 
 def open_prs() -> list[dict[str, Any]]:
@@ -4035,6 +4237,34 @@ LIST_HEADER = (
 )
 
 
+def cmd_cargo(args: argparse.Namespace) -> int:
+    """`cargo <args>` in this worktree, into the shared target, under the target lock.
+
+    The same `owned_target` every box build uses, so a branch never links another branch's
+    workspace-crate output, and two builds queue instead of breaking each other. The caller's
+    environment (CARGO_INCREMENTAL, RUSTFLAGS, ...) reaches cargo as it is, and cargo's exit
+    code is this command's. Runs from the worktree root, whatever directory it was started in.
+    """
+    if not args.cargo_args:
+        raise UsageError(f"Usage: {CMD} cargo -- <cargo arguments>  (for example: test -p arlesh-core -j 3)")
+    if args.cargo_args[0] == "clean":
+        raise UsageError(
+            f"`{CMD} cargo clean` is refused: it would empty the target every worktree shares. "
+            "Run `cargo clean -p <crate>` with CARGO_TARGET_DIR set by hand, or remove this "
+            "worktree's own target, if you really mean it."
+        )
+    wt = repo_root()
+    target = shared_target()
+    with owned_target(wt, target):
+        result = subprocess.run(
+            ["cargo", *args.cargo_args],
+            cwd=wt,
+            env=project_env({"CARGO_TARGET_DIR": str(target)}),
+            check=False,
+        )
+    return result.returncode
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     blocker = gh_unavailable()
     prs: list[dict[str, Any]] | None = None
@@ -4136,22 +4366,27 @@ def cmd_stop(args: argparse.Namespace) -> None:
         server_stop([])
 
 
+def forget_builds(name: str) -> None:
+    """Remove `name`'s binary, APK, cached CI APKs and build and install stamps; its data stays."""
+    (instance_dir(name) / "arlesh").unlink(missing_ok=True)
+    android_apk(name).unlink(missing_ok=True)
+    for cached in ci_cache_dir().glob(f"{box_segment(name)}-*.apk*"):
+        cached.unlink(missing_ok=True)
+
+    def forget(s: dict[str, Any]) -> None:
+        for per_os in s["built"].values():
+            per_os.pop(name, None)
+        for per_device in s["installed"].values():
+            per_device.pop(name, None)
+
+    update_state(forget)
+
+
 def cmd_clean(args: argparse.Namespace) -> None:
     named = bool(args.branches) and list(args.branches) != ["all"]
     for name in resolve_branches(args.branches):
         # Only the binary and APK go. An instance's database is state built up while testing.
-        (instance_dir(name) / "arlesh").unlink(missing_ok=True)
-        android_apk(name).unlink(missing_ok=True)
-        for cached in ci_cache_dir().glob(f"{box_segment(name)}-*.apk*"):
-            cached.unlink(missing_ok=True)
-
-        def forget(s: dict[str, Any], n: str = name) -> None:
-            for per_os in s["built"].values():
-                per_os.pop(n, None)
-            for per_device in s["installed"].values():
-                per_device.pop(n, None)
-
-        update_state(forget)
+        forget_builds(name)
         print(
             f"removed builds for {name} (its data and port kept at {instance_dir(name)})"
         )
@@ -4165,6 +4400,230 @@ def cmd_clean(args: argparse.Namespace) -> None:
     print(f"{free_gb()}G free.")
 
 
+# ---- Per-branch data, removed by prune ------------------------------------------------------------
+
+CI_APK = re.compile(r"^(?P<segment>.+)-[0-9a-f]{7}\.apk")
+
+
+def human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "K", "M", "G"):
+        if value < 1024 or unit == "G":
+            return f"{value:.0f}{unit}" if unit == "B" else f"{value:.1f}{unit}"
+        value /= 1024
+    return f"{value:.1f}G"
+
+
+def tree_size(path: Path) -> int:
+    """Bytes under `path` (a file counts as itself); symlinks are counted as links, never followed."""
+    try:
+        if path.is_symlink() or path.is_file():
+            return path.lstat().st_size
+        total = 0
+        for entry in os.scandir(path):
+            if entry.is_dir(follow_symlinks=False):
+                total += tree_size(Path(entry.path))
+            else:
+                with contextlib.suppress(OSError):
+                    total += entry.stat(follow_symlinks=False).st_size
+        return total
+    except OSError:
+        return 0
+
+
+def safe_branch_name(name: str) -> bool:
+    """A name box may build a path from: one plain path component, not a dot name (`.servers`) and
+    never a long-lived branch's."""
+    return (
+        bool(name)
+        and name not in LONG_LIVED
+        and "/" not in name
+        and "\0" not in name
+        and not name.startswith(".")
+    )
+
+
+def contained(root: Path, path: Path) -> bool:
+    """`path` is a direct child of `root`, is not a symlink, and resolves to inside `root`."""
+    if path.is_symlink() or path.parent != root:
+        return False
+    try:
+        return root.resolve() in path.resolve().parents
+    except OSError:
+        return False
+
+
+def box_directory(root: Path, path: Path) -> bool:
+    """`path` is a directory box made: a plain child of `root` (no symlink) holding the integer
+    `port` file that `allocate_port` writes into every instance and server directory. Anything else
+    in the instances directory (a file, another tool's folder, a wrong `ARLESH_INSTANCES`) is not box's."""
+    if not contained(root, path) or not path.is_dir():
+        return False
+    try:
+        int((path / "port").read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+@dataclass
+class BranchData:
+    """What box keeps for one branch and prune would remove: (root, path) pairs, and its state entries."""
+
+    name: str
+    why: str
+    paths: list[tuple[Path, Path]] = field(default_factory=list)
+    in_state: bool = False
+    merged: bool = True
+
+    def size(self) -> int:
+        return sum(tree_size(p) for _, p in self.paths)
+
+
+def state_branch_names() -> set[str]:
+    """Every branch name state.json holds an entry for."""
+    state = load_state()
+    names: set[str] = set()
+    for per_os in state["built"].values():
+        names |= set(per_os)
+    for key in ("installed", "provisioned"):
+        for per_device in state[key].values():
+            if isinstance(per_device, dict):
+                names |= set(per_device)
+    names |= set(state["tokens"])
+    return names
+
+
+def forget_branch_state(name: str) -> None:
+    def forget(s: dict[str, Any]) -> None:
+        for per_os in s["built"].values():
+            per_os.pop(name, None)
+        for key in ("installed", "provisioned"):
+            for per_device in s[key].values():
+                if isinstance(per_device, dict):
+                    per_device.pop(name, None)
+        s["tokens"].pop(name, None)
+
+    update_state(forget)
+
+
+def ci_apks() -> dict[str, list[Path]]:
+    """The cached CI APKs, by Java package segment (the cache is keyed by segment, not by name)."""
+    found: dict[str, list[Path]] = {}
+    root = ci_cache_dir()
+    if root.is_dir():
+        for p in sorted(root.iterdir()):
+            m = CI_APK.match(p.name)
+            if m and p.is_file():
+                found.setdefault(m["segment"], []).append(p)
+    return found
+
+
+def branch_data(
+    name: str, why: str, shared_segments: set[str], seen: set[Path], merged: bool = True
+) -> BranchData | None:
+    """The data box keeps for `name`, or None when it keeps none. CI APKs are keyed by segment, so
+    they go only when no branch that stays has the same segment, and each is listed once (`seen`)."""
+    data = BranchData(name, why, in_state=name in state_branch_names(), merged=merged)
+    for root, path in ((instances_dir(), instance_dir(name)), (servers_dir(), server_dir(name))):
+        if box_directory(root, path):
+            data.paths.append((root, path))
+    segment = box_segment(name)
+    if segment not in shared_segments:
+        for apk in ci_apks().get(segment, []):
+            if apk not in seen:
+                seen.add(apk)
+                data.paths.append((ci_cache_dir(), apk))
+    return data if data.paths or data.in_state else None
+
+
+def app_running(name: str) -> bool:
+    """`name`'s app or its Vite dev server is alive, or something holds the app's database lock."""
+    alive = any(
+        (pid := read_pid(instance_dir(name) / f)) is not None and pid_alive(pid)
+        for f in ("run.pid", "vite.pid")
+    )
+    return alive or bool(lock_holders(instance_db(name)))
+
+
+def branch_running(name: str) -> bool:
+    """Something of `name`'s is still alive: its server, whoever holds its database, its app or Vite."""
+    return server_running(name) or bool(lock_holders(server_db(name))) or app_running(name)
+
+
+def protected_names(
+    prs: list[dict[str, Any]], going: Collection[str] = (), going_branches: Collection[str] = ()
+) -> set[str]:
+    """Names whose data stays: `dev`, `master`, every branch with an open PR, and every branch with
+    a worktree anywhere (box's, the main checkout, any other), except the worktrees `going` (folder
+    names) and `going_branches` that this run removes."""
+    heads = {str(pr.get("headRefName")) for pr in prs}
+    protected = set(LONG_LIVED) | heads | {dir_name(h) for h in heads}
+    for folder, branch in worktree_branches().items():
+        if folder not in going:
+            protected.add(folder)
+            if branch:
+                protected.add(dir_name(branch))
+    protected |= {dir_name(b) for b in git_worktrees() if b not in going_branches}
+    return {n for n in protected if n}
+
+
+def purge_branch_data(data: BranchData, protected: set[str]) -> str:
+    """Remove `data`; returns "removed", "kept" (nothing touched, and why was said) or "failed"
+    (some of it is left, and what, was said; its state entries stay).
+
+    Refuses while anything of the branch runs, or when the branch is protected now (a worktree or an
+    open PR it did not have when the plan was made). A path that is not a plain child of its root,
+    or is a symlink, is never touched."""
+    if not safe_branch_name(data.name):
+        note(f"kept data of '{data.name}': not a name box may build a path from")
+        return "kept"
+    if data.name in protected:
+        note(f"kept data of {data.name}: it has a worktree or an open PR now")
+        return "kept"
+    if branch_running(data.name):
+        note(f"kept data of {data.name}: its server or app is still running")
+        return "kept"
+    shared = {box_segment(n) for n in protected}
+    left: list[str] = []
+    for root, path in data.paths:
+        if root == ci_cache_dir():
+            segment = CI_APK.match(path.name)
+            if (segment and segment["segment"] in shared) or not contained(root, path):
+                continue
+        elif not box_directory(root, path):
+            left.append(f"{path} (not a box directory inside {root}, refused)")
+            continue
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+        except OSError as exc:
+            if path.exists():
+                left.append(f"{path} ({exc.strerror or exc})")
+    if left:
+        note(f"partly removed data of {data.name}; left: " + "; ".join(left))
+        return "failed"
+    if data.in_state:
+        try:
+            forget_branch_state(data.name)
+        except BoxError as exc:
+            note(f"partly removed data of {data.name}; left its state entries: {exc}")
+            return "failed"
+    print(f"removed data of {data.name} ({data.why})")
+    return "removed"
+
+
+def instance_names() -> list[str]:
+    """Names of the directories box made under the instances and servers directories."""
+    names: set[str] = set()
+    for root in (instances_dir(), servers_dir()):
+        if root.is_dir():
+            names |= {p.name for p in root.iterdir() if not p.name.startswith(".") and box_directory(root, p)}
+    return sorted(names)
+
+
 @dataclass
 class PrunePlan:
     """What `prune` would do with the worktrees: the ones to remove and the ones it keeps."""
@@ -4174,6 +4633,11 @@ class PrunePlan:
     )  # (dir, branch, fate)
     kept: list[tuple[str, str]] = field(default_factory=list)  # (dir, reason)
     servers: list[str] = field(default_factory=list)  # running servers to stop, no worktree removal
+    # name -> data removed once its worktree is: (dir name, what to remove), after a good removal
+    worktree_data: dict[str, list[BranchData]] = field(default_factory=dict)
+    leftovers: list[BranchData] = field(default_factory=list)  # no worktree, no open PR
+    data_note: str = ""  # why no branch data is planned (gh or state.json unusable)
+    all_data: bool = False
 
 
 def kept_reason(name: str, branch: str) -> str | None:
@@ -4202,14 +4666,15 @@ def kept_reason(name: str, branch: str) -> str | None:
     return None
 
 
-def branch_fate(branch: str) -> str | None:
-    """Why the local branch may be deleted after its worktree goes (None: keep it)."""
+def branch_fate(branch: str, rev: str | None = None) -> str | None:
+    """Why the local branch may be deleted after its worktree goes (None: keep it). `rev` names the
+    commit to test when `branch` has no local ref (`origin/<branch>`)."""
     main = main_checkout()
     for base in LONG_LIVED:
         ref = f"refs/remotes/origin/{base}"
         if (
             ref_exists(main, ref)
-            and git_in(main, "merge-base", "--is-ancestor", branch, ref).returncode == 0
+            and git_in(main, "merge-base", "--is-ancestor", rev or branch, ref).returncode == 0
         ):
             return f"merged into origin/{base}"
     return "its PR was merged" if pr_merged(branch) else None
@@ -4222,8 +4687,94 @@ def servers_without_pr(open_branches: set[str], removed: set[str]) -> list[str]:
     return [n for n in server_names([]) if n not in spared and server_running(n)]
 
 
-def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
-    plan = PrunePlan()
+def branch_revs() -> dict[str, dict[str, str]]:
+    """Folder name -> {branch: rev} for every local and origin branch that maps to it (`/` -> `-`),
+    so a name with no worktree is traced back to its real branch names. A local ref wins."""
+    out = git_in(main_checkout(), "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin")
+    found: dict[str, dict[str, str]] = {}
+    for ref in out.stdout.split():
+        local = ref.removeprefix("refs/heads/") if ref.startswith("refs/heads/") else None
+        branch = local or ref.removeprefix("refs/remotes/origin/")
+        if branch == "HEAD":
+            continue
+        revs = found.setdefault(dir_name(branch), {})
+        if local or branch not in revs:
+            revs[branch] = ref
+    return found
+
+
+def name_merged(name: str, revs: dict[str, dict[str, str]]) -> bool:
+    """A folder name with no worktree: merged when every branch that maps to it is merged into
+    origin/dev or origin/master, or has a merged PR on GitHub. With no ref left, the name itself is
+    looked up as a PR head; a closed unmerged PR, or none, is "not merged"."""
+    candidates = revs.get(name) or {name: name}
+    return all(branch_fate(b, rev) for b, rev in candidates.items())
+
+
+def plan_data(
+    prs: list[dict[str, Any]],
+    remove: list[tuple[str, str, str]],
+    kept: list[tuple[str, str]],
+    all_data: bool,
+) -> tuple[dict[str, list[BranchData]], list[BranchData]]:
+    """The per-branch data to remove: with each removed worktree, and the leftovers of branches
+    that have no worktree and no open PR. Only merged branches' data, unless `all_data`. Whatever
+    stays (an open PR's branch, any worktree that stays, `dev`, `master`) is protected, and so is
+    anything sharing its CI APK segment."""
+    going = {n for n, _, _ in remove}
+    protected = protected_names(prs, going, {b for _, b, _ in remove})
+    segments = {box_segment(n) for n in protected}
+    seen: set[Path] = set()
+    per_worktree: dict[str, list[BranchData]] = {}
+    claimed: set[str] = set()
+
+    def admit(n: str, why: str, merged: bool) -> BranchData | None:
+        data = branch_data(n, why, segments, seen, merged)
+        if data and not merged and not all_data:
+            kept.append((n, "data kept: not merged (--all-data removes it)"))
+            for _, path in data.paths:
+                seen.discard(path)
+            return None
+        return data
+
+    for name, branch, fate in remove:
+        for n in dict.fromkeys((dir_name(branch), name)):
+            if n in protected or n in claimed or not safe_branch_name(n):
+                continue
+            claimed.add(n)
+            data = admit(n, f"worktree {name} removed", bool(fate))
+            if data:
+                per_worktree.setdefault(name, []).append(data)
+    leftovers: list[BranchData] = []
+    revs = branch_revs()
+    for n in sorted((set(instance_names()) | state_branch_names()) - protected - claimed):
+        if not safe_branch_name(n):
+            continue
+        if app_running(n):
+            kept.append((n, "data kept: its app is running"))
+            continue
+        data = admit(n, "no worktree, no open PR", name_merged(n, revs))
+        if data:
+            leftovers.append(data)
+    covered = {box_segment(d.name) for d in leftovers} | {
+        box_segment(d.name) for ds in per_worktree.values() for d in ds
+    }
+    for segment, files in ci_apks().items():
+        files = [f for f in files if f not in seen]
+        if not files or segment in segments | covered:
+            continue
+        if all_data:
+            seen.update(files)
+            leftovers.append(
+                BranchData(segment, "its CI APK, no worktree, no open PR", [(ci_cache_dir(), f) for f in files], merged=False)
+            )  # fmt: skip
+        else:
+            kept.append((segment, "cached CI APK kept: its branch is unknown (--all-data removes it)"))
+    return per_worktree, leftovers
+
+
+def plan_prune(prs: list[dict[str, Any]], all_data: bool = False) -> PrunePlan:
+    plan = PrunePlan(all_data=all_data)
     open_branches = {str(pr.get("headRefName")) for pr in prs}
     for name, branch in worktree_branches().items():
         if branch in open_branches:
@@ -4235,7 +4786,23 @@ def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
             fate = branch_fate(branch)
             plan.remove.append((name, branch, fate or ""))
     plan.servers = servers_without_pr(open_branches, {n for n, _, _ in plan.remove})
+    problem = state_problem()
+    if problem:
+        plan.data_note = f"{problem}; not touching it"
+        return plan
+    try:
+        plan.worktree_data, plan.leftovers = plan_data(prs, plan.remove, plan.kept, all_data)
+    except BoxError as exc:
+        plan.worktree_data, plan.leftovers = {}, []
+        plan.data_note = f"gh could not say which branches are merged ({exc})"
     return plan
+
+
+def print_data(data: BranchData, indent: str) -> None:
+    for _, path in data.paths:
+        print(f"{indent}delete {path} ({human_size(tree_size(path))})")
+    if data.in_state:
+        print(f"{indent}forget {data.name} in {state_file()} (build stamps, installs, tokens)")
 
 
 def print_prune_plan(plan: PrunePlan) -> None:
@@ -4245,16 +4812,32 @@ def print_prune_plan(plan: PrunePlan) -> None:
             "  stop its server and app, drop its Firebase app and device installs, git worktree remove"
         )
         print(f"  local branch: {'delete (' + fate + ')' if fate else 'keep (not merged)'}")  # fmt: skip
+        for data in plan.worktree_data.get(name, []):
+            print(f"  then its data{'' if data.merged else ' (unmerged)'}:")
+            print_data(data, "    ")
     for name in plan.servers:
         print(f"stop server {name}: no open PR")
+    for data in plan.leftovers:
+        flag = "" if data.merged else " (unmerged)"
+        print(f"remove data of {data.name}{flag}: {data.why}, {human_size(data.size())}")
+        print_data(data, "  ")
     for name, reason in plan.kept:
         print(f"kept: {name}: {reason}")
-    if not plan.remove and not plan.kept and not plan.servers:
-        print("no worktrees or servers without an open PR.")
+    if plan.data_note:
+        note(f"Not removing any branch data: {plan.data_note}.")
+    if not (plan.remove or plan.kept or plan.servers or plan.leftovers):
+        print("no worktrees, servers or data without an open PR.")
+    unique = {p for ds in plan.worktree_data.values() for d in ds for _, p in d.paths}
+    unique |= {p for d in plan.leftovers for _, p in d.paths}
+    total = sum(tree_size(p) for p in unique)
+    if total:
+        print(f"data to remove: {human_size(total)} in all.")
 
 
-def remove_worktree(name: str, branch: str, fate: str) -> None:
-    """Stop `name`, clean its apps, remove the worktree, delete the branch only when `fate` says so."""
+def remove_worktree(name: str, branch: str, fate: str) -> bool:
+    """Stop `name`, clean its apps, remove the worktree, delete the branch only when `fate` says so.
+
+    True when the worktree is gone: only then may its data go too."""
     stop_instance(name)
     if server_dir(name).is_dir():
         stop_server(name)
@@ -4267,7 +4850,7 @@ def remove_worktree(name: str, branch: str, fate: str) -> None:
     done = git_in(main_checkout(), "worktree", "remove", str(worktrees_dir() / name))
     if done.returncode != 0:
         note(f"kept {name}: git worktree remove failed: {done.stderr.strip()}")
-        return
+        return False
     print(f"removed worktree {name}")
     if not fate:
         print(f"kept local branch {branch}: not merged")
@@ -4275,6 +4858,7 @@ def remove_worktree(name: str, branch: str, fate: str) -> None:
         print(f"deleted local branch {branch} ({fate})")
     else:
         note(f"could not delete local branch {branch}")
+    return True
 
 
 def prune_packages(args: argparse.Namespace, execute: bool) -> None:
@@ -4335,10 +4919,12 @@ def cmd_prune(args: argparse.Namespace) -> None:
         except BoxError as exc:
             blocker = gh_failure_reason(exc)
     if blocker is None:
-        plan = plan_prune(prs)
+        plan = plan_prune(prs, args.all_data)
         print_prune_plan(plan)
     else:
-        note(f"Not pruning worktrees: open PRs unavailable ({blocker}).")
+        note(
+            f"Not pruning worktrees or removing any branch data: open PRs unavailable ({blocker})."
+        )
     prune_packages(args, False)
     if args.dry_run:
         print("dry run: nothing changed.")
@@ -4351,12 +4937,35 @@ def cmd_prune(args: argparse.Namespace) -> None:
         if ask("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
             print("aborted; nothing changed.")
             return
+    failed: list[str] = []
     if plan:
+        fresh = fresh_open_prs() if plan.worktree_data or plan.leftovers else None
+
+        def purge(data: BranchData) -> None:
+            if fresh is None:
+                note(f"kept data of {data.name}: the open PRs could not be read again")
+            elif purge_branch_data(data, protected_names(fresh)) == "failed":
+                failed.append(data.name)
+
         for name, branch, fate in plan.remove:
-            remove_worktree(name, branch, fate)
+            if remove_worktree(name, branch, fate):
+                for data in plan.worktree_data.get(name, []):
+                    purge(data)
         for name in plan.servers:
             stop_server(name)
+        for data in plan.leftovers:
+            purge(data)
     prune_packages(args, True)
+    if failed:
+        raise die("Data not fully removed for: " + ", ".join(failed) + ".")
+
+
+def fresh_open_prs() -> list[dict[str, Any]] | None:
+    """The open PRs again, read after the prompt (a PR may have been opened meanwhile); None when gh fails."""
+    try:
+        return open_prs()
+    except BoxError:
+        return None
 
 
 def cmd_devices(args: argparse.Namespace) -> None:
@@ -4540,6 +5149,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="print the plan only, never ask"
     )
     prune.add_argument(
+        "--all-data",
+        action="store_true",
+        help="also remove the data of branches that are not merged (default: merged branches only)",
+    )
+    prune.add_argument(
         "target", nargs="?", help="one android device (default: every registered one)"
     )
     prune.set_defaults(fn=cmd_prune)
@@ -4569,6 +5183,13 @@ def build_parser() -> argparse.ArgumentParser:
     seedsub.add_parser("show", help="what is configured (never prints the token)")
     seed.set_defaults(fn=cmd_seed)
 
+    cargo = sub.add_parser(
+        "cargo",
+        help="cargo in this worktree, built into the shared target (builds queue; one at a time)",
+    )
+    cargo.add_argument("cargo_args", nargs="*")
+    cargo.set_defaults(fn=cmd_cargo)
+
     reseed = sub.add_parser(
         "reseed", help="replace a branch's databases with a fresh server snapshot"
     )
@@ -4579,7 +5200,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    args = build_parser().parse_args(list(argv))
+    argv = list(argv)
+    if argv[:1] == ["cargo"]:
+        # Everything after `cargo` (an optional `--` first) is cargo's, flags included.
+        rest = argv[1:]
+        rest = rest[1:] if rest[:1] == ["--"] else rest
+        return argparse.Namespace(cmd="cargo", fn=cmd_cargo, cargo_args=rest)
+    args = build_parser().parse_args(argv)
     if not getattr(args, "fn", None):
         args.fn = cmd_list
     return args
@@ -4590,7 +5217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         load_env_file()
         args = parse_args(sys.argv[1:] if argv is None else argv)
         SEED.local = bool(getattr(args, "local_seed", False))
-        args.fn(args)
+        code = args.fn(args)
+        return code if isinstance(code, int) else 0
     except UsageError as exc:
         note(str(exc))
         return 2

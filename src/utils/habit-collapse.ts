@@ -121,12 +121,12 @@ function tallyOf(iterations: readonly HabitIterationMeta[]): HabitTally {
  * ones — a window cannot pass before an earlier window has — so one flow under one host has one
  * run, and an id that survives the run growing is what keeps an expansion expanded.
  */
-export function habitRunId(flowId: number): string {
+export function habitRunId(flowId: string): string {
   return `habitrun-${flowId}-virtual`;
 }
 
 /** The spelling every fold id shares: `habitrun-{flow}-…-virtual`. */
-const HABIT_GROUP_ID = /^habitrun-(\d+)-(?:.+-)?virtual$/;
+const HABIT_GROUP_ID = /^habitrun-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(?:.+-)?virtual$/;
 
 /**
  * The Habit a fold id belongs to — the run's, or one of its scope levels' — or `undefined` for any
@@ -138,18 +138,15 @@ const HABIT_GROUP_ID = /^habitrun-(\d+)-(?:.+-)?virtual$/;
  * the run's id is its flow, a level's is its flow, its kind and the day its span starts — so the same
  * id comes back out of it. See `drawn-path.ts`.
  */
-export function habitGroupFlowId(id: string): number | undefined {
-  const match = HABIT_GROUP_ID.exec(id);
-  if (match === null) return undefined;
-  const flowId = Number(match[1]);
-  return Number.isSafeInteger(flowId) ? flowId : undefined;
+export function habitGroupFlowId(id: string): string | undefined {
+  return HABIT_GROUP_ID.exec(id)?.[1];
 }
 
 /**
  * The path from `root` down to the node a Habit's iterations are drawn under — its **host**, the
  * Target Node — or `[]` when none of that Habit's iterations is on the board.
  */
-export function pathToHabitHost(root: MindmapNode, flowId: number): readonly MindmapNode[] {
+export function pathToHabitHost(root: MindmapNode, flowId: string): readonly MindmapNode[] {
   if (root.children.some((child) => child.habitIteration?.flowId === flowId)) return [root];
   for (const child of root.children) {
     const below = pathToHabitHost(child, flowId);
@@ -166,7 +163,7 @@ export function pathToHabitHost(root: MindmapNode, flowId: number): readonly Min
  * would give the two nodes the same id. The buckets are disjoint runs of iterations, so their
  * first iteration always tells them apart.
  */
-function habitLevelId(flowId: number, level: HabitScopeLevel, firstAnchorDate: string): string {
+function habitLevelId(flowId: string, level: HabitScopeLevel, firstAnchorDate: string): string {
   return `habitrun-${flowId}-${level}-${firstAnchorDate}-virtual`;
 }
 

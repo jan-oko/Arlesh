@@ -9,8 +9,7 @@ import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import OpenWaits from "@/components/AnswerField/OpenWaits";
-import type { MindmapNode } from "@/utils/tree-layout";
-import type { WaitReply } from "@/hooks/use-answer-question";
+import type { AnswerActions } from "@/hooks/use-answer-drafts";
 import { isReview } from "@/utils/status-mapping";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 import { isOverdue } from "@/utils/overdue";
@@ -33,11 +32,11 @@ interface Props {
   onOpenEditor: (nodeId: string) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
-  onAddTagFilter: (tagId: number) => void;
+  onAddTagFilter: (tagId: string) => void;
   /** Opens the row's context menu at the pointer. */
   onContextMenu?: (nodeId: string, x: number, y: number) => void;
   /** On a **Review** row: answers one of the agent's open waits, from the row. */
-  onAnswer?: (wait: MindmapNode, reply: WaitReply) => Promise<boolean>;
+  answers?: AnswerActions;
 }
 
 /** A compact card row for one Task: a status control (mirrors the Mindmap node's own glyph and click
@@ -54,7 +53,7 @@ interface Props {
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
   row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, showOverdueBorder, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
-  onAddTagFilter, onContextMenu, onAnswer,
+  onAddTagFilter, onContextMenu, answers,
 }: Props) {
   useInputCapture(isEditingTitle);
   const { t } = useTranslation(["listView", "nodeKinds"]);
@@ -134,7 +133,7 @@ export default function TaskRow({
           <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
         </div>
 
-        {onAnswer !== undefined && isReview(node.taskStatus) && <OpenWaits task={node} onAnswer={onAnswer} compact />}
+        {answers !== undefined && isReview(node.taskStatus) && <OpenWaits task={node} actions={answers} compact />}
 
         {node.tagIds.length > 0 && (
           <div className={styles.metaRow}>
