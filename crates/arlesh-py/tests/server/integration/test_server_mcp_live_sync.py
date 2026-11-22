@@ -38,7 +38,12 @@ def test_an_agents_write_through_mcp_reaches_the_change_stream_as_changed_nodes(
         parent_type="domain",
         parent_id=str(domain),
     )
+    # The publications of the setup writes (the root, the agent's attach and Claim) are published
+    # when the publisher gets to them, which can be after this stream connected: take events until
+    # the one that carries the Task.
     event = stream.next_change()
+    while "tasks" not in event["changes"]:
+        event = stream.next_change()
 
     titles = [value["title"] for _, value in event["changes"]["tasks"]["set"]]
     assert titles == ["From the agent"]
