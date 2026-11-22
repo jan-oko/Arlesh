@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::{
+    board::{ChangeOrigin, WriteOrigin},
     database::session::SessionFactory,
     error::AppError,
     mcp::events::ChangeFeed,
@@ -115,6 +116,9 @@ pub struct Publication {
     pub hash: u32,
     /// The sum of each collection's digests.
     pub sums: BTreeMap<Collection, u32>,
+    /// Who caused the publication's changes: the first publication has none to speak of and
+    /// reads as the work of time.
+    pub origin: ChangeOrigin,
     /// The derived board.
     pub load: MindmapLoad,
     /// Where the replicated source rows stood at this publication, when the publisher publishes them.
@@ -154,7 +158,7 @@ impl Publication {
 pub struct ChangeEvent {
     /// The publication the event brings a device to.
     pub seq: u64,
-    /// The event's JSON as apps before the Replica read it: `{epoch, seq, revision, now, hash,
+    /// The event's JSON as apps before the Replica read it: `{epoch, seq, revision, now, hash, origin,
     /// changes}`, or `reload: true` in place of `changes` when they were too large (ADR 0020,
     /// decision 16). It never holds `source`.
     pub data: Arc<str>,
@@ -285,9 +289,9 @@ impl BoardPublisher {
         Self { inner }
     }
 
-    /// Counts a committed write, which the publisher will derive and publish.
-    pub fn record_write(&self) {
-        self.inner.feed.bump();
+    /// Counts a committed write by `origin`, which the publisher will derive and publish.
+    pub fn record_write(&self, origin: WriteOrigin) {
+        self.inner.feed.bump(origin);
     }
 
     /// The newest revision any write reached, in this run.
@@ -386,12 +390,13 @@ fn event_json(
         None => ",\"reload\":true".to_string(),
     };
     Ok(format!(
-        "{{\"epoch\":{},\"seq\":{},\"revision\":{},\"now\":{},\"hash\":{}{}}}",
+        "{{\"epoch\":{},\"seq\":{},\"revision\":{},\"now\":{},\"hash\":{},\"origin\":{}{}}}",
         serde_json::to_string(&*publication.epoch)?,
         publication.seq,
         publication.revision,
         serde_json::to_string(&publication.now)?,
         publication.hash,
+        serde_json::to_string(&publication.origin)?,
         body
     ))
 }
@@ -518,6 +523,7 @@ fn seed(
         now,
         hash: digests.total(),
         sums: digests.sums().clone(),
+        origin: ChangeOrigin::Time,
         load,
         source: source_head(inner),
         json: OnceLock::new(),
@@ -559,6 +565,7 @@ fn publish(
         now,
         hash: digests.total(),
         sums: digests.sums().clone(),
+        origin: inner.feed.origin_between(previous.revision, revision),
         load,
         source: source_head(inner),
         json: OnceLock::new(),

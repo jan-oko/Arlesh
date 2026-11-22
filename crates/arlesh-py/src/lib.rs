@@ -107,6 +107,19 @@ impl NativeDatabase {
         shared::for_database(&self.path).changes.revision()
     }
 
+    /// Who caused the writes after revision `previous` up to `reached`: `"user"`, `"agent"` or
+    /// `"time"` (no write at all). The notifier leaves what the user did out of its pushes.
+    fn origin_between(&self, previous: u64, reached: u64) -> &'static str {
+        match shared::for_database(&self.path)
+            .changes
+            .origin_between(previous, reached)
+        {
+            arlesh_core::board::ChangeOrigin::User => "user",
+            arlesh_core::board::ChangeOrigin::Agent => "agent",
+            arlesh_core::board::ChangeOrigin::Time => "time",
+        }
+    }
+
     /// The run of this process: names the board's revisions and publications.
     #[getter]
     fn epoch(&self) -> String {

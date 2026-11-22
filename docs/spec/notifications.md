@@ -26,6 +26,43 @@ opens the **List View on the Review preset** with the Task that holds the questi
 scrolled into view ([Opening the Review list](#opening-the-review-list)); tapping any other opens
 its Task in the app.
 
+## Own actions
+
+Task `43c`; the user's ruling (2026-11-21): "No notification anywhere for my own actions". A change
+made from any of the user's devices, the desktop app or the phone, in Standalone or in Client mode,
+undo and redo included, notifies nobody: no desktop notification on any desktop and no push to any
+phone. Locking an account by hand in Settings → Agents and Ctrl+Z reopening a released question or
+review are the cases the user named. Only agents (through the MCP) and time (a scope ending, a due
+date passing, a check falling due) notify. This is not about the agents' own notifications of their
+waits (the events stream the `arlesh` plugin follows): an agent still hears that the user released
+or reopened its wait.
+
+- **Origin of a write.** Each committed write is counted with who made it: a *user* write is one
+  through a device's request (the server: any route behind a device token; Standalone: a Gesture, an
+  undo or redo, an access or agents action of the app) and an *agent* write is one through the MCP
+  (the endpoint's handler, in both modes). The change feed (`ChangeFeed`) keeps the revisions of
+  the agents' latest writes.
+- **Origin of a publication.** The publisher gives each publication an `origin`, from the writes
+  between the previous publication's revision and its own ([`ChangeOrigin::between`](../../crates/arlesh-core/src/board.rs)):
+  `time` when there were none, `agent` when any of them is an agent's, else `user`. It travels in
+  the `board-changed` event.
+- **On the server.** A look (see [How the server knows](#how-the-server-knows)) knows who caused
+  what happened since the last one, the same way, from the revision it last looked at. After a `user`
+  origin every device's plan is recorded as told and sent to no one, and what no longer holds is
+  forgotten as usual. A look that failed keeps its span, so a retry still knows who wrote.
+- **Mixed spans.** An agent's change and the user's in the same span read as the agent's, and
+  notify what both made true. A change by time that lands in the same span as the user's own write
+  is not told: it is recorded as told with the rest. Both are a notification too many or too few
+  at the edge, taken in preference to a rule that cannot tell the two apart.
+- **After a gap.** A desktop in Client mode that missed events (a gap, a new run of the server)
+  loads the whole board, which carries no origin, so what is new on it is told. A change the user
+  made on the phone during the gap can therefore notify the desktop once.
+- **A failing look.** A server look that fails does not advance the revision it has looked at, so
+  the retry covers the same span and still knows who wrote. While the database stays unreachable
+  and writes keep arriving, the retry runs about once a second.
+- **Pure rules.** `ChangeOrigin::notifies` (the user's own: no) is the one rule; the server and the
+  desktop both ask it.
+
 ## Toggles
 
 The user switches each channel in **Android's system settings**; Settings → Notifications in the
@@ -117,11 +154,10 @@ with the same defaults, generated Tasks included.
   was true before. A fact is recorded when it is planned, whether or not it is shown (a switched-off
   event, an own action), and forgotten when it stops holding, so holding again is news. A board
   reload after a gap or a new run of the server is read like an event: what is new on it is told.
-- **Own actions.** The user's own writes on this device do not notify what they made true: a
-  window that settles on a write asks `board_fence`, which notes the revision; the first
-  publication holding it does not notify Overdue or generated Tasks. An agent's question and the
-  capacity lock always notify, since the user cannot cause them. (A fence the window asks for after
-  the publication has already arrived is not seen, and that notification is shown.)
+- **Own actions.** An event's `origin` says who caused it ([Own actions](#own-actions)): when it
+  is `user` the notifier records what the event made true as told and shows nothing, whichever
+  channel it is on. An event with no `origin` (an older host's) notifies. A board loaded after a gap
+  carries no origin and tells what is new on it.
 - **Switches.** Linux has no per-channel system toggle, so Settings → Notifications has one switch
   per event, defaulting to on, in `notifications.json` in the app's data directory (the phone's are
   Android's system channels; the server stores none). They are per device and never travel with the

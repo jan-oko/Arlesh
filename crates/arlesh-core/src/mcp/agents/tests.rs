@@ -476,7 +476,7 @@ async fn the_wait_stream_tells_an_agent_only_of_waits_inside_its_claim() {
     };
     let streams = streams();
     // A cursor of 0 is no cursor: the log starts counting at the first write.
-    streams.feed.bump();
+    streams.feed.bump(crate::board::WriteOrigin::User);
     let start = poll(&mcp, &streams, Some(id(&first)), None, None).await;
     let (revision, epoch) = (
         start["revision"].as_u64().unwrap(),
@@ -490,7 +490,7 @@ async fn the_wait_stream_tells_an_agent_only_of_waits_inside_its_claim() {
     )
     .await;
     assert!(!is_error(&asked), "{asked}");
-    streams.feed.bump();
+    streams.feed.bump(crate::board::WriteOrigin::User);
 
     let mine = poll(
         &mcp,
@@ -530,7 +530,7 @@ async fn an_agent_with_no_claim_is_told_of_no_waits() {
         crate::agents::model::AgentId(structured(&attached)["agent"]["id"].as_i64().unwrap());
     let streams = streams();
     // A cursor of 0 is no cursor: the log starts counting at the first write.
-    streams.feed.bump();
+    streams.feed.bump(crate::board::WriteOrigin::User);
     let start = poll(&mcp, &streams, Some(idle_id), None, None).await;
     let (revision, epoch) = (
         start["revision"].as_u64().unwrap(),
@@ -542,7 +542,7 @@ async fn an_agent_with_no_claim_is_told_of_no_waits() {
         json!({ "operation": "ask", "task_id": tid(100).to_string(), "title": "Q" }),
     )
     .await;
-    streams.feed.bump();
+    streams.feed.bump(crate::board::WriteOrigin::User);
 
     let heard = poll(&mcp, &streams, Some(idle_id), Some(revision), Some(epoch)).await;
 

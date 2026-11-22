@@ -30,7 +30,8 @@ impl UndoPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         if closed.wrote {
-            self.publisher.record_write();
+            self.publisher
+                .record_write(arlesh_core::board::WriteOrigin::User);
         }
         Ok(closed)
     }
@@ -39,13 +40,15 @@ impl UndoPort for SqliteBackend {
         match engine::abort_gesture(&self.factory, &self.stacks).await {
             Ok(aborted) => {
                 if aborted.wrote {
-                    self.publisher.record_write();
+                    self.publisher
+                        .record_write(arlesh_core::board::WriteOrigin::User);
                 }
                 Ok(aborted)
             }
             Err(error) => {
                 // The reversal failed, so everything the Gesture wrote is still on the board.
-                self.publisher.record_write();
+                self.publisher
+                    .record_write(arlesh_core::board::WriteOrigin::User);
                 Err(WireError::from_error(error))
             }
         }
@@ -56,7 +59,8 @@ impl UndoPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         if applied.is_some() {
-            self.publisher.record_write();
+            self.publisher
+                .record_write(arlesh_core::board::WriteOrigin::User);
         }
         Ok(applied)
     }
@@ -66,7 +70,8 @@ impl UndoPort for SqliteBackend {
             .await
             .map_err(WireError::from_error)?;
         if applied.is_some() {
-            self.publisher.record_write();
+            self.publisher
+                .record_write(arlesh_core::board::WriteOrigin::User);
         }
         Ok(applied)
     }

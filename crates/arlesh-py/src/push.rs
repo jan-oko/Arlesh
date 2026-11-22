@@ -9,6 +9,7 @@
 use std::path::Path;
 
 use arlesh_core::{
+    board::ChangeOrigin,
     error::{WireError, WireErrorKind},
     push::{self, model::SentEntry},
 };
@@ -36,8 +37,11 @@ enum Request {
     Unregister { client: String },
     /// Every registered device.
     Devices,
-    /// What each device is to be sent now.
-    Plan { now: Option<NaiveDateTime> },
+    /// What each device is to be sent now, after changes made by `origin`.
+    Plan {
+        now: Option<NaiveDateTime>,
+        origin: ChangeOrigin,
+    },
     /// Records that a device was told these facts.
     Record {
         client: String,
@@ -86,8 +90,8 @@ async fn dispatch(
             .await
             .map_err(WireError::from_error)?),
         Request::Devices => json!(db.push().devices().await.map_err(WireError::from_error)?),
-        Request::Plan { now: at } => {
-            json!(push::plan_all(db, at.unwrap_or_else(now))
+        Request::Plan { now: at, origin } => {
+            json!(push::plan_all(db, at.unwrap_or_else(now), origin)
                 .await
                 .map_err(WireError::from_error)?)
         }

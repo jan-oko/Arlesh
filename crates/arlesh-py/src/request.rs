@@ -923,7 +923,7 @@ pub(crate) async fn run(
         }
     }?;
     // Committed: every device showing the board has to hear about it (`GET /events/changes`).
-    shared.changes.bump();
+    shared.changes.bump(arlesh_core::board::WriteOrigin::User);
     Ok(answer.to_string())
 }
 

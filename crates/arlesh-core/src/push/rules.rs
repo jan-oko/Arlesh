@@ -54,6 +54,17 @@ pub fn plan(observed: &Observed, sent: &[SentEntry]) -> Plan {
     Plan { send, forget }
 }
 
+/// What a device is taken to have been told once `events` are shown, or are as good as shown.
+pub fn told(events: &[PushEvent]) -> Vec<SentEntry> {
+    events
+        .iter()
+        .map(|event| SentEntry {
+            key: event.key.clone(),
+            value: event.value.clone(),
+        })
+        .collect()
+}
+
 /// The lock's change since the device was told, if it changed. A device never told of the lock
 /// counts as told it was clear.
 fn lock_change(observed: &Observed, told: &HashMap<&str, &str>) -> Option<PushEvent> {

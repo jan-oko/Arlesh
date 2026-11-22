@@ -117,3 +117,35 @@ async fn the_feed_counts_writes_and_wakes_a_waiter() {
     assert_eq!(reached, 1);
     assert!(!feed.epoch().is_empty());
 }
+
+#[test]
+fn the_feed_tells_who_wrote_since_a_revision() {
+    use crate::board::{ChangeOrigin, WriteOrigin};
+    let feed = ChangeFeed::new();
+    feed.bump(WriteOrigin::User);
+    let after_user = feed.revision();
+    feed.bump(WriteOrigin::Agent);
+    feed.bump(WriteOrigin::User);
+
+    assert_eq!(feed.origin_between(0, after_user), ChangeOrigin::User);
+    assert_eq!(feed.origin_between(0, feed.revision()), ChangeOrigin::Agent);
+    assert_eq!(
+        feed.origin_between(after_user + 1, feed.revision()),
+        ChangeOrigin::User
+    );
+    assert_eq!(feed.origin_between(3, 3), ChangeOrigin::Time);
+}
+
+#[test]
+fn the_feed_remembers_only_the_most_recent_agent_writes() {
+    use crate::board::{ChangeOrigin, WriteOrigin};
+    let feed = ChangeFeed::new();
+    for _ in 0..(super::feed::AGENT_WRITES_KEPT + 10) {
+        feed.bump(WriteOrigin::Agent);
+    }
+    let reached = feed.revision();
+    assert_eq!(
+        feed.origin_between(reached - 1, reached),
+        ChangeOrigin::Agent
+    );
+}

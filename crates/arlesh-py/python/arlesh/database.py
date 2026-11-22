@@ -869,6 +869,12 @@ class Database(ABC):
         through any open of it in this process."""
 
     @abstractmethod
+    def origin_between(self, previous: int, reached: int) -> str:
+        """Who caused the writes after revision ``previous`` up to ``reached``: ``"user"`` (only
+        the user's devices wrote), ``"agent"`` (an agent wrote, with or without the user) or
+        ``"time"`` (no write at all)."""
+
+    @abstractmethod
     async def next_change(self, after: int) -> int:
         """Waits until the board's revision is past ``after``, and answers it."""
 
@@ -1642,6 +1648,10 @@ class Arlesh(Database):
     def epoch(self) -> str:
         epoch: str = self._publishing_native().epoch
         return epoch
+
+    def origin_between(self, previous: int, reached: int) -> str:
+        origin: str = self._publishing_native().origin_between(previous, reached)
+        return origin
 
     def start_publisher(self) -> None:
         self._publishing_native().start_publisher()

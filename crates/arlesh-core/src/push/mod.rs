@@ -10,6 +10,7 @@ pub mod rules;
 use chrono::NaiveDateTime;
 
 use crate::{
+    board::ChangeOrigin,
     database::session::{Db, Transactional},
     error::AppError,
     mindmap::{self, model::MindmapLoad},
@@ -207,10 +208,15 @@ pub async fn register_device(
 /// What every registered device is to be sent now, from one derivation of the board at `now`.
 /// What a device was told that no longer holds is forgotten here; what is sent is recorded by the
 /// caller, with [`PushOperator::record`], once the push service has accepted it.
+///
+/// `origin` is who caused what happened since the last look. The user's own changes are sent to
+/// nobody: what they made true is recorded as told here and then, so it is not owed at a later
+/// look either.
 #[tracing::instrument(skip(db))]
 pub async fn plan_all(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
+    origin: ChangeOrigin,
 ) -> Result<Vec<DevicePlan>, AppError> {
     let devices = db.push().devices().await?;
     if devices.is_empty() {
@@ -223,6 +229,13 @@ pub async fn plan_all(
         let sent = db.push().sent(&device.client).await?;
         let plan = rules::plan(&observed, &sent);
         db.push().forget(&device.client, &plan.forget).await?;
+        if !origin.notifies() {
+            let told = rules::told(&plan.send);
+            db.push()
+                .record(&device.client, &told, &now.to_string())
+                .await?;
+            continue;
+        }
         if !plan.send.is_empty() {
             plans.push(DevicePlan {
                 device,

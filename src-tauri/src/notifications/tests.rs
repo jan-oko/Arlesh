@@ -1,4 +1,5 @@
 use super::*;
+use crate::backend::revision::BoardRevision;
 use arlesh_core::nodes::id::{tid, tkey};
 
 use std::sync::atomic::AtomicUsize;
@@ -50,12 +51,16 @@ fn task_json(id: i64, title: &str) -> String {
 }
 
 fn question_event(seq: u64, task: i64) -> BoardChange {
+    question_event_by(seq, task, "agent")
+}
+
+fn question_event_by(seq: u64, task: i64, origin: &str) -> BoardChange {
     let key = tkey("task", task);
     let wait = tid(99);
     let changes =
         format!(r#"{{"facts":{{"set":[["{key}",{{"open_question":"{wait}"}}]],"del":[]}}}}"#);
     BoardChange::parse(&format!(
-        r#"{{"epoch":"run","seq":{seq},"revision":{seq},"changes":{changes}}}"#
+        r#"{{"epoch":"run","seq":{seq},"revision":{seq},"origin":"{origin}","changes":{changes}}}"#
     ))
     .unwrap()
 }
@@ -211,4 +216,31 @@ fn only_a_question_notice_carries_a_wait() {
         title: Some("Ship".into()),
     };
     assert_eq!(notice_for(&event).wait, None);
+}
+
+#[test]
+fn a_question_the_user_reopened_themselves_shows_nothing() {
+    let (service, recorder) = service("own");
+
+    assert_eq!(
+        service.on_change(&question_event_by(2, 1, "user")),
+        Followed::Done
+    );
+
+    assert_eq!(recorder.calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn an_event_from_a_host_that_names_no_origin_still_notifies() {
+    let (service, recorder) = service("anonymous");
+    let changes = question_event(2, 1).changes.unwrap();
+    let event = BoardChange::parse(&format!(
+        r#"{{"epoch":"run","seq":2,"revision":2,"changes":{}}}"#,
+        changes.get()
+    ))
+    .unwrap();
+
+    service.on_change(&event);
+
+    assert_eq!(recorder.calls.load(Ordering::Relaxed), 1);
 }

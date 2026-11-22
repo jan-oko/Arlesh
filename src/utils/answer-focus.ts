@@ -133,3 +133,6 @@ export function handleFieldKey(event: KeyEventLike, field: HTMLElement | null): 
   else if (key === "previous") focusAdjacentField(field, -1);
   return true;
 }
+
+/** How many lines an answer or note field shows when empty on the touch layout: two, so the controls below stay on screen. */
+export const TOUCH_FIELD_ROWS = 2;
