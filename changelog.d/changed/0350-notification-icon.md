@@ -1,1 +1,0 @@
-- **Phone notifications show the Arlesh logo.** The small icon in the status bar and the notification shade is now the Arlesh mark, the same as the desktop tray icon, instead of a star in a circle.
