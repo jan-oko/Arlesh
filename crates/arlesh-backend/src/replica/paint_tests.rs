@@ -935,4 +935,12 @@ async fn replica_and_server_end_byte_identical_after_a_mixed_session() {
     rig.replica.redo().await.expect("a redo");
     rig.converge().await;
     assert_eq!(rig.replica_rows().await, rig.server.rows().await);
+    assert_eq!(
+        rig.source
+            .told
+            .snapshots
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a settle never fell back to a whole board, and no hash mismatch was met"
+    );
 }

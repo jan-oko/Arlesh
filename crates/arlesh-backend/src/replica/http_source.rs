@@ -32,6 +32,7 @@ impl SyncSource for HttpSource {
         let backend = Arc::clone(&self.backend);
         tokio::spawn(async move {
             let mut parser = EventParser::default();
+            let mut pending = Vec::new();
             loop {
                 let read = match tokio::time::timeout(IDLE_LIMIT, response.chunk()).await {
                     Ok(Ok(Some(chunk))) => chunk,
@@ -46,7 +47,8 @@ impl SyncSource for HttpSource {
                     }
                 };
                 backend.set_reachable(true);
-                for event in parser.feed(&String::from_utf8_lossy(&read)) {
+                pending.extend_from_slice(&read);
+                for event in parser.feed(&drain_utf8(&mut pending)) {
                     let incoming = match event.name.as_deref() {
                         Some(arlesh_core::board::BOARD_CHANGED) => event
                             .data
@@ -83,3 +85,29 @@ impl SyncSource for HttpSource {
         }
     }
 }
+
+/// The text of the bytes read so far, leaving a character split across two reads in `pending` to be
+/// completed by the next one. Bytes that can never be text are replaced, not waited for.
+fn drain_utf8(pending: &mut Vec<u8>) -> String {
+    match std::str::from_utf8(pending) {
+        Ok(text) => {
+            let text = text.to_owned();
+            pending.clear();
+            text
+        }
+        Err(error) if error.error_len().is_none() => {
+            let valid = error.valid_up_to();
+            let text = String::from_utf8_lossy(&pending[..valid]).into_owned();
+            pending.drain(..valid);
+            text
+        }
+        Err(_) => {
+            let text = String::from_utf8_lossy(pending).into_owned();
+            pending.clear();
+            text
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

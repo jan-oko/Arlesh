@@ -397,3 +397,27 @@ async fn a_row_naming_an_unsafe_table_or_column_is_refused() {
         ));
     }
 }
+
+#[tokio::test]
+async fn a_write_that_fails_leaves_foreign_keys_enforced_and_no_transaction_open() {
+    let replica = open_memory().await.unwrap();
+    let bad = RowChange {
+        seq: 1,
+        table: "tasks".into(),
+        rowid: 1,
+        image: Some("not json".into()),
+    };
+
+    assert!(apply_rows(&replica, &[bad]).await.is_err());
+
+    // Constraints are on again: a link to a task that does not exist is refused...
+    assert!(execute_for_tests(
+        &replica,
+        "INSERT INTO tags_on_tasks (task_id, tag_id) VALUES ('nobody', 'nothing')"
+    )
+    .await
+    .is_err());
+    // ...and the connection is free of a half-open transaction: the next write works.
+    apply_rows(&replica, &[]).await.unwrap();
+    journal_mark(&replica).await.unwrap();
+}

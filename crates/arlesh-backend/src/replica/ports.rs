@@ -320,7 +320,7 @@ macro_rules! with_ports {
                 local abort_gesture() -> Result<GestureAbort, WireError>;
                 undo undo() -> Result<Option<GestureSummary>, WireError>;
                 undo redo() -> Result<Option<GestureSummary>, WireError>;
-                remote_read undo_status() -> Result<UndoStatus, WireError>;
+                status_read undo_status() -> Result<UndoStatus, WireError>;
                 }
             }
         }

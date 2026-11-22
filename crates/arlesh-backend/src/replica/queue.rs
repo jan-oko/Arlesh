@@ -10,7 +10,7 @@
 //! The pure parts (what a write's arguments name, which ids a prediction made) are free functions
 //! at the top; the rest is the part of the [`Syncer`] that handles them.
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 use arlesh_core::{
     error::WireError,
@@ -31,19 +31,21 @@ use crate::{
     Backend,
 };
 
-/// How long settling waits for the events to reach what the server answered, before it fetches a
-/// whole board instead.
-pub const SETTLE_WAIT: Duration = Duration::from_secs(5);
-
 /// What the caller of a write is given when the server answers it: run once the Replica is settled.
 pub type Deliver = Box<dyn FnOnce() + Send>;
-/// Runs a write on the local board; `Ok` means it applied. The typed answer goes to the caller from
-/// inside, the first time it runs.
+/// What of an answer is material to whether two runs of a write agree: see [`material`].
+pub type View = Value;
+/// Runs a write on the local board; `Ok` means it applied, with the material view of its answer.
+/// The typed answer goes to the caller from inside, the first time it runs.
 pub type LocalFn =
-    Arc<dyn Fn(Arc<dyn Backend>) -> BoxFuture<'static, Result<(), WireError>> + Send + Sync>;
-/// Sends a write to the server; the answer is delivered to the caller when the Replica is settled.
-pub type RemoteFn =
-    Arc<dyn Fn(Arc<dyn Backend>) -> BoxFuture<'static, Result<Deliver, WireError>> + Send + Sync>;
+    Arc<dyn Fn(Arc<dyn Backend>) -> BoxFuture<'static, Result<View, WireError>> + Send + Sync>;
+/// Sends a write to the server; the answer is delivered to the caller when the Replica is settled,
+/// and its material view says whether it agrees with the prediction.
+pub type RemoteFn = Arc<
+    dyn Fn(Arc<dyn Backend>) -> BoxFuture<'static, Result<(Deliver, View), WireError>>
+        + Send
+        + Sync,
+>;
 /// Tells the caller a write was refused.
 pub type Fail = Box<dyn FnOnce(WireError) + Send>;
 
@@ -61,6 +63,8 @@ pub struct Op {
     pub submitted: std::time::Instant,
     /// Set for an undo: what it does with its answer when it cancels an unsent write instead.
     pub undo: Option<UndoAnswer>,
+    /// Set for a redo.
+    pub redo: bool,
 }
 
 /// An undo that may be answered by cancelling the newest write, unsent.
@@ -75,6 +79,8 @@ pub enum Command {
     Submit(Op),
     /// Stops (`true`) or starts following the server.
     Pause(bool),
+    /// Answers the summary of the newest write that is still unsent, if there is one.
+    UnsentTail(tokio::sync::oneshot::Sender<Option<GestureSummary>>),
     /// Answers the board as the server last confirmed it, as a snapshot body.
     Persist(tokio::sync::oneshot::Sender<Option<String>>),
     /// The server answered the write `ticket`, with the newest revision it had stamped by then.
@@ -82,7 +88,7 @@ pub enum Command {
         /// Which write.
         ticket: u64,
         /// The answer to deliver, or the refusal.
-        outcome: Result<Deliver, WireError>,
+        outcome: Result<(Deliver, View), WireError>,
         /// The newest revision the server had stamped.
         stamp: Option<BoardRevision>,
     },
@@ -95,6 +101,10 @@ pub enum DropReason {
     Refused,
     /// The connection was lost.
     Unreachable,
+    /// The server's answer to a write was not what the Replica showed (it skipped or refused part of it).
+    Differed,
+    /// The app went to the background with writes not yet sent.
+    Suspended,
 }
 
 /// Writes that were not made, said once per settle.
@@ -102,6 +112,9 @@ pub enum DropReason {
 pub struct Dropped {
     /// How many writes were taken back and not made.
     pub count: usize,
+    /// Of the writes taken back on a lost connection, how many had already been sent when it was
+    /// lost: the server may have saved them. Not part of `count`.
+    pub maybe_saved: usize,
     /// Why.
     pub reason: DropReason,
 }
@@ -127,6 +140,8 @@ struct Pending {
     deliver: Option<Deliver>,
     refusal: Option<WireError>,
     refusals_at_enqueue: u64,
+    /// The material view of the local answer, to compare with the server's.
+    predicted: Option<View>,
 }
 
 /// What the server said while writes were pending: held until they settle.
@@ -151,6 +166,10 @@ pub struct Queue {
     parked: Vec<Op>,
     fence: Option<BoardRevision>,
     waiting_since: Option<Instant>,
+    /// Answers that were not what the Replica showed.
+    differed: usize,
+    /// Undos cancelled locally, whose Redo the server cannot know of.
+    cancelled: usize,
 }
 
 impl Queue {
@@ -162,6 +181,11 @@ impl Queue {
         };
     }
 
+    /// Where the rows heard while writes are pending stand.
+    pub fn buffer_position(&self) -> i64 {
+        self.buffer.position
+    }
+
     /// Makes the next settle take a whole board.
     pub fn ask_for_snapshot(&mut self) {
         self.buffer.needs_snapshot = true;
@@ -170,6 +194,34 @@ impl Queue {
     /// Whether any write is pending: the rows the server sends are then held back.
     pub fn holding(&self) -> bool {
         !self.pending.is_empty()
+    }
+}
+
+/// What an undo of a press that made nothing yet reports: the press is gone, rows touched: none.
+fn cancelled_summary() -> GestureSummary {
+    GestureSummary {
+        gesture: GestureId("cancelled".to_owned()),
+        rows: 0,
+        inserted: 0,
+        updated: 0,
+        deleted: 0,
+        tables: Vec::new(),
+    }
+}
+
+/// How many writes were taken back when the Replica gave up on them.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Abandoned {
+    /// Writes never sent.
+    pub not_sent: usize,
+    /// Writes that were on their way when the connection went: the server may have saved them.
+    pub in_flight: usize,
+}
+
+impl Abandoned {
+    /// Every write that was given up on.
+    pub fn total(&self) -> usize {
+        self.not_sent + self.in_flight
     }
 }
 
@@ -189,6 +241,44 @@ fn collect(value: &Value, found: &mut HashSet<String>) {
         Value::Object(fields) => fields.values().for_each(|item| collect(item, found)),
         _ => {}
     }
+}
+
+/// The fields of an answer that say what a write came to rather than what it made: an outcome, a
+/// refusal, a list of what was skipped. Collected from anywhere in the answer's JSON, in order, so
+/// that two runs of a write can be compared without every answer type being compared by hand (ids
+/// and clocks differ between the Replica and the server and are not material).
+pub fn material(answer: &impl serde::Serialize) -> View {
+    const KEYS: [&str; 5] = ["outcome", "skipped", "refused", "reason", "may_be_refused"];
+    fn walk(value: &Value, found: &mut Vec<Value>) {
+        match value {
+            Value::Object(fields) => {
+                for (key, inner) in fields {
+                    if KEYS.contains(&key.as_str()) {
+                        found.push(serde_json::json!({ key: inner }));
+                    } else {
+                        walk(inner, found);
+                    }
+                }
+            }
+            Value::Array(items) => items.iter().for_each(|item| walk(item, found)),
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    if let Ok(value) = serde_json::to_value(answer) {
+        walk(&value, &mut found);
+    }
+    Value::Array(found)
+}
+
+/// Whether the Replica's own run of a write refused it though it did not fail: an answer that says
+/// `outcome: refused`. Such a write is never sent.
+pub fn refused_locally(view: &View) -> bool {
+    view.as_array().is_some_and(|fields| {
+        fields
+            .iter()
+            .any(|field| field.get("outcome") == Some(&Value::String("refused".to_owned())))
+    })
 }
 
 /// Whether `args` name any of `ids`: a press on a node whose id a prediction may have made
@@ -218,9 +308,21 @@ impl Syncer {
             Command::Pause(paused) => {
                 self.paused = paused;
                 if paused {
-                    self.abandon_pending(&read_only_error(ReadOnlyReason::ServerUnreachable))
+                    let count = self
+                        .abandon_pending(&read_only_error(ReadOnlyReason::ServerUnreachable))
                         .await;
+                    if count.total() > 0 {
+                        (self.on_dropped)(Dropped {
+                            count: count.not_sent,
+                            maybe_saved: count.in_flight,
+                            reason: DropReason::Suspended,
+                        });
+                    }
                 }
+                Ok(())
+            }
+            Command::UnsentTail(reply) => {
+                let _ = reply.send(self.unsent_tail().await);
                 Ok(())
             }
             Command::Persist(reply) => {
@@ -252,8 +354,21 @@ impl Syncer {
             }
             return;
         }
-        if op.undo.is_some() && self.cancel_unsent(&mut op).await {
+        if op.undo.is_some() && !op.redo && self.cancel_unsent(&mut op).await {
             return;
+        }
+        if op.redo && self.queue.cancelled > 0 {
+            // The write that was cancelled never reached the server, which cannot redo it.
+            self.queue.cancelled -= 1;
+            if let Some(undo) = op.undo.take() {
+                (undo.answer)(None);
+            }
+            return;
+        }
+        if op.local.is_some() {
+            self.queue.cancelled = 0;
+        } else if !self.queue.holding() {
+            self.start_hold().await;
         }
         let provisional: HashSet<String> = self
             .queue
@@ -272,9 +387,45 @@ impl Syncer {
                 arlesh_core::nodes::new_id::new_row_id(),
                 None,
                 HashSet::new(),
+                None,
             ),
         }
         self.send_next();
+    }
+
+    /// A buffer for the rows the server says while writes are pending, starting where the Replica
+    /// stands now, at the revision it has applied.
+    fn fresh_buffer(&self) -> Buffer {
+        let applied = self.shared.applied.borrow();
+        Buffer {
+            position: self.position,
+            revision: if applied.epoch == self.epoch {
+                applied.revision
+            } else {
+                0
+            },
+            ..Buffer::default()
+        }
+    }
+
+    /// Begins a hold for a request that is not predicted: the rows heard from now on wait for it.
+    async fn start_hold(&mut self) {
+        if let Ok(mark) = replica::journal_mark(&self.factory).await {
+            self.queue.mark = mark;
+            self.queue.buffer = self.fresh_buffer();
+        }
+    }
+
+    /// Applies the rows held back once no write is pending any more.
+    async fn apply_held(&mut self) {
+        let buffer = std::mem::take(&mut self.queue.buffer);
+        let mark = self.queue.mark;
+        if self.apply_settled(mark, buffer).await.is_ok() {
+            if let Some(local) = self.shared.local.borrow().clone() {
+                local.record_write();
+            }
+        }
+        self.queue.buffer = self.fresh_buffer();
     }
 
     /// Runs the write on the local board, and queues it for the server when it applied.
@@ -290,10 +441,7 @@ impl Syncer {
         };
         if !self.queue.holding() {
             self.queue.mark = after;
-            self.queue.buffer = Buffer {
-                position: self.position,
-                ..Buffer::default()
-            };
+            self.queue.buffer = self.fresh_buffer();
         }
         let queue_wait = op.submitted.elapsed();
         let written = std::time::Instant::now();
@@ -304,13 +452,20 @@ impl Syncer {
             return;
         };
         let range = (through > after).then_some(JournalRange { after, through });
-        if outcome.is_err() {
-            // A local refusal: nothing is sent, and whatever it half-wrote is taken back.
-            if let Some(range) = range {
-                let _ = replica::cancel(&self.factory, range).await;
+        let predicted = match outcome {
+            Ok(view) if !refused_locally(&view) => view,
+            _ => {
+                // A local refusal, as an error or as an answer that says so: nothing is sent, and
+                // whatever it half-wrote is taken back.
+                if let Some(range) = range {
+                    let _ = replica::cancel(&self.factory, range).await;
+                }
+                if !self.queue.holding() {
+                    self.apply_held().await;
+                }
+                return;
             }
-            return;
-        }
+        };
         let inserted = match range {
             Some(range) => replica::inserted_ids(&self.factory, range)
                 .await
@@ -319,7 +474,7 @@ impl Syncer {
         };
         let provisional = provisional_ids(inserted, &op.args);
         super::press::announce(&self.shared, &backend, queue_wait, write);
-        self.enqueue(op, seed, range, provisional);
+        self.enqueue(op, seed, range, provisional, Some(predicted));
     }
 
     fn enqueue(
@@ -328,6 +483,7 @@ impl Syncer {
         seed: RowId,
         range: Option<JournalRange>,
         provisional: HashSet<String>,
+        predicted: Option<View>,
     ) {
         let ticket = self.queue.next_ticket;
         self.queue.next_ticket += 1;
@@ -341,6 +497,7 @@ impl Syncer {
             deliver: None,
             refusal: None,
             refusals_at_enqueue: self.queue.refusals,
+            predicted,
         });
     }
 
@@ -391,7 +548,7 @@ impl Syncer {
     async fn answered(
         &mut self,
         ticket: u64,
-        outcome: Result<Deliver, WireError>,
+        outcome: Result<(Deliver, View), WireError>,
         stamp: Option<BoardRevision>,
     ) -> Result<(), WireError> {
         if let Some(stamp) = stamp {
@@ -406,9 +563,12 @@ impl Syncer {
             return Ok(());
         };
         match outcome {
-            Ok(deliver) => {
+            Ok((deliver, view)) => {
                 item.state = State::Answered;
                 item.deliver = Some(deliver);
+                if item.predicted.as_ref().is_some_and(|shown| *shown != view) {
+                    self.queue.differed += 1;
+                }
             }
             Err(error) if is_unreachable(&error) => {
                 return self.lose_connection(error).await;
@@ -419,7 +579,8 @@ impl Syncer {
                 self.queue.refusals += 1;
             }
         }
-        self.queue.waiting_since.get_or_insert_with(Instant::now);
+        // The wait for the events to catch up runs from the newest answer, not the first of a burst.
+        self.queue.waiting_since = Some(Instant::now());
         self.send_next();
         self.try_settle().await
     }
@@ -493,7 +654,7 @@ impl Syncer {
         let waited = self
             .queue
             .waiting_since
-            .is_some_and(|since| since.elapsed() >= SETTLE_WAIT);
+            .is_some_and(|since| since.elapsed() >= self.timings.settle_wait);
         if !caught_up && !self.queue.buffer.needs_snapshot && !waited {
             return Ok(());
         }
@@ -513,7 +674,16 @@ impl Syncer {
     async fn settle(&mut self) -> Result<(), WireError> {
         let buffer = std::mem::take(&mut self.queue.buffer);
         let mark = self.queue.mark;
-        self.apply_settled(mark, buffer).await?;
+        if let Err(error) = self.apply_settled(mark, buffer).await {
+            // The predictions are still on the board and nothing says what the server holds: take
+            // them back and leave the queue empty, so nothing unsent can be sent after a reconnect.
+            self.live = false;
+            self.down_reason = ReadOnlyReason::ServerUnreachable;
+            self.give_up_pending(&error).await;
+            return Err(error);
+        }
+        self.unchecked = true;
+        self.ahead_since = None;
         self.queue.fence = None;
         self.queue.waiting_since = None;
         let items: Vec<Pending> = self.queue.pending.drain(..).collect();
@@ -536,10 +706,7 @@ impl Syncer {
             }
         }
         self.queue.mark = replica::journal_mark(&self.factory).await.unwrap_or(0);
-        self.queue.buffer = Buffer {
-            position: self.position,
-            ..Buffer::default()
-        };
+        self.queue.buffer = self.fresh_buffer();
         let mut dropped = refused;
         for item in queued {
             if !self.replay(item).await {
@@ -552,7 +719,16 @@ impl Syncer {
         if dropped > 0 {
             (self.on_dropped)(Dropped {
                 count: dropped,
+                maybe_saved: 0,
                 reason: DropReason::Refused,
+            });
+        }
+        let differed = std::mem::take(&mut self.queue.differed);
+        if differed > 0 {
+            (self.on_dropped)(Dropped {
+                count: differed,
+                maybe_saved: 0,
+                reason: DropReason::Differed,
             });
         }
         self.send_next();
@@ -607,6 +783,7 @@ impl Syncer {
                 .await
                 .map_err(|error| WireError::internal(error.to_string()))?;
             self.reseed(&snapshot);
+            self.unconfirmed = false;
             self.agent_origin = true;
             return Ok(());
         }
@@ -621,30 +798,42 @@ impl Syncer {
             self.needs_snapshot = true;
         }
         self.agent_origin = buffer.from_agent;
+        self.unconfirmed = false;
         Ok(())
     }
 
     /// The connection is gone: every prediction is taken back, nothing unsent is kept, and the
     /// board is read-only until the next snapshot says what the server holds.
     pub(super) async fn lose_connection(&mut self, error: WireError) -> Result<(), WireError> {
-        self.live = false;
-        self.down_reason = ReadOnlyReason::ServerUnreachable;
-        let count = self.abandon_pending(&error).await;
-        if count > 0 {
-            (self.on_dropped)(Dropped {
-                count,
-                reason: DropReason::Unreachable,
-            });
-        }
+        self.give_up_pending(&error).await;
         self.source.reachable(false);
         Err(error)
     }
 
+    /// Takes everything pending back after the connection (or the session) ended on `error`, and
+    /// says once how many writes were not sent and how many may have been saved.
+    pub(super) async fn give_up_pending(&mut self, error: &WireError) {
+        self.live = false;
+        if self.fetched_once {
+            self.down_reason = ReadOnlyReason::ServerUnreachable;
+        }
+        let count = self.abandon_pending(error).await;
+        if count.total() > 0 {
+            (self.on_dropped)(Dropped {
+                count: count.not_sent,
+                maybe_saved: count.in_flight,
+                reason: DropReason::Unreachable,
+            });
+        }
+    }
+
     /// Takes every pending write back, applying the rows already heard, and tells each caller still
-    /// waiting that it was refused with `error`. Answers how many writes there were.
-    pub(super) async fn abandon_pending(&mut self, error: &WireError) -> usize {
-        if !self.queue.holding() {
-            return 0;
+    /// waiting that it was refused with `error`. When the rows cannot be put right the Replica is
+    /// marked unconfirmed, so the cache never keeps a prediction as the board.
+    pub(super) async fn abandon_pending(&mut self, error: &WireError) -> Abandoned {
+        let mut count = Abandoned::default();
+        if !self.queue.holding() && self.queue.parked.is_empty() {
+            return count;
         }
         let buffer = std::mem::take(&mut self.queue.buffer);
         let mark = self.queue.mark;
@@ -653,12 +842,22 @@ impl Syncer {
         } else {
             buffer.rows
         };
-        let _ = replica::settle(&self.factory, mark, &rows).await;
+        if self.queue.holding() {
+            if let Err(failure) = replica::settle(&self.factory, mark, &rows).await {
+                tracing::error!(error = %failure, "predictions could not be taken back");
+                self.unconfirmed = true;
+            }
+        }
         // The rows applied were not run through the tracker: the next look at them is a snapshot.
         self.needs_snapshot = true;
+        self.unchecked = true;
         let items: Vec<Pending> = self.queue.pending.drain(..).collect();
-        let count = items.len();
         for mut item in items {
+            match item.state {
+                State::Queued => count.not_sent += 1,
+                State::InFlight => count.in_flight += 1,
+                State::Answered | State::Refused => {}
+            }
             if let Some(fail) = item.op.fail.take() {
                 fail(error.clone());
             }
@@ -667,12 +866,14 @@ impl Syncer {
             }
         }
         for mut op in std::mem::take(&mut self.queue.parked) {
+            count.not_sent += 1;
             if let Some(fail) = op.fail.take() {
                 fail(error.clone());
             }
         }
         self.queue.fence = None;
         self.queue.waiting_since = None;
+        self.queue.differed = 0;
         if let Some(local) = self.shared.local.borrow().clone() {
             local.record_write();
         }
@@ -682,6 +883,32 @@ impl Syncer {
     /// The press on undo while the newest write is still unsent: cancels it on the Replica and
     /// sends nothing. `false` when it has to go to the server instead.
     async fn cancel_unsent(&mut self, op: &mut Op) -> bool {
+        // The newest press is the tail: a press parked behind the provisional guard may be newer
+        // than anything queued, and it has predicted nothing, so cancelling it needs no rollback.
+        let newest_parked = self
+            .queue
+            .parked
+            .iter()
+            .enumerate()
+            .filter(|(_, parked)| parked.local.is_some())
+            .max_by_key(|(_, parked)| parked.submitted)
+            .map(|(index, parked)| (index, parked.submitted));
+        let newest_queued = self.queue.pending.back().map(|tail| tail.op.submitted);
+        if let Some((index, submitted)) = newest_parked {
+            if newest_queued.is_none_or(|queued| submitted > queued) {
+                let mut parked = self.queue.parked.remove(index);
+                if let Some(fail) = parked.fail.take() {
+                    fail(WireError::invalid_request(
+                        "the action was undone before it was made",
+                    ));
+                }
+                self.queue.cancelled += 1;
+                if let Some(undo) = op.undo.take() {
+                    (undo.answer)(Some(cancelled_summary()));
+                }
+                return true;
+            }
+        }
         let Some(tail) = self.queue.pending.back() else {
             return false;
         };
@@ -692,6 +919,8 @@ impl Syncer {
             return false;
         };
         self.queue.pending.pop_back();
+        self.queue.cancelled += 1;
+        self.unchecked = true;
         let summary = StackedGesture::new(GestureId("cancelled".to_owned()), entries)
             .map(|gesture| gesture.summary());
         if let Some(undo) = op.undo.take() {
@@ -702,15 +931,25 @@ impl Syncer {
         }
         if !self.queue.holding() {
             // Nothing is pending any more: the rows held back apply now.
-            let buffer = std::mem::take(&mut self.queue.buffer);
-            let mark = self.queue.mark;
-            if self.apply_settled(mark, buffer).await.is_ok() {
-                if let Some(local) = self.shared.local.borrow().clone() {
-                    local.record_write();
-                }
-            }
+            self.apply_held().await;
         }
         true
+    }
+
+    /// The summary of the newest write that is still unsent, for the undo status.
+    pub(super) async fn unsent_tail(&mut self) -> Option<GestureSummary> {
+        let tail = self.queue.pending.back()?;
+        let (State::Queued, Some(range)) = (&tail.state, tail.range) else {
+            return None;
+        };
+        let mut db = self.factory.connect().await.ok()?;
+        let entries = db
+            .undo()
+            .entries_between(range.after, range.through)
+            .await
+            .ok()?;
+        StackedGesture::new(GestureId("unsent".to_owned()), entries)
+            .map(|gesture| gesture.summary())
     }
 }
 

@@ -62,6 +62,7 @@ macro_rules! bracketed_body {
     (read $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
     (option_read $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
     (remote_read $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
+    (status_read $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
     (refused $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
     (undo $s:ident $name:ident [$($arg:ident)*]) => { $s.0.$name($($arg),*).await };
     (local $s:ident $name:ident [$($arg:ident)*]) => { LocalGestures.$name().await };
@@ -165,6 +166,7 @@ macro_rules! gated_body {
     (read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
     (option_read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
     (remote_read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
+    (status_read $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
     (refused $s:ident $name:ident [$($arg:ident)*]) => { $s.inner.$name($($arg),*).await };
     (local $s:ident $name:ident [$($arg:ident)*]) => { LocalGestures.$name().await };
     (write $s:ident $name:ident [$($arg:ident)*]) => {{ $s.pass().await?; $s.inner.$name($($arg),*).await }};
@@ -274,17 +276,21 @@ pub struct Told {
     pub snapshots: AtomicU32,
     /// How many times the stream was opened.
     pub opens: AtomicU32,
+    /// How many events were dropped on the way.
+    pub dropped: AtomicU32,
 }
 
 /// A [`SyncSource`] over a [`ServerRig`], with faults.
 pub struct RigSource {
     server: Mutex<Arc<SqliteBackend>>,
-    dropped: Mutex<HashSet<u64>>,
+    dropped: Arc<Mutex<HashSet<u64>>>,
     generation: Arc<AtomicU32>,
     /// Added to the snapshot's schema version.
     pub schema_skew: AtomicI64,
     /// Whether the stream refuses to open.
     pub down: AtomicBool,
+    /// Whether the snapshot cannot be fetched.
+    pub snapshot_fails: AtomicBool,
     /// What the Replica told the host.
     pub told: Arc<Told>,
     head_every: Duration,
@@ -295,7 +301,8 @@ impl RigSource {
     pub fn new(server: &ServerRig, head_every: Duration) -> Self {
         Self {
             server: Mutex::new(Arc::clone(&server.backend)),
-            dropped: Mutex::new(HashSet::new()),
+            dropped: Arc::new(Mutex::new(HashSet::new())),
+            snapshot_fails: AtomicBool::new(false),
             generation: Arc::new(AtomicU32::new(0)),
             schema_skew: AtomicI64::new(0),
             down: AtomicBool::new(false),
@@ -337,7 +344,8 @@ impl SyncSource for RigSource {
         let generation = Arc::clone(&self.generation);
         let mine = generation.load(Ordering::SeqCst);
         let head_every = self.head_every;
-        let dropped = self.dropped.lock().expect("lock").clone();
+        let dropped = Arc::clone(&self.dropped);
+        let told = Arc::clone(&self.told);
         tokio::spawn(async move {
             let publisher = server.publisher().clone();
             let mut seen = publisher.head().map_or(0, |head| head.seq);
@@ -356,7 +364,8 @@ impl SyncSource for RigSource {
                 }
                 for event in events {
                     seen = event.seq;
-                    if dropped.contains(&event.seq) {
+                    if dropped.lock().expect("lock").contains(&event.seq) {
+                        told.dropped.fetch_add(1, Ordering::SeqCst);
                         continue;
                     }
                     let Ok(parsed) = SourceEvent::parse(&event.wire(true)) else {
@@ -373,6 +382,9 @@ impl SyncSource for RigSource {
 
     async fn snapshot(&self) -> Result<String, WireError> {
         self.told.snapshots.fetch_add(1, Ordering::SeqCst);
+        if self.snapshot_fails.load(Ordering::SeqCst) {
+            return Err(WireError::internal("the rig's snapshot is not available"));
+        }
         let server = self.server();
         let publisher = server.publisher();
         let epoch = publisher.epoch();

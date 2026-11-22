@@ -75,6 +75,9 @@ pub struct ReplicaConfig {
     pub cache: Option<cache::SharedCache>,
 }
 
+/// How long saving the board waits for the Replica to answer.
+const SAVE_WAIT: Duration = Duration::from_secs(3);
+
 fn unreachable() -> WireError {
     read_only_error(ReadOnlyReason::ServerUnreachable)
 }
@@ -150,7 +153,17 @@ impl ReplicaBackend {
                 cache: config.cache,
             },
         );
-        config.runtime.spawn(syncer.run());
+        let running = config.runtime.spawn(syncer.run());
+        // The actor owns the board's state: if it ever panics the app must not go on looking
+        // reachable and writable, so the status says the server cannot be reached.
+        let watched = Arc::clone(&config.source);
+        config.runtime.spawn(async move {
+            if let Err(error) = running.await {
+                tracing::error!(error = %error, "the Replica's sync task stopped");
+                watched.hold(Some(ReadOnlyReason::ServerUnreachable));
+                watched.reachable(false);
+            }
+        });
         Ok(Arc::new(Self {
             shared,
             remote: config.remote,
@@ -206,10 +219,22 @@ impl ReplicaBackend {
             .collect()
     }
 
+    /// The newest write that has not been sent yet, as an undo would report it.
+    async fn unsent_tail(&self) -> Option<GestureSummary> {
+        let (reply, answer) = oneshot::channel();
+        self.commands.send(queue::Command::UnsentTail(reply)).ok()?;
+        answer.await.ok().flatten()
+    }
+
     /// Writes the board the server last confirmed to the cache, for the next start: what a normal
-    /// quit does, and a suspend on a phone.
+    /// quit does, and a suspend on a phone. When the Replica cannot answer within a few seconds
+    /// (it is in the middle of fetching a board) the cache is left exactly as it was.
     pub async fn save_board(&self) {
-        let (Some(cache), Some(body)) = (&self.cache, self.confirmed_board().await) else {
+        let confirmed = tokio::time::timeout(SAVE_WAIT, self.confirmed_board())
+            .await
+            .ok()
+            .flatten();
+        let (Some(cache), Some(body)) = (&self.cache, confirmed) else {
             return;
         };
         if let Err(error) = cache.store(&body) {
@@ -232,7 +257,7 @@ impl ReplicaBackend {
     /// and the board changes, then sent to the server in its turn.
     async fn predict<T, F>(&self, args: serde_json::Value, operation: F) -> Result<T, WireError>
     where
-        T: Send + 'static,
+        T: serde::Serialize + Send + 'static,
         F: Fn(Arc<dyn Backend>) -> BoxFuture<'static, Result<T, WireError>> + Send + Sync + 'static,
     {
         let (slot, answer) = Slot::new();
@@ -243,7 +268,7 @@ impl ReplicaBackend {
                 let (work, slot) = (operation(backend), slot.clone());
                 Box::pin(async move {
                     let result = work.await;
-                    let applied = result.as_ref().map(|_| ()).map_err(Clone::clone);
+                    let applied = result.as_ref().map(queue::material).map_err(Clone::clone);
                     slot.send(result);
                     applied
                 })
@@ -251,7 +276,10 @@ impl ReplicaBackend {
         };
         let remote: queue::RemoteFn = Arc::new(move |backend| {
             let work = operation(backend);
-            Box::pin(async move { work.await.map(|_| Box::new(|| {}) as queue::Deliver) })
+            Box::pin(async move {
+                work.await
+                    .map(|answer| (Box::new(|| {}) as queue::Deliver, queue::material(&answer)))
+            })
         });
         let fail_slot = slot.clone();
         self.enqueue(queue::Op {
@@ -261,6 +289,7 @@ impl ReplicaBackend {
             args,
             submitted: std::time::Instant::now(),
             undo: None,
+            redo: false,
         })?;
         answer.await.unwrap_or_else(|_| Err(unreachable()))
     }
@@ -281,6 +310,7 @@ impl ReplicaBackend {
             args,
             submitted: std::time::Instant::now(),
             undo: None,
+            redo: false,
         })?;
         answer.await.unwrap_or_else(|_| Err(unreachable()))
     }
@@ -307,9 +337,10 @@ impl ReplicaBackend {
             fail: Some(Box::new(move |error| fail_slot.send(Err(error)))),
             args,
             submitted: std::time::Instant::now(),
-            undo: is_undo.then(|| queue::UndoAnswer {
+            undo: Some(queue::UndoAnswer {
                 answer: Box::new(move |summary| cancel_slot.send(Ok(summary))),
             }),
+            redo: !is_undo,
         })?;
         answer.await.unwrap_or_else(|_| Err(unreachable()))
     }
@@ -324,8 +355,12 @@ where
     Arc::new(move |backend| {
         let (work, slot) = (operation(backend), slot.clone());
         Box::pin(async move {
-            work.await
-                .map(|value| Box::new(move || slot.send(Ok(value))) as queue::Deliver)
+            work.await.map(|value| {
+                (
+                    Box::new(move || slot.send(Ok(value))) as queue::Deliver,
+                    serde_json::Value::Null,
+                )
+            })
         })
     })
 }

@@ -15,7 +15,10 @@ use super::{
     queue::{DropReason, Dropped},
     tests::{first_project, session, task, Rig},
 };
-use crate::{http::ReadOnlyReason, tasks::TasksPort, undo::UndoPort, Backend};
+use crate::{
+    expectations::WaitsPort, gestures::GesturesPort, http::ReadOnlyReason, tasks::TasksPort,
+    undo::UndoPort, Backend,
+};
 
 async fn tasks(rig: &Rig) -> Vec<Task> {
     rig.replica
@@ -164,6 +167,7 @@ async fn a_server_refusal_rolls_back_reruns_and_toasts_once() {
         notices,
         vec![Dropped {
             count: 2,
+            maybe_saved: 0,
             reason: DropReason::Refused
         }],
         "the refused write and the one that no longer applies, said once"
@@ -203,7 +207,8 @@ async fn a_lost_connection_rolls_back_drops_unsent_and_goes_read_only() {
     assert_eq!(
         rig.dropped.lock().expect("lock").clone(),
         vec![Dropped {
-            count: 2,
+            count: 1,
+            maybe_saved: 1,
             reason: DropReason::Unreachable
         }]
     );
@@ -360,6 +365,11 @@ async fn undo_after_sent_waits_then_goes_to_the_server() {
     assert!(undone.is_some(), "the server had a gesture to undo");
     rig.converge().await;
     assert!(tasks(&rig).await.iter().all(|task| task.title != "Sent"));
+    assert_eq!(
+        rig.source.told.snapshots.load(Ordering::SeqCst),
+        1,
+        "the undo settled without falling back to a whole board"
+    );
     let _ = rig.replica.undo_status().await;
     let _: Option<&dyn Backend> = None;
 }
@@ -380,4 +390,252 @@ async fn a_press_records_where_its_time_went() {
     let timing = rig.replica.press_timings().pop().expect("a timing");
     assert!(timing.turn.derive > Duration::ZERO || timing.turn.read > Duration::ZERO);
     rig.converge().await;
+}
+
+#[tokio::test]
+async fn a_session_that_ends_on_an_error_drops_the_queue_and_sends_nothing_after_reconnect() {
+    let rig = settled().await;
+    let parent = project(&rig).await;
+    let doomed = named(&rig, "Second, renamed").await;
+    // The event that says the task is gone never arrives, so settling has to fetch a whole board,
+    // and that fetch fails.
+    let next = rig.server.seq() + 1;
+    rig.source.drop_events(next..next + 3);
+    rig.gate.hold();
+    rig.replica
+        .update_task(doomed.clone(), retitle("Too late"), None)
+        .await
+        .expect("shown at once");
+    rig.replica
+        .create_task(task("Queued one", "project", parent.clone()))
+        .await
+        .expect("shown at once");
+    rig.replica
+        .create_task(task("Queued two", "project", parent))
+        .await
+        .expect("shown at once");
+    until("the first write is on its way", || {
+        rig.gate.calls.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    rig.server
+        .bracketed
+        .delete_task(doomed)
+        .await
+        .expect("another client's delete");
+    rig.source.snapshot_fails.store(true, Ordering::SeqCst);
+
+    rig.gate.release();
+    until("the notice", || {
+        !rig.dropped.lock().expect("lock").is_empty()
+    })
+    .await;
+    rig.source.snapshot_fails.store(false, Ordering::SeqCst);
+    rig.converge().await;
+
+    assert_eq!(
+        rig.gate.calls.load(Ordering::SeqCst),
+        1,
+        "only the refused write ever reached the server: nothing queued survived the session"
+    );
+    let titles: Vec<String> = tasks(&rig)
+        .await
+        .into_iter()
+        .map(|task| task.title)
+        .collect();
+    assert!(
+        !titles.iter().any(|title| title.starts_with("Queued")),
+        "{titles:?}"
+    );
+}
+
+#[tokio::test]
+async fn undo_while_a_press_is_parked_cancels_the_press_and_never_touches_the_server_stack() {
+    let rig = settled().await;
+    let source = named(&rig, "Second, renamed").await;
+    let target = project(&rig).await;
+    rig.gate.hold();
+    let copy = rig
+        .replica
+        .duplicate_task(
+            source.require_stored().expect("stored"),
+            "project".into(),
+            target.require_stored().expect("stored"),
+            0,
+        )
+        .await
+        .expect("shown at once");
+    let press = tokio::spawn({
+        let replica = std::sync::Arc::clone(&rig.replica);
+        let copied = copy.copy.id.clone();
+        async move {
+            replica
+                .update_task(copied, retitle("On the copy"), None)
+                .await
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!press.is_finished(), "the press is parked");
+
+    let undone = rig.replica.undo().await.expect("an answer");
+
+    assert!(undone.is_some(), "the parked press is what was undone");
+    assert!(
+        press.await.expect("ran").is_err(),
+        "the cancelled press is told so"
+    );
+    rig.gate.release();
+    rig.converge().await;
+    assert!(
+        tasks(&rig).await.iter().any(|task| task.id == copy.copy.id),
+        "the duplicate before it was not undone on the server"
+    );
+}
+
+#[tokio::test]
+async fn a_local_refusal_that_is_an_answer_sends_nothing() {
+    let rig = settled().await;
+    let agentic = rig
+        .server
+        .bracketed
+        .create_task(arlesh_core::tasks::model::CreateTaskRequest {
+            agentic: Some(arlesh_core::tasks::model::TaskAgentic::Yes),
+            ..task("Agent work", "project", project(&rig).await)
+        })
+        .await
+        .expect("an agentic task")
+        .id;
+    rig.converge().await;
+    let sent = rig.gate.calls.load(Ordering::SeqCst);
+
+    let outcome = rig
+        .replica
+        .step_task_status(
+            agentic,
+            arlesh_core::tasks::rules::gestures::StatusStep::Alt,
+            None,
+        )
+        .await
+        .expect("an answer");
+
+    assert!(matches!(
+        outcome,
+        crate::gestures::StatusStepOutcome::Refused { .. }
+    ));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        rig.gate.calls.load(Ordering::SeqCst),
+        sent,
+        "a refusal is never sent"
+    );
+    assert!(rig.dropped.lock().expect("lock").is_empty());
+}
+
+#[tokio::test]
+async fn a_server_answer_that_differs_from_the_prediction_is_said_once() {
+    let rig = settled().await;
+    let agentic = rig
+        .server
+        .bracketed
+        .create_task(arlesh_core::tasks::model::CreateTaskRequest {
+            agentic: Some(arlesh_core::tasks::model::TaskAgentic::Yes),
+            ..task("Agent work", "project", project(&rig).await)
+        })
+        .await
+        .expect("an agentic task")
+        .id;
+    let wait = rig
+        .server
+        .bracketed
+        .create_expectation(arlesh_core::tasks::model::CreateExpectationRequest {
+            title: "Which one?".into(),
+            parent_type: "task".into(),
+            parent_id: agentic,
+            agentic: true,
+            agentic_note: Some("Pick".into()),
+            ..Default::default()
+        })
+        .await
+        .expect("a wait")
+        .id;
+    let draft = || arlesh_core::tasks::answer_drafts::model::DraftRequest {
+        answer: Some("The second".into()),
+        verdict: None,
+    };
+    rig.server
+        .bracketed
+        .save_answer_draft(wait.clone(), draft())
+        .await
+        .expect("a draft");
+    rig.converge().await;
+    rig.gate.hold();
+    let sent = rig
+        .replica
+        .send_answer_drafts(arlesh_core::tasks::answer_drafts::model::SendRequest {
+            shown: vec![wait.clone()],
+        })
+        .await
+        .expect("shown at once");
+    assert!(sent.skipped.is_empty(), "the Replica sent it");
+    // Another client sends the same answer first.
+    rig.server
+        .bracketed
+        .send_answer_drafts(arlesh_core::tasks::answer_drafts::model::SendRequest {
+            shown: vec![wait],
+        })
+        .await
+        .expect("another client's send");
+
+    rig.gate.release();
+    until("the notice", || {
+        !rig.dropped.lock().expect("lock").is_empty()
+    })
+    .await;
+
+    assert_eq!(
+        rig.dropped.lock().expect("lock").clone(),
+        vec![Dropped {
+            count: 1,
+            maybe_saved: 0,
+            reason: DropReason::Differed
+        }]
+    );
+    rig.converge().await;
+}
+
+#[tokio::test]
+async fn redo_after_a_local_cancel_does_not_go_to_the_server_and_undo_status_counts_unsent_writes()
+{
+    let rig = settled().await;
+    let parent = project(&rig).await;
+    rig.gate.hold();
+    rig.replica
+        .create_task(task("In flight", "project", parent.clone()))
+        .await
+        .expect("shown at once");
+    until("the first write is on its way", || {
+        rig.gate.calls.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    rig.replica
+        .create_task(task("Unsent", "project", parent))
+        .await
+        .expect("shown at once");
+    let status = rig.replica.undo_status().await.expect("a status");
+    assert!(
+        status.undo.is_some_and(|summary| summary.inserted >= 1),
+        "the unsent write is what Ctrl+Z would undo"
+    );
+
+    rig.replica.undo().await.expect("cancelled locally");
+    let redone = rig.replica.redo().await.expect("an answer");
+
+    assert!(redone.is_none(), "there is nothing the server could redo");
+    rig.gate.release();
+    rig.converge().await;
+    assert_eq!(
+        rig.gate.calls.load(Ordering::SeqCst),
+        1,
+        "neither press was sent"
+    );
 }

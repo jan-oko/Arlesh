@@ -521,7 +521,9 @@ of one connection that never closes), and every command is served from it. The s
   seeds, the writes queued behind it; those that no longer apply are dropped. The shell emits one
   `replica-dropped {count, reason}` event, which a window shows as one notice saying how many changes
   were not made. A server refusal of an editor Save is that notice only.
-- **A local refusal** (the Replica's own rules refuse the write) sends nothing and touches nothing.
+- **A local refusal** (the Replica's own rules refuse the write) sends nothing and touches nothing. That includes a write the Replica answers with a refusal (a status step that says `refused`): it is never sent.
+- **An answer that differs.** The material part of the server's answer (its `outcome`, `skipped`, `refused` and `reason` fields, wherever they sit) is compared with the Replica's own; when they differ (the server skipped a draft the Replica showed as sent) the shell emits `replica-dropped {reason: "differed"}`, so the user is never told something was sent when it was not.
+- **Whatever ends a session** (a lost connection, a failed refetch, a schema refusal) takes every prediction back and empties the queue before the next connect, so nothing unsent is ever sent later; every caller still waiting is answered. The notice counts what was never sent and, apart, what was on its way (`maybe_saved`): the server may have saved it, and the board shows what it has once it reconnects. A suspend or quit does the same, with `reason: "suspended"`.
 - **A lost connection** takes every prediction back, drops what was never sent (nothing is queued
   across a disconnect: the user's ruling that there is no offline queue), reports
   `replica-dropped {reason: "unreachable"}` and leaves the board read-only; the reconnect fetches a
@@ -532,7 +534,7 @@ of one connection that never closes), and every command is served from it. The s
   from the write's **seed**: the app puts a fresh UUID in `X-Arlesh-Request-Id` on every write, and
   both the Replica's run and the server's run draw their ids from it, so the two agree whenever
   both ran the same code over the same state. When they do not, a press that names such a row waits
-  until the Replica is settled (the **provisional guard**), so it never names an id the server lacks.
+  until the Replica is settled (the **provisional guard**), so it never names an id the server lacks. An undo while such a press is parked cancels that press (nothing was predicted, nothing is sent). After a local cancel the server never saw, a Redo answers nothing, and the undo status reports the unsent write as the next undo.
 - **Press on a node that is not confirmed.** See the guard above.
 - **Plan triage, parenting and take-out** are rules of the board, answered by pure Rust commands
   (`plan_triage`, `plan_refusals`, `rule_tables`) from data, and the per-Task `status_blocks` fact

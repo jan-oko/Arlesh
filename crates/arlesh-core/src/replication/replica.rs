@@ -27,7 +27,7 @@ use super::model::{RowChange, Snapshot};
 use crate::{
     database::{
         apply_connection_settings, run_migrations,
-        session::{Db, SessionFactory, Transactional},
+        session::{Db, Pooled, SessionFactory},
     },
     undo::{
         self,
@@ -134,41 +134,66 @@ pub async fn open_memory() -> Result<SessionFactory, ReplicaError> {
 
 /// Runs `write` in one immediate transaction with foreign keys off and the journal suppressed,
 /// then commits, and puts foreign keys back whether it worked or not.
+///
+/// Everything happens on the one connection this checks out, begun and ended by hand: the pragma
+/// is a no-op inside a transaction, and restoring it must not need a second connection (the pool
+/// holds one, and a restore that has to wait for another could time out and leave the
+/// constraints off). A failure to restore is retried; it never hides the write's own error.
 async fn unconstrained<T>(
     factory: &SessionFactory,
-    write: impl AsyncFnOnce(&mut Db<Transactional>) -> Result<T, ReplicaError>,
+    write: impl AsyncFnOnce(&mut Db<Pooled>) -> Result<T, ReplicaError>,
 ) -> Result<T, ReplicaError> {
-    factory
-        .connect()
-        .await?
-        .replication()
-        .set_foreign_keys(false)
-        .await?;
-    let outcome = transaction(factory, write).await;
-    let restored = factory
-        .connect()
-        .await?
-        .replication()
-        .set_foreign_keys(true)
-        .await;
-    let value = outcome?;
-    restored?;
-    Ok(value)
+    let mut db = factory.connect().await?;
+    db.replication().set_foreign_keys(false).await?;
+    let outcome = transaction(&mut db, write).await;
+    let mut restored = Ok(());
+    for _ in 0..3 {
+        restored = db.replication().set_foreign_keys(true).await;
+        if restored.is_ok() {
+            break;
+        }
+    }
+    match (outcome, restored) {
+        (Err(error), restored) => {
+            if let Err(failure) = restored {
+                tracing::error!(error = %failure, "foreign keys could not be restored");
+            }
+            Err(error)
+        }
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(failure)) => Err(failure.into()),
+    }
 }
 
 async fn transaction<T>(
-    factory: &SessionFactory,
-    write: impl AsyncFnOnce(&mut Db<Transactional>) -> Result<T, ReplicaError>,
+    db: &mut Db<Pooled>,
+    write: impl AsyncFnOnce(&mut Db<Pooled>) -> Result<T, ReplicaError>,
 ) -> Result<T, ReplicaError> {
-    let mut db = factory.begin().await?;
-    db.undo().set_suppressed(true).await?;
-    let value = write(&mut db).await?;
-    db.undo().set_suppressed(false).await?;
-    db.commit().await?;
-    Ok(value)
+    db.replication().execute("BEGIN IMMEDIATE").await?;
+    let written = async {
+        db.undo().set_suppressed(true).await?;
+        let value = write(&mut *db).await?;
+        db.undo().set_suppressed(false).await?;
+        Ok::<T, ReplicaError>(value)
+    }
+    .await;
+    let committed = match written {
+        Ok(value) => db
+            .replication()
+            .execute("COMMIT")
+            .await
+            .map(|()| value)
+            .map_err(ReplicaError::from),
+        Err(error) => Err(error),
+    };
+    if committed.is_err() {
+        // Whatever failed, leave no transaction open on the connection that goes back to the pool.
+        let _ = db.replication().execute("ROLLBACK").await;
+    }
+    committed
 }
 
-async fn put_all(db: &mut Db<Transactional>, rows: &[RowChange]) -> Result<(), ReplicaError> {
+async fn put_all(db: &mut Db<Pooled>, rows: &[RowChange]) -> Result<(), ReplicaError> {
     for row in rows {
         match &row.image {
             Some(image) => {
@@ -196,7 +221,7 @@ pub async fn install_snapshot(
     .await
 }
 
-async fn install_rows(db: &mut Db<Transactional>, snapshot: &Snapshot) -> Result<(), ReplicaError> {
+async fn install_rows(db: &mut Db<Pooled>, snapshot: &Snapshot) -> Result<(), ReplicaError> {
     db.replication().clear_rows().await?;
     for row in &snapshot.rows {
         db.replication()
@@ -259,7 +284,7 @@ pub async fn cancel(
 }
 
 async fn reverse(
-    db: &mut Db<Transactional>,
+    db: &mut Db<Pooled>,
     after: i64,
     through: i64,
 ) -> Result<Vec<JournalEntry>, ReplicaError> {

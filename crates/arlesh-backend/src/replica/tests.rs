@@ -50,6 +50,7 @@ fn kinds() -> Vec<(String, String)> {
                 "create",
                 "remote",
                 "remote_read",
+                "status_read",
                 "local",
                 "undo",
                 "refused",
@@ -85,7 +86,12 @@ fn every_non_get_route_is_a_write_kind() {
         let predicted = ["write", "create", "remote", "undo"].contains(&kind.as_str());
         if WHAT_IFS.contains(&name.as_str()) {
             assert_eq!(kind, "read", "{name} only asks a question of the board");
-        } else if name == "undo_status" || name == "list_agents" {
+        } else if name == "undo_status" {
+            assert_eq!(
+                kind, "status_read",
+                "{name}: the server answers, less what is unsent"
+            );
+        } else if name == "list_agents" {
             assert_eq!(kind, "remote_read", "{name}: the server alone answers");
         } else {
             assert_eq!(
@@ -103,6 +109,7 @@ fn fast() -> Timings {
         check_every: Duration::from_secs(600),
         tick: Duration::from_millis(50),
         max_backoff: Duration::from_millis(200),
+        settle_wait: Duration::from_millis(500),
     }
 }
 
@@ -294,6 +301,14 @@ async fn dropping_any_server_event_is_detected_and_repaired() {
             rig.server.rows().await,
             "dropping event {removed} left the Replica different"
         );
+        assert!(
+            rig.source.told.dropped.load(Ordering::SeqCst) >= 1,
+            "event {removed} was really dropped"
+        );
+        assert!(
+            rig.source.told.snapshots.load(Ordering::SeqCst) >= 2,
+            "dropping event {removed} was repaired with a whole board"
+        );
     }
 }
 
@@ -453,6 +468,7 @@ fn the_kinds_list_has_each_kind_the_macros_know() {
             "refused",
             "remote",
             "remote_read",
+            "status_read",
             "undo",
             "write"
         ]

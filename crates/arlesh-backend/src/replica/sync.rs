@@ -49,6 +49,9 @@ pub struct Timings {
     pub tick: Duration,
     /// The longest wait between two attempts to reach the server.
     pub max_backoff: Duration,
+    /// How long settling waits for the events to reach what the server answered before it fetches
+    /// a whole board instead.
+    pub settle_wait: Duration,
 }
 
 impl Default for Timings {
@@ -59,6 +62,7 @@ impl Default for Timings {
             check_every: Duration::from_secs(600),
             tick: Duration::from_secs(1),
             max_backoff: Duration::from_secs(30),
+            settle_wait: Duration::from_secs(5),
         }
     }
 }
@@ -129,7 +133,7 @@ pub struct Syncer {
     pub(super) on_dropped: OnDropped,
     cache: Option<SharedCache>,
     /// Whether this run has taken a board from the server yet: the first is what the cache keeps.
-    fetched_once: bool,
+    pub(super) fetched_once: bool,
     last_body: Option<String>,
     pub(super) paused: bool,
     pub(super) queue: Queue,
@@ -141,15 +145,18 @@ pub struct Syncer {
     pub(super) agent_origin: bool,
     sink: Sink,
     runtime: tokio::runtime::Handle,
-    timings: Timings,
+    pub(super) timings: Timings,
     pub(super) epoch: String,
     pub(super) position: i64,
     pub(super) tracker: SourceTracker,
     pub(super) needs_snapshot: bool,
-    ahead_since: Option<Instant>,
+    pub(super) ahead_since: Option<Instant>,
     last_event: Instant,
     last_check: Instant,
-    unchecked: bool,
+    pub(super) unchecked: bool,
+    /// Set when predictions could not be taken back: the rows are not the server's, so they are
+    /// never kept as the board until a snapshot replaces them.
+    pub(super) unconfirmed: bool,
 }
 
 impl Syncer {
@@ -197,6 +204,7 @@ impl Syncer {
             last_event: Instant::now(),
             last_check: Instant::now(),
             unchecked: false,
+            unconfirmed: false,
         }
     }
 
@@ -210,19 +218,35 @@ impl Syncer {
                 self.wait_for_resume().await;
                 backoff = self.timings.tick;
             }
-            match self.session().await {
-                SessionEnd::Closed => tracing::info!("the change stream ended; reconnecting"),
+            let end = self.session().await;
+            // Whatever ended the session, nothing pending outlives it: the predictions are taken
+            // back and what was never sent is dropped, never kept for the next connection.
+            let cause = match &end {
+                SessionEnd::Failed(error) => error.clone(),
+                _ => read_only_error(ReadOnlyReason::ServerUnreachable),
+            };
+            self.give_up_pending(&cause).await;
+            match end {
+                SessionEnd::Closed => {
+                    tracing::info!("the change stream ended; reconnecting");
+                    self.source.reachable(false);
+                }
                 SessionEnd::Failed(error) => {
                     tracing::warn!(error = ?error, "the Replica could not follow the server");
                     self.source.reachable(false);
                 }
                 SessionEnd::SchemaMismatch(reason) => {
                     tracing::warn!(?reason, "the server's schema is not this app's");
+                    self.down_reason = reason;
                     self.source.hold(Some(reason));
                 }
             }
-            self.live = false;
-            if self.fetched_once {
+            if self.fetched_once
+                && !matches!(
+                    self.down_reason,
+                    ReadOnlyReason::UpdateApp | ReadOnlyReason::UpdateServer
+                )
+            {
                 self.down_reason = ReadOnlyReason::ServerUnreachable;
             }
             self.serve_for(backoff).await;
@@ -266,7 +290,7 @@ impl Syncer {
 
     /// The confirmed board as a snapshot body, for the cache.
     pub(super) async fn confirmed_body(&mut self) -> Option<String> {
-        if self.epoch.is_empty() {
+        if self.epoch.is_empty() || self.unconfirmed {
             return None;
         }
         let mut db = self.factory.begin_read().await.ok()?;
@@ -304,17 +328,16 @@ impl Syncer {
             tokio::select! {
                 incoming = events.recv() => {
                     let Some(incoming) = incoming else {
-                        let _ = self.lose_connection(read_only_error(ReadOnlyReason::ServerUnreachable)).await;
                         return SessionEnd::Closed;
                     };
                     if let Err(error) = self.on_incoming(incoming).await {
-                        return SessionEnd::Failed(error);
+                        return end_of(error);
                     }
                 }
                 command = self.commands.recv() => {
                     let Some(command) = command else { return SessionEnd::Closed };
                     if let Err(error) = self.on_command(command).await {
-                        return SessionEnd::Failed(error);
+                        return end_of(error);
                     }
                     if self.paused {
                         return SessionEnd::Closed;
@@ -322,7 +345,7 @@ impl Syncer {
                 }
                 _ = tick.tick() => {
                     if let Err(error) = self.on_tick().await {
-                        return SessionEnd::Failed(error);
+                        return end_of(error);
                     }
                 }
             }
@@ -394,6 +417,7 @@ impl Syncer {
             }
         }
         self.live = true;
+        self.unconfirmed = false;
         self.agent_origin = true;
         self.source.hold(None);
         self.source.reachable(true);
@@ -494,7 +518,13 @@ impl Syncer {
             return;
         }
         let Some(source) = head.source else { return };
-        if source.upto > self.position {
+        // While writes are pending the rows heard wait in the buffer, which is where they stand.
+        let position = if self.queue.holding() {
+            self.queue.buffer_position()
+        } else {
+            self.position
+        };
+        if source.upto > position {
             self.ahead_since.get_or_insert_with(Instant::now);
             return;
         }
@@ -563,5 +593,14 @@ fn schema_reason(error: &WireError) -> Option<ReadOnlyReason> {
     match serde_json::from_value::<ReadOnlyReason>(reason).ok()? {
         reason @ (ReadOnlyReason::UpdateApp | ReadOnlyReason::UpdateServer) => Some(reason),
         _ => None,
+    }
+}
+
+/// How a session ends on `error`: a refusal that names a schema is not a failure to reach the
+/// server, and holds writes until the app or the server is updated.
+fn end_of(error: WireError) -> SessionEnd {
+    match schema_reason(&error) {
+        Some(reason) => SessionEnd::SchemaMismatch(reason),
+        None => SessionEnd::Failed(error),
     }
 }

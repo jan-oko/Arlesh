@@ -218,19 +218,14 @@ pub fn status_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> StatusNotify {
     })
 }
 
-/// Keeps the board the Replica last confirmed, for the next start. Called when the app quits
-/// normally, and on a phone when it is suspended: a phone never quits, so a suspend is the quit.
+/// Keeps the board the Replica last confirmed, for the next start, when the app quits normally.
+/// The Replica answers within a few seconds or the cache is left as it was.
 pub fn save_board_on_quit<R: Runtime>(app: &tauri::AppHandle<R>) {
     let Some(replica) = app.try_state::<Arc<crate::backend::replica::ReplicaBackend>>() else {
         return;
     };
     let replica = Arc::clone(&replica);
-    let saved = tauri::async_runtime::block_on(async {
-        tokio::time::timeout(std::time::Duration::from_secs(5), replica.save_board()).await
-    });
-    if saved.is_err() {
-        tracing::warn!("the board could not be cached before quitting");
-    }
+    tauri::async_runtime::block_on(replica.save_board());
 }
 
 /// Holds no connection while the app is in the background: the Replica stops following the server
@@ -246,8 +241,15 @@ pub fn on_lifecycle<R: Runtime>(window: &tauri::Window<R>, event: &tauri::Window
     };
     match event {
         tauri::WindowEvent::Suspended => {
-            save_board_on_quit(window.app_handle());
-            replica.suspend();
+            // A phone never quits, so a suspend keeps the board as a quit does: asked on the
+            // runtime, never waited for on the UI thread, and the Replica is told to stop first.
+            let replica = Arc::clone(&replica);
+            tauri::async_runtime::spawn(async move {
+                // Stopping first takes the pending writes back (and says so); the board kept is then
+                // the one the server confirmed.
+                replica.suspend();
+                replica.save_board().await;
+            });
         }
         tauri::WindowEvent::Resumed => replica.resume(),
         _ => {}

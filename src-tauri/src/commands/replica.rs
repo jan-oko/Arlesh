@@ -12,6 +12,7 @@ pub const REPLICA_DROPPED: &str = "replica-dropped";
 #[derive(Serialize, Clone)]
 struct DroppedPayload {
     count: usize,
+    maybe_saved: usize,
     reason: &'static str,
 }
 
@@ -22,9 +23,12 @@ pub fn dropped_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> OnDropped {
         let reason = match dropped.reason {
             DropReason::Refused => "refused",
             DropReason::Unreachable => "unreachable",
+            DropReason::Differed => "differed",
+            DropReason::Suspended => "suspended",
         };
         let payload = DroppedPayload {
             count: dropped.count,
+            maybe_saved: dropped.maybe_saved,
             reason,
         };
         if let Err(error) = app.emit(REPLICA_DROPPED, payload) {

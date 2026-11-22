@@ -99,5 +99,13 @@
   "replicaRefused_one": "{{count}} change the server refused was taken back",
   "replicaRefused_other": "{{count}} changes the server refused were taken back",
   "replicaUnreachable_one": "{{count}} change could not be sent: the server cannot be reached",
-  "replicaUnreachable_other": "{{count}} changes could not be sent: the server cannot be reached"
+  "replicaUnreachable_other": "{{count}} changes could not be sent: the server cannot be reached",
+  "replicaMaybeSaved_one": "{{count}} change was on its way when the server was lost and may have been saved: the board shows what the server has once it reconnects",
+  "replicaMaybeSaved_other": "{{count}} changes were on their way when the server was lost and may have been saved: the board shows what the server has once it reconnects",
+  "replicaUnreachableMaybeSaved_one": "{{count}} change was not sent and {{saved}} may have been saved: the board shows what the server has once it reconnects",
+  "replicaUnreachableMaybeSaved_other": "{{count}} changes were not sent and {{saved}} may have been saved: the board shows what the server has once it reconnects",
+  "replicaDiffered_one": "{{count}} change was not made as it was shown: the server did something different",
+  "replicaDiffered_other": "{{count}} changes were not made as they were shown: the server did something different",
+  "replicaSuspended_one": "{{count}} change was not sent before the app went to the background",
+  "replicaSuspended_other": "{{count}} changes were not sent before the app went to the background"
 }

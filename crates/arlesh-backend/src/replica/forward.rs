@@ -37,6 +37,13 @@ macro_rules! method_body {
         })
         .await
     }};
+    (status_read $s:ident $name:ident [$($arg:ident)*]) => {{
+        let mut status = $s.remote().$name($($arg),*).await?;
+        if let Some(unsent) = $s.unsent_tail().await {
+            status.undo = Some(unsent);
+        }
+        Ok(status)
+    }};
     (remote_read $s:ident $name:ident [$($arg:ident)*]) => {{
         $s.remote().$name($($arg),*).await
     }};

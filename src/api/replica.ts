@@ -11,12 +11,18 @@ import { listenHere, unsubscribed } from "@/api/board";
 /** The backend's event name. Must match `REPLICA_DROPPED` in the Tauri command module. */
 const REPLICA_DROPPED = "replica-dropped";
 
-/** Why changes were taken back: the server refused them, or it could not be reached to send them. */
-export type ReplicaDropReason = "refused" | "unreachable";
+/**
+ * Why changes were taken back: the server refused them, it could not be reached to send them, it
+ * answered a write otherwise than the Replica had shown, or the app went to the background first.
+ */
+export type ReplicaDropReason = "refused" | "unreachable" | "differed" | "suspended";
 
 /** Changes the Replica made locally and then had to take back. */
 export interface ReplicaDropped {
+  /** Changes taken back and not made. */
   count: number;
+  /** Of the changes on their way when the connection was lost, how many the server may have saved. */
+  maybe_saved: number;
   reason: ReplicaDropReason;
 }
 
@@ -24,7 +30,11 @@ export interface ReplicaDropped {
 export function isReplicaDropped(value: unknown): value is ReplicaDropped {
   if (typeof value !== "object" || value === null) return false;
   const reason: unknown = Reflect.get(value, "reason");
-  return typeof Reflect.get(value, "count") === "number" && (reason === "refused" || reason === "unreachable");
+  return (
+    typeof Reflect.get(value, "count") === "number" &&
+    typeof Reflect.get(value, "maybe_saved") === "number" &&
+    (reason === "refused" || reason === "unreachable" || reason === "differed" || reason === "suspended")
+  );
 }
 
 /**
