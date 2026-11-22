@@ -15,7 +15,7 @@ const bridge = {
   requestPermission: vi.fn(),
   fetchToken: vi.fn(),
   openSettings: vi.fn(),
-  takeOpenedTask: vi.fn(() => ""),
+  takeOpenedNotification: vi.fn(() => ""),
 };
 
 function asClient(mode: "client" | "standalone" = "client"): void {

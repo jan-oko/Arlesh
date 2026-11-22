@@ -155,6 +155,69 @@ fn the_capacity_lock_has_words_without_a_task() {
     assert_eq!(notice_for(&event).text, "Agent capacity lock set");
 }
 
+fn notice(channel: Channel, task: Option<&str>) -> Notice {
+    Notice {
+        channel,
+        title: "Arlesh".into(),
+        text: String::new(),
+        task: task.map(str::to_owned),
+        wait: Some("w-1".to_owned()),
+    }
+}
+
+#[test]
+fn a_clicked_question_opens_the_review_list_at_its_task() {
+    let question = notice(Channel::AgentQuestion, Some("task-12"));
+    assert_eq!(
+        question.review_target(),
+        Some(ReviewTarget {
+            task: "task-12",
+            wait: Some("w-1")
+        })
+    );
+}
+
+#[test]
+fn a_question_naming_no_task_has_nothing_to_open() {
+    assert_eq!(notice(Channel::AgentQuestion, None).review_target(), None);
+}
+
+#[test]
+fn the_other_notices_open_nothing_on_a_click() {
+    for channel in [
+        Channel::TaskOverdue,
+        Channel::TaskGenerated,
+        Channel::CapacityLocked,
+        Channel::CapacityCleared,
+    ] {
+        assert_eq!(notice(channel, Some("task-12")).review_target(), None);
+    }
+}
+
+#[test]
+fn a_question_notice_knows_its_wait_from_the_fact_key() {
+    let event = PushEvent {
+        key: "question:0190-aaaa".into(),
+        value: String::new(),
+        channel: Channel::AgentQuestion,
+        task: Some("task-12".into()),
+        title: Some("Ship?".into()),
+    };
+    assert_eq!(notice_for(&event).wait.as_deref(), Some("0190-aaaa"));
+}
+
+#[test]
+fn only_a_question_notice_carries_a_wait() {
+    let event = PushEvent {
+        key: "overdue:12".into(),
+        value: String::new(),
+        channel: Channel::TaskOverdue,
+        task: Some("task-12".into()),
+        title: Some("Ship".into()),
+    };
+    assert_eq!(notice_for(&event).wait, None);
+}
+
 #[test]
 fn a_question_the_user_reopened_themselves_shows_nothing() {
     let (service, recorder) = service("own");

@@ -79,6 +79,7 @@ dependencies = [
  "keyring",
  "ksni",
  "libsqlite3-sys",
+ "notify-rust",
  "png 0.17.16",
  "rmcp",
  "schemars 1.2.2",

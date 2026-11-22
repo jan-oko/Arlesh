@@ -7,6 +7,8 @@ export const ANSWER_FIELD = "data-answer-field";
 export const ANSWER_STAGED = "data-answer-staged";
 /** Set on the group holding a Task's answer controls: the Task's node id. */
 export const ANSWER_TASK = "data-answer-task";
+/** Set on the group around one open wait's answer box: the wait's id, as the board and the push name it. */
+export const ANSWER_WAIT = "data-answer-wait";
 /** Set on a container a field's `Escape` returns focus to, instead of the page: the editor modal. */
 export const FIELD_HOME = "data-field-home";
 
@@ -82,6 +84,13 @@ export function keepFocusAtEnd(field: HTMLTextAreaElement | null): void {
     field.focus();
     field.setSelectionRange(field.value.length, field.value.length);
   }, 0);
+}
+
+/** The answer field of the open wait `waitId`, or `null` when no box of it is drawn. */
+export function answerFieldOfWait(waitId: string): HTMLElement | null {
+  const wait = Array.from(document.querySelectorAll<HTMLElement>(`[${ANSWER_WAIT}]`))
+    .find((group) => group.getAttribute(ANSWER_WAIT) === waitId);
+  return wait?.querySelector<HTMLElement>(`[${ANSWER_FIELD}]`) ?? null;
 }
 
 /** The node id of the Task whose controls hold `field`, or `null`. */

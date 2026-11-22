@@ -25,6 +25,14 @@ export interface SubtreeNav {
   currentTitle: string;
 }
 
+/** The open wait a notification asks the view to show. */
+export interface RequestedWait {
+  /** The wait's id, as the board and the push name it. */
+  id: string;
+  /** Whether to focus its box (a keyboard has `Q`'s focus; a phone must not raise its keyboard). */
+  focus: boolean;
+}
+
 export interface MindmapStore {
   selectedNodeId: string | null;
   selectedNodeIds: ReadonlySet<string>;
@@ -40,6 +48,18 @@ export interface MindmapStore {
    */
   expandedHabitGroupIds: ReadonlySet<string>;
   pendingToast: PendingToast | null;
+  /**
+   * A node some other part of the app asked this tab to select, not yet taken by the view: a
+   * tapped or clicked notification names the Task of its question here. The List View takes it
+   * (selects the row, which scrolls into view) and clears it. Working state, never persisted.
+   */
+  requestedSelection: string | null;
+  /**
+   * The open wait a notification is about, with whether to put the keyboard in its box, not yet
+   * found drawn. The List View takes it once the box is on screen: it scrolls the box into view and,
+   * where `focus` is set, focuses it as `Q` does. Working state, never persisted.
+   */
+  requestedWait: RequestedWait | null;
   subtreeNav: SubtreeNav | null;
   /**
    * Whether the node search is open. Per tab, and **not** persisted — it is working state.
@@ -52,6 +72,15 @@ export interface MindmapStore {
   searchOpen: boolean;
 
   selectNode: (id: string | null) => void;
+  /**
+   * Asks this tab's view to select `id` once it can, and to show `wait` if given; see
+   * {@link MindmapStore.requestedSelection} and {@link MindmapStore.requestedWait}.
+   */
+  requestSelection: (id: string, wait?: RequestedWait) => void;
+  /** The view took the request. */
+  clearRequestedSelection: () => void;
+  /** The wait's box was shown, or never came. */
+  clearRequestedWait: () => void;
   addToSelection: (id: string) => void;
   setSelection: (ids: ReadonlySet<string>, anchorId: string) => void;
   enterSubtree: (id: string) => void;
@@ -116,6 +145,8 @@ export function createMindmapStore(
     collapsedNodeIds: new Set(),
     expandedHabitGroupIds,
     pendingToast: null,
+    requestedSelection: null,
+    requestedWait: null,
     subtreeNav: null,
     searchOpen: false,
 
@@ -219,6 +250,9 @@ export function createMindmapStore(
         };
       }),
 
+    requestSelection: (id, wait) => set({ requestedSelection: id, requestedWait: wait ?? null }),
+    clearRequestedWait: () => set({ requestedWait: null }),
+    clearRequestedSelection: () => set({ requestedSelection: null }),
     showToast: (toast) => set({ pendingToast: toast }),
     clearToast: () => set({ pendingToast: null }),
 

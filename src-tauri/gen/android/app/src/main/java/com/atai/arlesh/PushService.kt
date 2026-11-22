@@ -14,7 +14,7 @@ import com.google.firebase.messaging.RemoteMessage
 /**
  * Receives the server's data messages and builds the notification, so the app owns the channel, the
  * text and the tap. A message carries `channel`, `tag` (the fact's key, so a repeat replaces) and,
- * for a Task, `task` (its board key) and `title`. Tapping it opens the app at that Task. Kept by
+ * for a Task, `task` (its board key) and `title`. Tapping it opens the app: at that Task, or at the Review list for an agent's question. Kept by
  * `proguard-rules.pro`: Firebase starts it by the name in the manifest.
  */
 class PushService : FirebaseMessagingService() {
@@ -29,7 +29,12 @@ class PushService : FirebaseMessagingService() {
     val open = Intent(this, MainActivity::class.java).apply {
       // Explicit and immutable: no other app can send the link, or change what it opens.
       flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+      putExtra(PushBridge.CHANNEL_EXTRA, channel)
       data["task"]?.let { putExtra(PushBridge.TASK_EXTRA, it) }
+      // A question's tag is `question:<wait>`: the wait the page focuses.
+      if (channel == "agent_question") {
+        data["tag"]?.removePrefix("question:")?.let { putExtra(PushBridge.WAIT_EXTRA, it) }
+      }
     }
     val tag = data["tag"] ?: channel
     val tap = PendingIntent.getActivity(

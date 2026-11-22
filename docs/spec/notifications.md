@@ -21,7 +21,10 @@ Five events, each its own Android notification channel:
 | `capacity_locked` | The agent capacity lock was set |
 | `capacity_cleared` | The agent capacity lock was cleared |
 
-Each notification of a Task carries the Task's title. Tapping it opens the Task in the app.
+Each notification of a Task carries the Task's title. Tapping a notification of an agent's question
+opens the **List View on the Review preset** with the Task that holds the question selected and
+scrolled into view ([Opening the Review list](#opening-the-review-list)); tapping any other opens
+its Task in the app.
 
 ## Own actions
 
@@ -119,8 +122,10 @@ OAuth token minted from the key. Every message is a high-priority **data** messa
 - **Channels.** The five are created at startup, named in the user's language.
 - **Registration.** On each start, in Client mode on Android, the app reads its FCM token and
   registers it with the server (and again when FCM rotates it).
-- **The tap** opens the app at the Task the notification names, selecting it in the active tab. The
-  intent is explicit to Arlesh's own activity; there is no link another app could send.
+- **The tap** opens the app at what the notification names: for an agent's question the Review list
+  ([Opening the Review list](#opening-the-review-list)), for any other the Task, selected in the
+  active tab. The intent carries the Task's board key and the channel, and is explicit to Arlesh's
+  own activity; there is no link another app could send.
 
 ## On the desktop
 
@@ -159,6 +164,35 @@ with the same defaults, generated Tasks included.
   board.
 - **Words.** The phone's (`push_strings.xml`), in English, titled *Arlesh*. Delivery is Tauri's
   notification plugin, desktop builds only.
-- **Click.** Not supported: on the desktop the plugin shows the notification and reports no click
-  (its action callbacks are mobile only), so clicking does not open the Task. The notice carries
-  the Task's board key for the day a platform path reports one.
+- **Click.** Only a notification of an agent's question reacts to a click, and only on Linux: the
+  plugin reports no click on the desktop (its action callbacks are mobile only), so there the app
+  speaks to the freedesktop notification service directly (`notify-rust`, which the plugin wraps).
+  The notification carries the service's `default` action, which a daemon runs when the
+  notification itself is clicked, and a thread waits for it. What a click does is in
+  [Opening the Review list](#opening-the-review-list). A daemon that does not offer actions shows
+  the notification and never reports a click. On macOS and Windows the plugin still shows the
+  notification and a click does nothing (no path reports it); the other four events do nothing on
+  a click anywhere.
+
+## Opening the Review list
+
+Settled with the user on 2026-11-21: a notification of an agent's question or review opens the List
+View on the Review preset ([List View](list-view.md)), with the Task that holds the question
+selected and **the question's own answer box focused**, scrolled into view. The list draws each open
+question or review of a Task as its own box (ADR 0021), the same boxes `Q` jumps between, so with two
+open questions under one Task the one the notification is about is the one focused. The wait is named
+by the push: its fact key and tag are `question:<wait>`, which the Android intent, the page's
+`takeOpenedNotification()` and the desktop's `arlesh-open-review` event (`{task, wait}`) carry along.
+
+- **Desktop.** A click raises and focuses the app's window (first window; shown again if it is in
+  the tray) and shows a **List tab on the Review preset**: a new tab after the active one, unless a
+  List tab on the Review preset over the whole board is already open, in which case that tab is
+  switched to. The tab is an ordinary tab and is written down with the strip. The question's box is
+  focused as `Q` focuses it.
+- **Phone.** A tap replaces the active tab's view with the List View on the Review preset, over the
+  whole board (it leaves a subtree it was in). There is no history to restore: Back does not return
+  to the previous view. It works with the app running and from a cold start. The question's box is
+  scrolled into view but **not focused**, so opening does not raise the keyboard.
+- **Gone already.** A question answered or released by the time the notification is opened has no
+  box: the list still opens, with its Task selected if the Task is still a row, nothing focused, and
+  no error. The request for the box lapses after a few seconds.
