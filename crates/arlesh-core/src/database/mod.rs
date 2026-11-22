@@ -173,7 +173,7 @@ async fn migrate_with(
 /// its SQL (the old-to-new row-id map). Anything that applies the chain, the baseline generator
 /// included, goes through here; `Migrator::run` alone fails on 0107 ("NOT NULL constraint failed:
 /// domains.id") because the seed rows are rebuilt with no id.
-pub(crate) async fn run_chain(
+pub async fn run_chain(
     pool: &DatabasePool,
     chain: &Migrator,
 ) -> Result<(), sqlx::migrate::MigrateError> {

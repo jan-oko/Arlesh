@@ -5,7 +5,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 use super::*;
-use crate::database::{migrate, migrate_with, MIGRATOR};
+use crate::database::{migrate, migrate_with, run_chain, MIGRATOR};
 
 async fn empty_database() -> SqlitePool {
     SqlitePoolOptions::new()
@@ -39,21 +39,15 @@ fn migrator(keep: impl Fn(i64) -> bool) -> Migrator {
     }
 }
 
-/// The chain up to and including `last`, run the way it ran before the baseline existed. Past the
-/// baseline's version the id map migration 0107 reads is filled first, as `migrate` does.
+/// The chain up to and including `last`, run the way it ran before the baseline existed, which
+/// since migration 0107 is [`run_chain`]: the Rust step that fills the id map runs before that
+/// migration's SQL, wherever the baseline's version sits. (This used to run the raw SQL up to
+/// `min(last, BASELINE_VERSION)`, which broke once the baseline was cut past 0107.)
 async fn chain_through(last: i64) -> SqlitePool {
     let pool = empty_database().await;
-    migrator(|version| version <= last.min(BASELINE_VERSION))
-        .run(&pool)
+    crate::database::run_chain(&pool, &migrator(|version| version <= last))
         .await
         .unwrap();
-    if last > BASELINE_VERSION {
-        crate::database::row_ids::prepare(&pool).await.unwrap();
-        migrator(|version| version <= last)
-            .run(&pool)
-            .await
-            .unwrap();
-    }
     pool
 }
 
@@ -226,7 +220,9 @@ async fn a_migration_newer_than_the_baseline_runs_on_top_of_it() {
 
 #[tokio::test]
 async fn rows_written_before_the_uuid_migration_keep_the_full_ids_they_were_shown_under() {
-    let pool = chain_through(BASELINE_VERSION).await;
+    // The integer schema just below 0107, whatever the baseline's version: rows written there are
+    // what a database upgraded from before UUID identity holds.
+    let pool = chain_through(crate::database::row_ids::MIGRATION - 1).await;
     sqlx::query(
         "INSERT INTO tasks (id, title, parent_type, parent_id) VALUES (5, 'T', 'domain', 1)",
     )
@@ -261,4 +257,25 @@ async fn the_bots_recut_renders_at_the_newest_migration() {
     assert!(text.contains(&format!("migrations 1 through {newest}")));
     assert!(text.contains("CREATE TABLE change_log"));
     assert!(text.contains("CREATE TRIGGER change_log_tasks_insert"));
+}
+
+/// The guard for the whole class: the chain must run from an empty database through the newest
+/// migration whatever the baseline's version is, because a fresh install does not run it (it starts
+/// from the baseline) and nothing else would notice a migration that only works on top of a
+/// particular earlier state.
+#[tokio::test]
+async fn the_whole_chain_runs_from_an_empty_database_through_the_newest_migration() {
+    let pool = empty_database().await;
+    run_chain(&pool, &MIGRATOR).await.unwrap();
+
+    let newest = MIGRATOR
+        .iter()
+        .map(|migration| migration.version)
+        .max()
+        .unwrap();
+    let recorded: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(recorded, newest);
 }
