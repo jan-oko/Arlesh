@@ -21,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
     if upto == i64::MAX {
         arlesh_core::database::migrate(&pool).await?;
     } else {
-        chain.run(&pool).await?;
+        // The one way to run the chain: past 0107 it needs its Rust step.
+        arlesh_core::database::run_chain(&pool, &chain).await?;
     }
     Ok(())
 }
