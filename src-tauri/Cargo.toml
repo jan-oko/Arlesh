@@ -1,6 +1,6 @@
 [package]
 name = "arlesh"
-version = "1.0.0"
+version = "1.1.0"
 description = "Task management and knowledge-base desktop app"
 authors = []
 edition = "2021"

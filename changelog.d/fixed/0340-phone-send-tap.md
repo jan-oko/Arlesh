@@ -1,1 +1,0 @@
-- **Phone: Send, Stage and the review verdict buttons answer a tap again.** Tapping Send on an agent's answer field in the List View or the Zen view did nothing and left the keyboard up, because the row took the tap as its own gesture. Send, Stage and the Approve / Request changes switch now receive the tap.

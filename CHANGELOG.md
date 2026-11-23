@@ -9,6 +9,8 @@ Releases are cut by merging `dev` into `master`; entries for the next release co
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-22
+
 ### Added
 - **Stage answers, then send them together.** An agent's question now has **Stage** and **Send** beside its answer field. Stage writes your answer down without sending it (press it again to unstage and edit); `Ctrl+Enter` stages, and `Ctrl+Enter` again in the staged field sends. **Send** sends every staged answer on the board at once, so an agent that asked three questions is woken once, with all three answered, instead of acting on the first while you write the rest. A review works the same way: Approve, Approve and merge and Request changes now only choose your verdict, and Stage and Send follow. Staged answers are saved on the server and show on your other devices, and the agent sees nothing of them until you send. While anything is staged the top bar's agent status shows a staged icon, and its menu gains a Send line (and the phone's command palette has a Send entry); a Task is marked staged once all its open questions are. If an answer's question was answered or removed meanwhile, the rest are sent and a message says which was skipped. One `Ctrl+Z` takes a whole sent batch back and stages the answers again.
   Answer fields have keys of their own: `Alt+Y` / `Alt+N` choose a review's verdict, `Alt+Down` / `Alt+Up` move between answer fields, `Escape` leaves a field back to the view, `Q` in the List and Zen Views jumps to the next answer waiting for you, `Shift+Q` to the next staged one, and `Ctrl+Shift+Enter` in a staged field unstages it, keeping the text.

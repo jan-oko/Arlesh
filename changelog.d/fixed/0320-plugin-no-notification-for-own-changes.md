@@ -1,1 +1,0 @@
-- **No notification for a change you made yourself.** The Claude Code plugin no longer wakes a session, or a subagent, to say that a wait it released itself was released. A wait released by the user, another agent or another subagent still notifies as before.
